@@ -1,0 +1,25 @@
+{
+  "id": "26-feedback-states-r2",
+  "boardId": "26-feedback-states",
+  "path": "hifi/v2/boards/26-feedback-states.png",
+  "sourceFilename": "exec-8b1d05b3-ea1e-4e3e-8f2f-3f2c2596e53c.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the middle-right 空文档占位 panel: remove the dirty dot beside 未命名.md because this buffer is still empty and untouched. Preserve the caret, faint placeholder and entire source pane. All other five panels remain unchanged. Do not replace the blank document with a hero or fill it with typed content.",
+  "revisionOf": "26-feedback-states",
+  "sha256": "c3f7b744cbf85d94ed3cd4edf36be3c4ee7fbba1d62e90c8cd6d13dedb251922",
+  "bytes": 1481663,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/26-feedback-states.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "463720ae5130ddfeb847be674ff3d9ee16327fd0e663a89aa09c810fd04b8c50",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "463720ae5130ddfeb847be674ff3d9ee16327fd0e663a89aa09c810fd04b8c50",
+      "outputSha256": "c3f7b744cbf85d94ed3cd4edf36be3c4ee7fbba1d62e90c8cd6d13dedb251922"
+    }
+  ]
+}

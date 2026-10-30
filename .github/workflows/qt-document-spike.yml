@@ -1,0 +1,44 @@
+name: Qt document experiment
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  experiment:
+    name: Offscreen experiment (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-14]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      # Use the pinned internal action directly; the composite wrapper references a moving v4 branch.
+      - uses: jurplel/install-qt-action/action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: '6.8.3'
+          aqtversion: '==3.3.0'
+          py7zrversion: '==1.0.0'
+          cache: false
+      - name: Configure experiment
+        run: cmake -S experiments/qt-document-spike -B build/qt-document-spike -DCMAKE_BUILD_TYPE=Release
+      - name: Build experiment
+        run: cmake --build build/qt-document-spike --config Release --parallel 2
+      - name: Run offscreen experiment tests
+        run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error

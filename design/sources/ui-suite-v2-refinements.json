@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "revisions": [
+    {
+      "boardId": "21-rich-markdown",
+      "revisionId": "21-rich-markdown-r3",
+      "changes": "Change ONLY the outline navigation's bright-blue selected text and vertical rail to graphite #374151 and pale selection #EBECEE. Content link may also use graphite with an underline. Preserve all layout and other pixels.",
+      "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nChange ONLY the outline navigation's bright-blue selected text and vertical rail to graphite #374151 and pale selection #EBECEE. Content link may also use graphite with an underline. Preserve all layout and other pixels.",
+      "pathAtGeneration": "hifi/v2/boards/21-rich-markdown-r3.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/21-rich-markdown-r2.png"
+      ]
+    },
+    {
+      "boardId": "22-compact-large-text",
+      "revisionId": "22-compact-large-text-r3",
+      "changes": "Change ONLY the bottom footer of the RIGHT settings window: remove the 取消 button entirely and leave 完成 aligned to the right. These preferences take effect immediately. Keep the footer height, large text, six named colors, sidebar and entire left window unchanged.",
+      "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nChange ONLY the bottom footer of the RIGHT settings window: remove the 取消 button entirely and leave 完成 aligned to the right. These preferences take effect immediately. Keep the footer height, large text, six named colors, sidebar and entire left window unchanged.",
+      "pathAtGeneration": "hifi/v2/boards/22-compact-large-text-r3.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/22-compact-large-text-r2.png"
+      ]
+    },
+    {
+      "boardId": "24-components-dark",
+      "revisionId": "24-components-dark-r3",
+      "changes": "Change ONLY the bright-blue ON switch track in the 选择控件 row into the same light graphite #B3BDCC as the primary button. Make its thumb #171A21. The OFF and disabled controls stay unchanged. No other blue accent in this graphite specimen. Preserve all labels and layout.",
+      "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nChange ONLY the bright-blue ON switch track in the 选择控件 row into the same light graphite #B3BDCC as the primary button. Make its thumb #171A21. The OFF and disabled controls stay unchanged. No other blue accent in this graphite specimen. Preserve all labels and layout.",
+      "pathAtGeneration": "hifi/v2/boards/24-components-dark-r3.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/24-components-dark-r2.png"
+      ]
+    },
+    {
+      "boardId": "25-accent-matrix",
+      "revisionId": "25-accent-matrix-r2",
+      "changes": "Correct only the selected UI samples in all SIX rows: every selected 阅读 segment and selected-file rail must use the corresponding row's accent, not globally graphite. Light rows: #374151, #526B95, #356AE6, #7B668F, #A45C46, #68764B with white text; dark rows: #B3BDCC, #9AB3D3, #8BB0FF, #BAA4CD, #DEA38F, #B7C590 with dark text. File selected backgrounds use subtle same-hue soft fill, not a large solid fill. Preserve existing swatches, labels/hex, 保存 buttons, ON switches, six-by-two grid, equal geometry and everything else.",
+      "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nCorrect only the selected UI samples in all SIX rows: every selected 阅读 segment and selected-file rail must use the corresponding row's accent, not globally graphite. Light rows: #374151, #526B95, #356AE6, #7B668F, #A45C46, #68764B with white text; dark rows: #B3BDCC, #9AB3D3, #8BB0FF, #BAA4CD, #DEA38F, #B7C590 with dark text. File selected backgrounds use subtle same-hue soft fill, not a large solid fill. Preserve existing swatches, labels/hex, 保存 buttons, ON switches, six-by-two grid, equal geometry and everything else.",
+      "pathAtGeneration": "hifi/v2/boards/25-accent-matrix-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/25-accent-matrix.png"
+      ]
+    },
+    {
+      "boardId": "30-settings-feedback",
+      "revisionId": "30-settings-feedback-r3",
+      "changes": "Correct ONLY the category labels and icons in ALL FOUR left settings sidebars. There must be exactly these six rows, spelled verbatim, same order: 1 通用 (gear icon); 2 外观与配色 (palette); 3 编辑器 (pencil); 4 阅读与渲染 (open book); 5 快捷键 (keyboard); 6 关于 (info). Spell 外观与配色, not 自动与配色 or 自观与配色. Spell 编辑器, not 阅辑器. Keep every content pane, search result, banner, lock row and disabled 1.5 秒 exactly unchanged. This edit is only typography and icons in the sidebars.",
+      "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nCorrect ONLY the category labels and icons in ALL FOUR left settings sidebars. There must be exactly these six rows, spelled verbatim, same order: 1 通用 (gear icon); 2 外观与配色 (palette); 3 编辑器 (pencil); 4 阅读与渲染 (open book); 5 快捷键 (keyboard); 6 关于 (info). Spell 外观与配色, not 自动与配色 or 自观与配色. Spell 编辑器, not 阅辑器. Keep every content pane, search result, banner, lock row and disabled 1.5 秒 exactly unchanged. This edit is only typography and icons in the sidebars.",
+      "pathAtGeneration": "hifi/v2/boards/30-settings-feedback-r3.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/30-settings-feedback-r2.png"
+      ]
+    },
+    {
+      "boardId": "31-content-interactions",
+      "revisionId": "31-content-interactions-r3",
+      "changes": "Change ONLY the top-left Chinese input panel's dirty/saving indicators: blue dot on the active tab becomes amber #9A5800 small solid dot; bottom 未保存 uses an amber solid DOT instead of a checkmark. Preserve the text selection, IME candidate box, the empty outline plain paragraphs and all other panels exactly.",
+      "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nChange ONLY the top-left Chinese input panel's dirty/saving indicators: blue dot on the active tab becomes amber #9A5800 small solid dot; bottom 未保存 uses an amber solid DOT instead of a checkmark. Preserve the text selection, IME candidate box, the empty outline plain paragraphs and all other panels exactly.",
+      "pathAtGeneration": "hifi/v2/boards/31-content-interactions-r3.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/31-content-interactions-r2.png"
+      ]
+    }
+  ],
+  "provenanceNote": "Paths at generation time are historical metadata; only current board images are retained."
+}

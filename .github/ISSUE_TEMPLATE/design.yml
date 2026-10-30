@@ -1,0 +1,23 @@
+name: 视觉与交互设计
+description: 描述设计问题、范围与验收方式
+title: '[设计] '
+labels: ['type:design', 'status:needs-triage']
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: 场景、现有图稿与问题
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 修改范围与验收标准
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: 相关规格与其他界面
+    validations:
+      required: false

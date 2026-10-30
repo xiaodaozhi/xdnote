@@ -1,0 +1,24 @@
+{
+  "id": "16-external-conflict",
+  "path": "hifi/v2/boards/16-external-conflict.png",
+  "sourceFilename": "exec-97275dab-c1aa-40a4-8367-4992874bd38f.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: THREE panels. One wide comparison product window spans the TOP 55% of the canvas. Two compact product panels sit BOTTOM LEFT and BOTTOM RIGHT with a generous gutter. All bounds visible.\n\nBOARD: 外部修改与内容比较\nPanel 1, label \"比较磁盘与当前编辑\": One wide compact comparison window across the TOP half. Title 文件内容已更改. Two aligned text columns labelled 当前编辑 and 磁盘版本 with line numbers, small green/red changed-line fills and no excessive neon. Footer actions 继续编辑, 使用磁盘版本, 另存为. Filename 项目计划.md, source text remains readable.\n\nPanel 2, label \"外部修改冲突\": BOTTOM LEFT dialog 文件已被其他程序修改. Helper 当前编辑已保留，自动保存已暂停。 buttons 保留当前编辑, 比较差异, 另存为… . No automatic overwrite.\n\nPanel 3, label \"干净文档有更新\": BOTTOM RIGHT product reading fragment with subtle inline banner 磁盘上的文件有更新. Actions 重新载入 and 稍后. Content remains visible, no blocking alarm.\nCritical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+  "bytes": 1382478,
+  "sha256": "f689c676a4b9fbd9a4151f0024a9d09102b51b4e6f688d665d4ca018cb58218c",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "c49c00fc42a5271a03ebab6fad5e358f96d71fed95eebbcf8a46688cd9fd004c",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "c49c00fc42a5271a03ebab6fad5e358f96d71fed95eebbcf8a46688cd9fd004c",
+      "outputSha256": "f689c676a4b9fbd9a4151f0024a9d09102b51b4e6f688d665d4ca018cb58218c"
+    }
+  ]
+}

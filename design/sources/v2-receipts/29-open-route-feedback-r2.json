@@ -1,0 +1,25 @@
+{
+  "id": "29-open-route-feedback-r2",
+  "boardId": "29-open-route-feedback",
+  "path": "hifi/v2/boards/29-open-route-feedback.png",
+  "sourceFilename": "exec-ccfdbf3c-a6a3-4306-96ae-635564d3acc9.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the bottom-right 窗口接管未完成 panel so it is a valid standalone file window: remove its tab strip and the 编辑/双栏/阅读 triple control. Header shows filename 写作，从这里开始.md, a small unsaved dot and parent path 文档/个人笔记, plus 阅读/编辑 two-way switch with 编辑 selected, 保存 and 在工作区打开. No file tree, no preview or split mode. Keep its existing source text and bottom warning 未能移入工作区，当前编辑仍保留在此窗口。 with 重试 and 继续在此编辑. Other three panels unchanged.",
+  "revisionOf": "29-open-route-feedback",
+  "sha256": "976520ce85fc26758eb2ce5ff0b90545085350802fdffd0545d48ee357f5c714",
+  "bytes": 1761708,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/29-open-route-feedback.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "cf557fc5e28f1ded661aa34de246cf0e498afc94b499c25f3e6c90e48b8dd70e",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "cf557fc5e28f1ded661aa34de246cf0e498afc94b499c25f3e6c90e48b8dd70e",
+      "outputSha256": "976520ce85fc26758eb2ce5ff0b90545085350802fdffd0545d48ee357f5c714"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "id": "06-standalone-dark",
+  "path": "hifi/v2/boards/06-standalone-dark.png",
+  "sourceFilename": "exec-869ce171-8879-4e7c-80bc-6c944da5d845.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "bytes": 1408165,
+  "sha256": "c7aed955eb386ed70cb12bbb2d72c9df208d2a4ff95e0fff038c1b0e3db80366",
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly TWO equally sized product panels, LEFT and RIGHT, with a clear vertical gutter and short state labels above. Each panel is fully in frame. Aim for two tall desktop windows, not overlapping screenshots.\n\nBOARD: 独立文件，深色\nPanel 1, label \"独立阅读，深色\": Same standalone reading window, complete DARK theme. Charcoal document, warm light text, graphite adapted mode segment, quiet header and green saved state. Comfortable editorial rhythm.\n\nPanel 2, label \"独立编辑，深色\": Same standalone source editor in DARK theme. Clearly distinguish source code and UI. Amber unsaved dot, light-graphite primary 保存 with dark text, bottom 未保存, and readable blue/orange code syntax.",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-standalone-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "postGenerationEdits": [
+    {
+      "type": "standalone-titlebar-and-breadcrumb-local-edit",
+      "source": "sources/standalone-chrome-edit.cjs",
+      "inputSha256": "3889b275b2417e4e725756ecf97f8e824092cab6e4b18b53e3a83d27216ed4cf",
+      "outputSha256": "1fd0158b746ca97aae8e688458462121e3ae3017746417e9eb61c8f7f9688a13",
+      "regions": [
+        {
+          "left": 44,
+          "top": 56,
+          "width": 455,
+          "height": 54
+        },
+        {
+          "left": 48,
+          "top": 119,
+          "width": 225,
+          "height": 50
+        },
+        {
+          "left": 802,
+          "top": 56,
+          "width": 455,
+          "height": 54
+        },
+        {
+          "left": 806,
+          "top": 119,
+          "width": 225,
+          "height": 50
+        }
+      ]
+    },
+    {
+      "type": "standalone-titlebar-alignment",
+      "source": "sources/align-standalone-titlebar.cjs",
+      "inputSha256": "1fd0158b746ca97aae8e688458462121e3ae3017746417e9eb61c8f7f9688a13",
+      "outputSha256": "c7aed955eb386ed70cb12bbb2d72c9df208d2a4ff95e0fff038c1b0e3db80366",
+      "referencePath": "hifi/v2/boards/02-workspace-dark.png",
+      "referenceSha256": "3fab03d2c9277a33d6c0ac88e3629166175f449263eb5df7b193098fd52c30f0",
+      "matchedRasterHeaderHeight": 50,
+      "rasterUnit": "image-pixels-not-runtime-geometry"
+    }
+  ]
+}

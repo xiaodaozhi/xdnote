@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "reason": "Additional menus, routing, settings persistence, content resources, export and external file cases",
+  "boards": [
+    {
+      "id": "28-application-menus",
+      "title": "应用菜单",
+      "tier": "P0",
+      "layout": "four",
+      "generationStatus": "planned",
+      "promptAddendum": "Critical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+      "frames": [
+        {
+          "id": "menu-file",
+          "title": "文件菜单",
+          "description": "A light xdnote product header fragment with application menu 文件 open. Neat items 新建文档 Ctrl N, 打开文件 Ctrl O, 打开文件夹…, 保存 Ctrl S, 另存为 Ctrl Shift S, separator, 关闭标签 Ctrl W, 退出 Alt F4. Inactive 保存 is disabled when clean, open item focused in graphite. No menu touching window controls."
+        },
+        {
+          "id": "menu-edit",
+          "title": "编辑菜单",
+          "description": "Same header fragment with 编辑 menu open. 撤销 Ctrl Z enabled, 重做 Ctrl Shift Z disabled, 剪切 Ctrl X, 复制 Ctrl C, 粘贴 Ctrl V, 全选 Ctrl A, separator 查找 Ctrl F, 替换 Ctrl H. Keep menu columns and font consistent."
+        },
+        {
+          "id": "menu-view",
+          "title": "视图菜单",
+          "description": "Same header with 视图 menu open. Radio group 编辑/双栏/阅读 with 双栏 selected; check 显示侧栏; 专注模式 F11, 放大 Ctrl +, 缩小 Ctrl -, 重置缩放 Ctrl 0. Selected modes indicated by check/radio not color alone."
+        },
+        {
+          "id": "menu-window-help",
+          "title": "窗口与帮助",
+          "description": "One compact app header and an overflow menu with two clearly divided groups 窗口 and 帮助. 在独立窗口打开, 设置…, separator 快捷键, 关于 xdnote. No invented support URL, update or telemetry actions."
+        }
+      ],
+      "pathAtGeneration": "hifi/v2/boards/28-application-menus.png",
+      "referencePathsAtGeneration": [
+        "hifi/screens/markdown-main-graphite.png"
+      ]
+    },
+    {
+      "id": "29-open-route-feedback",
+      "title": "打开与窗口路由",
+      "tier": "P0",
+      "layout": "four",
+      "generationStatus": "planned",
+      "promptAddendum": "Critical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+      "frames": [
+        {
+          "id": "drag-file-target",
+          "title": "拖入文件",
+          "description": "One workspace fragment during user drag, thin GRAPHITE dashed drop highlight on editor area. Small overlay 打开 Markdown 文件 and example 笔记.md. Separate outlined target 在当前工作区打开. No permanent import, upload or cloud. Current tab still visible."
+        },
+        {
+          "id": "batch-open-partial",
+          "title": "多文件部分失败",
+          "description": "A compact dialog 部分文件未能打开 with summary 已打开 2 个文件，1 个文件未能打开。, one error row 旧笔记.md / 文件不存在. Actions 重试未打开文件 and 完成. Successful tabs remain visible behind it. No fabricated progress percentage."
+        },
+        {
+          "id": "same-file-existing",
+          "title": "同一文件已打开",
+          "description": "A calm graphite neutral toast 已切换到已打开的文件 with full filename 写作笔记.md, action 查看所在窗口. Existing dirty dot remains on tab. Do not offer independent duplicate buffers or overwrite."
+        },
+        {
+          "id": "move-session-failed",
+          "title": "窗口接管未完成",
+          "description": "Standalone window with warning 未能移入工作区，当前编辑仍保留在此窗口。 actions 重试 and 继续在此编辑. Keep source text and unsaved dot visible. No duplicate or cloud claims."
+        }
+      ],
+      "pathAtGeneration": "hifi/v2/boards/29-open-route-feedback.png",
+      "referencePathsAtGeneration": [
+        "hifi/screens/markdown-main-graphite.png"
+      ]
+    },
+    {
+      "id": "30-settings-feedback",
+      "title": "设置检索与保存反馈",
+      "tier": "P0",
+      "layout": "four",
+      "generationStatus": "planned",
+      "promptAddendum": "Critical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+      "frames": [
+        {
+          "id": "settings-search-results",
+          "title": "设置搜索",
+          "description": "Compact settings shell with search query 保存, result list 自动保存 under 通用 and 关闭前保护 under 通用. Results show category breadcrumbs and clear highlighted matching characters. No new settings categories."
+        },
+        {
+          "id": "settings-search-empty",
+          "title": "设置搜索无结果",
+          "description": "Same settings shell, query 同步, heading 没有找到相关设置, helper 试试其他关键词。, action 清除搜索. Preserve the six established categories in sidebar."
+        },
+        {
+          "id": "settings-write-error",
+          "title": "设置保存失败",
+          "description": "Same 外观与配色 page with nonblocking muted red top banner 未能保存设置，本次更改已撤回。 actions 重试 and 关闭提示. Graphite remains selected; do not show a success footer simultaneously. Below preview still usable."
+        },
+        {
+          "id": "settings-protected-close",
+          "title": "关闭保护固定策略",
+          "description": "A compact 通用 settings section titled 关闭保护. Static enabled lock row 始终提醒未保存的修改 with helper 关闭或退出前，需先保存或明确放弃修改。. NO toggle to disable this policy. Neutral text value 已启用 and lock icon. Show auto-save separately OFF and delay disabled."
+        }
+      ],
+      "pathAtGeneration": "hifi/v2/boards/30-settings-feedback.png",
+      "referencePathsAtGeneration": [
+        "hifi/screens/markdown-main-graphite.png"
+      ]
+    },
+    {
+      "id": "31-content-interactions",
+      "title": "正文交互与资源边界",
+      "tier": "P0",
+      "layout": "four",
+      "generationStatus": "planned",
+      "promptAddendum": "Critical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+      "frames": [
+        {
+          "id": "source-ime-selection",
+          "title": "选区与中文输入",
+          "description": "Source editor fragment with real Chinese text. One sentence selected pale graphite with readable foreground; caret has composition underline on 输入中的文字. A small generic IME candidate box near caret labelled 1 文字  2 文档  3 文本, outside document flow. No fabricated OS brand. Formatting toolbar and undo remain visible."
+        },
+        {
+          "id": "image-resource-states",
+          "title": "本地与网络图片",
+          "description": "Reading fragment titled 图片 with two clean image placeholders. First 本地图片未找到, alt text 结构示意图, actions 重新定位 and 复制路径. Second 网络图片尚未加载, origin images.example.com, action 仅本次加载. Clearly separate local missing vs remote blocked. No actual remote photograph."
+        },
+        {
+          "id": "wide-code-table",
+          "title": "长代码与宽表格",
+          "description": "Reading fragment with a wide fenced-code panel and 5-column document table. Each has its own visible horizontal scrollbar; outer document remains vertically scrollable. Code has language label and copy icon. Use sensible sample 项目/负责人/状态/备注/更新时间, not application feature claims."
+        },
+        {
+          "id": "outline-no-headings",
+          "title": "没有标题的大纲",
+          "description": "Full reading pane with slim outline rail 大纲 showing 本文暂无标题 and helper 添加标题后将在这里显示。. Document body remains visible and readable. Do not put giant empty illustration over the actual paragraph."
+        }
+      ],
+      "pathAtGeneration": "hifi/v2/boards/31-content-interactions.png",
+      "referencePathsAtGeneration": [
+        "hifi/screens/markdown-main-graphite.png"
+      ]
+    },
+    {
+      "id": "32-export-feedback",
+      "title": "导出过程与结果",
+      "tier": "P1",
+      "layout": "four",
+      "generationStatus": "planned",
+      "promptAddendum": "Critical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+      "frames": [
+        {
+          "id": "export-in-progress",
+          "title": "正在导出",
+          "description": "Compact export surface 正在导出 PDF with filename 写作笔记.pdf and indeterminate spinner/bar, action 取消导出. No numeric percentage. Preview settings temporarily disabled while active."
+        },
+        {
+          "id": "export-complete",
+          "title": "导出完成",
+          "description": "Compact success panel 已导出文档, local destination 文档/导出/写作笔记.pdf. Actions 在文件夹中显示 and 完成. This is a design of future result state, no actual runtime claim."
+        },
+        {
+          "id": "export-failed",
+          "title": "导出失败",
+          "description": "Compact error panel 未能导出文档, reason 目标位置没有写入权限。. Helper 原 Markdown 文件未修改。. Actions 选择其他位置, 重试, 取消. Do not show save or export success."
+        },
+        {
+          "id": "export-cancelled",
+          "title": "已取消导出",
+          "description": "Compact export pane returned to settings with neutral inline note 导出已取消，原文档保持不变。. Primary 导出 PDF enabled, footer 取消. No alarming confirmation for cancellation before output committed."
+        }
+      ],
+      "pathAtGeneration": "hifi/v2/boards/32-export-feedback.png",
+      "referencePathsAtGeneration": [
+        "hifi/screens/markdown-main-graphite.png"
+      ]
+    },
+    {
+      "id": "33-external-file-edges",
+      "title": "外部文件变化边界",
+      "tier": "P0",
+      "layout": "four",
+      "generationStatus": "planned",
+      "promptAddendum": "Critical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+      "frames": [
+        {
+          "id": "external-deleted-dirty",
+          "title": "文件被删除且有编辑",
+          "description": "Owner dialog 原文件已被删除. Helper 当前未保存内容仍保留，不会自动重建原路径。. Filename 写作笔记.md. Buttons 继续编辑 and 另存为. No default recreate or lost-buffer claim."
+        },
+        {
+          "id": "external-renamed-clean",
+          "title": "文件位置变化",
+          "description": "Nonblocking reader banner 文件位置已变化 with old location 文档/旧目录/笔记.md and current 文档/新目录/笔记.md, action 查看位置. Reading position preserved visually. Do not auto-open a second document."
+        },
+        {
+          "id": "file-busy-save",
+          "title": "文件暂时被占用",
+          "description": "Shared save error dialog 暂时无法保存此文件. Reason 文件正被其他程序占用，请稍后重试。. Helper 你的修改仍保留在编辑器中。. Actions 继续编辑, 另存为, 重试."
+        },
+        {
+          "id": "reopen-encoding-dirty",
+          "title": "重新打开编码前确认",
+          "description": "Owner dialog 更换编码并重新打开？ helper 当前未保存的编辑需要先处理。. Filename and current UTF-8. Buttons 取消, 另存为, 保存后继续. No silent buffer replacement or lossy conversion."
+        }
+      ],
+      "pathAtGeneration": "hifi/v2/boards/33-external-file-edges.png",
+      "referencePathsAtGeneration": [
+        "hifi/screens/markdown-main-graphite.png"
+      ]
+    }
+  ],
+  "provenanceNote": "Paths at generation time are historical metadata; only current board images are retained."
+}

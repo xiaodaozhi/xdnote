@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "unit": "logical-pixel",
+  "status": "design-proposal",
+  "tokenAuthority": "docs/visual/tokens.json",
+  "densityExports": [1, 2, 3],
+  "focusPadding": 4,
+  "icon": {"viewBox": 24, "strokeWidth": 1.75, "sizeToken": "controls.iconSize", "lineCap": "round", "lineJoin": "round"},
+  "button": {"width": 96, "heightToken": "controls.height", "radiusToken": "radius.control", "contentInsetX": 12},
+  "input": {"width": 240, "heightToken": "controls.height", "contentInsetX": 12},
+  "checkbox": {"glyphSize": 16, "canvasSize": 24, "radius": 3},
+  "radio": {"glyphSize": 16, "canvasSize": 24, "dotSize": 8},
+  "toggle": {"trackWidth": 40, "trackHeight": 22, "thumbSize": 16, "canvasWidth": 48, "canvasHeight": 32},
+  "segment": {"width": 88, "heightToken": "controls.height"},
+  "selectionRow": {"width": 224, "heightToken": "controls.menuRowHeight", "markerWidth": 3},
+  "tab": {"width": 160, "height": 36, "indicatorHeight": 2},
+  "swatch": {"glyphSize": 24, "canvasSize": 32},
+  "popup": {"width": 320, "height": 200, "inset": 8, "radiusToken": "radius.menu"},
+  "emptyState": {"width": 160, "height": 120},
+  "hitTargetMinimumToken": "controls.iconButtonHit",
+  "notes": [
+    "SVG/PNG canvas may include transparent focus padding; core control geometry is separate.",
+    "Image densities never change logical geometry or hit-target size.",
+    "Text is not baked into reusable controls. Nine-slice insets exclude fixed corners and focus rings.",
+    "Use native controls and vector primitives when available; raster skin exports are optional design inputs."
+  ]
+}

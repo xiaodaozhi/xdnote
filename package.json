@@ -1,0 +1,15 @@
+{
+  "name": "xdnote-design-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tooling for validating xdnote static design materials, not the application.",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "check:materials": "node design/sources/check-ui-materials.cjs"
+  },
+  "devDependencies": {
+    "sharp": "0.35.5"
+  }
+}

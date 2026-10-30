@@ -1,0 +1,24 @@
+{
+  "id": "19-encoding-large-loading",
+  "path": "hifi/v2/boards/19-encoding-large-loading.png",
+  "sourceFilename": "exec-cef2c02e-8102-4f18-9481-90ec3dea88d6.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly FOUR equally sized product panels in a strict 2 by 2 grid. All four complete surfaces in frame, generous gutters, labels above each. Use compact dialogs or bounded fragments; do not shrink an entire desktop into each cell.\n\nBOARD: 编码、大文件与加载\nPanel 1, label \"无法按当前编码打开\": Dialog 无法按 UTF-8 读取此文件. Clear 原文件未修改. Optional extended-design chooser 重新打开编码 dropdown GB18030, with a small readable text preview and actions 取消, 以此编码重新打开. No automatic lossy conversion.\n\nPanel 2, label \"大文件打开方式\": Dialog 文件较大，选择打开方式 with sample 18.6 MB local document (example data, not supported-limit claim). Radio options 只读文本 and 完整编辑, short memory/time hint. Buttons 取消 and 打开. No hardcoded system performance claim.\n\nPanel 3, label \"文档加载中\": Product content area with filename 技术手册.md, indeterminate thin spinner/progress, 正在打开文档… and 取消打开. Preserve app chrome; no fake percent.\n\nPanel 4, label \"预览未能完成\": Editor/preview fragment: source text still present, preview pane calm error 预览暂时无法显示, helper 你可以继续编辑源文。, buttons 重试预览 and 仅显示源文. No whole-app crash or data loss.\nCritical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+  "bytes": 1379471,
+  "sha256": "9c8df7e5ddd15fdccb9a7e41570867ba1d114d3563f8f4cdf25b115a7a9c1c2e",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "3120a71581822af80c312a860d632dcca48b8d58685907d09b0d060b88547fb9",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "3120a71581822af80c312a860d632dcca48b8d58685907d09b0d060b88547fb9",
+      "outputSha256": "9c8df7e5ddd15fdccb9a7e41570867ba1d114d3563f8f4cdf25b115a7a9c1c2e"
+    }
+  ]
+}

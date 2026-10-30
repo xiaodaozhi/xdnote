@@ -1,0 +1,24 @@
+{
+  "id": "09-file-tab-menus",
+  "path": "hifi/v2/boards/09-file-tab-menus.png",
+  "sourceFilename": "exec-36d55335-c846-4b33-be12-95022c1614f5.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "bytes": 1492502,
+  "sha256": "875d79520f40d9b93fc948b0151661faafbabc53fa8f0e185d9912908ef90154",
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly FOUR equally sized product panels in a strict 2 by 2 grid. All four complete surfaces in frame, generous gutters, labels above each. Use compact dialogs or bounded fragments; do not shrink an entire desktop into each cell.\n\nBOARD: 文件与标签菜单\nPanel 1, label \"文件右键菜单\": Close, readable product fragment showing one selected file row with open context menu. Items 打开, 在独立窗口打开, 在文件管理器中显示, 重命名, 加入收藏, then muted-red 移到回收站. Keyboard shortcut area aligned, menu density matches app, no oversized menu.\n\nPanel 2, label \"标签右键菜单\": Product tab strip with active and dirty tabs; open menu items 关闭, 关闭其他标签, 关闭右侧标签, 在独立窗口打开. Disabled item visibly gray. Include a focus highlight.\n\nPanel 3, label \"标签溢出\": Product titlebar fragment with 7 clipped-length tabs, plus button, compact overflow picker open. Picker shows full filenames with dirty dots and current check, no overlapping system buttons.\n\nPanel 4, label \"文档信息\": Compact filename breadcrumb with document-info popover: 文件名 写作笔记.md, 位置 文档/个人笔记, 编码 UTF-8, 换行 LF, 字数 1,248, 修改时间 今天 10:28. Quiet 复制路径 action. No fake cloud status.",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "df593cdc0e99629efeb7ab1ba727cb93c2b35e7bf513e96766c96975419ed93e",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "df593cdc0e99629efeb7ab1ba727cb93c2b35e7bf513e96766c96975419ed93e",
+      "outputSha256": "875d79520f40d9b93fc948b0151661faafbabc53fa8f0e185d9912908ef90154"
+    }
+  ]
+}

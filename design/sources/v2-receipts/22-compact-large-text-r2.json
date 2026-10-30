@@ -1,0 +1,16 @@
+{
+  "id": "22-compact-large-text-r2",
+  "boardId": "22-compact-large-text",
+  "sourceFilename": "exec-cf54a8b4-d7c6-4697-ab99-4a1f2e12a31d.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nKeep the LEFT compact workspace unchanged. Correct ONLY the RIGHT large-font settings window: sidebar categories in order 通用, 外观与配色 (selected), 编辑器, 阅读与渲染, 快捷键, 关于. Remove invented 编辑与预览 and 文件与数据. The six swatches must be 3 per row with exact names and colors: first row 石墨灰 #374151, 雾蓝 #526B95, 钴蓝 #356AE6; second row 灰紫 #7B668F, 陶土 #A45C46, 橄榄 #68764B. Use circular swatches or aligned neutral cards, no red/orange/green replacements. Keep visibly large typography, body scrollbar and selected graphite mark. Add a FIXED bottom footer with 完成 reachable; let body scroll rather than shrinking text. Preserve the two-panel composition.",
+  "revisionOf": "22-compact-large-text",
+  "sha256": "8d56f1832cf34c8780cb40b09408cf7a3dc5721addce97519794b079757bb110",
+  "bytes": 1483554,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/22-compact-large-text.png"
+  ],
+  "imageRetained": false,
+  "pathAtGeneration": "hifi/v2/boards/22-compact-large-text-r2.png"
+}

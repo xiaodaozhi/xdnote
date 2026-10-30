@@ -1,0 +1,25 @@
+{
+  "id": "15-unsaved-close-r2",
+  "boardId": "15-unsaved-close",
+  "path": "hifi/v2/boards/15-unsaved-close.png",
+  "sourceFilename": "exec-0a8dc01d-caf5-469c-8c78-50de35928d24.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the bright-blue keyboard focus ring around the top-left 保存 primary button to graphite #374151 with a small white gap. All primary controls use graphite, semantic warning/dirty dots and red reload action remain. Preserve all four dialogs and their Chinese text and positions.",
+  "revisionOf": "15-unsaved-close",
+  "sha256": "b255a31d9c9b9bbfe9fe29794ecadd1b19c6f69752562c54993d8ae5b2bc4eae",
+  "bytes": 1756505,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/15-unsaved-close.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "3fa294af7005957df005bb4be1785d456d7118193a082722cb0248804d13f097",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "3fa294af7005957df005bb4be1785d456d7118193a082722cb0248804d13f097",
+      "outputSha256": "b255a31d9c9b9bbfe9fe29794ecadd1b19c6f69752562c54993d8ae5b2bc4eae"
+    }
+  ]
+}

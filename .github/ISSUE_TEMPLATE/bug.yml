@@ -1,0 +1,23 @@
+name: Bug 报告
+description: 记录复现环境、预期与实际行为
+title: '[Bug] '
+labels: ['type:bug', 'status:needs-triage']
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交、操作系统及版本
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤、预期与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 文件类型、缩放、输入法及去敏后的日志或截图
+    validations:
+      required: false

@@ -1,0 +1,25 @@
+{
+  "id": "21-rich-markdown-r3",
+  "boardId": "21-rich-markdown",
+  "path": "hifi/v2/boards/21-rich-markdown.png",
+  "sourceFilename": "exec-ae16137f-a9ca-439d-a2c9-da95550203bf.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nChange ONLY the outline navigation's bright-blue selected text and vertical rail to graphite #374151 and pale selection #EBECEE. Content link may also use graphite with an underline. Preserve all layout and other pixels.",
+  "revisionOf": "21-rich-markdown",
+  "bytes": 1348557,
+  "sha256": "8854e383850303c72044859a7b9dab6c9989691636d074c1d3ff78c25c930fab",
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/21-rich-markdown-r2.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "92e1a99dbca65bea549f689cbebb024e21389cb8c48fac024ea35fb5a2a4c5ec",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "92e1a99dbca65bea549f689cbebb024e21389cb8c48fac024ea35fb5a2a4c5ec",
+      "outputSha256": "8854e383850303c72044859a7b9dab6c9989691636d074c1d3ff78c25c930fab"
+    }
+  ]
+}

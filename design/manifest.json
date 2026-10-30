@@ -1,0 +1,1578 @@
+{
+  "schemaVersion": 2,
+  "product": "xdnote",
+  "collectedOn": "2026-10-29",
+  "pathsRelativeTo": "design/",
+  "materialType": "static-design-inputs-not-runtime-evidence",
+  "displayDefaults": {
+    "theme": "light",
+    "accent": "graphite",
+    "status": "provisional"
+  },
+  "colorAuthority": "docs/visual/tokens.json",
+  "baselineAssetIds": [
+    "ui-v2-01-workspace-light",
+    "ui-v2-05-standalone-light",
+    "ui-v2-12-settings-appearance-reader"
+  ],
+  "notes": [
+    "The adopted suite has 33 static boards and 89 named surfaces; it does not demonstrate a running app.",
+    "Graphite is a provisional display default. Six accents and both themes remain available in the design.",
+    "Exact logical geometry and colors come from tokens.json, not generated image pixels.",
+    "Current boards use stable filenames; prior raster revisions are not retained. Generation provenance remains textual.",
+    "The folded-light brand direction was approved for the design assets.",
+    "Native platform integration and application behavior have not been validated by this design task."
+  ],
+  "assets": [
+    {
+      "id": "accent-candidates",
+      "path": "assets/palettes/accent-color-candidates.png",
+      "kind": "palette-comparison",
+      "status": "exploration",
+      "bytes": 1323147,
+      "sha256": "321233ab5e412410ad29e2004624e780106b7f0624034246ab73dce5aa50b7a8",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-3eb532ae-0ba2-4219-a4c1-adaddb78031c.png"
+      },
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "imagegen-prompts",
+      "path": "sources/imagegen-prompts.json",
+      "kind": "generation-prompts",
+      "status": "source",
+      "bytes": 9099,
+      "sha256": "d784e05a28d008569ed147d7f706b4cb61b1fd1506a7a51d758eb0af234fe245",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "conversation-export",
+        "sourceFilename": "markdown-design-prompts.json"
+      }
+    },
+    {
+      "id": "brand-review-a-fold",
+      "path": "brand-proposals/a-fold.png",
+      "kind": "brand-review-image",
+      "status": "approved-design-direction",
+      "bytes": 1336418,
+      "sha256": "612fe3974ddcbc53fd6670420f5f6dde425cab7c52e96ce4fe6711d1d5ded955",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "a-fold.png",
+        "promptFile": "brand-proposals/prompts.json"
+      },
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "brand-review-b-spine",
+      "path": "brand-proposals/b-spine.png",
+      "kind": "brand-review-image",
+      "status": "proposed",
+      "bytes": 1169646,
+      "sha256": "01dfd78d40e7a9002200e44ec22e689fe070fc1aaea181436b43e80ad437eb78",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "b-spine.png",
+        "promptFile": "brand-proposals/prompts.json"
+      },
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "brand-review-c-ligature",
+      "path": "brand-proposals/c-ligature.png",
+      "kind": "brand-review-image",
+      "status": "proposed",
+      "bytes": 1194052,
+      "sha256": "3f99451a2d89ed8609dc2ac1a43066d8dbcb00910ed24d5cc238e3f322136bd3",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "c-ligature.png",
+        "promptFile": "brand-proposals/prompts.json"
+      },
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "brand-review-prompts",
+      "path": "brand-proposals/prompts.json",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 9702,
+      "sha256": "5b71b95a924116ecbe88c01a0489f60944e74f1e646d30205567311766afd325",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-source",
+        "sourceFilename": "prompts.json"
+      }
+    },
+    {
+      "id": "brand-review-readme",
+      "path": "brand-proposals/README.md",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 871,
+      "sha256": "a6bfffc60597d22d78a5e519590ac43973d96ae023ae922fd3b911d92a12f816",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-source",
+        "sourceFilename": "README.md"
+      }
+    },
+    {
+      "id": "ui-v2-01-workspace-light",
+      "path": "hifi/v2/boards/01-workspace-light.png",
+      "kind": "ui-mockup-board",
+      "status": "baseline",
+      "bytes": 1225340,
+      "sha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-b6a60f18-0405-4e8e-b2b0-336d1a932f66.png",
+        "receipt": "sources/v2-receipts/01-workspace-light.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/01-workspace-light.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "workspace-split-light"
+      ]
+    },
+    {
+      "id": "ui-v2-02-workspace-dark",
+      "path": "hifi/v2/boards/02-workspace-dark.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1484505,
+      "sha256": "3fab03d2c9277a33d6c0ac88e3629166175f449263eb5df7b193098fd52c30f0",
+      "pixelSize": {
+        "width": 1585,
+        "height": 992,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-a54385f9-c164-4293-908b-289a811aaa60.png",
+        "receipt": "sources/v2-receipts/02-workspace-dark.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/02-workspace-dark.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "workspace-split-dark"
+      ]
+    },
+    {
+      "id": "ui-v2-03-welcome-blank",
+      "path": "hifi/v2/boards/03-welcome-blank.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1223809,
+      "sha256": "f3de42ede86ab122191e21e6a26b2f2c8d66d5beb0fa7626d59948608264b72e",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-d7b6cc25-aac1-45f6-a5fc-891e1c355cb8.png",
+        "receipt": "sources/v2-receipts/03-welcome-blank-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/03-welcome-blank-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "welcome",
+        "untitled-document"
+      ]
+    },
+    {
+      "id": "ui-v2-04-reading-focus",
+      "path": "hifi/v2/boards/04-reading-focus.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1272193,
+      "sha256": "eb807342e21abfb7bf0db58be95acb3b05b9c0447e95fa122210411231104643",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-8bb3d556-e1c6-4350-b47e-e8065571ce2d.png",
+        "receipt": "sources/v2-receipts/04-reading-focus.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/04-reading-focus.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "workspace-reading",
+        "focus-source"
+      ]
+    },
+    {
+      "id": "ui-v2-05-standalone-light",
+      "path": "hifi/v2/boards/05-standalone-light.png",
+      "kind": "ui-mockup-board",
+      "status": "baseline",
+      "bytes": 1094778,
+      "sha256": "56b09916e291550c2ecdd92bbe86d6929052e57b69b16a4b98f9051912657739",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-d4fee5ef-ba20-4086-9635-d0bb9a54ca66.png",
+        "receipt": "sources/v2-receipts/05-standalone-light.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/05-standalone-light.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "standalone-reading-light",
+        "standalone-editing-light"
+      ]
+    },
+    {
+      "id": "ui-v2-06-standalone-dark",
+      "path": "hifi/v2/boards/06-standalone-dark.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1408165,
+      "sha256": "c7aed955eb386ed70cb12bbb2d72c9df208d2a4ff95e0fff038c1b0e3db80366",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-869ce171-8879-4e7c-80bc-6c944da5d845.png",
+        "receipt": "sources/v2-receipts/06-standalone-dark.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/06-standalone-dark.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "standalone-reading-dark",
+        "standalone-editing-dark"
+      ]
+    },
+    {
+      "id": "ui-v2-07-search-find",
+      "path": "hifi/v2/boards/07-search-find.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1466079,
+      "sha256": "a933d47895a75b4713ea9e1f20a2477de40b08417ba663dee14bb5b8f3d36161",
+      "pixelSize": {
+        "width": 1774,
+        "height": 887,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-fdf5497e-281f-423b-b869-b20b30a9643e.png",
+        "receipt": "sources/v2-receipts/07-search-find.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/07-search-find.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "quick-open",
+        "find-replace"
+      ]
+    },
+    {
+      "id": "ui-v2-08-navigation-states",
+      "path": "hifi/v2/boards/08-navigation-states.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1100338,
+      "sha256": "b867d6f0c835274de37b91c418bd9c6f8240db0566a387c1c7c7c64c945fdd3c",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-ff8e6421-8978-401c-a6d0-3ab69d9aa267.png",
+        "receipt": "sources/v2-receipts/08-navigation-states.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/08-navigation-states.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "recent-files",
+        "favorite-files",
+        "search-empty",
+        "workspace-empty"
+      ]
+    },
+    {
+      "id": "ui-v2-09-file-tab-menus",
+      "path": "hifi/v2/boards/09-file-tab-menus.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1492502,
+      "sha256": "875d79520f40d9b93fc948b0151661faafbabc53fa8f0e185d9912908ef90154",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-36d55335-c846-4b33-be12-95022c1614f5.png",
+        "receipt": "sources/v2-receipts/09-file-tab-menus.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/09-file-tab-menus.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "file-context-menu",
+        "tab-context-menu",
+        "tab-overflow",
+        "document-info"
+      ]
+    },
+    {
+      "id": "ui-v2-10-insert-popovers",
+      "path": "hifi/v2/boards/10-insert-popovers.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1607742,
+      "sha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-f0f1798e-99d2-4b0b-839b-000698d99f15.png",
+        "receipt": "sources/v2-receipts/10-insert-popovers-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/10-insert-popovers-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "heading-format",
+        "insert-link",
+        "insert-image",
+        "insert-table"
+      ]
+    },
+    {
+      "id": "ui-v2-11-settings-general-editor",
+      "path": "hifi/v2/boards/11-settings-general-editor.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1459572,
+      "sha256": "2a6154c9107881b87b1fc716ac48632c432f272ce65da7266ffc767721b9cc84",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-d1f0f6db-2a18-402e-b4be-33dc042a026a.png",
+        "receipt": "sources/v2-receipts/11-settings-general-editor-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/11-settings-general-editor-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "settings-general",
+        "settings-editor"
+      ]
+    },
+    {
+      "id": "ui-v2-12-settings-appearance-reader",
+      "path": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "kind": "ui-mockup-board",
+      "status": "baseline",
+      "bytes": 1483133,
+      "sha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-d6915e52-236d-47da-83db-a0ac00146bae.png",
+        "receipt": "sources/v2-receipts/12-settings-appearance-reader-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/12-settings-appearance-reader-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "settings-appearance-light",
+        "settings-reader"
+      ]
+    },
+    {
+      "id": "ui-v2-13-settings-shortcuts-about",
+      "path": "hifi/v2/boards/13-settings-shortcuts-about.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 993149,
+      "sha256": "380ddf715c6c9b4cca837ab0dbb67a5946df6c56bd5bb722da1514be2644fac6",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-adbed729-1ec3-48b0-ad9f-bd09e5784051.png",
+        "receipt": "sources/v2-receipts/13-settings-shortcuts-about.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/13-settings-shortcuts-about.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "settings-shortcuts",
+        "settings-about"
+      ]
+    },
+    {
+      "id": "ui-v2-14-settings-dark",
+      "path": "hifi/v2/boards/14-settings-dark.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1252654,
+      "sha256": "3e2f186d6ddf4d05543d0b78693ca3d65d7fabd2c02f200d4a67200682d5b925",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-3549aa6f-d10c-4014-962d-437004593ce1.png",
+        "receipt": "sources/v2-receipts/14-settings-dark.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/14-settings-dark.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "settings-appearance-dark"
+      ]
+    },
+    {
+      "id": "ui-v2-15-unsaved-close",
+      "path": "hifi/v2/boards/15-unsaved-close.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1756505,
+      "sha256": "b255a31d9c9b9bbfe9fe29794ecadd1b19c6f69752562c54993d8ae5b2bc4eae",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-0a8dc01d-caf5-469c-8c78-50de35928d24.png",
+        "receipt": "sources/v2-receipts/15-unsaved-close-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/15-unsaved-close-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "unsaved-single",
+        "unsaved-multiple",
+        "close-while-saving",
+        "discard-reload-confirm"
+      ]
+    },
+    {
+      "id": "ui-v2-16-external-conflict",
+      "path": "hifi/v2/boards/16-external-conflict.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1382478,
+      "sha256": "f689c676a4b9fbd9a4151f0024a9d09102b51b4e6f688d665d4ca018cb58218c",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-97275dab-c1aa-40a4-8367-4992874bd38f.png",
+        "receipt": "sources/v2-receipts/16-external-conflict.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/16-external-conflict.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "compare-external",
+        "external-dirty-dialog",
+        "external-clean-banner"
+      ]
+    },
+    {
+      "id": "ui-v2-17-save-readonly-errors",
+      "path": "hifi/v2/boards/17-save-readonly-errors.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1648407,
+      "sha256": "c815cb7a808e93420b763f1d39ed4eb87f8445b850e327be0186b335b91f1475",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-c2637cc1-f8bd-4c56-ba68-9715d66abebf.png",
+        "receipt": "sources/v2-receipts/17-save-readonly-errors.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/17-save-readonly-errors.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "save-permission",
+        "save-disk-full",
+        "readonly-document",
+        "save-outcome-unknown"
+      ]
+    },
+    {
+      "id": "ui-v2-18-file-lifecycle",
+      "path": "hifi/v2/boards/18-file-lifecycle.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1626231,
+      "sha256": "fee2666b27fde1550bba11bf43027cbed38f933d46249434d1cb61d55c3280d2",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-6cb92191-2f63-43a3-a3af-30ab4e40e299.png",
+        "receipt": "sources/v2-receipts/18-file-lifecycle-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/18-file-lifecycle-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "rename-inline",
+        "duplicate-name",
+        "trash-confirm",
+        "missing-file"
+      ]
+    },
+    {
+      "id": "ui-v2-19-encoding-large-loading",
+      "path": "hifi/v2/boards/19-encoding-large-loading.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1379471,
+      "sha256": "9c8df7e5ddd15fdccb9a7e41570867ba1d114d3563f8f4cdf25b115a7a9c1c2e",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-cef2c02e-8102-4f18-9481-90ec3dea88d6.png",
+        "receipt": "sources/v2-receipts/19-encoding-large-loading.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/19-encoding-large-loading.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "encoding-unsupported",
+        "large-file-choice",
+        "loading-document",
+        "preview-failed"
+      ]
+    },
+    {
+      "id": "ui-v2-20-export",
+      "path": "hifi/v2/boards/20-export.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1167850,
+      "sha256": "22359923f8663b287b7148105260c39bb94a0dbcab2ba046a004261169ee2ff1",
+      "pixelSize": {
+        "width": 1774,
+        "height": 887,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-0cdae994-857c-4fb9-b215-e3fdf793ef6f.png",
+        "receipt": "sources/v2-receipts/20-export.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/20-export.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "export-pdf",
+        "export-html"
+      ]
+    },
+    {
+      "id": "ui-v2-21-rich-markdown",
+      "path": "hifi/v2/boards/21-rich-markdown.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1348557,
+      "sha256": "8854e383850303c72044859a7b9dab6c9989691636d074c1d3ff78c25c930fab",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-ae16137f-a9ca-439d-a2c9-da95550203bf.png",
+        "receipt": "sources/v2-receipts/21-rich-markdown-r3.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/21-rich-markdown-r3.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "rich-markdown-reading"
+      ]
+    },
+    {
+      "id": "ui-v2-22-compact-large-text",
+      "path": "hifi/v2/boards/22-compact-large-text.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1484330,
+      "sha256": "1a80983f2b396c5c8dccf745f0a19f2ff1a2d819c8211547c9729a4ef533acc9",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-1e4185e2-34d7-42f7-89ec-4050e5aaf913.png",
+        "receipt": "sources/v2-receipts/22-compact-large-text-r3.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/22-compact-large-text-r3.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "compact-workspace",
+        "settings-large-font"
+      ]
+    },
+    {
+      "id": "ui-v2-23-components-light",
+      "path": "hifi/v2/boards/23-components-light.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1108020,
+      "sha256": "3ff21ee09d5025e107dc9fa61baab1a817fc2ab002c5499b45721e728e565f88",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-6ccbc0b1-8eef-43da-a0ab-19d8b1f24cfa.png",
+        "receipt": "sources/v2-receipts/23-components-light.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/23-components-light.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "components-light"
+      ]
+    },
+    {
+      "id": "ui-v2-24-components-dark",
+      "path": "hifi/v2/boards/24-components-dark.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1510806,
+      "sha256": "ab43b466746c14446bd3306d967d306d9a4ee3321ae343fb1a72646fe539616c",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-0a5b8f86-72dc-4572-9187-7fe3877b9f41.png",
+        "receipt": "sources/v2-receipts/24-components-dark-r3.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/24-components-dark-r3.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "components-dark"
+      ]
+    },
+    {
+      "id": "ui-v2-25-accent-matrix",
+      "path": "hifi/v2/boards/25-accent-matrix.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1803495,
+      "sha256": "bca006c5bc30abf966c57cdabba7b6d08aca2baa1767f91589a29571fbe32273",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-8200413c-05e5-47a2-a6a7-8c3465e569cb.png",
+        "receipt": "sources/v2-receipts/25-accent-matrix-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/25-accent-matrix-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "accent-theme-matrix"
+      ]
+    },
+    {
+      "id": "ui-v2-26-feedback-states",
+      "path": "hifi/v2/boards/26-feedback-states.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1481663,
+      "sha256": "c3f7b744cbf85d94ed3cd4edf36be3c4ee7fbba1d62e90c8cd6d13dedb251922",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-8b1d05b3-ea1e-4e3e-8f2f-3f2c2596e53c.png",
+        "receipt": "sources/v2-receipts/26-feedback-states-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/26-feedback-states-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "save-status",
+        "notifications",
+        "folder-unavailable",
+        "new-empty-source",
+        "disabled-tooltip",
+        "external-link"
+      ]
+    },
+    {
+      "id": "ui-v2-27-platform-chrome",
+      "path": "hifi/v2/boards/27-platform-chrome.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1314890,
+      "sha256": "ffe10ba395c98241db3ec56193de5267bd740ebf41fe98be004ce3b9afe1ff02",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-374b2635-f2d3-4376-b99a-1b23b1dcd66a.png",
+        "receipt": "sources/v2-receipts/27-platform-chrome.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/27-platform-chrome.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "platform-chrome"
+      ]
+    },
+    {
+      "id": "ui-v2-28-application-menus",
+      "path": "hifi/v2/boards/28-application-menus.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1433330,
+      "sha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-777c9f41-694c-4c63-b758-e49956556e0a.png",
+        "receipt": "sources/v2-receipts/28-application-menus.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/28-application-menus.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "menu-file",
+        "menu-edit",
+        "menu-view",
+        "menu-window-help"
+      ]
+    },
+    {
+      "id": "ui-v2-29-open-route-feedback",
+      "path": "hifi/v2/boards/29-open-route-feedback.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1761708,
+      "sha256": "976520ce85fc26758eb2ce5ff0b90545085350802fdffd0545d48ee357f5c714",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-ccfdbf3c-a6a3-4306-96ae-635564d3acc9.png",
+        "receipt": "sources/v2-receipts/29-open-route-feedback-r2.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/29-open-route-feedback-r2.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "drag-file-target",
+        "batch-open-partial",
+        "same-file-existing",
+        "move-session-failed"
+      ]
+    },
+    {
+      "id": "ui-v2-30-settings-feedback",
+      "path": "hifi/v2/boards/30-settings-feedback.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1424574,
+      "sha256": "e9396d3e35562ffa7b7a7e0da2dd36a0edc67a9585165d7a0badb5f4d41abde0",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-bb9a67f4-0f5c-4379-b5dd-2d0f5d92b35c.png",
+        "receipt": "sources/v2-receipts/30-settings-feedback-r3.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/30-settings-feedback-r3.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "settings-search-results",
+        "settings-search-empty",
+        "settings-write-error",
+        "settings-protected-close"
+      ]
+    },
+    {
+      "id": "ui-v2-31-content-interactions",
+      "path": "hifi/v2/boards/31-content-interactions.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1685562,
+      "sha256": "43d66336e8e702ebac5f8076c9bfdf24516a0925d0183d4b866bd26a5cce4c0c",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-778c8199-494c-45b5-bd47-f596d6457cd9.png",
+        "receipt": "sources/v2-receipts/31-content-interactions-r3.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/31-content-interactions-r3.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "source-ime-selection",
+        "image-resource-states",
+        "wide-code-table",
+        "outline-no-headings"
+      ]
+    },
+    {
+      "id": "ui-v2-32-export-feedback",
+      "path": "hifi/v2/boards/32-export-feedback.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1674383,
+      "sha256": "156394a40ed8a3589a57ca636b965aa9f0541a515eacd6cfd08af5d2f0951578",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-b8d64deb-42c5-46b7-89f4-86431f5ac925.png",
+        "receipt": "sources/v2-receipts/32-export-feedback.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/32-export-feedback.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "export-in-progress",
+        "export-complete",
+        "export-failed",
+        "export-cancelled"
+      ]
+    },
+    {
+      "id": "ui-v2-33-external-file-edges",
+      "path": "hifi/v2/boards/33-external-file-edges.png",
+      "kind": "ui-mockup-board",
+      "status": "current",
+      "bytes": 1630088,
+      "sha256": "af3be24185289a6d5c7116be4d1202e9720631e19c303cb543dbf9861c273416",
+      "pixelSize": {
+        "width": 1536,
+        "height": 1024,
+        "meaning": "raster-metadata-not-logical-window-size"
+      },
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "built-in-image-generation",
+        "sourceFilename": "exec-50e7042f-93af-4d27-b12e-781ce5fa0520.png",
+        "receipt": "sources/v2-receipts/33-external-file-edges.json"
+      },
+      "promptSource": {
+        "path": "sources/v2-receipts/33-external-file-edges.json",
+        "jsonPointer": "/prompt"
+      },
+      "surfaceIds": [
+        "external-deleted-dirty",
+        "external-renamed-clean",
+        "file-busy-save",
+        "reopen-encoding-dirty"
+      ]
+    },
+    {
+      "id": "source-v2-ui-suite-v2.json",
+      "path": "sources/ui-suite-v2.json",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 83768,
+      "sha256": "c87c75063f1e37d9191eaeef50e095a777ad30bc304cfc0f00e5858cd5b5d9a1",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "ui-suite-v2.json"
+      }
+    },
+    {
+      "id": "source-v2-ui-suite-v2-extensions.json",
+      "path": "sources/ui-suite-v2-extensions.json",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 13165,
+      "sha256": "755bc1478371b99b90e304d1fa5d2bad2f7249763e2c118522605bcf88b241dc",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "ui-suite-v2-extensions.json"
+      }
+    },
+    {
+      "id": "source-v2-ui-suite-v2-revisions.json",
+      "path": "sources/ui-suite-v2-revisions.json",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 22310,
+      "sha256": "40ce986c45881e7b24b8ae7f53fc4f119d08674792db2d40814fe4fc8753e82b",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "ui-suite-v2-revisions.json"
+      }
+    },
+    {
+      "id": "source-v2-ui-suite-v2-refinements.json",
+      "path": "sources/ui-suite-v2-refinements.json",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 7656,
+      "sha256": "c6541f1811d8a990381486fb700371ad3b88204eb854e753e923007f0072afb9",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "ui-suite-v2-refinements.json"
+      }
+    },
+    {
+      "id": "source-v2-brand-placements.json",
+      "path": "sources/brand-placements.json",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 32689,
+      "sha256": "1171ab0fed67731c44b5a549ece5ec96d65bfae0d15730393e1720eb5e492625",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "brand-placements.json"
+      }
+    },
+    {
+      "id": "source-v2-brand-mark.cjs",
+      "path": "sources/brand-mark.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 2570,
+      "sha256": "c3e985db4d0faf16719b4f93445a247e0221e2f307c1ae290e5a2c8ec945684c",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "brand-mark.cjs"
+      }
+    },
+    {
+      "id": "source-v2-compare-titlebar-heights.cjs",
+      "path": "sources/compare-titlebar-heights.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 7972,
+      "sha256": "651336d003e68862ac8814beb5f07343c8c0ac95918f6396aabd53bfa1483cb7",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "compare-titlebar-heights.cjs"
+      }
+    },
+    {
+      "id": "source-v2-compare-standalone-header.cjs",
+      "path": "sources/compare-standalone-header.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 2043,
+      "sha256": "5f8ce317b02703bdc4b557133e4738e500ae8470752afe8a30837998878f3772",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "compare-standalone-header.cjs"
+      }
+    },
+    {
+      "id": "source-v2-standalone-chrome-edit.cjs",
+      "path": "sources/standalone-chrome-edit.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 4516,
+      "sha256": "c5b4fc7f9abd6736d602546cab3c55476262a9277940ab595f36d78aa5562b21",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "standalone-chrome-edit.cjs"
+      }
+    },
+    {
+      "id": "source-v2-align-standalone-titlebar.cjs",
+      "path": "sources/align-standalone-titlebar.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 5444,
+      "sha256": "049ba582981bda05028e9a38657b3db48d3e7bbf51e2891faa0465a55b12a5ff",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "align-standalone-titlebar.cjs"
+      }
+    },
+    {
+      "id": "source-v2-build-ui-assets.cjs",
+      "path": "sources/build-ui-assets.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 34356,
+      "sha256": "707157b49f7483df2c5c2a26a6899401a0cd5c8ec0544e5e3977d455a13d12cc",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "build-ui-assets.cjs"
+      }
+    },
+    {
+      "id": "source-v2-ui-icon-paths.cjs",
+      "path": "sources/ui-icon-paths.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 8743,
+      "sha256": "3c0f9cec0f87b4f80bc6843452f6d71b7d38b0a926a3a74dbb1d604c63255057",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "ui-icon-paths.cjs"
+      }
+    },
+    {
+      "id": "source-v2-export-native-icons.py",
+      "path": "sources/export-native-icons.py",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 1601,
+      "sha256": "e105b95171a9d3c124198cf64a91cd0058bf6238002eecf90a0f6a1ef7abbb47",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "export-native-icons.py"
+      }
+    },
+    {
+      "id": "source-v2-finalize-ui-suite.cjs",
+      "path": "sources/finalize-ui-suite.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 12560,
+      "sha256": "8cd761882704e0242a56a94376a75f949a9a305170632106e84fcd2c7faf7be0",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "finalize-ui-suite.cjs"
+      }
+    },
+    {
+      "id": "source-v2-index-design-materials.py",
+      "path": "sources/index-design-materials.py",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 3037,
+      "sha256": "e3af2e7cb06943c9bde2a3ac617b5acf0466e9a3638d0a13d5f81417bced6cfa",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "index-design-materials.py"
+      }
+    },
+    {
+      "id": "source-v2-check-ui-materials.cjs",
+      "path": "sources/check-ui-materials.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 12298,
+      "sha256": "1ffe6d29a394742a0c828e21d137d1d2eb2f2e5c74d3cd16e47e2bb9661fbb57",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "check-ui-materials.cjs"
+      }
+    },
+    {
+      "id": "source-v2-README.md",
+      "path": "sources/README.md",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 3888,
+      "sha256": "0b8eeb371e0cf1bfcb732f49ba75f292cbe2c00ca465e14fc828939befccc37e",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "README.md"
+      }
+    },
+    {
+      "id": "asset-manifest-v2",
+      "path": "assets/ui-v2/manifest.json",
+      "kind": "asset-manifest",
+      "status": "source",
+      "bytes": 807583,
+      "sha256": "07934cbb0254df24a7afd06bcfd67199a2f2563fb2a79ef552102c88b2a29b47",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "manifest.json"
+      }
+    },
+    {
+      "id": "gallery-v2",
+      "path": "index.html",
+      "kind": "static-gallery",
+      "status": "current",
+      "bytes": 21929,
+      "sha256": "d43089b0ee6f4d069229ca28faf13ff4a5a0e714e9fd47a61f84e3723a932971",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "index.html"
+      }
+    },
+    {
+      "id": "overview-v2",
+      "path": "hifi/v2/overview.png",
+      "kind": "contact-sheet",
+      "status": "current",
+      "bytes": 4292126,
+      "sha256": "5d1deca1e029cb73329ed7752801231fbd98ad216fb5cc2de26a8705dfdfae4a",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "overview.png"
+      },
+      "pixelSize": {
+        "width": 1712,
+        "height": 3080,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "featured-v2",
+      "path": "hifi/v2/featured.png",
+      "kind": "contact-sheet",
+      "status": "current",
+      "bytes": 1784568,
+      "sha256": "114b8bd0cfb2b435de35974aea1f30422335da871eb48ef14bd2a95629ff338e",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "featured.png"
+      },
+      "pixelSize": {
+        "width": 1600,
+        "height": 1470,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "comparison-titlebar-height",
+      "path": "hifi/v2/comparisons/titlebar-height.png",
+      "kind": "design-comparison",
+      "status": "exploration",
+      "bytes": 355628,
+      "sha256": "b15469f5cf512c5ac24676f181570ff7d116614fef4c1047b0e2802e61c5995c",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "titlebar-height.png"
+      },
+      "pixelSize": {
+        "width": 2560,
+        "height": 2120,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "comparison-standalone-header",
+      "path": "hifi/v2/comparisons/standalone-header-alignment.png",
+      "kind": "design-comparison",
+      "status": "exploration",
+      "bytes": 199087,
+      "sha256": "0cbd07bfc22dbe61c2f31cc8edf3d298f6f8a921932cebaf65dc53ed23bda948",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "standalone-header-alignment.png"
+      },
+      "pixelSize": {
+        "width": 1600,
+        "height": 485,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-accent-matrix",
+      "path": "assets/ui-v2/previews/accent-matrix.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 154208,
+      "sha256": "c19d104306039bb5eef92125845a7cabea271018ada7e604afec4e01c3266544",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "accent-matrix.png"
+      },
+      "pixelSize": {
+        "width": 1440,
+        "height": 1080,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-brand-proposals",
+      "path": "assets/ui-v2/previews/brand-proposals.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 36758,
+      "sha256": "3063a790a41e0fb421d486a55515c18ccd4cfb469c172e99786eac84e6e03038",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "brand-proposals.png"
+      },
+      "pixelSize": {
+        "width": 1000,
+        "height": 370,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-components-dark",
+      "path": "assets/ui-v2/previews/components-dark.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 99237,
+      "sha256": "68d0ec9e3d1ea5f13b243dd9601947eadcd19f9a27f7a7eb05bb716cb6af6bc5",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "components-dark.png"
+      },
+      "pixelSize": {
+        "width": 1280,
+        "height": 990,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-components-light",
+      "path": "assets/ui-v2/previews/components-light.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 98776,
+      "sha256": "bce4a8c271ddcadfbffb1d3368e389b9eb0ed2e8e563ee476c4f42a1e7b89059",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "components-light.png"
+      },
+      "pixelSize": {
+        "width": 1280,
+        "height": 990,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-empty-states",
+      "path": "assets/ui-v2/previews/empty-states.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 47897,
+      "sha256": "7fd7f79bee90f05243d865ec4ebe2dfc07162875b1d6c2eeac45a74b437096ea",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "empty-states.png"
+      },
+      "pixelSize": {
+        "width": 1440,
+        "height": 470,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-icons-dark",
+      "path": "assets/ui-v2/previews/icons-dark.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 98914,
+      "sha256": "87144fa30d0d2729184e72060c32497decc80e0b5ff6ff132b1d2133007b4ac9",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "icons-dark.png"
+      },
+      "pixelSize": {
+        "width": 1200,
+        "height": 960,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-icons-light",
+      "path": "assets/ui-v2/previews/icons-light.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 98814,
+      "sha256": "6dd962cc1e96e0ae7751a3037106e394dd6cf70f06bab68edac415dd31347cc8",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "icons-light.png"
+      },
+      "pixelSize": {
+        "width": 1200,
+        "height": 960,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "preview-v2-reference-components",
+      "path": "assets/ui-v2/previews/reference-components.png",
+      "kind": "asset-preview",
+      "status": "current",
+      "bytes": 794068,
+      "sha256": "872012718e20fd42ea8db6b930b128a735e5fed904205456e896062cbe10a03f",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "reference-components.png"
+      },
+      "pixelSize": {
+        "width": 1400,
+        "height": 1270,
+        "meaning": "raster-metadata-not-logical-window-size"
+      }
+    }
+  ],
+  "boardAssetIds": [
+    "ui-v2-01-workspace-light",
+    "ui-v2-02-workspace-dark",
+    "ui-v2-03-welcome-blank",
+    "ui-v2-04-reading-focus",
+    "ui-v2-05-standalone-light",
+    "ui-v2-06-standalone-dark",
+    "ui-v2-07-search-find",
+    "ui-v2-08-navigation-states",
+    "ui-v2-09-file-tab-menus",
+    "ui-v2-10-insert-popovers",
+    "ui-v2-11-settings-general-editor",
+    "ui-v2-12-settings-appearance-reader",
+    "ui-v2-13-settings-shortcuts-about",
+    "ui-v2-14-settings-dark",
+    "ui-v2-15-unsaved-close",
+    "ui-v2-16-external-conflict",
+    "ui-v2-17-save-readonly-errors",
+    "ui-v2-18-file-lifecycle",
+    "ui-v2-19-encoding-large-loading",
+    "ui-v2-20-export",
+    "ui-v2-21-rich-markdown",
+    "ui-v2-22-compact-large-text",
+    "ui-v2-23-components-light",
+    "ui-v2-24-components-dark",
+    "ui-v2-25-accent-matrix",
+    "ui-v2-26-feedback-states",
+    "ui-v2-27-platform-chrome",
+    "ui-v2-28-application-menus",
+    "ui-v2-29-open-route-feedback",
+    "ui-v2-30-settings-feedback",
+    "ui-v2-31-content-interactions",
+    "ui-v2-32-export-feedback",
+    "ui-v2-33-external-file-edges"
+  ],
+  "assetManifest": "assets/ui-v2/manifest.json",
+  "sourceCatalog": "sources/ui-suite-v2.json",
+  "authoritySnapshots": [
+    {
+      "path": "docs/visual/tokens.json",
+      "bytes": 7676,
+      "sha256": "dfa44a0f8a6514ede70b4581810df8d78834285c8b37fe474399e2d6194305f2"
+    },
+    {
+      "path": "docs/visual/asset-geometry.json",
+      "bytes": 1589,
+      "sha256": "4fe31346af11402773900b186b833dc797fea9a934589f0fc8edd5d09979d5c0"
+    },
+    {
+      "path": "docs/visual/window-registry.json",
+      "bytes": 5646,
+      "sha256": "659f1d82667461805b54e6a2f4f79a044af421a359afdbeb4cf17f3c74083079"
+    },
+    {
+      "path": "docs/visual/surface-registry-v2.json",
+      "bytes": 35896,
+      "sha256": "2acfd60b4d73a88797d1b79eca3613e463d38cc9c3e67a5ae5428ef363e16c14"
+    }
+  ]
+}

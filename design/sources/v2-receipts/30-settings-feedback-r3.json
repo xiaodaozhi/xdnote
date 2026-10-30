@@ -1,0 +1,25 @@
+{
+  "id": "30-settings-feedback-r3",
+  "boardId": "30-settings-feedback",
+  "path": "hifi/v2/boards/30-settings-feedback.png",
+  "sourceFilename": "exec-bb9a67f4-0f5c-4379-b5dd-2d0f5d92b35c.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nCorrect ONLY the category labels and icons in ALL FOUR left settings sidebars. There must be exactly these six rows, spelled verbatim, same order: 1 通用 (gear icon); 2 外观与配色 (palette); 3 编辑器 (pencil); 4 阅读与渲染 (open book); 5 快捷键 (keyboard); 6 关于 (info). Spell 外观与配色, not 自动与配色 or 自观与配色. Spell 编辑器, not 阅辑器. Keep every content pane, search result, banner, lock row and disabled 1.5 秒 exactly unchanged. This edit is only typography and icons in the sidebars.",
+  "revisionOf": "30-settings-feedback",
+  "bytes": 1424574,
+  "sha256": "e9396d3e35562ffa7b7a7e0da2dd36a0edc67a9585165d7a0badb5f4d41abde0",
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/30-settings-feedback-r2.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "760d3ebde71055ee9d14f52a8ba7a0642a8677819d6bbc2fbc171595f2f1bc08",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "760d3ebde71055ee9d14f52a8ba7a0642a8677819d6bbc2fbc171595f2f1bc08",
+      "outputSha256": "e9396d3e35562ffa7b7a7e0da2dd36a0edc67a9585165d7a0badb5f4d41abde0"
+    }
+  ]
+}

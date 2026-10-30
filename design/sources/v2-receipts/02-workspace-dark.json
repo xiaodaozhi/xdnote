@@ -1,0 +1,23 @@
+{
+  "id": "02-workspace-dark",
+  "path": "hifi/v2/boards/02-workspace-dark.png",
+  "sourceFilename": "exec-a54385f9-c164-4293-908b-289a811aaa60.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "bytes": 1484505,
+  "sha256": "3fab03d2c9277a33d6c0ac88e3629166175f449263eb5df7b193098fd52c30f0",
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: one complete image at large readable size. If the requested content is a component specimen, use the entire canvas for that specimen.\n\nBOARD: 主工作区，深色双栏\nPanel 1, label \"主工作区，深色\": The same complete workspace and proportions in DARK theme. Graphite-adapted light selected controls, no teal. Source and preview remain clearly legible; charcoal reading canvas, subtle divider, restrained blue/orange code syntax, green saved status. Do not turn secondary text too dim.",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "0076fc98bc40ab0dc81f31e2cbb57899259eb4a9a5d661d53eb519829f089027",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "0076fc98bc40ab0dc81f31e2cbb57899259eb4a9a5d661d53eb519829f089027",
+      "outputSha256": "3fab03d2c9277a33d6c0ac88e3629166175f449263eb5df7b193098fd52c30f0"
+    }
+  ]
+}

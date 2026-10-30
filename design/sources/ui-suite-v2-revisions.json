@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "revisions": [
+    {
+      "boardId": "03-welcome-blank",
+      "changes": "Change ONLY the empty new-document state on the RIGHT: remove the dirty dot beside 未命名.md, and replace the amber bottom 未保存 status with neutral 未命名. A completely empty, untouched buffer must not imply typed changes. Keep the caret and placeholder empty. On the LEFT, make 新建文档 link graphite #374151, not blue. Preserve both complete windows, all other content, proportions and labels.",
+      "revisionId": "03-welcome-blank-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the empty new-document state on the RIGHT: remove the dirty dot beside 未命名.md, and replace the amber bottom 未保存 status with neutral 未命名. A completely empty, untouched buffer must not imply typed changes. Keep the caret and placeholder empty. On the LEFT, make 新建文档 link graphite #374151, not blue. Preserve both complete windows, all other content, proportions and labels.",
+      "pathAtGeneration": "hifi/v2/boards/03-welcome-blank-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/03-welcome-blank.png"
+      ]
+    },
+    {
+      "boardId": "10-insert-popovers",
+      "changes": "Change ONLY all bright blue UI focus outlines and blue selected table cells/menu rows to graphite #374151 outlines and pale-gray #EBECEE selection fills. The primary buttons remain graphite. In the top-right link form, change 显示文字 value to 示例链接 and keep https://example.com. Preserve the four popovers, their positions, source/preview and every other UI element. Blue syntax inside source text may remain.",
+      "revisionId": "10-insert-popovers-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY all bright blue UI focus outlines and blue selected table cells/menu rows to graphite #374151 outlines and pale-gray #EBECEE selection fills. The primary buttons remain graphite. In the top-right link form, change 显示文字 value to 示例链接 and keep https://example.com. Preserve the four popovers, their positions, source/preview and every other UI element. Blue syntax inside source text may remain.",
+      "pathAtGeneration": "hifi/v2/boards/10-insert-popovers-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/10-insert-popovers.png"
+      ]
+    },
+    {
+      "boardId": "11-settings-general-editor",
+      "changes": "Change ONLY the LEFT settings window's bottom 关闭提醒 section into a FIXED protected policy, without any switch: section title 关闭保护; lock-icon row 始终提醒未保存的修改, right static value 已启用; helper 关闭或退出前，需先保存或明确放弃修改。 Remove the existing misleading lock helper and reminder toggle entirely. This is not a user-disableable preference. Preserve all other rows including 自动保存 OFF with 1.5 秒 disabled; preserve the right editor settings and both footer 完成 buttons.",
+      "revisionId": "11-settings-general-editor-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the LEFT settings window's bottom 关闭提醒 section into a FIXED protected policy, without any switch: section title 关闭保护; lock-icon row 始终提醒未保存的修改, right static value 已启用; helper 关闭或退出前，需先保存或明确放弃修改。 Remove the existing misleading lock helper and reminder toggle entirely. This is not a user-disableable preference. Preserve all other rows including 自动保存 OFF with 1.5 秒 disabled; preserve the right editor settings and both footer 完成 buttons.",
+      "pathAtGeneration": "hifi/v2/boards/11-settings-general-editor-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/11-settings-general-editor.png"
+      ]
+    },
+    {
+      "boardId": "12-settings-appearance-reader",
+      "changes": "Change ONLY the thin blue/cyan selected-file rail in the LEFT lower 效果预览 card into graphite #374151, matching selected 石墨灰. Every control in this preview must use graphite. Preserve the six named swatches and their labels/HEX, theme choices, layout, right reading settings, all text and proportions.",
+      "revisionId": "12-settings-appearance-reader-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the thin blue/cyan selected-file rail in the LEFT lower 效果预览 card into graphite #374151, matching selected 石墨灰. Every control in this preview must use graphite. Preserve the six named swatches and their labels/HEX, theme choices, layout, right reading settings, all text and proportions.",
+      "pathAtGeneration": "hifi/v2/boards/12-settings-appearance-reader-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/12-settings-appearance-reader.png"
+      ]
+    },
+    {
+      "boardId": "15-unsaved-close",
+      "changes": "Change ONLY the bright-blue keyboard focus ring around the top-left 保存 primary button to graphite #374151 with a small white gap. All primary controls use graphite, semantic warning/dirty dots and red reload action remain. Preserve all four dialogs and their Chinese text and positions.",
+      "revisionId": "15-unsaved-close-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the bright-blue keyboard focus ring around the top-left 保存 primary button to graphite #374151 with a small white gap. All primary controls use graphite, semantic warning/dirty dots and red reload action remain. Preserve all four dialogs and their Chinese text and positions.",
+      "pathAtGeneration": "hifi/v2/boards/15-unsaved-close-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/15-unsaved-close.png"
+      ]
+    },
+    {
+      "boardId": "18-file-lifecycle",
+      "changes": "Change ONLY the inline rename input value in the TOP LEFT from 产品设计.md to 产品/设计.md, so it actually contains the forbidden slash described by the red validation. Keep the validation message 文件名不能包含 / 或 \\\\ and Enter/Esc hint. All other three panels and all positions remain exactly the same.",
+      "revisionId": "18-file-lifecycle-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the inline rename input value in the TOP LEFT from 产品设计.md to 产品/设计.md, so it actually contains the forbidden slash described by the red validation. Keep the validation message 文件名不能包含 / 或 \\\\ and Enter/Esc hint. All other three panels and all positions remain exactly the same.",
+      "pathAtGeneration": "hifi/v2/boards/18-file-lifecycle-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/18-file-lifecycle.png"
+      ]
+    },
+    {
+      "boardId": "21-rich-markdown",
+      "changes": "Recompose this single xdnote window into true READING mode: remove the source-code column and source formatting toolbar, keep a slim library and an optional slim outline, give the document the full generous reading width. Mode control 编辑/双栏/阅读 has 阅读 selected in graphite. Show polished headings, nested list, inline code, a short quote 少一点干扰，多一点专注。, a three-column table headed 文档 / 分类 / 状态 with sample rows 写作笔记 / 个人 / 草稿, 阅读清单 / 学习 / 已整理, a task list, a fenced JavaScript block with copy icon, and a small local image placeholder 本地图片示例. No feature-support checkmark table or claims about app capabilities. Preserve established warm-white xdnote style, complete bounds and readable text.",
+      "revisionId": "21-rich-markdown-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nRecompose this single xdnote window into true READING mode: remove the source-code column and source formatting toolbar, keep a slim library and an optional slim outline, give the document the full generous reading width. Mode control 编辑/双栏/阅读 has 阅读 selected in graphite. Show polished headings, nested list, inline code, a short quote 少一点干扰，多一点专注。, a three-column table headed 文档 / 分类 / 状态 with sample rows 写作笔记 / 个人 / 草稿, 阅读清单 / 学习 / 已整理, a task list, a fenced JavaScript block with copy icon, and a small local image placeholder 本地图片示例. No feature-support checkmark table or claims about app capabilities. Preserve established warm-white xdnote style, complete bounds and readable text.",
+      "pathAtGeneration": "hifi/v2/boards/21-rich-markdown-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/21-rich-markdown.png"
+      ]
+    },
+    {
+      "boardId": "22-compact-large-text",
+      "changes": "Keep the LEFT compact workspace unchanged. Correct ONLY the RIGHT large-font settings window: sidebar categories in order 通用, 外观与配色 (selected), 编辑器, 阅读与渲染, 快捷键, 关于. Remove invented 编辑与预览 and 文件与数据. The six swatches must be 3 per row with exact names and colors: first row 石墨灰 #374151, 雾蓝 #526B95, 钴蓝 #356AE6; second row 灰紫 #7B668F, 陶土 #A45C46, 橄榄 #68764B. Use circular swatches or aligned neutral cards, no red/orange/green replacements. Keep visibly large typography, body scrollbar and selected graphite mark. Add a FIXED bottom footer with 完成 reachable; let body scroll rather than shrinking text. Preserve the two-panel composition.",
+      "revisionId": "22-compact-large-text-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nKeep the LEFT compact workspace unchanged. Correct ONLY the RIGHT large-font settings window: sidebar categories in order 通用, 外观与配色 (selected), 编辑器, 阅读与渲染, 快捷键, 关于. Remove invented 编辑与预览 and 文件与数据. The six swatches must be 3 per row with exact names and colors: first row 石墨灰 #374151, 雾蓝 #526B95, 钴蓝 #356AE6; second row 灰紫 #7B668F, 陶土 #A45C46, 橄榄 #68764B. Use circular swatches or aligned neutral cards, no red/orange/green replacements. Keep visibly large typography, body scrollbar and selected graphite mark. Add a FIXED bottom footer with 完成 reachable; let body scroll rather than shrinking text. Preserve the two-panel composition.",
+      "pathAtGeneration": "hifi/v2/boards/22-compact-large-text-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/22-compact-large-text.png"
+      ]
+    },
+    {
+      "boardId": "24-components-dark",
+      "changes": "Convert the supplied LIGHT COMPONENT STATE SHEET into an equally organized DARK COMPONENT STATE SHEET. Preserve every component row, labels, column geometry and size from this reference. This is a specimen board, not a settings window: do NOT add sidebar, theme cards or color swatches. Background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, border #3B424D. Primary and focus graphite adapted #B3BDCC with #171A21 text. Show button 默认/悬停/按下/焦点/禁用/处理中; input normal/focus/error/read-only; toggle, checkbox, radio, segment; tabs/menu; semantic feedback. Replace warning toast copy with 文件已被修改，请先处理冲突。 Keep clear contrast and generous gutters. Top label 深色组件状态.",
+      "revisionId": "24-components-dark-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nConvert the supplied LIGHT COMPONENT STATE SHEET into an equally organized DARK COMPONENT STATE SHEET. Preserve every component row, labels, column geometry and size from this reference. This is a specimen board, not a settings window: do NOT add sidebar, theme cards or color swatches. Background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, border #3B424D. Primary and focus graphite adapted #B3BDCC with #171A21 text. Show button 默认/悬停/按下/焦点/禁用/处理中; input normal/focus/error/read-only; toggle, checkbox, radio, segment; tabs/menu; semantic feedback. Replace warning toast copy with 文件已被修改，请先处理冲突。 Keep clear contrast and generous gutters. Top label 深色组件状态.",
+      "pathAtGeneration": "hifi/v2/boards/24-components-dark-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/23-components-light.png"
+      ]
+    },
+    {
+      "boardId": "26-feedback-states",
+      "changes": "Change ONLY the middle-right 空文档占位 panel: remove the dirty dot beside 未命名.md because this buffer is still empty and untouched. Preserve the caret, faint placeholder and entire source pane. All other five panels remain unchanged. Do not replace the blank document with a hero or fill it with typed content.",
+      "revisionId": "26-feedback-states-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the middle-right 空文档占位 panel: remove the dirty dot beside 未命名.md because this buffer is still empty and untouched. Preserve the caret, faint placeholder and entire source pane. All other five panels remain unchanged. Do not replace the blank document with a hero or fill it with typed content.",
+      "pathAtGeneration": "hifi/v2/boards/26-feedback-states-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/26-feedback-states.png"
+      ]
+    },
+    {
+      "boardId": "29-open-route-feedback",
+      "changes": "Change ONLY the bottom-right 窗口接管未完成 panel so it is a valid standalone file window: remove its tab strip and the 编辑/双栏/阅读 triple control. Header shows filename 写作，从这里开始.md, a small unsaved dot and parent path 文档/个人笔记, plus 阅读/编辑 two-way switch with 编辑 selected, 保存 and 在工作区打开. No file tree, no preview or split mode. Keep its existing source text and bottom warning 未能移入工作区，当前编辑仍保留在此窗口。 with 重试 and 继续在此编辑. Other three panels unchanged.",
+      "revisionId": "29-open-route-feedback-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the bottom-right 窗口接管未完成 panel so it is a valid standalone file window: remove its tab strip and the 编辑/双栏/阅读 triple control. Header shows filename 写作，从这里开始.md, a small unsaved dot and parent path 文档/个人笔记, plus 阅读/编辑 two-way switch with 编辑 selected, 保存 and 在工作区打开. No file tree, no preview or split mode. Keep its existing source text and bottom warning 未能移入工作区，当前编辑仍保留在此窗口。 with 重试 and 继续在此编辑. Other three panels unchanged.",
+      "pathAtGeneration": "hifi/v2/boards/29-open-route-feedback-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/29-open-route-feedback.png"
+      ]
+    },
+    {
+      "boardId": "30-settings-feedback",
+      "changes": "Correct ALL four settings sidebars to the SAME exact six categories and order: 通用, 外观与配色, 编辑器, 阅读与渲染, 快捷键, 关于. Remove invented 文件与链接, 编辑 and 外观 short names. Keep existing four-panel states. In BOTH lower panels change disabled auto-save delay from 30 秒 to 1.5 秒. In lower-left banner preserve 未能保存设置，本次更改已撤回。 and retry, without showing success. In lower-right preserve the fixed lock policy with no toggle. No new settings categories or cloud controls.",
+      "revisionId": "30-settings-feedback-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nCorrect ALL four settings sidebars to the SAME exact six categories and order: 通用, 外观与配色, 编辑器, 阅读与渲染, 快捷键, 关于. Remove invented 文件与链接, 编辑 and 外观 short names. Keep existing four-panel states. In BOTH lower panels change disabled auto-save delay from 30 秒 to 1.5 秒. In lower-left banner preserve 未能保存设置，本次更改已撤回。 and retry, without showing success. In lower-right preserve the fixed lock policy with no toggle. No new settings categories or cloud controls.",
+      "pathAtGeneration": "hifi/v2/boards/30-settings-feedback-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/30-settings-feedback.png"
+      ]
+    },
+    {
+      "boardId": "31-content-interactions",
+      "changes": "Correct ONLY these two areas: (1) bottom-right 没有标题的大纲 panel must actually contain NO headings. Replace all large/bold headings and all visible ## markers in its document body with normal-size plain Chinese paragraphs; keep the outline empty message 本文暂无标题 and helper. Use paragraphs about writing notes, no heading syntax. (2) Top-left Chinese input panel must show a small dirty dot on the active tab and bottom amber 未保存 instead of green 已保存 because it contains edited text. Keep the selection and generic IME candidate box. Other image-resource and wide-table panels stay unchanged.",
+      "revisionId": "31-content-interactions-r2",
+      "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nCorrect ONLY these two areas: (1) bottom-right 没有标题的大纲 panel must actually contain NO headings. Replace all large/bold headings and all visible ## markers in its document body with normal-size plain Chinese paragraphs; keep the outline empty message 本文暂无标题 and helper. Use paragraphs about writing notes, no heading syntax. (2) Top-left Chinese input panel must show a small dirty dot on the active tab and bottom amber 未保存 instead of green 已保存 because it contains edited text. Keep the selection and generic IME candidate box. Other image-resource and wide-table panels stay unchanged.",
+      "pathAtGeneration": "hifi/v2/boards/31-content-interactions-r2.png",
+      "referencePathsAtGeneration": [
+        "hifi/v2/boards/31-content-interactions.png"
+      ]
+    }
+  ],
+  "provenanceNote": "Paths at generation time are historical metadata; only current board images are retained."
+}

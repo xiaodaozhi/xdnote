@@ -1,0 +1,24 @@
+{
+  "id": "28-application-menus",
+  "path": "hifi/v2/boards/28-application-menus.png",
+  "sourceFilename": "exec-777c9f41-694c-4c63-b758-e49956556e0a.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly FOUR equally sized product panels in a strict 2 by 2 grid. All four complete surfaces in frame, generous gutters, labels above each. Use compact dialogs or bounded fragments; do not shrink an entire desktop into each cell.\n\nBOARD: 应用菜单\nPanel 1, label \"文件菜单\": A light xdnote product header fragment with application menu 文件 open. Neat items 新建文档 Ctrl N, 打开文件 Ctrl O, 打开文件夹…, 保存 Ctrl S, 另存为 Ctrl Shift S, separator, 关闭标签 Ctrl W, 退出 Alt F4. Inactive 保存 is disabled when clean, open item focused in graphite. No menu touching window controls.\n\nPanel 2, label \"编辑菜单\": Same header fragment with 编辑 menu open. 撤销 Ctrl Z enabled, 重做 Ctrl Shift Z disabled, 剪切 Ctrl X, 复制 Ctrl C, 粘贴 Ctrl V, 全选 Ctrl A, separator 查找 Ctrl F, 替换 Ctrl H. Keep menu columns and font consistent.\n\nPanel 3, label \"视图菜单\": Same header with 视图 menu open. Radio group 编辑/双栏/阅读 with 双栏 selected; check 显示侧栏; 专注模式 F11, 放大 Ctrl +, 缩小 Ctrl -, 重置缩放 Ctrl 0. Selected modes indicated by check/radio not color alone.\n\nPanel 4, label \"窗口与帮助\": One compact app header and an overflow menu with two clearly divided groups 窗口 and 帮助. 在独立窗口打开, 设置…, separator 快捷键, 关于 xdnote. No invented support URL, update or telemetry actions.\nCritical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+  "bytes": 1433330,
+  "sha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "aca846c0de29b2e93aac3502b3686484c5e1ac5321ca4f14c83c01176e4263a6",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "aca846c0de29b2e93aac3502b3686484c5e1ac5321ca4f14c83c01176e4263a6",
+      "outputSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c"
+    }
+  ]
+}

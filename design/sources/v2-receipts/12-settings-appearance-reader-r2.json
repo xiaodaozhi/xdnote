@@ -1,0 +1,25 @@
+{
+  "id": "12-settings-appearance-reader-r2",
+  "boardId": "12-settings-appearance-reader",
+  "path": "hifi/v2/boards/12-settings-appearance-reader.png",
+  "sourceFilename": "exec-d6915e52-236d-47da-83db-a0ac00146bae.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the thin blue/cyan selected-file rail in the LEFT lower 效果预览 card into graphite #374151, matching selected 石墨灰. Every control in this preview must use graphite. Preserve the six named swatches and their labels/HEX, theme choices, layout, right reading settings, all text and proportions.",
+  "revisionOf": "12-settings-appearance-reader",
+  "sha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+  "bytes": 1483133,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/12-settings-appearance-reader.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "6616f89825f30dd2110d11bab6c886b127873549e5acc77042484eb7c3a6e5f8",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "6616f89825f30dd2110d11bab6c886b127873549e5acc77042484eb7c3a6e5f8",
+      "outputSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b"
+    }
+  ]
+}

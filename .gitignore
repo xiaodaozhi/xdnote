@@ -1,0 +1,24 @@
+# Build outputs and execution evidence
+/build/
+/target/
+dist/
+/work/
+/.cache/
+/.venv/
+node_modules/
+/design/exports/
+/design/**/*.zip
+
+# Local configuration and editor caches
+.env
+.env.*
+!.env.example
+*.user
+*.swp
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Design originals, materials, lockfiles and source manifests stay versioned.

@@ -1,0 +1,23 @@
+name: 功能需求
+description: 描述用户场景、范围与可验证的验收标准
+title: '[需求] '
+labels: ['type:feature', 'status:needs-triage']
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 用户场景与问题
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 期望行为与范围
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准与关联规格
+    validations:
+      required: true

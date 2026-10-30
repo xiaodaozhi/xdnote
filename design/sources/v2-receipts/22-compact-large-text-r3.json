@@ -1,0 +1,25 @@
+{
+  "id": "22-compact-large-text-r3",
+  "boardId": "22-compact-large-text",
+  "path": "hifi/v2/boards/22-compact-large-text.png",
+  "sourceFilename": "exec-1e4185e2-34d7-42f7-89ec-4050e5aaf913.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. The supplied xdnote static UI board is the edit target. Make only this narrow correction, preserve Chinese text accuracy, style, composition and all unmentioned elements. No extra controls.\nChange ONLY the bottom footer of the RIGHT settings window: remove the 取消 button entirely and leave 完成 aligned to the right. These preferences take effect immediately. Keep the footer height, large text, six named colors, sidebar and entire left window unchanged.",
+  "revisionOf": "22-compact-large-text",
+  "bytes": 1484330,
+  "sha256": "1a80983f2b396c5c8dccf745f0a19f2ff1a2d819c8211547c9729a4ef533acc9",
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/22-compact-large-text-r2.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "03bb3e2a4cf87120d55a2f19417772dbd9e4835bf8ef161e7b95207f51fa3c6a",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "03bb3e2a4cf87120d55a2f19417772dbd9e4835bf8ef161e7b95207f51fa3c6a",
+      "outputSha256": "1a80983f2b396c5c8dccf745f0a19f2ff1a2d819c8211547c9729a4ef533acc9"
+    }
+  ]
+}

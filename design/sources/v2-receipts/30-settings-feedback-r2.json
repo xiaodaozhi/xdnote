@@ -1,0 +1,16 @@
+{
+  "id": "30-settings-feedback-r2",
+  "boardId": "30-settings-feedback",
+  "sourceFilename": "exec-9fe3604e-c241-405f-ab78-81d71a6e4713.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nCorrect ALL four settings sidebars to the SAME exact six categories and order: 通用, 外观与配色, 编辑器, 阅读与渲染, 快捷键, 关于. Remove invented 文件与链接, 编辑 and 外观 short names. Keep existing four-panel states. In BOTH lower panels change disabled auto-save delay from 30 秒 to 1.5 秒. In lower-left banner preserve 未能保存设置，本次更改已撤回。 and retry, without showing success. In lower-right preserve the fixed lock policy with no toggle. No new settings categories or cloud controls.",
+  "revisionOf": "30-settings-feedback",
+  "sha256": "f5f5edd79483b2ebfba861816a169fad6d38cf052cdedb0a86a95a9134899635",
+  "bytes": 1512664,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/30-settings-feedback.png"
+  ],
+  "imageRetained": false,
+  "pathAtGeneration": "hifi/v2/boards/30-settings-feedback-r2.png"
+}

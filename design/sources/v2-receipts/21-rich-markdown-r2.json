@@ -1,0 +1,16 @@
+{
+  "id": "21-rich-markdown-r2",
+  "boardId": "21-rich-markdown",
+  "sourceFilename": "exec-565fc923-774e-4091-9f14-fbb9367ca3d8.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nRecompose this single xdnote window into true READING mode: remove the source-code column and source formatting toolbar, keep a slim library and an optional slim outline, give the document the full generous reading width. Mode control 编辑/双栏/阅读 has 阅读 selected in graphite. Show polished headings, nested list, inline code, a short quote 少一点干扰，多一点专注。, a three-column table headed 文档 / 分类 / 状态 with sample rows 写作笔记 / 个人 / 草稿, 阅读清单 / 学习 / 已整理, a task list, a fenced JavaScript block with copy icon, and a small local image placeholder 本地图片示例. No feature-support checkmark table or claims about app capabilities. Preserve established warm-white xdnote style, complete bounds and readable text.",
+  "revisionOf": "21-rich-markdown",
+  "sha256": "655fcdff8229181c89b9d352012be40fbaa5695256db3f1f21d5849933c69b14",
+  "bytes": 1297229,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/21-rich-markdown.png"
+  ],
+  "imageRetained": false,
+  "pathAtGeneration": "hifi/v2/boards/21-rich-markdown-r2.png"
+}

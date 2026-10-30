@@ -1,0 +1,25 @@
+{
+  "id": "18-file-lifecycle-r2",
+  "boardId": "18-file-lifecycle",
+  "path": "hifi/v2/boards/18-file-lifecycle.png",
+  "sourceFilename": "exec-6cb92191-2f63-43a3-a3af-30ab4e40e299.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the inline rename input value in the TOP LEFT from 产品设计.md to 产品/设计.md, so it actually contains the forbidden slash described by the red validation. Keep the validation message 文件名不能包含 / 或 \\\\ and Enter/Esc hint. All other three panels and all positions remain exactly the same.",
+  "revisionOf": "18-file-lifecycle",
+  "sha256": "fee2666b27fde1550bba11bf43027cbed38f933d46249434d1cb61d55c3280d2",
+  "bytes": 1626231,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/18-file-lifecycle.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "38242de44f35631eb9d64bffe6d2d913379e32df05b520f753d1bb999ea8a0be",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "38242de44f35631eb9d64bffe6d2d913379e32df05b520f753d1bb999ea8a0be",
+      "outputSha256": "fee2666b27fde1550bba11bf43027cbed38f933d46249434d1cb61d55c3280d2"
+    }
+  ]
+}

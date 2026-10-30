@@ -1,0 +1,24 @@
+{
+  "id": "13-settings-shortcuts-about",
+  "path": "hifi/v2/boards/13-settings-shortcuts-about.png",
+  "sourceFilename": "exec-adbed729-1ec3-48b0-ad9f-bd09e5784051.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "sha256": "380ddf715c6c9b4cca837ab0dbb67a5946df6c56bd5bb722da1514be2644fac6",
+  "bytes": 993149,
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly TWO equally sized product panels, LEFT and RIGHT, with a clear vertical gutter and short state labels above. Each panel is fully in frame. Aim for two tall desktop windows, not overlapping screenshots.\n\nBOARD: 快捷键与关于\nPanel 1, label \"快捷键\": Same complete settings shell 快捷键 selected. Search 快速查找快捷键. Simple two-column grouped list 文件/编辑/视图 with 新建文档 Ctrl N, 打开文件 Ctrl O, 保存 Ctrl S, 另存为 Ctrl Shift S, 查找 Ctrl F, 撤销 Ctrl Z, 专注模式 F11. Read-only shortcut reference, not custom key editing UI.\n\nPanel 2, label \"关于 xdnote\": Same settings shell 关于 selected. Small tasteful folded-note app mark and xdnote wordmark, modest line Markdown 阅读与编辑, status 设计预览. A short sentence 本地文档，专注阅读与写作。 and restrained 查看第三方许可 row. No invented released version, download badges, fake repository URL, analytics or account.",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-settings-color-picker.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "33e9bb972d548d5a01a0b22cf7c84eb7ecde8e6004bb6295e000acf0e70a8109",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "33e9bb972d548d5a01a0b22cf7c84eb7ecde8e6004bb6295e000acf0e70a8109",
+      "outputSha256": "380ddf715c6c9b4cca837ab0dbb67a5946df6c56bd5bb722da1514be2644fac6"
+    }
+  ]
+}

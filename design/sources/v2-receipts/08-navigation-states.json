@@ -1,0 +1,24 @@
+{
+  "id": "08-navigation-states",
+  "path": "hifi/v2/boards/08-navigation-states.png",
+  "sourceFilename": "exec-ff8e6421-8978-401c-a6d0-3ab69d9aa267.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "bytes": 1100338,
+  "sha256": "b867d6f0c835274de37b91c418bd9c6f8240db0566a387c1c7c7c64c945fdd3c",
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly FOUR equally sized product panels in a strict 2 by 2 grid. All four complete surfaces in frame, generous gutters, labels above each. Use compact dialogs or bounded fragments; do not shrink an entire desktop into each cell.\n\nBOARD: 最近、收藏与检索状态\nPanel 1, label \"最近打开\": Compact product pane with 最近打开 header, 5 realistic .md files, parent folders and 今天/昨天 groups, small pin icons, selected first row. No dashboard stats.\n\nPanel 2, label \"收藏文档\": Compact product pane with 收藏 header, 3 starred documents and one folder group, subtle selected state. Empty lower space remains calm.\n\nPanel 3, label \"没有匹配结果\": Compact file-search pane with query 会议纪要, small search outline icon, heading 没有找到匹配的文档, helper 试试其他关键词。, and 清除搜索. Preserve the search field.\n\nPanel 4, label \"空文件夹\": Compact app workspace after selecting a real empty folder 我的文档, left tree with folder only, content heading 这里还没有 Markdown 文档, actions 新建文档 and 打开其他文件夹.",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "2e16d218ad45a13209a9a796e7242a146583c5548e74cc1fa2884b39fe636635",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "2e16d218ad45a13209a9a796e7242a146583c5548e74cc1fa2884b39fe636635",
+      "outputSha256": "b867d6f0c835274de37b91c418bd9c6f8240db0566a387c1c7c7c64c945fdd3c"
+    }
+  ]
+}

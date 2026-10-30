@@ -1,0 +1,1311 @@
+{
+  "schemaVersion": 1,
+  "scope": "static-raster-edits-only-not-component-geometry",
+  "brandSource": "design/sources/brand-mark.cjs",
+  "validation": "pixels outside the listed regions are unchanged",
+  "boards": [
+    {
+      "id": "01-workspace-light",
+      "path": "hifi/v2/boards/01-workspace-light.png",
+      "sourceSha256": "f73eb5e983046c1c5cbac06c9b2b9b90898948b469ab2bb53ded5f161e235e3a",
+      "outputSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 41,
+          "y": 30,
+          "width": 29,
+          "height": 31,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "02-workspace-dark",
+      "path": "hifi/v2/boards/02-workspace-dark.png",
+      "sourceSha256": "0076fc98bc40ab0dc81f31e2cbb57899259eb4a9a5d661d53eb519829f089027",
+      "outputSha256": "3fab03d2c9277a33d6c0ac88e3629166175f449263eb5df7b193098fd52c30f0",
+      "sourcePixelSize": {
+        "width": 1585,
+        "height": 992
+      },
+      "regions": [
+        {
+          "x": 38,
+          "y": 26,
+          "width": 23,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "03-welcome-blank",
+      "path": "hifi/v2/boards/03-welcome-blank.png",
+      "sourceSha256": "56319637e13c7f2f72aa81b25454b4d497d376296526377fe43f574d86e9d36e",
+      "outputSha256": "f3de42ede86ab122191e21e6a26b2f2c8d66d5beb0fa7626d59948608264b72e",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 42,
+          "y": 87,
+          "width": 25,
+          "height": 29,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 806,
+          "y": 87,
+          "width": 24,
+          "height": 29,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 470,
+          "y": 281,
+          "width": 84,
+          "height": 100,
+          "role": "welcome-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "04-reading-focus",
+      "path": "hifi/v2/boards/04-reading-focus.png",
+      "sourceSha256": "edc12c1410d950876a945f50427f2062d1cf32ec3a1bab2fe3969efa4c445b1b",
+      "outputSha256": "eb807342e21abfb7bf0db58be95acb3b05b9c0447e95fa122210411231104643",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 37,
+          "y": 89,
+          "width": 26,
+          "height": 28,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 89,
+          "width": 25,
+          "height": 28,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "05-standalone-light",
+      "path": "hifi/v2/boards/05-standalone-light.png",
+      "sourceSha256": "5266663919230ef6494b6347a6b200e67c1dd126710a070708a418ed44df250f",
+      "outputSha256": "0efe84f0f4ab19910846cdd5bc81bbafeb94f3022a588f22f739fb3505caa530",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 52,
+          "y": 69,
+          "width": 25,
+          "height": 29,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 809,
+          "y": 69,
+          "width": 25,
+          "height": 29,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ],
+      "currentBoardSha256": "56b09916e291550c2ecdd92bbe86d6929052e57b69b16a4b98f9051912657739"
+    },
+    {
+      "id": "07-search-find",
+      "path": "hifi/v2/boards/07-search-find.png",
+      "sourceSha256": "ec0a85d2b8d95b971409de4069c91bf5949e1f4e99d1d76df3a103708cf5be0b",
+      "outputSha256": "a933d47895a75b4713ea9e1f20a2477de40b08417ba663dee14bb5b8f3d36161",
+      "sourcePixelSize": {
+        "width": 1774,
+        "height": 887
+      },
+      "regions": [
+        {
+          "x": 35,
+          "y": 91,
+          "width": 24,
+          "height": 25,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 916,
+          "y": 91,
+          "width": 24,
+          "height": 25,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "08-navigation-states",
+      "path": "hifi/v2/boards/08-navigation-states.png",
+      "sourceSha256": "2e16d218ad45a13209a9a796e7242a146583c5548e74cc1fa2884b39fe636635",
+      "outputSha256": "b867d6f0c835274de37b91c418bd9c6f8240db0566a387c1c7c7c64c945fdd3c",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 36,
+          "y": 58,
+          "width": 24,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 803,
+          "y": 58,
+          "width": 23,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 36,
+          "y": 574,
+          "width": 24,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 803,
+          "y": 573,
+          "width": 23,
+          "height": 25,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "09-file-tab-menus",
+      "path": "hifi/v2/boards/09-file-tab-menus.png",
+      "sourceSha256": "df593cdc0e99629efeb7ab1ba727cb93c2b35e7bf513e96766c96975419ed93e",
+      "outputSha256": "875d79520f40d9b93fc948b0151661faafbabc53fa8f0e185d9912908ef90154",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 45,
+          "y": 68,
+          "width": 27,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 807,
+          "y": 73,
+          "width": 27,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 42,
+          "y": 668,
+          "width": 23,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 803,
+          "y": 666,
+          "width": 24,
+          "height": 25,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "10-insert-popovers",
+      "path": "hifi/v2/boards/10-insert-popovers.png",
+      "sourceSha256": "ca5a3190c7c9662471733a9dfe3cc5484643db55e5d50cdd6edfbb42bf4da82c",
+      "outputSha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 34,
+          "y": 62,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 794,
+          "y": 62,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 34,
+          "y": 571,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 794,
+          "y": 571,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "11-settings-general-editor",
+      "path": "hifi/v2/boards/11-settings-general-editor.png",
+      "sourceSha256": "c4473408fc5c832dfd5b1d5d2100f1c5ea45d0bb7654f2016fb8d5ad91e90018",
+      "outputSha256": "2a6154c9107881b87b1fc716ac48632c432f272ce65da7266ffc767721b9cc84",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 45,
+          "y": 79,
+          "width": 27,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 802,
+          "y": 79,
+          "width": 27,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "12-settings-appearance-reader",
+      "path": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "sourceSha256": "6616f89825f30dd2110d11bab6c886b127873549e5acc77042484eb7c3a6e5f8",
+      "outputSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 32,
+          "y": 74,
+          "width": 25,
+          "height": 28,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 74,
+          "width": 25,
+          "height": 28,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "13-settings-shortcuts-about",
+      "path": "hifi/v2/boards/13-settings-shortcuts-about.png",
+      "sourceSha256": "33e9bb972d548d5a01a0b22cf7c84eb7ecde8e6004bb6295e000acf0e70a8109",
+      "outputSha256": "380ddf715c6c9b4cca837ab0dbb67a5946df6c56bd5bb722da1514be2644fac6",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 39,
+          "y": 123,
+          "width": 25,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 801,
+          "y": 123,
+          "width": 25,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 1230,
+          "y": 300,
+          "width": 63,
+          "height": 71,
+          "role": "about-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "14-settings-dark",
+      "path": "hifi/v2/boards/14-settings-dark.png",
+      "sourceSha256": "e8c7b89b9d0716bba73ecc490886942f4f5fa19bf745e438d5ec81b62e77c4b6",
+      "outputSha256": "3e2f186d6ddf4d05543d0b78693ca3d65d7fabd2c02f200d4a67200682d5b925",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 36,
+          "y": 25,
+          "width": 30,
+          "height": 30,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "15-unsaved-close",
+      "path": "hifi/v2/boards/15-unsaved-close.png",
+      "sourceSha256": "3fa294af7005957df005bb4be1785d456d7118193a082722cb0248804d13f097",
+      "outputSha256": "b255a31d9c9b9bbfe9fe29794ecadd1b19c6f69752562c54993d8ae5b2bc4eae",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 39,
+          "y": 60,
+          "width": 20,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.657
+        },
+        {
+          "x": 795,
+          "y": 60,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.645
+        },
+        {
+          "x": 41,
+          "y": 575,
+          "width": 19,
+          "height": 19,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.637
+        },
+        {
+          "x": 795,
+          "y": 575,
+          "width": 19,
+          "height": 19,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.637
+        }
+      ]
+    },
+    {
+      "id": "16-external-conflict",
+      "path": "hifi/v2/boards/16-external-conflict.png",
+      "sourceSha256": "c49c00fc42a5271a03ebab6fad5e358f96d71fed95eebbcf8a46688cd9fd004c",
+      "outputSha256": "f689c676a4b9fbd9a4151f0024a9d09102b51b4e6f688d665d4ca018cb58218c",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 75,
+          "y": 48,
+          "width": 27,
+          "height": 26,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 74,
+          "y": 709,
+          "width": 27,
+          "height": 28,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 708,
+          "y": 705,
+          "width": 23,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "17-save-readonly-errors",
+      "path": "hifi/v2/boards/17-save-readonly-errors.png",
+      "sourceSha256": "6dc65eb9b54e684e3a09949b864b7961fd8b313ac5a01ea87347185c733a759a",
+      "outputSha256": "c815cb7a808e93420b763f1d39ed4eb87f8445b850e327be0186b335b91f1475",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 36,
+          "y": 55,
+          "width": 20,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 797,
+          "y": 55,
+          "width": 21,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 36,
+          "y": 566,
+          "width": 20,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 566,
+          "width": 20,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "18-file-lifecycle",
+      "path": "hifi/v2/boards/18-file-lifecycle.png",
+      "sourceSha256": "38242de44f35631eb9d64bffe6d2d913379e32df05b520f753d1bb999ea8a0be",
+      "outputSha256": "fee2666b27fde1550bba11bf43027cbed38f933d46249434d1cb61d55c3280d2",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 39,
+          "y": 58,
+          "width": 24,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 801,
+          "y": 58,
+          "width": 23,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.718
+        },
+        {
+          "x": 41,
+          "y": 579,
+          "width": 22,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.714
+        },
+        {
+          "x": 801,
+          "y": 579,
+          "width": 23,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "19-encoding-large-loading",
+      "path": "hifi/v2/boards/19-encoding-large-loading.png",
+      "sourceSha256": "3120a71581822af80c312a860d632dcca48b8d58685907d09b0d060b88547fb9",
+      "outputSha256": "9c8df7e5ddd15fdccb9a7e41570867ba1d114d3563f8f4cdf25b115a7a9c1c2e",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 34,
+          "y": 55,
+          "width": 21,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 55,
+          "width": 21,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 34,
+          "y": 562,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 795,
+          "y": 564,
+          "width": 21,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "20-export",
+      "path": "hifi/v2/boards/20-export.png",
+      "sourceSha256": "4ff2a7029cd51d57b8d2ed068e8af102a4aa6b1e044139e979b3ca84dc44180c",
+      "outputSha256": "22359923f8663b287b7148105260c39bb94a0dbcab2ba046a004261169ee2ff1",
+      "sourcePixelSize": {
+        "width": 1774,
+        "height": 887
+      },
+      "regions": [
+        {
+          "x": 51,
+          "y": 93,
+          "width": 24,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 924,
+          "y": 93,
+          "width": 25,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "21-rich-markdown",
+      "path": "hifi/v2/boards/21-rich-markdown.png",
+      "sourceSha256": "92e1a99dbca65bea549f689cbebb024e21389cb8c48fac024ea35fb5a2a4c5ec",
+      "outputSha256": "8854e383850303c72044859a7b9dab6c9989691636d074c1d3ff78c25c930fab",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 35,
+          "y": 24,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "22-compact-large-text",
+      "path": "hifi/v2/boards/22-compact-large-text.png",
+      "sourceSha256": "03bb3e2a4cf87120d55a2f19417772dbd9e4835bf8ef161e7b95207f51fa3c6a",
+      "outputSha256": "1a80983f2b396c5c8dccf745f0a19f2ff1a2d819c8211547c9729a4ef533acc9",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 41,
+          "y": 72,
+          "width": 27,
+          "height": 28,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 805,
+          "y": 73,
+          "width": 30,
+          "height": 31,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "23-components-light",
+      "path": "hifi/v2/boards/23-components-light.png",
+      "sourceSha256": "0b8f654a885852cbd3a045a242ba3599e6e26acc4d5383daba3eb6eab993440e",
+      "outputSha256": "3ff21ee09d5025e107dc9fa61baab1a817fc2ab002c5499b45721e728e565f88",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 44,
+          "y": 31,
+          "width": 29,
+          "height": 31,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "24-components-dark",
+      "path": "hifi/v2/boards/24-components-dark.png",
+      "sourceSha256": "4f0bd497333ada9857018a7b621d8200e7b60912eecb9d0477695033d66a5ab9",
+      "outputSha256": "ab43b466746c14446bd3306d967d306d9a4ee3321ae343fb1a72646fe539616c",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 44,
+          "y": 32,
+          "width": 28,
+          "height": 30,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "25-accent-matrix",
+      "path": "hifi/v2/boards/25-accent-matrix.png",
+      "sourceSha256": "05d115b4024d3b7c5361696ddc01e2be456b52d8084028b41d2c2b8c012cdc11",
+      "outputSha256": "bca006c5bc30abf966c57cdabba7b6d08aca2baa1767f91589a29571fbe32273",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 222,
+          "y": 120,
+          "width": 20,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 869,
+          "y": 121,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        },
+        {
+          "x": 222,
+          "y": 276,
+          "width": 20,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 869,
+          "y": 277,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        },
+        {
+          "x": 222,
+          "y": 433,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 869,
+          "y": 433,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        },
+        {
+          "x": 222,
+          "y": 590,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 869,
+          "y": 591,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        },
+        {
+          "x": 222,
+          "y": 747,
+          "width": 20,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 869,
+          "y": 748,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        },
+        {
+          "x": 222,
+          "y": 904,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 869,
+          "y": 904,
+          "width": 20,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "dark",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "26-feedback-states",
+      "path": "hifi/v2/boards/26-feedback-states.png",
+      "sourceSha256": "463720ae5130ddfeb847be674ff3d9ee16327fd0e663a89aa09c810fd04b8c50",
+      "outputSha256": "c3f7b744cbf85d94ed3cd4edf36be3c4ee7fbba1d62e90c8cd6d13dedb251922",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 35,
+          "y": 57,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 799,
+          "y": 57,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 35,
+          "y": 420,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 799,
+          "y": 419,
+          "width": 26,
+          "height": 28,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 35,
+          "y": 756,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 799,
+          "y": 756,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.767
+        }
+      ]
+    },
+    {
+      "id": "27-platform-chrome",
+      "path": "hifi/v2/boards/27-platform-chrome.png",
+      "sourceSha256": "f99201bbcc7f81029057a53bd2a8bf863df756a11e6ab2c46790a1acb52bf131",
+      "outputSha256": "ffe10ba395c98241db3ec56193de5267bd740ebf41fe98be004ce3b9afe1ff02",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 164,
+          "y": 77,
+          "width": 22,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 164,
+          "y": 544,
+          "width": 22,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 1222,
+          "y": 851,
+          "width": 22,
+          "height": 23,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "28-application-menus",
+      "path": "hifi/v2/boards/28-application-menus.png",
+      "sourceSha256": "aca846c0de29b2e93aac3502b3686484c5e1ac5321ca4f14c83c01176e4263a6",
+      "outputSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 50,
+          "y": 61,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 802,
+          "y": 61,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 49,
+          "y": 574,
+          "width": 27,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 802,
+          "y": 574,
+          "width": 26,
+          "height": 27,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "29-open-route-feedback",
+      "path": "hifi/v2/boards/29-open-route-feedback.png",
+      "sourceSha256": "cf557fc5e28f1ded661aa34de246cf0e498afc94b499c25f3e6c90e48b8dd70e",
+      "outputSha256": "976520ce85fc26758eb2ce5ff0b90545085350802fdffd0545d48ee357f5c714",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 38,
+          "y": 54,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 802,
+          "y": 54,
+          "width": 19,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 0.812
+        },
+        {
+          "x": 38,
+          "y": 566,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 801,
+          "y": 566,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "30-settings-feedback",
+      "path": "hifi/v2/boards/30-settings-feedback.png",
+      "sourceSha256": "760d3ebde71055ee9d14f52a8ba7a0642a8677819d6bbc2fbc171595f2f1bc08",
+      "outputSha256": "e9396d3e35562ffa7b7a7e0da2dd36a0edc67a9585165d7a0badb5f4d41abde0",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 31,
+          "y": 52,
+          "width": 23,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 52,
+          "width": 23,
+          "height": 24,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 31,
+          "y": 558,
+          "width": 24,
+          "height": 25,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 558,
+          "width": 23,
+          "height": 25,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "31-content-interactions",
+      "path": "hifi/v2/boards/31-content-interactions.png",
+      "sourceSha256": "f65400f3c317e9731b6abe1048dd4aa15e4117328e560ad96c63f87560fe5d61",
+      "outputSha256": "43d66336e8e702ebac5f8076c9bfdf24516a0925d0183d4b866bd26a5cce4c0c",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 36,
+          "y": 49,
+          "width": 21,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 50,
+          "width": 21,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 36,
+          "y": 558,
+          "width": 21,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 798,
+          "y": 558,
+          "width": 20,
+          "height": 22,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "32-export-feedback",
+      "path": "hifi/v2/boards/32-export-feedback.png",
+      "sourceSha256": "333a73408fe7f5f77375978449f602b1a3aa0b6246b8644a341aa5c5f89ee744",
+      "outputSha256": "156394a40ed8a3589a57ca636b965aa9f0541a515eacd6cfd08af5d2f0951578",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 28,
+          "y": 53,
+          "width": 20,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 796,
+          "y": 53,
+          "width": 19,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 28,
+          "y": 565,
+          "width": 20,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 796,
+          "y": 565,
+          "width": 19,
+          "height": 21,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    },
+    {
+      "id": "33-external-file-edges",
+      "path": "hifi/v2/boards/33-external-file-edges.png",
+      "sourceSha256": "e57d31c2259bf530d9dc225ba0bdde1b0e239e6de07ea85e8dc5e038ab68e205",
+      "outputSha256": "af3be24185289a6d5c7116be4d1202e9720631e19c303cb543dbf9861c273416",
+      "sourcePixelSize": {
+        "width": 1536,
+        "height": 1024
+      },
+      "regions": [
+        {
+          "x": 33,
+          "y": 53,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 796,
+          "y": 53,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 33,
+          "y": 560,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        },
+        {
+          "x": 796,
+          "y": 560,
+          "width": 19,
+          "height": 20,
+          "role": "window-brand",
+          "theme": "light",
+          "dimFactor": 1
+        }
+      ]
+    }
+  ]
+}

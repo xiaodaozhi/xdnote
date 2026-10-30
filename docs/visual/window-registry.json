@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "unit": "logical-pixel",
+  "sizeAuthority": "docs/visual/tokens.json",
+  "note": "All sizes are proposals. Raster image dimensions do not define runtime window dimensions.",
+  "extendedSurfaceRegistry": "docs/visual/surface-registry-v2.json",
+  "designInventory": "docs/visual/screen-inventory.md",
+  "windows": [
+    {
+      "id": "main",
+      "label": "主工作区",
+      "kind": "application-window",
+      "sizeToken": "windows.main",
+      "designAssetIds": [
+        "ui-v2-01-workspace-light",
+        "ui-v2-02-workspace-dark",
+        "ui-v2-03-welcome-blank",
+        "ui-v2-04-reading-focus",
+        "ui-v2-07-search-find",
+        "ui-v2-08-navigation-states",
+        "ui-v2-09-file-tab-menus",
+        "ui-v2-21-rich-markdown",
+        "ui-v2-22-compact-large-text",
+        "ui-v2-28-application-menus",
+        "ui-v2-29-open-route-feedback",
+        "ui-v2-31-content-interactions"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "standalone",
+      "label": "独立文件阅读与编辑",
+      "kind": "application-window",
+      "sizeToken": "windows.standalone",
+      "designAssetIds": [
+        "ui-v2-05-standalone-light",
+        "ui-v2-06-standalone-dark",
+        "ui-v2-29-open-route-feedback"
+      ],
+      "referencePresentation": "two-states-side-by-side",
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "settings",
+      "label": "设置",
+      "kind": "single-instance-nonmodal-window",
+      "sizeToken": "windows.settings",
+      "designAssetIds": [
+        "ui-v2-11-settings-general-editor",
+        "ui-v2-12-settings-appearance-reader",
+        "ui-v2-13-settings-shortcuts-about",
+        "ui-v2-14-settings-dark",
+        "ui-v2-22-compact-large-text",
+        "ui-v2-30-settings-feedback"
+      ],
+      "referencePages": [
+        "general",
+        "appearance-and-accent",
+        "editor",
+        "reader-and-rendering",
+        "shortcuts",
+        "about"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "unsaved-confirmation",
+      "label": "未保存关闭确认",
+      "kind": "owner-modal-dialog",
+      "sizeToken": "windows.unsavedConfirmation",
+      "designAssetIds": [
+        "ui-v2-15-unsaved-close"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "external-conflict",
+      "label": "外部修改冲突",
+      "kind": "owner-modal-dialog",
+      "sizeToken": "windows.externalConflict",
+      "designAssetIds": [
+        "ui-v2-16-external-conflict",
+        "ui-v2-33-external-file-edges"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "comparison",
+      "label": "磁盘与当前编辑比较",
+      "kind": "application-window",
+      "sizeToken": "windows.comparison",
+      "sizeRationale": "Shared proposed logical geometry; content grows or scrolls; no measurement from generated PNG.",
+      "designAssetIds": [
+        "ui-v2-16-external-conflict"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "export",
+      "label": "文档导出",
+      "kind": "owner-export-window",
+      "sizeToken": "windows.export",
+      "sizeRationale": "Shared proposed logical geometry; content grows or scrolls; no measurement from generated PNG.",
+      "designAssetIds": [
+        "ui-v2-20-export",
+        "ui-v2-32-export-feedback"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "file-operation-dialogs",
+      "label": "保存、文件与兼容提示",
+      "kind": "owner-modal-dialog-family",
+      "sizeToken": "windows.standardDialog",
+      "sizeRationale": "Shared proposed logical geometry; content grows or scrolls; no measurement from generated PNG.",
+      "designAssetIds": [
+        "ui-v2-17-save-readonly-errors",
+        "ui-v2-18-file-lifecycle",
+        "ui-v2-19-encoding-large-loading",
+        "ui-v2-29-open-route-feedback",
+        "ui-v2-33-external-file-edges"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    },
+    {
+      "id": "batch-and-encoding-dialogs",
+      "label": "批量打开与编码提示",
+      "kind": "owner-modal-dialog-family",
+      "sizeToken": "windows.largeDialog",
+      "sizeRationale": "Shared proposed logical geometry; content grows or scrolls; no measurement from generated PNG.",
+      "designAssetIds": [
+        "ui-v2-15-unsaved-close",
+        "ui-v2-19-encoding-large-loading",
+        "ui-v2-29-open-route-feedback",
+        "ui-v2-33-external-file-edges"
+      ],
+      "designStatus": "reference-available",
+      "implementationStatus": "not-started",
+      "nativeValidation": "not-run"
+    }
+  ],
+  "platformOwnedSurfaces": [
+    {
+      "id": "open-save-dialog",
+      "kind": "native-file-dialog",
+      "sizing": "platform-owned"
+    },
+    {
+      "id": "default-application-settings",
+      "kind": "platform-settings-handoff",
+      "sizing": "platform-owned"
+    }
+  ],
+  "proposedAuxiliaryWindows": true
+}

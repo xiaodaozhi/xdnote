@@ -1,0 +1,16 @@
+{
+  "id": "24-components-dark-r2",
+  "boardId": "24-components-dark",
+  "sourceFilename": "exec-41507194-fe8c-4910-9afa-6d7e5dd96ddb.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nConvert the supplied LIGHT COMPONENT STATE SHEET into an equally organized DARK COMPONENT STATE SHEET. Preserve every component row, labels, column geometry and size from this reference. This is a specimen board, not a settings window: do NOT add sidebar, theme cards or color swatches. Background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, border #3B424D. Primary and focus graphite adapted #B3BDCC with #171A21 text. Show button 默认/悬停/按下/焦点/禁用/处理中; input normal/focus/error/read-only; toggle, checkbox, radio, segment; tabs/menu; semantic feedback. Replace warning toast copy with 文件已被修改，请先处理冲突。 Keep clear contrast and generous gutters. Top label 深色组件状态.",
+  "revisionOf": "24-components-dark",
+  "sha256": "c275f88956661af9e26ace54348629c19b0d00903721118b4edb4ac01f1e5835",
+  "bytes": 1437559,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/23-components-light.png"
+  ],
+  "imageRetained": false,
+  "pathAtGeneration": "hifi/v2/boards/24-components-dark-r2.png"
+}

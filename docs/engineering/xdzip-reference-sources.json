@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "repository": "xdzip",
+  "observedOn": "2026-10-29",
+  "source": "local-working-tree",
+  "revision": null,
+  "revisionStatus": "not-established",
+  "remoteSync": "not-verified",
+  "inspectionScope": "Selected documentation sections, configuration structure and relevant source symbols; not an exhaustive code review.",
+  "implementationTestsExecuted": false,
+  "sourceFilesCopiedIntoXdnote": false,
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 5097,
+      "sha256": "142d83cdd5ae8bead237f924223f858d20f14b290e344f34c7c6b7f07e2660b1"
+    },
+    {
+      "path": "README.md",
+      "bytes": 14990,
+      "sha256": "7cefe594a17a1d1d68228e8496eca146f317b8752c3c984b3e5f9c7ca79d9b56"
+    },
+    {
+      "path": "docs/README.md",
+      "bytes": 6757,
+      "sha256": "50b159fb122639808a25370629821dadd9fc037ad02cb3307ddf6673f48dc7a8"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 578,
+      "sha256": "d9dd672abfc8ec751ac63a6e5e37a9e941d4203f5979353cfbbfe552d8b275ea"
+    },
+    {
+      "path": "docs/visual/design-standard.md",
+      "bytes": 42553,
+      "sha256": "43164fcb4da8f277d32578de6dab2482d5613169ad3b442e51caa3bf2255431a"
+    },
+    {
+      "path": "docs/visual/design-workflow.md",
+      "bytes": 4398,
+      "sha256": "2da7cf5276ac6b7506d05cc8b3cdf7f1510b66587432b0630dff96658dd2e8e6"
+    },
+    {
+      "path": "docs/visual/layout-scale.json",
+      "bytes": 6625,
+      "sha256": "00540c714eea2068c1d2333199511725688de91291424d7392377cac423e1648"
+    },
+    {
+      "path": "docs/engineering/repository-layout.md",
+      "bytes": 4091,
+      "sha256": "c7b85add1100cf48a2078dedceea9d44056a6b7925a91970a7f9d6aa54c7becc"
+    },
+    {
+      "path": "docs/engineering/application-sessions.md",
+      "bytes": 17181,
+      "sha256": "93e8879eab60e316a1b4ea3b716834529515f1a57b80295f510577842e8d593e"
+    },
+    {
+      "path": "docs/engineering/developer-build.md",
+      "bytes": 16482,
+      "sha256": "3631ac2bffa282bbed3ed5f74f5f831c02dc24ddf2a6b68094ce57558e03d58f"
+    },
+    {
+      "path": "docs/engineering/ci-policy.md",
+      "bytes": 26584,
+      "sha256": "bfd80cee941cdfc26726a3fa1824e41c8b9d7a586bd977f38d143fed57772998"
+    },
+    {
+      "path": "docs/engineering/installers-associations.md",
+      "bytes": 19450,
+      "sha256": "4b92f0e4320e94334fef404c9426b8f89a16f342c4296e9ad82eb3bd0090bd29"
+    },
+    {
+      "path": "docs/engineering/repository-hygiene.md",
+      "bytes": 4386,
+      "sha256": "219744301f007cee223759699865025e1fd9d25801cf647613d27ada8c9346a7"
+    },
+    {
+      "path": "docs/engineering/release-protocol.md",
+      "bytes": 13088,
+      "sha256": "06136a51920db33361e822c284150a81f69cadad06dfee2f676ef697af4f2e8b"
+    },
+    {
+      "path": "docs/engineering/windows-licensing.md",
+      "bytes": 8316,
+      "sha256": "86a4a91b5071630b3923ef335f50c208c8eac51b7fd6fd0a333edab3dc5ccde4"
+    },
+    {
+      "path": "docs/ux/settings-localization.md",
+      "bytes": 7501,
+      "sha256": "66febc124c37464d8d6d97bb448104ad63cfbbfdba54238ebde33950309add3d"
+    },
+    {
+      "path": "docs/planning/readiness.md",
+      "bytes": 1587,
+      "sha256": "893ecf11940678348021e1c6c500cf94e132c608a1d08e5e924eb94aa00278e3"
+    },
+    {
+      "path": "scripts/desktop.py",
+      "bytes": 34040,
+      "sha256": "011b539726a26c39e5c11299d5ed51f926914564dbfcbef72a34c11d63ec6994"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "bytes": 2486,
+      "sha256": "a4bd1d9900bae598c59c927c948da6706d4c9799e9254dc066eda705815bec70"
+    },
+    {
+      "path": "Cargo.toml",
+      "bytes": 913,
+      "sha256": "c378d9536ea766fd2b1e9c049ea63a9fcfb83aff0e4ba4e68692422dec4e9a9a"
+    },
+    {
+      "path": ".github/workflows/qt-components.yml",
+      "bytes": 5421,
+      "sha256": "195d5df03fcc5cc793fe0170480de43969c64d33e7af60317cd53657e03777f3"
+    },
+    {
+      "path": "apps/desktop/ApplicationSessions.h",
+      "bytes": 4867,
+      "sha256": "4cf528e626d52b0306f4899853aadbd5583202363f9656cf98c34b6a5acdde2c"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "title": "Markdown 桌面编辑器：可选强调色版",
+  "generation_mode": "Built-in image_gen",
+  "display_accent": {
+    "name": "石墨灰",
+    "hex": "#374151"
+  },
+  "available_accents": [
+    {
+      "name": "石墨灰",
+      "hex": "#374151"
+    },
+    {
+      "name": "雾蓝",
+      "hex": "#526B95"
+    },
+    {
+      "name": "钴蓝",
+      "hex": "#356AE6"
+    },
+    {
+      "name": "灰紫",
+      "hex": "#7B668F"
+    },
+    {
+      "name": "陶土",
+      "hex": "#A45C46"
+    },
+    {
+      "name": "橄榄",
+      "hex": "#68764B"
+    }
+  ],
+  "designs": [
+    {
+      "file": "markdown-main-graphite.png",
+      "prompt": "Use case: precise-object-edit.\nEdit target: the referenced Markdown MAIN WORKSPACE screenshot.\nTask: apply the newly selected graphite-gray accent to this existing UI design. This is a strict accent-color update. Preserve the exact application layout, window dimensions/aspect ratio, Chinese text, controls, spacing, typography, file tree, editor/preview content, tabs, titlebar, neutral warm-white backgrounds and pale-gray sidebar.\nReplace the former teal/turquoise accent with GRAPHITE #374151 wherever it expresses app selection or interaction: active file-tab underline, selected file's thin vertical mark and its text/icon, the selected '双栏' segmented button, interactive outline accents, rendered checked tasks, document blockquote rule, Markdown heading/token highlight. Soft selected surfaces should become a subtle neutral graphite tint, not dark large blocks. Selected filled controls use #374151 with white text. Never use pure black as the main filled accent.\nAlso make decorative source teal text graphite where needed for a consistent palette, while keeping existing BLUE and ORANGE syntax highlighting in the CSS code block. Keep semantic status colors unchanged: the small green '已保存' check stays green.\nEverything else is invariant, including exact Chinese text, full source text, reading pane, code block, search field, folder labels, output/export controls, visible status bar and neutral cross-platform minimize/maximize/close.\nDo NOT add a palette selector to this main workspace. Palette selection belongs in settings. Do NOT redesign, move controls, add side panels, change document text, add labels outside the window or turn this into a concept board.\nOutput one beautiful high-resolution static screenshot of the SAME main workspace, front-facing with complete visible window bounds, in the newly coherent graphite-gray accent."
+    },
+    {
+      "file": "markdown-standalone-graphite.png",
+      "prompt": "Use case: precise-object-edit.\nEdit target: the referenced standalone Markdown FILE WINDOW design sheet, which shows reading state on the left and editing state on the right.\nTask: apply GRAPHITE #374151 as the app accent throughout BOTH existing standalone windows, matching a new '外观与配色' settings page where 石墨灰 is selected.\nStrictly preserve the entire existing two-window side-by-side composition, proportions, outer margin, external labels '阅读模式' and '编辑模式', exact Chinese text, content, reading mode on left, source editor on right, file paths, file names, line numbers, formatting toolbar, status bars and window chrome. Retain all document content and the extra unsaved final source line on the right.\nReplace only former teal/turquoise accent with graphite #374151: active '阅读' and '编辑' segments, the right-hand '保存' primary button, reading blockquote line, reading checked task boxes, active caret, Markdown heading and punctuation highlight. Tinted selected surfaces become softly neutral gray. Filled active controls have white text on graphite. Do not make body text pale or recolor whole windows.\nKeep semantic colors: green saved-state check on the left, amber unsaved dot beside the right title and '未保存' in the right status bar. Blue/orange CSS syntax highlighting stays blue/orange; former teal CSS selectors may become graphite for a cohesive palette.\nDo NOT add any new controls, tabs, sidebar, palette picker, unrelated options, explanatory notes, labels or mockup devices. Do NOT remove existing standalone functionality.\nOutput the SAME premium high-fidelity static design image, two complete windows fully in frame, now using the graphite-gray selected accent."
+    },
+    {
+      "file": "markdown-settings-color-picker.png",
+      "prompt": "Use case: ui-mockup.\nCreate the updated SETTINGS WINDOW for the established minimalist Markdown desktop application. This is a static high-fidelity UI design, not an interactive prototype.\nInput image 1 is the previous settings window: preserve its overall product styling, chrome, typography, proportions, sidebar character, warm-white surfaces, fine dividers and subtle neutral window shadow. Input image 2 is the approved family of SIX ACCENT COLOR CANDIDATES: reuse those six exact options. The new user request is to add accent-color selection to settings. The displayed default is A 石墨灰 #374151; all six remain available choices. This new design replaces the old teal accent with graphite gray for active controls.\n\nComposition: ONE complete settings window fills the landscape 3:2 high-resolution image, small quiet light-gray outer margin. Front-facing polished desktop screenshot with perfectly legible Chinese, all corners, titlebar and bottom bar visible. No device, no perspective, no outside captions, no watermark.\nCompact titlebar reads '设置 — Markdown' with the existing outlined M app symbol on left, monochrome minimize / maximize / close right.\n\nLeft sidebar: same pale-gray side surface, about 215 logical pixels wide. Search field '搜索设置'. Menu items:\n'通用'\n'外观与配色' — SELECTED, pale graphite tint row, graphite text/icon, thin graphite left active mark.\n'编辑器'\n'阅读与渲染'\n'快捷键'\n'关于'\nSimple thin outline icons, ample quiet space below, no avatars or unrelated account features.\nThe existing file-opening and saving settings still belong to '通用'; do NOT cram them into this appearance page.\n\nMain white content: heading '外观与配色'. Comfortable 48px side padding, restrained hierarchy. Sections in this order:\n\n1. Section heading '界面主题'\nThree horizontally aligned theme-picker tiles with miniature app representations, like the reference: '浅色', '深色', '跟随系统'. Select '跟随系统' with a GRAPHITE outline and check. The actual settings window is light. Mini dark preview may use a true dark palette; no teal accents even inside the tiny miniatures.\n\n2. Section heading '强调色'\nOne subtle helper line '用于主要按钮、选中状态和开关。'\nOne row of six equally sized clean swatch choices. Every choice has a 38px-ish solid color circle or softly rounded square, Chinese name underneath and an exact small monospaced HEX label.\nIn order:\n'石墨灰' '#374151'\n'雾蓝' '#526B95'\n'钴蓝' '#356AE6'\n'灰紫' '#7B668F'\n'陶土' '#A45C46'\n'橄榄' '#68764B'\nOnly 石墨灰 is selected: clear WHITE CHECK inside its filled color swatch plus a fine graphite selection outline around that choice. Other swatches do not carry checkmarks. All labels in dark neutral text. Avoid colorful outlines around every option; these are choices, not colorful cards.\nBeneath choices show muted short sentence '配色同步应用到工作区与独立文件窗口。'\nDo not introduce an arbitrary custom-color picker, extra colors, or duplicate theme controls.\n\n3. Section heading '效果预览'\nA tasteful compact real UI component preview in an opaque faintly filled neutral container, not an entire screenshot. It previews the CURRENT GRAPHITE color only. It has one quiet toolbar with the segmented control '阅读' '编辑', 阅读 selected graphite with white text, and a primary '保存' button graphite with white text. Below, show a selected document row with tiny file icon and '写作笔记.md', subtle pale-gray tint and graphite vertical selection mark. Then a small settings row '自动保存' with an enabled GRAPHITE track and white thumb on right. The rest is breathing room. Do NOT repeat all six colors in the preview. Do NOT use the original teal.\nEverything in this preview must remain visually consistent with the existing main/standalone app designs.\n\nFooter: thin neutral divider, small graphite check and '设置更改即时生效' left, graphite-filled '完成' button with white text right. No save/apply buttons because preferences apply immediately.\n\nDesign constraints: refined clean Chinese sans-serif matching the reference, elegant spacing, clear but modest headings, plain graphite text, warm almost-white reading surface and pale gray sidebar. Primary filled controls must use exactly #374151, not pure black and not teal. Each candidate swatch faithfully uses its specified HEX. Keep all content within the window and make text comfortably readable. Do not crowd or create a dashboard. This is a beautiful realistic settings window focused on theme and accent-color selection."
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "11-settings-general-editor-r2",
+  "boardId": "11-settings-general-editor",
+  "path": "hifi/v2/boards/11-settings-general-editor.png",
+  "sourceFilename": "exec-d1f0f6db-2a18-402e-b4be-33dc042a026a.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY the LEFT settings window's bottom 关闭提醒 section into a FIXED protected policy, without any switch: section title 关闭保护; lock-icon row 始终提醒未保存的修改, right static value 已启用; helper 关闭或退出前，需先保存或明确放弃修改。 Remove the existing misleading lock helper and reminder toggle entirely. This is not a user-disableable preference. Preserve all other rows including 自动保存 OFF with 1.5 秒 disabled; preserve the right editor settings and both footer 完成 buttons.",
+  "revisionOf": "11-settings-general-editor",
+  "sha256": "2a6154c9107881b87b1fc716ac48632c432f272ce65da7266ffc767721b9cc84",
+  "bytes": 1459572,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/11-settings-general-editor.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "c4473408fc5c832dfd5b1d5d2100f1c5ea45d0bb7654f2016fb8d5ad91e90018",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "c4473408fc5c832dfd5b1d5d2100f1c5ea45d0bb7654f2016fb8d5ad91e90018",
+      "outputSha256": "2a6154c9107881b87b1fc716ac48632c432f272ce65da7266ffc767721b9cc84"
+    }
+  ]
+}

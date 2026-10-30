@@ -1,0 +1,23 @@
+name: 技术研究
+description: 给未知问题设置可验证的试验与决策出口
+title: '[研究] '
+labels: ['type:research', 'status:needs-triage']
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: 需要回答的问题与背景
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: 试验范围、证据和完成条件
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依赖、风险与关联规格
+    validations:
+      required: false

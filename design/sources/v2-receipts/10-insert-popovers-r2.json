@@ -1,0 +1,25 @@
+{
+  "id": "10-insert-popovers-r2",
+  "boardId": "10-insert-popovers",
+  "path": "hifi/v2/boards/10-insert-popovers.png",
+  "sourceFilename": "exec-f0f1798e-99d2-4b0b-839b-000698d99f15.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nChange ONLY all bright blue UI focus outlines and blue selected table cells/menu rows to graphite #374151 outlines and pale-gray #EBECEE selection fills. The primary buttons remain graphite. In the top-right link form, change 显示文字 value to 示例链接 and keep https://example.com. Preserve the four popovers, their positions, source/preview and every other UI element. Blue syntax inside source text may remain.",
+  "revisionOf": "10-insert-popovers",
+  "sha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+  "bytes": 1607742,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/10-insert-popovers.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "ca5a3190c7c9662471733a9dfe3cc5484643db55e5d50cdd6edfbb42bf4da82c",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "ca5a3190c7c9662471733a9dfe3cc5484643db55e5d50cdd6edfbb42bf4da82c",
+      "outputSha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb"
+    }
+  ]
+}

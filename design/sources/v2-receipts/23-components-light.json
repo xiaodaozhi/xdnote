@@ -1,0 +1,24 @@
+{
+  "id": "23-components-light",
+  "path": "hifi/v2/boards/23-components-light.png",
+  "sourceFilename": "exec-6ccbc0b1-8eef-43da-a0ab-19d8b1f24cfa.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: one complete image at large readable size. If the requested content is a component specimen, use the entire canvas for that specimen.\n\nBOARD: 浅色共享组件状态\nPanel 1, label \"浅色组件状态\": A clear LIGHT component specimen board, no full app window. Organized aligned rows labelled 按钮, 输入框, 选择控件, 标签与菜单, 反馈. Show primary/secondary/danger buttons in 默认/悬停/按下/焦点/禁用/处理中; input default/focus/error/readonly; toggle off/on/disabled; checkbox empty/checked/mixed/disabled; radio; segment 阅读/编辑; active/dirty tabs; menu selected/disabled; success/warning/error small labelled marks. Thin outline icons consistent, no giant colorful cards. Graphite accent, no teal. Elements large enough to cut into reference slices.\nCritical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+  "bytes": 1108020,
+  "sha256": "3ff21ee09d5025e107dc9fa61baab1a817fc2ab002c5499b45721e728e565f88",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-settings-color-picker.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "0b8f654a885852cbd3a045a242ba3599e6e26acc4d5383daba3eb6eab993440e",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "0b8f654a885852cbd3a045a242ba3599e6e26acc4d5383daba3eb6eab993440e",
+      "outputSha256": "3ff21ee09d5025e107dc9fa61baab1a817fc2ab002c5499b45721e728e565f88"
+    }
+  ]
+}

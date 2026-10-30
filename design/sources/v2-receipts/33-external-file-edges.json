@@ -1,0 +1,24 @@
+{
+  "id": "33-external-file-edges",
+  "path": "hifi/v2/boards/33-external-file-edges.png",
+  "sourceFilename": "exec-50e7042f-93af-4d27-b12e-781ce5fa0520.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly FOUR equally sized product panels in a strict 2 by 2 grid. All four complete surfaces in frame, generous gutters, labels above each. Use compact dialogs or bounded fragments; do not shrink an entire desktop into each cell.\n\nBOARD: 外部文件变化边界\nPanel 1, label \"文件被删除且有编辑\": Owner dialog 原文件已被删除. Helper 当前未保存内容仍保留，不会自动重建原路径。. Filename 写作笔记.md. Buttons 继续编辑 and 另存为. No default recreate or lost-buffer claim.\n\nPanel 2, label \"文件位置变化\": Nonblocking reader banner 文件位置已变化 with old location 文档/旧目录/笔记.md and current 文档/新目录/笔记.md, action 查看位置. Reading position preserved visually. Do not auto-open a second document.\n\nPanel 3, label \"文件暂时被占用\": Shared save error dialog 暂时无法保存此文件. Reason 文件正被其他程序占用，请稍后重试。. Helper 你的修改仍保留在编辑器中。. Actions 继续编辑, 另存为, 重试.\n\nPanel 4, label \"重新打开编码前确认\": Owner dialog 更换编码并重新打开？ helper 当前未保存的编辑需要先处理。. Filename and current UTF-8. Buttons 取消, 另存为, 保存后继续. No silent buffer replacement or lossy conversion.\nCritical consistency: keyboard focus rings and selected menu/cell highlights use the CURRENT GRAPHITE ACCENT with pale gray fill, never bright blue focus or blue selection rails on a graphite screen. Blue is allowed only as code syntax or an explicitly named different accent swatch.",
+  "bytes": 1630088,
+  "sha256": "af3be24185289a6d5c7116be4d1202e9720631e19c303cb543dbf9861c273416",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "e57d31c2259bf530d9dc225ba0bdde1b0e239e6de07ea85e8dc5e038ab68e205",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "e57d31c2259bf530d9dc225ba0bdde1b0e239e6de07ea85e8dc5e038ab68e205",
+      "outputSha256": "af3be24185289a6d5c7116be4d1202e9720631e19c303cb543dbf9861c273416"
+    }
+  ]
+}

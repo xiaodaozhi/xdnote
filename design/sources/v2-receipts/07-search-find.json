@@ -1,0 +1,24 @@
+{
+  "id": "07-search-find",
+  "path": "hifi/v2/boards/07-search-find.png",
+  "sourceFilename": "exec-fdf5497e-281f-423b-b869-b20b30a9643e.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "bytes": 1466079,
+  "sha256": "a933d47895a75b4713ea9e1f20a2477de40b08417ba663dee14bb5b8f3d36161",
+  "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly TWO equally sized product panels, LEFT and RIGHT, with a clear vertical gutter and short state labels above. Each panel is fully in frame. Aim for two tall desktop windows, not overlapping screenshots.\n\nBOARD: 快速打开与查找替换\nPanel 1, label \"快速打开\": A complete light workspace with a centered upper quick-open overlay labelled 快速打开, search input 笔记, four matching filenames and parent paths, one selected row and Enter hint. Background is subdued and still recognizable. This is filename navigation, no search of private/cloud content.\n\nPanel 2, label \"文内查找与替换\": A complete light editor with compact search/replace strip at top of source pane. 查找 input 写作, result 2 / 5, previous/next, case and regex small controls, close. Second row 替换为 input 记录, buttons 替换 and 全部替换. Highlight actual source matches using soft accent. Do not overlay results on the reading text.",
+  "referencePathsAtGeneration": [
+    "hifi/screens/markdown-main-graphite.png",
+    "hifi/v2/boards/01-workspace-light.png"
+  ],
+  "imageRetained": true,
+  "generationOutputSha256": "ec0a85d2b8d95b971409de4069c91bf5949e1f4e99d1d76df3a103708cf5be0b",
+  "postGenerationEdits": [
+    {
+      "type": "approved-brand-local-replacement",
+      "source": "sources/brand-placements.json",
+      "inputSha256": "ec0a85d2b8d95b971409de4069c91bf5949e1f4e99d1d76df3a103708cf5be0b",
+      "outputSha256": "a933d47895a75b4713ea9e1f20a2477de40b08417ba663dee14bb5b8f3d36161"
+    }
+  ]
+}

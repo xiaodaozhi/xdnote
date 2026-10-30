@@ -1,0 +1,16 @@
+{
+  "id": "31-content-interactions-r2",
+  "boardId": "31-content-interactions",
+  "sourceFilename": "exec-b6ce44c7-eddb-4ee0-8303-9c09ae6dde25.png",
+  "tool": "built-in image_gen",
+  "references": [],
+  "prompt": "Use case: precise-object-edit. Asset: static xdnote UI design board. The supplied image is the EDIT TARGET (for the component dark sheet, it is the layout target to convert). Make the following specific correction; preserve the established visual style and all unmentioned elements. Simplified Chinese crisp and correct. No prototype, no extra panels, no cropping of bounds.\nCorrect ONLY these two areas: (1) bottom-right 没有标题的大纲 panel must actually contain NO headings. Replace all large/bold headings and all visible ## markers in its document body with normal-size plain Chinese paragraphs; keep the outline empty message 本文暂无标题 and helper. Use paragraphs about writing notes, no heading syntax. (2) Top-left Chinese input panel must show a small dirty dot on the active tab and bottom amber 未保存 instead of green 已保存 because it contains edited text. Keep the selection and generic IME candidate box. Other image-resource and wide-table panels stay unchanged.",
+  "revisionOf": "31-content-interactions",
+  "sha256": "4cadc74644a4cbbdf94af79fea273ba51492ed2e80d12d1999735a68821c7cca",
+  "bytes": 1719104,
+  "referencePathsAtGeneration": [
+    "hifi/v2/boards/31-content-interactions.png"
+  ],
+  "imageRetained": false,
+  "pathAtGeneration": "hifi/v2/boards/31-content-interactions-r2.png"
+}
