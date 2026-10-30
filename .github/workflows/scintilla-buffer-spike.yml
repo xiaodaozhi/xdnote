@@ -1,0 +1,45 @@
+name: Scintilla buffer experiment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/scintilla-buffer-spike/**'
+      - '.github/workflows/scintilla-buffer-spike.yml'
+  pull_request:
+    paths:
+      - 'experiments/scintilla-buffer-spike/**'
+      - '.github/workflows/scintilla-buffer-spike.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  buffer:
+    name: Buffer experiment (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-14]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Explicitly prepare and verify the pinned source
+        run: python experiments/scintilla-buffer-spike/prepare.py --download
+      - name: Configure the buffer experiment
+        run: cmake -S experiments/scintilla-buffer-spike -B build/scintilla-buffer-spike -DCMAKE_BUILD_TYPE=Release
+      - name: Build the buffer experiment
+        run: cmake --build build/scintilla-buffer-spike --config Release --parallel 2
+      - name: Run the buffer experiment
+        run: ctest --test-dir build/scintilla-buffer-spike -C Release --output-on-failure --no-tests=error
