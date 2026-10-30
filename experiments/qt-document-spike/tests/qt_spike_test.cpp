@@ -1,6 +1,7 @@
 #include "spike_document.h"
 #include "spike_handoff.h"
 #include "spike_ipc.h"
+#include "file_identity_probe.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -28,6 +29,13 @@
 #include <QtTest>
 
 #include <memory>
+
+#ifdef Q_OS_WIN
+#  define NOMINMAX
+#  include <windows.h>
+#else
+#  include <unistd.h>
+#endif
 
 namespace {
 std::unique_ptr<QTemporaryDir> fixtureDirectory()
@@ -65,6 +73,18 @@ QByteArray readFile(const QString &path)
 {
     QFile file(path);
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+
+bool createHardLink(const QString &existing, const QString &alias)
+{
+#ifdef Q_OS_WIN
+    const QString nativeExisting = QDir::toNativeSeparators(existing);
+    const QString nativeAlias = QDir::toNativeSeparators(alias);
+    return CreateHardLinkW(reinterpret_cast<LPCWSTR>(nativeAlias.utf16()),
+                           reinterpret_cast<LPCWSTR>(nativeExisting.utf16()), nullptr) != 0;
+#else
+    return ::link(QFile::encodeName(existing).constData(), QFile::encodeName(alias).constData()) == 0;
+#endif
 }
 
 QQuickItem *makeEditor(QQmlEngine &engine, QQuickWindow &window)
@@ -114,6 +134,8 @@ private slots:
     void externalChangeBeforeSaveIsConflict();
     void externalChangeBeforeCommitIsConflict();
     void identicalBytesReplacementIsNotDetected();
+    void fileIdentityHandlesObserveAliasesAndReplacement();
+    void fileIdentityProbeRejectsUnsupportedTargets();
     void changeAfterFinalCheckCanBeOverwritten();
     void editDuringSaveStaysDirty();
     void deletedTargetIsNotRecreated();
@@ -499,6 +521,73 @@ void QtDocumentSpikeTests::identicalBytesReplacementIsNotDetected()
     QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
     QCOMPARE(readFile(path), QByteArray("original local"));
     QCOMPARE(readFile(oldPath), QByteArray("original"));
+}
+
+void QtDocumentSpikeTests::fileIdentityHandlesObserveAliasesAndReplacement()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("笔记 空格.md"));
+    const QString alias = temporary->filePath(QStringLiteral("硬链接.md"));
+    const QString renamed = temporary->filePath(QStringLiteral("原文件.md"));
+    const QByteArray bytes("same bytes");
+    QVERIFY(writeFile(path, bytes));
+
+    QString error;
+    FixtureIdentityHandle original;
+    FixtureFileIdentity originalId;
+    QVERIFY2(original.open(path, &error), qPrintable(error));
+    QVERIFY2(original.identity(&originalId, &error), qPrintable(error));
+    QVERIFY2(createHardLink(path, alias), "Could not create a fixture hard link");
+    FixtureIdentityHandle aliased;
+    FixtureFileIdentity aliasId;
+    QVERIFY2(aliased.open(alias, &error), qPrintable(error));
+    QVERIFY2(aliased.identity(&aliasId, &error), qPrintable(error));
+    QVERIFY(originalId == aliasId);
+
+    QVERIFY(QFile::rename(path, renamed));
+    FixtureIdentityHandle renamedHandle;
+    FixtureFileIdentity renamedId;
+    QVERIFY2(renamedHandle.open(renamed, &error), qPrintable(error));
+    QVERIFY2(renamedHandle.identity(&renamedId, &error), qPrintable(error));
+    QVERIFY(renamedId == originalId);
+    QVERIFY(writeFile(path, bytes));
+    FixtureIdentityHandle replacement;
+    FixtureFileIdentity replacementId;
+    QVERIFY2(replacement.open(path, &error), qPrintable(error));
+    QVERIFY2(replacement.identity(&replacementId, &error), qPrintable(error));
+    QVERIFY(!(originalId == replacementId));
+    QCOMPARE(readFile(path), readFile(alias));
+    FixtureFileIdentity heldId;
+    QVERIFY2(original.identity(&heldId, &error), qPrintable(error));
+    QVERIFY(heldId == aliasId);
+}
+
+void QtDocumentSpikeTests::fileIdentityProbeRejectsUnsupportedTargets()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("original.md"));
+    QVERIFY(writeFile(path, "fixture"));
+    QString error;
+    FixtureIdentityHandle absent;
+    FixtureFileIdentity invalidId;
+    QVERIFY(!absent.identity(&invalidId, &error));
+    QVERIFY(!error.isEmpty());
+    QVERIFY(!absent.open(temporary->filePath(QStringLiteral("missing.md")), &error));
+    QVERIFY(!error.isEmpty());
+    FixtureIdentityHandle directory;
+    QVERIFY(!directory.open(temporary->path(), &error));
+    QVERIFY(!error.isEmpty());
+    FixtureIdentityHandle relative;
+    QVERIFY(!relative.open(QStringLiteral("relative.md"), &error));
+#ifdef Q_OS_UNIX
+    const QString symbolic = temporary->filePath(QStringLiteral("symbolic.md"));
+    QVERIFY(::symlink(QFile::encodeName(path).constData(), QFile::encodeName(symbolic).constData()) == 0);
+    FixtureIdentityHandle link;
+    QVERIFY(!link.open(symbolic, &error));
+    QVERIFY(!error.isEmpty());
+#endif
 }
 
 void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
