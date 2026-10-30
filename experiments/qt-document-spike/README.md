@@ -15,6 +15,8 @@
 
 Qt Quick 允许调用方将 `QTextDocument` 绑定到 `TextEdit`，并由调用方持有文档；详见 [Qt 6.8 QQuickTextDocument](https://doc.qt.io/qt-6.8/qquicktextdocument.html#setTextDocument)。Qt 的 `toPlainText()` 会转换不换行空格等字符，因此试验读取 `toRawText()` 并显式处理内部段落分隔符，见 [Qt 6.8 QTextDocument](https://doc.qt.io/qt-6.8/qtextdocument.html#toPlainText)。
 
+本地进程通信测试在 Unix 下使用 `/tmp` 中新建的私有短目录，避免系统临时路径与套接字名合起来超过平台长度限制；Windows 使用唯一命名管道。测试仍验证真实子进程的请求与回复，不代表产品进程通信方案已确定。
+
 ## 重要限制
 
 - 使用 `QSaveFile` 同目录暂存且关闭直接覆盖回退；两次比较目标字节能发现测试中注入的变化，但最后一次检查到提交之间仍有跨进程竞争。相同字节的文件替换、系统文件 ID、链接／重解析点、权限和网络卷尚未解决，不能用于真实用户文件保存。参见 [Qt 6.8 QSaveFile](https://doc.qt.io/qt-6.8/qsavefile.html)。
