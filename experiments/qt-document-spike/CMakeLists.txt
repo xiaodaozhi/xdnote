@@ -13,6 +13,10 @@ target_compile_features(qt_open_intent_sender PRIVATE cxx_std_17)
 target_include_directories(qt_open_intent_sender PRIVATE src)
 target_link_libraries(qt_open_intent_sender PRIVATE Qt6::Core Qt6::Network)
 
+add_executable(qt_fixture_writer tests/fixture_writer.cpp)
+target_compile_features(qt_fixture_writer PRIVATE cxx_std_17)
+target_link_libraries(qt_fixture_writer PRIVATE Qt6::Core)
+
 add_executable(qt_document_spike_tests
     src/spike_document.cpp
     src/spike_document.h
@@ -22,9 +26,11 @@ add_executable(qt_document_spike_tests
     src/spike_ipc.h
     tests/file_identity_probe.cpp
     tests/file_identity_probe.h
+    tests/displaced_probe.cpp
+    tests/displaced_probe.h
     tests/qt_spike_test.cpp
 )
-add_dependencies(qt_document_spike_tests qt_open_intent_sender)
+add_dependencies(qt_document_spike_tests qt_open_intent_sender qt_fixture_writer)
 target_compile_features(qt_document_spike_tests PRIVATE cxx_std_17)
 target_include_directories(qt_document_spike_tests PRIVATE src)
 target_link_libraries(qt_document_spike_tests PRIVATE
@@ -32,6 +38,7 @@ target_link_libraries(qt_document_spike_tests PRIVATE
 )
 if(MSVC)
     target_compile_options(qt_open_intent_sender PRIVATE /utf-8)
+    target_compile_options(qt_fixture_writer PRIVATE /utf-8)
     target_compile_options(qt_document_spike_tests PRIVATE /utf-8)
 endif()
 

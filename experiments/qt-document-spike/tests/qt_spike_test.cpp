@@ -2,6 +2,7 @@
 #include "spike_handoff.h"
 #include "spike_ipc.h"
 #include "file_identity_probe.h"
+#include "displaced_probe.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -75,6 +76,61 @@ QByteArray readFile(const QString &path)
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
 }
 
+QString fixtureWriterPath()
+{
+    QString executable = QCoreApplication::applicationDirPath() + QStringLiteral("/qt_fixture_writer");
+#ifdef Q_OS_WIN
+    executable += QStringLiteral(".exe");
+#endif
+    return executable;
+}
+
+bool startFixtureWriter(QProcess *writer, const QString &path, QString *error)
+{
+    writer->setProgram(fixtureWriterPath());
+    writer->setArguments({path});
+    writer->start();
+    if (!writer->waitForStarted(5000)) {
+        *error = writer->errorString();
+        return false;
+    }
+    QElapsedTimer deadline;
+    deadline.start();
+    QByteArray response;
+    while (!response.contains('\n') && deadline.elapsed() < 5000) {
+        if (!writer->waitForReadyRead(int(5000 - deadline.elapsed()))) {
+            *error = writer->errorString();
+            return false;
+        }
+        response += writer->readAllStandardOutput();
+    }
+    if (response.trimmed() != QByteArray("READY")) {
+        *error = QStringLiteral("Fixture writer did not report READY");
+        return false;
+    }
+    return true;
+}
+
+bool finishFixtureWriter(QProcess *writer, QString *error)
+{
+    if (writer->write("W\n") != 2) {
+        *error = writer->errorString();
+        return false;
+    }
+    if (writer->bytesToWrite() > 0 && !writer->waitForBytesWritten(5000)) {
+        *error = writer->errorString();
+        return false;
+    }
+    writer->closeWriteChannel();
+    if (!writer->waitForFinished(5000) || writer->exitStatus() != QProcess::NormalExit
+        || writer->exitCode() != 0) {
+        *error = QStringLiteral("Fixture writer failed: %1, exit %2")
+                     .arg(writer->errorString()).arg(writer->exitCode());
+        return false;
+    }
+    return true;
+}
+
 bool createHardLink(const QString &existing, const QString &alias)
 {
 #ifdef Q_OS_WIN
@@ -137,6 +193,10 @@ private slots:
     void fileIdentityHandlesObserveAliasesAndReplacement();
     void fileIdentityProbeRejectsUnsupportedTargets();
     void changeAfterFinalCheckCanBeOverwritten();
+    void fixtureWriterRejectsOutsideScope();
+    void displacedFileRetainsInterveningWrite();
+    void openWriterCanStillChangeDisplacedFile();
+    void missingTargetDoesNotReplacePreparedFile();
     void editDuringSaveStaysDirty();
     void deletedTargetIsNotRecreated();
 };
@@ -608,6 +668,83 @@ void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
     QVERIFY(writeFile(path, "external")); // Another actor writes after that comparison.
     QVERIFY2(output.commit(), qPrintable(output.errorString()));
     QCOMPARE(readFile(path), QByteArray("local")); // The intervening update was lost.
+}
+
+void QtDocumentSpikeTests::fixtureWriterRejectsOutsideScope()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString other = temporary->filePath(QStringLiteral("other.md"));
+    QVERIFY(writeFile(other, "original"));
+    QProcess writer;
+    writer.start(fixtureWriterPath(), {other});
+    QVERIFY2(writer.waitForStarted(5000), qPrintable(writer.errorString()));
+    QVERIFY2(writer.waitForFinished(5000), qPrintable(writer.errorString()));
+    QCOMPARE(writer.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(writer.exitCode(), 3);
+    QCOMPARE(readFile(other), QByteArray("original"));
+}
+
+void QtDocumentSpikeTests::displacedFileRetainsInterveningWrite()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    const QString prepared = temporary->filePath(QStringLiteral("prepared.md"));
+    const QString backup = temporary->filePath(QStringLiteral("displaced.md"));
+    QVERIFY(writeFile(path, "original"));
+    QVERIFY(writeFile(prepared, "local"));
+    QCOMPARE(readFile(path), QByteArray("original")); // A prior comparison can become stale.
+
+    QProcess writer;
+    QString error;
+    QVERIFY2(startFixtureWriter(&writer, path, &error), qPrintable(error));
+    QVERIFY2(finishFixtureWriter(&writer, &error), qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("external"));
+    QString displaced;
+    QVERIFY2(replaceAndKeepDisplaced(path, prepared, backup, &displaced, &error), qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("local"));
+    QCOMPARE(readFile(displaced), QByteArray("external"));
+}
+
+void QtDocumentSpikeTests::openWriterCanStillChangeDisplacedFile()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    const QString prepared = temporary->filePath(QStringLiteral("prepared.md"));
+    const QString backup = temporary->filePath(QStringLiteral("displaced.md"));
+    QVERIFY(writeFile(path, "original"));
+    QVERIFY(writeFile(prepared, "local"));
+
+    QProcess writer;
+    QString error;
+    QVERIFY2(startFixtureWriter(&writer, path, &error), qPrintable(error));
+    QString displaced;
+    QVERIFY2(replaceAndKeepDisplaced(path, prepared, backup, &displaced, &error), qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("local"));
+    QCOMPARE(readFile(displaced), QByteArray("original"));
+    QVERIFY2(finishFixtureWriter(&writer, &error), qPrintable(error));
+    // A process with a pre-existing handle can keep writing the displaced
+    // object, so a post-swap snapshot is not automatically immutable.
+    QCOMPARE(readFile(displaced), QByteArray("external"));
+    QCOMPARE(readFile(path), QByteArray("local"));
+}
+
+void QtDocumentSpikeTests::missingTargetDoesNotReplacePreparedFile()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    const QString prepared = temporary->filePath(QStringLiteral("prepared.md"));
+    const QString backup = temporary->filePath(QStringLiteral("displaced.md"));
+    QVERIFY(writeFile(prepared, "local"));
+    QString displaced;
+    QString error;
+    QVERIFY(!replaceAndKeepDisplaced(path, prepared, backup, &displaced, &error));
+    QVERIFY(!error.isEmpty());
+    QCOMPARE(readFile(prepared), QByteArray("local"));
+    QVERIFY(!QFileInfo::exists(path));
 }
 
 void QtDocumentSpikeTests::editDuringSaveStaysDirty()
