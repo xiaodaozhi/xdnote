@@ -190,6 +190,8 @@ private slots:
     void syntheticImeCompositionDefersTransfer();
     void quickEditorAccessibilityWithExplicitRole();
     void quickAccessibilityInterfacePersistsAfterDocumentReplacement();
+    void singleEditorReparentPreservesAccessibilityAndUndo_data();
+    void singleEditorReparentPreservesAccessibilityAndUndo();
     void previewParsesMarkdownAndBlocksResources();
     void markdownCorpusParsesBasicSemantics();
     void markdownAnchorsRemainUntrusted();
@@ -369,6 +371,91 @@ void QtDocumentSpikeTests::quickAccessibilityInterfacePersistsAfterDocumentRepla
     // Windows Qt 6.8.2 experiment this caused an access violation. Upstream
     // caches a document in the accessible object; this check records the
     // observable preconditions without intentionally triggering a crash.
+}
+
+void QtDocumentSpikeTests::singleEditorReparentPreservesAccessibilityAndUndo_data()
+{
+    QTest::addColumn<bool>("reverse");
+    QTest::newRow("forward selection") << false;
+    QTest::newRow("reverse selection") << true;
+}
+
+void QtDocumentSpikeTests::singleEditorReparentPreservesAccessibilityAndUndo()
+{
+    QFETCH(bool, reverse);
+    QAccessible::setActive(true);
+    QQmlEngine engine;
+    auto source = std::make_unique<QQuickWindow>();
+    auto destination = std::make_unique<QQuickWindow>();
+    source->create();
+    destination->create();
+    QVERIFY(source->handle());
+    QVERIFY(destination->handle());
+    QQuickItem *editor = makeEditor(engine, *source, true);
+    QVERIFY(editor);
+    // Its QObject owner must outlive both window content items.
+    editor->setParent(&engine);
+    QPointer<QQuickItem> alive = editor;
+    const QString sample = QStringLiteral("甲🙂乙");
+    QVERIFY(editor->setProperty("text", sample));
+    QQuickTextDocument *quick = quickDocument(editor);
+    QVERIFY(quick);
+    QPointer<QTextDocument> document = quick->textDocument();
+    QVERIFY(document);
+    QAccessibleInterface *accessible = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(accessible);
+    QVERIFY(accessible->textInterface());
+    QCOMPARE(accessible->textInterface()->text(0, accessible->textInterface()->characterCount()), sample);
+
+    QVERIFY(QMetaObject::invokeMethod(editor, "insert", Qt::DirectConnection,
+                                     Q_ARG(int, sample.size()), Q_ARG(QString, QStringLiteral("丁"))));
+    QVERIFY(document->isUndoAvailable());
+    QVERIFY(QMetaObject::invokeMethod(editor, "select", Qt::DirectConnection,
+                                     Q_ARG(int, reverse ? 3 : 1), Q_ARG(int, reverse ? 1 : 3)));
+    const int start = editor->property("selectionStart").toInt();
+    const int end = editor->property("selectionEnd").toInt();
+    const int cursor = editor->property("cursorPosition").toInt();
+    QCOMPARE(cursor, reverse ? start : end);
+
+    QVERIFY(reparentEditorFixture(editor, destination.get()));
+    QCOMPARE(editor->window(), destination.get());
+    QCOMPARE(editor->property("selectionStart").toInt(), start);
+    QCOMPARE(editor->property("selectionEnd").toInt(), end);
+    QCOMPARE(editor->property("cursorPosition").toInt(), cursor);
+    QCOMPARE(quick->textDocument(), document.data());
+    QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
+    QCOMPARE(accessible->window(), destination.get());
+    QCOMPARE(accessible->textInterface()->text(0, accessible->textInterface()->characterCount()),
+             sample + QStringLiteral("丁"));
+    source.reset();
+    QVERIFY(alive);
+    QVERIFY(document);
+    QVERIFY(QMetaObject::invokeMethod(editor, "undo", Qt::DirectConnection));
+    QCOMPARE(accessible->textInterface()->text(0, accessible->textInterface()->characterCount()), sample);
+    QVERIFY(QMetaObject::invokeMethod(editor, "redo", Qt::DirectConnection));
+    QCOMPARE(accessible->textInterface()->text(0, accessible->textInterface()->characterCount()),
+             sample + QStringLiteral("丁"));
+
+    auto next = std::make_unique<QQuickWindow>();
+    next->create();
+    QVERIFY(next->handle());
+    QVERIFY(editor->setProperty("cursorPosition", sample.size() + 1));
+    editor->forceActiveFocus();
+    QInputMethodEvent preedit(QStringLiteral("pin"), {});
+    QCoreApplication::sendEvent(editor, &preedit);
+    QVERIFY(editor->property("inputMethodComposing").toBool());
+    QVERIFY(!reparentEditorFixture(editor, next.get()));
+    QCOMPARE(editor->window(), destination.get());
+    QInputMethodEvent commit;
+    commit.setCommitString(QStringLiteral("拼"));
+    QCoreApplication::sendEvent(editor, &commit);
+    QVERIFY(!editor->property("inputMethodComposing").toBool());
+    QVERIFY(reparentEditorFixture(editor, next.get()));
+    QCOMPARE(quick->textDocument(), document.data());
+    QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
+    QCOMPARE(accessible->window(), next.get());
+    QCOMPARE(accessible->textInterface()->text(0, accessible->textInterface()->characterCount()),
+             sample + QStringLiteral("丁拼"));
 }
 
 void QtDocumentSpikeTests::previewParsesMarkdownAndBlocksResources()

@@ -3,6 +3,7 @@
 #include <QMetaObject>
 #include <QQuickItem>
 #include <QQuickTextDocument>
+#include <QQuickWindow>
 
 bool restoreSelection(QQuickItem *editor, int start, int end, int cursor)
 {
@@ -35,4 +36,12 @@ bool transferDocument(QQuickItem *from, QQuickItem *to)
     const int cursor = from->property("cursorPosition").toInt();
     destination->setTextDocument(source->textDocument());
     return restoreSelection(to, start, end, cursor);
+}
+
+bool reparentEditorFixture(QQuickItem *editor, QQuickWindow *destination)
+{
+    if (!editor || !destination || editor->property("inputMethodComposing").toBool())
+        return false;
+    editor->setParentItem(destination->contentItem());
+    return editor->window() == destination;
 }
