@@ -13,12 +13,14 @@ bool readBytes(const QString &path, QByteArray *bytes, QString *error)
 {
     QFile input(path);
     if (!input.open(QIODevice::ReadOnly)) {
-        *error = input.errorString();
+        *error = QStringLiteral("Qt file error %1: %2")
+                     .arg(int(input.error())).arg(input.errorString());
         return false;
     }
     *bytes = input.readAll();
     if (input.error() != QFileDevice::NoError) {
-        *error = input.errorString();
+        *error = QStringLiteral("Qt file error %1: %2")
+                     .arg(int(input.error())).arg(input.errorString());
         return false;
     }
     return true;
@@ -95,8 +97,10 @@ SpikeFile::SaveOutcome SpikeFile::checkBaseline(QString *error) const
     }
 
     QByteArray current;
-    if (!readBytes(m_path, &current, error))
+    if (!readBytes(m_path, &current, error)) {
+        *error = QStringLiteral("baseline read: %1").arg(*error);
         return SaveOutcome::FailedBeforeCommit;
+    }
     if (current != m_baseline) {
         *error = QStringLiteral("Target bytes changed since opening");
         return SaveOutcome::Conflict;
@@ -127,11 +131,13 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
     QSaveFile output(m_path);
     output.setDirectWriteFallback(false);
     if (!output.open(QIODevice::WriteOnly)) {
-        *error = output.errorString();
+        *error = QStringLiteral("temporary open (Qt file error %1): %2")
+                     .arg(int(output.error())).arg(output.errorString());
         return SaveOutcome::FailedBeforeCommit;
     }
     if (output.write(encoded) != encoded.size()) {
-        *error = output.errorString();
+        *error = QStringLiteral("temporary write (Qt file error %1): %2")
+                     .arg(int(output.error())).arg(output.errorString());
         output.cancelWriting();
         return SaveOutcome::FailedBeforeCommit;
     }
@@ -145,7 +151,8 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
         return checked;
     }
     if (!output.commit()) {
-        *error = output.errorString();
+        *error = QStringLiteral("commit (Qt file error %1): %2")
+                     .arg(int(output.error())).arg(output.errorString());
         return SaveOutcome::CommitUncertain;
     }
 

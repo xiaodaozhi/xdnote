@@ -216,6 +216,9 @@ private slots:
     void missingTargetDoesNotReplacePreparedFile();
     void editDuringSaveStaysDirty();
     void deletedTargetIsNotRecreated();
+#ifdef Q_OS_WIN
+    void windowsSharingFailuresRetainEdits();
+#endif
 };
 
 void QtDocumentSpikeTests::sharedDocumentTransferPreservesUndoAndSelection_data()
@@ -1063,6 +1066,57 @@ void QtDocumentSpikeTests::deletedTargetIsNotRecreated()
     QVERIFY(!QFileInfo::exists(path));
     QVERIFY(session.isDirty());
 }
+
+#ifdef Q_OS_WIN
+void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    QVERIFY(writeFile(path, QByteArray("original")));
+    SpikeSession session;
+    QString error;
+    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QTextCursor cursor(session.document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(QStringLiteral(" local"));
+    QVERIFY(session.isDirty());
+    const QString native = QDir::toNativeSeparators(path);
+
+    // A separate handle denies later readers, making the baseline check fail.
+    HANDLE held = CreateFileW(reinterpret_cast<LPCWSTR>(native.utf16()), GENERIC_READ,
+                              FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                              FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    QVERIFY(held != INVALID_HANDLE_VALUE);
+    const auto readFailure = session.save({}, &error);
+    CloseHandle(held);
+    QVERIFY(readFailure == SpikeFile::SaveOutcome::FailedBeforeCommit);
+    const QString readPrefix = QStringLiteral("baseline read: Qt file error %1:")
+                                   .arg(int(QFileDevice::OpenError));
+    QVERIFY2(error.startsWith(readPrefix), qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("original"));
+    QVERIFY(session.isDirty());
+
+    // This handle permits reads/writes but not deletion or replacement.
+    held = CreateFileW(reinterpret_cast<LPCWSTR>(native.utf16()), GENERIC_READ,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                       FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    QVERIFY(held != INVALID_HANDLE_VALUE);
+    const auto commitFailure = session.save({}, &error);
+    CloseHandle(held);
+    QVERIFY(commitFailure == SpikeFile::SaveOutcome::CommitUncertain);
+    const QString expectedPrefix = QStringLiteral("commit (Qt file error %1):")
+                                       .arg(int(QFileDevice::RenameError));
+    QVERIFY2(error.startsWith(expectedPrefix), qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("original"));
+    QVERIFY(session.isDirty());
+
+    // Retry only after the deliberately held test handle has been released.
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("original local"));
+    QVERIFY(!session.isDirty());
+}
+#endif
 
 QTEST_MAIN(QtDocumentSpikeTests)
 #include "qt_spike_test.moc"
