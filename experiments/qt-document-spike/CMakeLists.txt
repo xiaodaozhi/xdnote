@@ -17,6 +17,12 @@ add_executable(qt_fixture_writer tests/fixture_writer.cpp)
 target_compile_features(qt_fixture_writer PRIVATE cxx_std_17)
 target_link_libraries(qt_fixture_writer PRIVATE Qt6::Core)
 
+if(WIN32)
+    add_executable(qt_uia_client tests/uia_client.cpp)
+    target_compile_features(qt_uia_client PRIVATE cxx_std_17)
+    target_link_libraries(qt_uia_client PRIVATE Ole32 OleAut32 UIAutomationCore)
+endif()
+
 add_executable(qt_document_spike_tests
     src/spike_document.cpp
     src/spike_document.h
@@ -31,6 +37,9 @@ add_executable(qt_document_spike_tests
     tests/qt_spike_test.cpp
 )
 add_dependencies(qt_document_spike_tests qt_open_intent_sender qt_fixture_writer)
+if(WIN32)
+    add_dependencies(qt_document_spike_tests qt_uia_client)
+endif()
 target_compile_features(qt_document_spike_tests PRIVATE cxx_std_17)
 target_include_directories(qt_document_spike_tests PRIVATE src)
 target_link_libraries(qt_document_spike_tests PRIVATE

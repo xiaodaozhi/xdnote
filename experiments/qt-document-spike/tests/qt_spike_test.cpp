@@ -8,8 +8,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QLocalServer>
@@ -30,6 +32,7 @@
 #include <QTextFragment>
 #include <QTextList>
 #include <QTextTable>
+#include <QTimer>
 #include <QUuid>
 #include <QtEndian>
 #include <QtTest>
@@ -246,6 +249,8 @@ private slots:
     void deletedTargetIsNotRecreated();
 #ifdef Q_OS_WIN
     void windowsSharingFailuresRetainEdits();
+    void windowsUiaValueWrite_data();
+    void windowsUiaValueWrite();
 #endif
 };
 
@@ -1257,6 +1262,93 @@ void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
     QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
     QCOMPARE(readFile(path), QByteArray("original local"));
     QVERIFY(!session.isDirty());
+}
+
+void QtDocumentSpikeTests::windowsUiaValueWrite_data()
+{
+    QTest::addColumn<bool>("readOnly");
+    QTest::newRow("read-only") << true;
+    QTest::newRow("editable") << false;
+}
+
+void QtDocumentSpikeTests::windowsUiaValueWrite()
+{
+    QFETCH(bool, readOnly);
+    if (QGuiApplication::platformName() != QStringLiteral("windows"))
+        QSKIP("Windows UI Automation requires a native window; offscreen CI only builds the client.");
+
+    QAccessible::setActive(true);
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.setFlag(Qt::WindowDoesNotAcceptFocus);
+    window.setTitle(QStringLiteral("xdnote-controlled-uia-fixture"));
+    window.resize(400, 200);
+    window.setPosition(-10000, -10000);
+    window.show();
+    QQuickItem *editor = makeEditor(engine, window, true);
+    QVERIFY(editor);
+    QVERIFY(editor->setProperty("text", QStringLiteral("original")));
+    QVERIFY(QMetaObject::invokeMethod(editor, "insert", Qt::DirectConnection,
+                                     Q_ARG(int, 8), Q_ARG(QString, QStringLiteral(" tail"))));
+    QVERIFY(editor->setProperty("readOnly", readOnly));
+    QQuickTextDocument *quick = quickDocument(editor);
+    QVERIFY(quick);
+    QTextDocument *document = quick->textDocument();
+    QVERIFY(document);
+    QVERIFY(document->isUndoAvailable());
+    QAccessibleInterface *accessible = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(accessible);
+    QCOMPARE(bool(accessible->state().readOnly), readOnly);
+
+    QProcess client;
+    client.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/qt_uia_client.exe"));
+    client.setArguments({QString::number(quintptr(window.winId()))});
+    const auto cleanup = qScopeGuard([&client] {
+        if (client.state() != QProcess::NotRunning) {
+            client.kill();
+            client.waitForFinished(5000);
+        }
+    });
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(&client, &QProcess::finished, &loop, &QEventLoop::quit);
+    client.start();
+    QVERIFY2(client.waitForStarted(5000), qPrintable(client.errorString()));
+    timeout.start(15000);
+    if (client.state() != QProcess::NotRunning)
+        loop.exec(); // Service UI Automation requests on the window's GUI thread.
+    QVERIFY2(client.state() == QProcess::NotRunning, "UI Automation fixture timed out");
+    QCOMPARE(client.exitStatus(), QProcess::NormalExit);
+    const QString clientError = QStringLiteral("UI Automation client exit %1: %2")
+                                    .arg(client.exitCode()).arg(QString::fromUtf8(client.readAllStandardError()));
+    QVERIFY2(client.exitCode() == 0, qPrintable(clientError));
+
+    const QList<QByteArray> lines = client.readAllStandardOutput().trimmed().split('\n');
+    QCOMPARE(lines.size(), 2);
+    QCOMPARE(lines.at(0).trimmed(), readOnly ? QByteArray("READONLY 1") : QByteArray("READONLY 0"));
+    const QByteArray statusLine = lines.at(1).trimmed();
+    QVERIFY(statusLine.startsWith("HRESULT "));
+    bool parsed = false;
+    const quint32 status = statusLine.mid(8).toUInt(&parsed);
+    QVERIFY(parsed);
+    qInfo() << "UI Automation SetValue HRESULT:" << status;
+
+    if (readOnly) {
+        QVERIFY(status & 0x80000000u);
+        QCOMPARE(editor->property("text").toString(), QStringLiteral("original tail"));
+        QVERIFY(document->isUndoAvailable());
+        document->undo();
+        QCOMPARE(editor->property("text").toString(), QStringLiteral("original"));
+        document->redo();
+        QCOMPARE(editor->property("text").toString(), QStringLiteral("original tail"));
+    } else {
+        QCOMPARE(status, quint32(0));
+        QCOMPARE(editor->property("text").toString(), QStringLiteral("UIA modified"));
+        // This negative observation is not the desired product undo behavior.
+        QVERIFY(!document->isUndoAvailable());
+    }
 }
 #endif
 
