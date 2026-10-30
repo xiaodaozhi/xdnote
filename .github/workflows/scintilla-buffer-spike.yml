@@ -43,3 +43,34 @@ jobs:
         run: cmake --build build/scintilla-buffer-spike --config Release --parallel 2
       - name: Run the buffer experiment
         run: ctest --test-dir build/scintilla-buffer-spike -C Release --output-on-failure --no-tests=error
+
+  widget:
+    name: Qt widget experiment (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-14]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: jurplel/install-qt-action/action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: '6.8.3'
+          modules: 'qt5compat'
+          aqtversion: '==3.3.0'
+          py7zrversion: '==1.0.0'
+          cache: false
+      - name: Explicitly prepare and verify the pinned source
+        run: python experiments/scintilla-buffer-spike/prepare.py --download
+      - name: Configure the widget experiment
+        run: cmake -S experiments/scintilla-buffer-spike -B build/scintilla-widget-spike -DCMAKE_BUILD_TYPE=Release -DXDNOTE_SCINTILLA_WIDGET=ON
+      - name: Build the widget experiment
+        run: cmake --build build/scintilla-widget-spike --config Release --parallel 2
+      - name: Run the offscreen widget experiment
+        run: ctest --test-dir build/scintilla-widget-spike -C Release --output-on-failure --no-tests=error

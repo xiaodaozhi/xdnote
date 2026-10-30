@@ -2,7 +2,7 @@
 
 本目录只比较文本存储候选，不是 xdnote 产品，也不决定采用 Scintilla。实验直接编译 Scintilla 5.6.7 的内部 `CellBuffer`，检查 UTF-8 字节、普通换行与字面 U+2029 的区别，以及插入／删除的撤销重做。样本包括中文、表情、U+2028、U+2029、非断行空格、NUL、LF 和 CRLF；测试不读写用户文档。
 
-这不是 GUI 控件测试：未验证 Qt Quick 集成、中文输入法、选区、跨窗口接管、字体、双向文本、可访问性或保存。内部 API 和 UTF-8 字节下标不等同于最终产品接口或 Qt 的 UTF-16 下标；候选需要更多证据。Scintilla 的 Qt 端是 QWidget 控件，Qt 6 构建还使用 Core5Compat；与现有 Qt Quick 候选的结合方式尚未确定。
+核心缓冲区测试不验证 GUI、输入法或保存。可选的 Qt 控件试验另外检查共享文档、反向选区、撤销重做和合成输入法组合；它不是 Qt Quick 集成、真实输入法、字体、双向文本、可访问性或保存验收。内部 API 和 UTF-8 字节下标不等同于最终产品接口或 Qt 的 UTF-16 下标；候选需要更多证据。Scintilla 的 Qt 端是 QWidget 控件，Qt 6 构建还使用 Core5Compat；与现有 Qt Quick 候选的结合方式尚未确定。
 
 ## 显式准备源码
 
@@ -26,4 +26,25 @@ ctest --test-dir build/scintilla-buffer-spike -C Release --output-on-failure --n
 
 可通过 `-DSCINTILLA_SOURCE_DIR=/absolute/path/to/scintilla` 使用另一个已准备的 5.6.7 源码目录；准备命令只核验提取时的归档，构建前仍应确保源码未被修改。Windows 使用 MSVC 开发环境与匹配的 CMake 生成器；若本地 MSVC 临时目录或试编译配置有限制，应设置可写的项目内临时目录并使用 Release 试编译。
 
-三平台 CI 运行的是独立核心缓冲区测试，不代表原生桌面或产品验收。[Issue #3](https://github.com/xiaodaozhi/xdnote/issues/3) 跟踪文档会话，[Issue #9](https://github.com/xiaodaozhi/xdnote/issues/9) 跟踪文件保真与保存。
+## Qt 控件与真实桌面试验
+
+额外需要 Qt 6.8 或更新版本的 Core、Gui、Widgets、Core5Compat 组件；它们只属于本试验工具链。使用包含这些组件的 Qt 前缀配置：
+
+```sh
+cmake -S experiments/scintilla-buffer-spike -B build/scintilla-widget-spike \
+  -DCMAKE_PREFIX_PATH=/path/to/qt -DCMAKE_BUILD_TYPE=Release -DXDNOTE_SCINTILLA_WIDGET=ON
+cmake --build build/scintilla-widget-spike --config Release
+ctest --test-dir build/scintilla-widget-spike -C Release --output-on-failure --no-tests=error
+```
+
+`scintilla_widget_spike` 使用隐藏控件和合成 `QInputMethodEvent`，检查两个视图共享文档、选区、撤销重做，以及组合期间拒绝接管。试验观察到组合文字暂时进入共享缓冲区，因此产品方案必须验证如何阻止暂存文字被保存；仅依赖该试验中的状态判断不足以证明所有输入法安全。只读标记也属于共享文档；手动工具通过禁用非活动控件限制当前操作，不表示最终多窗口设计已经确定。
+
+完成构建后，在已配置 Qt 动态库和平台插件的真实桌面环境启动 `scintilla_widget_manual`；单配置生成器的程序位于 `build/scintilla-widget-spike/`，多配置生成器在 `build/scintilla-widget-spike/Release/`，Windows 可执行文件带 `.exe`。工具只使用内存测试文字，不读取或保存文件，不要输入需要保留的内容。
+
+在每个实际系统记录版本、Qt 版本、窗口系统、输入法名称与结果：
+
+1. 输入并提交中文，正向和反向选择文本，用 F8 或按钮接管；检查目标文字、选区、光标以及撤销／重做，再接管回来。界面所报位置为 UTF-8 字节位置。
+2. 开始中文输入但不提交，观察“输入法临时组合：是”，尝试接管；只有请求到达时仍显示组合中，才能观察拒绝。如果输入法拦截 F8 或点击先结束组合，应记录为该场景未验证。
+3. 提交或取消组合后重试，检查文本和撤销栈；不要把隐藏窗口、合成事件或一次设备结果当作全部平台输入法的验收。
+
+三平台 CI 的核心缓冲区和 Qt 控件试验均不代表真实桌面或产品验收。[Issue #3](https://github.com/xiaodaozhi/xdnote/issues/3) 跟踪文档会话，[Issue #9](https://github.com/xiaodaozhi/xdnote/issues/9) 跟踪文件保真与保存。
