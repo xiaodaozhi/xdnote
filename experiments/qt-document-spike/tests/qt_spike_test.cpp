@@ -4,6 +4,7 @@
 #include "file_identity_probe.h"
 #include "displaced_probe.h"
 
+#include <QAccessible>
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -13,6 +14,7 @@
 #include <QInputMethodEvent>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QPointer>
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -145,13 +147,18 @@ bool createHardLink(const QString &existing, const QString &alias)
 #endif
 }
 
-QQuickItem *makeEditor(QQmlEngine &engine, QQuickWindow &window)
+QQuickItem *makeEditor(QQmlEngine &engine, QQuickWindow &window, bool accessible = false)
 {
     QQmlComponent component(&engine);
-    component.setData(QByteArrayLiteral(
+    QByteArray source = QByteArrayLiteral(
         "import QtQuick\n"
         "TextEdit { width: 320; height: 200; textFormat: TextEdit.PlainText; "
-        "selectByMouse: true; objectName: 'spikeEditor' }\n"), QUrl());
+        "selectByMouse: true; objectName: 'spikeEditor'; ");
+    if (accessible)
+        source += QByteArrayLiteral("Accessible.role: Accessible.EditableText; "
+                                    "Accessible.name: 'Document'; Accessible.readOnly: readOnly; ");
+    source += QByteArrayLiteral("}\n");
+    component.setData(source, QUrl());
     QObject *created = component.create();
     if (!created) {
         qWarning() << component.errors();
@@ -181,6 +188,8 @@ private slots:
     void sharedDocumentTransferPreservesUndoAndSelection_data();
     void sharedDocumentTransferPreservesUndoAndSelection();
     void syntheticImeCompositionDefersTransfer();
+    void quickEditorAccessibilityWithExplicitRole();
+    void quickAccessibilityInterfacePersistsAfterDocumentReplacement();
     void previewParsesMarkdownAndBlocksResources();
     void markdownCorpusParsesBasicSemantics();
     void markdownAnchorsRemainUntrusted();
@@ -291,6 +300,75 @@ void QtDocumentSpikeTests::syntheticImeCompositionDefersTransfer()
     QCOMPARE(shared.toPlainText(), QStringLiteral("拼"));
     QVERIFY(transferDocument(first, second));
     QCOMPARE(quickDocument(second)->textDocument(), &shared);
+}
+
+void QtDocumentSpikeTests::quickEditorAccessibilityWithExplicitRole()
+{
+    QAccessible::setActive(true);
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.create();
+    QQuickItem *unannotated = makeEditor(engine, window);
+    QVERIFY(unannotated);
+    // Record the current fixture's missing role rather than treating it as an
+    // accessible editor merely because it can receive keyboard input.
+    QVERIFY(!QAccessible::queryAccessibleInterface(unannotated));
+    QQuickItem *editor = makeEditor(engine, window, true);
+    QVERIFY(editor);
+    const QString sample = QStringLiteral("读写🙂 sample");
+    QVERIFY(editor->setProperty("text", sample));
+    QAccessibleInterface *accessible = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(accessible);
+    QVERIFY(accessible->isValid());
+    QCOMPARE(accessible->role(), QAccessible::EditableText);
+    QAccessibleTextInterface *text = accessible->textInterface();
+    QVERIFY(text);
+    QCOMPARE(text->text(0, text->characterCount()), sample);
+    QCOMPARE(accessible->text(QAccessible::Value), sample);
+    // Qt 6.8 exposes a whole-value setter here, not this separate interface.
+    QVERIFY(!accessible->editableTextInterface());
+    QVERIFY(quickDocument(editor));
+    QTextDocument *document = quickDocument(editor)->textDocument();
+    QVERIFY(document);
+    QVERIFY(QMetaObject::invokeMethod(editor, "insert", Qt::DirectConnection,
+                                     Q_ARG(int, sample.size()), Q_ARG(QString, QStringLiteral("尾"))));
+    QVERIFY(document->isUndoAvailable());
+    QVERIFY(editor->setProperty("readOnly", true));
+    QVERIFY(accessible->state().readOnly);
+    // This direct Qt API call intentionally records the candidate's behavior:
+    // it bypasses this fixture's read-only property and clears the undo stack.
+    const QString replacement = QStringLiteral("修改后的文字");
+    accessible->setText(QAccessible::Value, replacement);
+    QCOMPARE(editor->property("text").toString(), replacement);
+    QVERIFY(!document->isUndoAvailable());
+}
+
+void QtDocumentSpikeTests::quickAccessibilityInterfacePersistsAfterDocumentReplacement()
+{
+    QAccessible::setActive(true);
+    QTextDocument replacement;
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.create();
+    QQuickItem *editor = makeEditor(engine, window, true);
+    QVERIFY(editor);
+    QQuickTextDocument *quick = quickDocument(editor);
+    QVERIFY(quick);
+    QPointer<QTextDocument> original = quick->textDocument();
+    QVERIFY(original);
+    QAccessibleInterface *before = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(before);
+    QVERIFY(before->textInterface());
+
+    quick->setTextDocument(&replacement);
+    QCOMPARE(quick->textDocument(), &replacement);
+    QVERIFY(original.isNull());
+    QAccessibleInterface *after = QAccessible::queryAccessibleInterface(editor);
+    QCOMPARE(after, before);
+    // Do not dereference the cached text interface after replacement: in the
+    // Windows Qt 6.8.2 experiment this caused an access violation. Upstream
+    // caches a document in the accessible object; this check records the
+    // observable preconditions without intentionally triggering a crash.
 }
 
 void QtDocumentSpikeTests::previewParsesMarkdownAndBlocksResources()
