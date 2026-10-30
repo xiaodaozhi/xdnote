@@ -22,6 +22,7 @@
 #include <QQuickTextDocument>
 #include <QQuickWindow>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -89,10 +90,10 @@ QString fixtureWriterPath()
     return executable;
 }
 
-bool startFixtureWriter(QProcess *writer, const QString &path, QString *error)
+bool startFixtureProcess(QProcess *writer, const QStringList &arguments, QString *error)
 {
     writer->setProgram(fixtureWriterPath());
-    writer->setArguments({path});
+    writer->setArguments(arguments);
     writer->start();
     if (!writer->waitForStarted(5000)) {
         *error = writer->errorString();
@@ -115,6 +116,11 @@ bool startFixtureWriter(QProcess *writer, const QString &path, QString *error)
     return true;
 }
 
+bool startFixtureWriter(QProcess *writer, const QString &path, QString *error)
+{
+    return startFixtureProcess(writer, {path}, error);
+}
+
 bool finishFixtureWriter(QProcess *writer, QString *error)
 {
     if (writer->write("W\n") != 2) {
@@ -130,6 +136,26 @@ bool finishFixtureWriter(QProcess *writer, QString *error)
         || writer->exitCode() != 0) {
         *error = QStringLiteral("Fixture writer failed: %1, exit %2")
                      .arg(writer->errorString()).arg(writer->exitCode());
+        return false;
+    }
+    return true;
+}
+
+bool finishFixtureReader(QProcess *reader, QString *error)
+{
+    if (reader->write("R\n") != 2) {
+        *error = reader->errorString();
+        return false;
+    }
+    if (reader->bytesToWrite() > 0 && !reader->waitForBytesWritten(5000)) {
+        *error = reader->errorString();
+        return false;
+    }
+    reader->closeWriteChannel();
+    if (!reader->waitForFinished(5000) || reader->exitStatus() != QProcess::NormalExit
+        || reader->exitCode() != 0 || reader->readAllStandardOutput().trimmed() != "HELD_ORIGINAL") {
+        *error = QStringLiteral("Fixture reader failed: %1, exit %2")
+                     .arg(reader->errorString()).arg(reader->exitCode());
         return false;
     }
     return true;
@@ -211,6 +237,8 @@ private slots:
     void fileIdentityProbeRejectsUnsupportedTargets();
     void changeAfterFinalCheckCanBeOverwritten();
     void fixtureWriterRejectsOutsideScope();
+    void readerHandleAndReplacement_data();
+    void readerHandleAndReplacement();
     void displacedFileRetainsInterveningWrite();
     void openWriterCanStillChangeDisplacedFile();
     void missingTargetDoesNotReplacePreparedFile();
@@ -943,7 +971,10 @@ void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
     QCOMPARE(output.write("local"), qint64(5));
     QCOMPARE(readFile(path), baseline); // Last comparison in the candidate sequence.
     QVERIFY(writeFile(path, "external")); // Another actor writes after that comparison.
-    QVERIFY2(output.commit(), qPrintable(output.errorString()));
+    const bool committed = output.commit();
+    const QString commitError = QStringLiteral("QSaveFile::commit (Qt file error %1): %2")
+                                    .arg(int(output.error())).arg(output.errorString());
+    QVERIFY2(committed, qPrintable(commitError));
     QCOMPARE(readFile(path), QByteArray("local")); // The intervening update was lost.
 }
 
@@ -953,13 +984,124 @@ void QtDocumentSpikeTests::fixtureWriterRejectsOutsideScope()
     QVERIFY(temporary);
     const QString other = temporary->filePath(QStringLiteral("other.md"));
     QVERIFY(writeFile(other, "original"));
-    QProcess writer;
-    writer.start(fixtureWriterPath(), {other});
-    QVERIFY2(writer.waitForStarted(5000), qPrintable(writer.errorString()));
-    QVERIFY2(writer.waitForFinished(5000), qPrintable(writer.errorString()));
-    QCOMPARE(writer.exitStatus(), QProcess::NormalExit);
-    QCOMPARE(writer.exitCode(), 3);
+    for (const QStringList &arguments : {QStringList{other},
+                                         QStringList{QStringLiteral("--hold-qt-read"), other},
+                                         QStringList{QStringLiteral("--hold-shared-read"), other}}) {
+        QProcess writer;
+        writer.start(fixtureWriterPath(), arguments);
+        QVERIFY2(writer.waitForStarted(5000), qPrintable(writer.errorString()));
+        QVERIFY2(writer.waitForFinished(5000), qPrintable(writer.errorString()));
+        QCOMPARE(writer.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(writer.exitCode(), 3);
+    }
     QCOMPARE(readFile(other), QByteArray("original"));
+}
+
+void QtDocumentSpikeTests::readerHandleAndReplacement_data()
+{
+    QTest::addColumn<bool>("nativeSharedReader");
+    QTest::newRow("Qt QFile reader") << false;
+    QTest::newRow("native read handle") << true;
+}
+
+void QtDocumentSpikeTests::readerHandleAndReplacement()
+{
+    QFETCH(bool, nativeSharedReader);
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    QVERIFY(writeFile(path, QByteArray("original")));
+    SpikeSession session;
+    QString error;
+    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QTextCursor cursor(session.document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(QStringLiteral(" local"));
+    QVERIFY(session.isDirty());
+
+    QProcess reader;
+    const QString mode = nativeSharedReader ? QStringLiteral("--hold-shared-read")
+                                            : QStringLiteral("--hold-qt-read");
+    QVERIFY2(startFixtureProcess(&reader, {mode, path}, &error), qPrintable(error));
+    const auto cleanupReader = qScopeGuard([&reader] {
+        if (reader.state() != QProcess::NotRunning) {
+            reader.closeWriteChannel();
+            if (!reader.waitForFinished(5000)) {
+                reader.kill();
+                reader.waitForFinished(5000);
+            }
+        }
+    });
+
+#ifdef Q_OS_WIN
+    // This is a separate native call with Qt's inspected replacement flag.
+    // Its immediately captured error does not describe QSaveFile's later call.
+    const QString prepared = temporary->filePath(QStringLiteral("prepared.md"));
+    const QString backup = temporary->filePath(QStringLiteral("displaced.md"));
+    QVERIFY(writeFile(prepared, QByteArray("candidate")));
+    const QString nativePrepared = QDir::toNativeSeparators(prepared);
+    const QString nativeTarget = QDir::toNativeSeparators(path);
+    const QString nativeBackup = QDir::toNativeSeparators(backup);
+    const BOOL moved = MoveFileExW(reinterpret_cast<LPCWSTR>(nativePrepared.utf16()),
+                                   reinterpret_cast<LPCWSTR>(nativeTarget.utf16()),
+                                   MOVEFILE_REPLACE_EXISTING);
+    const DWORD moveError = moved ? ERROR_SUCCESS : GetLastError();
+    QVERIFY(!moved);
+    QVERIFY(moveError != ERROR_SUCCESS);
+    qInfo() << "Separate MoveFileExW failure, native error:" << moveError;
+    QCOMPARE(readFile(prepared), QByteArray("candidate"));
+    QCOMPARE(readFile(path), QByteArray("original"));
+#endif
+
+    const auto result = session.save({}, &error);
+#ifdef Q_OS_WIN
+    QVERIFY2(result == SpikeFile::SaveOutcome::CommitUncertain, qPrintable(error));
+    const QString prefix = QStringLiteral("commit (Qt file error %1):")
+                               .arg(int(QFileDevice::RenameError));
+    QVERIFY2(error.startsWith(prefix), qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("original"));
+    QVERIFY(session.isDirty());
+
+    // Compare a different Windows primitive under the same held reader.
+    const BOOL replaced = ReplaceFileW(reinterpret_cast<LPCWSTR>(nativeTarget.utf16()),
+                                       reinterpret_cast<LPCWSTR>(nativePrepared.utf16()),
+                                       reinterpret_cast<LPCWSTR>(nativeBackup.utf16()),
+                                       0, nullptr, nullptr);
+    const DWORD replaceError = replaced ? ERROR_SUCCESS : GetLastError();
+    if (nativeSharedReader) {
+        QVERIFY2(replaced, qPrintable(QStringLiteral("ReplaceFileW error %1").arg(replaceError)));
+        QCOMPARE(readFile(path), QByteArray("candidate"));
+        QCOMPARE(readFile(backup), QByteArray("original"));
+    } else {
+        QVERIFY(!replaced);
+        QVERIFY(replaceError != ERROR_SUCCESS);
+        qInfo() << "Separate ReplaceFileW failure, native error:" << replaceError;
+        QCOMPARE(readFile(path), QByteArray("original"));
+        QCOMPARE(readFile(prepared), QByteArray("candidate"));
+    }
+#else
+    QVERIFY2(result == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("original local"));
+    QVERIFY(!session.isDirty());
+#endif
+
+    // The child reads from its previously opened handle, not by reopening the path.
+    QVERIFY2(finishFixtureReader(&reader, &error), qPrintable(error));
+#ifdef Q_OS_WIN
+    if (!nativeSharedReader) {
+        // This follows release of the deliberately held test handle.
+        QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+        QCOMPARE(readFile(path), QByteArray("original local"));
+        QVERIFY(!session.isDirty());
+    } else {
+        // ReplaceFileW changed the target after the session's baseline: a later
+        // save must report conflict rather than overwrite it.
+        QVERIFY(session.save({}, &error) == SpikeFile::SaveOutcome::Conflict);
+        QCOMPARE(readFile(path), QByteArray("candidate"));
+        QCOMPARE(readFile(backup), QByteArray("original"));
+        QVERIFY(session.isDirty());
+    }
+#endif
 }
 
 void QtDocumentSpikeTests::displacedFileRetainsInterveningWrite()
