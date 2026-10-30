@@ -3,6 +3,37 @@
 use pulldown_cmark::Options;
 use std::ops::Range;
 
+/// A fixture limit for the worker protocol, not an xdnote product limit.
+pub const PROBE_MAX_SOURCE_BYTES: usize = 1_048_576;
+
+/// Tracks the one generation whose result the isolated probe may still accept.
+#[derive(Default)]
+pub struct GenerationGate {
+    issued: u64,
+    current: Option<u64>,
+}
+
+impl GenerationGate {
+    pub fn begin(&mut self) -> Option<u64> {
+        let generation = self.issued.checked_add(1)?;
+        self.issued = generation;
+        self.current = Some(generation);
+        Some(generation)
+    }
+
+    pub fn cancel(&mut self) {
+        self.current = None;
+    }
+
+    pub fn accept(&mut self, generation: u64) -> bool {
+        if self.current != Some(generation) {
+            return false;
+        }
+        self.current = None;
+        true
+    }
+}
+
 pub fn options() -> Options {
     Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS | Options::ENABLE_STRIKETHROUGH
 }
