@@ -48,6 +48,22 @@ mod tests {
             .any(|event| matches!(event, Event::TaskListMarker(false))));
         assert!(Parser::new_ext("~~划掉~~", options())
             .any(|event| matches!(event, Event::Start(Tag::Strikethrough))));
+        for fragment in [
+            "标题",
+            "加粗",
+            "斜体",
+            "引用",
+            "第一",
+            "int x = 1;",
+            "甲",
+            "乙",
+        ] {
+            assert!(
+                events.iter().any(|event| matches!(event,
+                Event::Text(text) if text.contains(fragment))),
+                "missing text {fragment}"
+            );
+        }
     }
 
     #[test]
