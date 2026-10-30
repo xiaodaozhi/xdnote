@@ -24,6 +24,8 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextFrame>
+#include <QTextFragment>
+#include <QTextList>
 #include <QTextTable>
 #include <QUuid>
 #include <QtEndian>
@@ -180,6 +182,10 @@ private slots:
     void sharedDocumentTransferPreservesUndoAndSelection();
     void syntheticImeCompositionDefersTransfer();
     void previewParsesMarkdownAndBlocksResources();
+    void markdownCorpusParsesBasicSemantics();
+    void markdownAnchorsRemainUntrusted();
+    void previewUsesPlaceholdersForLocalAndRemoteImages();
+    void previewLeavesSourceUndoIndependent();
     void openIntentFramesHandlePartialAndInvalidInput();
     void openIntentMovesBetweenRealLocalProcesses();
     void utf8BomAndCrlfRoundTrip();
@@ -318,6 +324,109 @@ void QtDocumentSpikeTests::previewParsesMarkdownAndBlocksResources()
     const QVariant image = preview.resource(QTextDocument::ImageResource, remote);
     QVERIFY(image.canConvert<QImage>());
     QVERIFY(preview.requestedResources().contains(remote.toString()));
+}
+
+void QtDocumentSpikeTests::markdownCorpusParsesBasicSemantics()
+{
+    QFile fixture(QStringLiteral(":/tests/fixtures/markdown-core.md"));
+    QVERIFY(fixture.open(QIODevice::ReadOnly));
+    RestrictedPreview preview;
+    preview.render(QString::fromUtf8(fixture.readAll()));
+    bool heading = false;
+    bool strong = false;
+    bool emphasis = false;
+    bool quote = false;
+    bool ordered = false;
+    bool fencedCode = false;
+    for (QTextBlock block = preview.begin(); block.isValid(); block = block.next()) {
+        heading = heading || (block.text() == QStringLiteral("标题") && block.blockFormat().headingLevel() == 1);
+        quote = quote || (block.text() == QStringLiteral("引用")
+                          && block.blockFormat().property(QTextFormat::BlockQuoteLevel).toInt() == 1);
+        ordered = ordered || (block.text() == QStringLiteral("第一") && block.textList()
+                              && block.textList()->format().style() == QTextListFormat::ListDecimal);
+        fencedCode = fencedCode || (block.text() == QStringLiteral("int x = 1;")
+                                    && block.blockFormat().hasProperty(QTextFormat::BlockCodeFence));
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment fragment = it.fragment();
+            if (!fragment.isValid())
+                continue;
+            strong = strong || (fragment.text() == QStringLiteral("加粗")
+                                && fragment.charFormat().fontWeight() >= QFont::Bold);
+            emphasis = emphasis || (fragment.text() == QStringLiteral("斜体")
+                                    && fragment.charFormat().fontItalic());
+        }
+    }
+    QVERIFY(heading);
+    QVERIFY(strong);
+    QVERIFY(emphasis);
+    QVERIFY(quote);
+    QVERIFY(ordered);
+    QVERIFY(fencedCode);
+}
+
+void QtDocumentSpikeTests::markdownAnchorsRemainUntrusted()
+{
+    QFile fixture(QStringLiteral(":/tests/fixtures/markdown-core.md"));
+    QVERIFY(fixture.open(QIODevice::ReadOnly));
+    RestrictedPreview preview;
+    preview.render(QString::fromUtf8(fixture.readAll()));
+    QStringList anchors;
+    for (QTextBlock block = preview.begin(); block.isValid(); block = block.next()) {
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment fragment = it.fragment();
+            if (fragment.isValid() && fragment.charFormat().isAnchor())
+                anchors.append(fragment.charFormat().anchorHref());
+        }
+    }
+    QVERIFY(anchors.contains(QStringLiteral("https://example.invalid/a")));
+    // This records a parser boundary: a consumer must separately check the
+    // scheme and user intent. This test does not activate or open any link.
+    QVERIFY(anchors.contains(QStringLiteral("javascript:alert%281%29")));
+    QVERIFY(preview.toPlainText().contains(QStringLiteral("<script>alert(1)</script>")));
+    QVERIFY(!preview.toHtml().contains(QStringLiteral("<script"), Qt::CaseInsensitive));
+}
+
+void QtDocumentSpikeTests::previewUsesPlaceholdersForLocalAndRemoteImages()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString imagePath = temporary->filePath(QStringLiteral("本地图.png"));
+    QImage fixture(2, 2, QImage::Format_ARGB32_Premultiplied);
+    fixture.fill(Qt::red);
+    QVERIFY(fixture.save(imagePath, "PNG"));
+    const QUrl local = QUrl::fromLocalFile(imagePath);
+    const QUrl remote(QStringLiteral("https://example.invalid/asset.png"));
+    RestrictedPreview preview;
+    preview.render(QStringLiteral("![local](%1) ![remote](%2)")
+                       .arg(local.toString(QUrl::FullyEncoded), remote.toString(QUrl::FullyEncoded)));
+    for (const QUrl &url : {local, remote}) {
+        const QVariant resource = preview.resource(QTextDocument::ImageResource, url);
+        QVERIFY(resource.canConvert<QImage>());
+        const QImage placeholder = qvariant_cast<QImage>(resource);
+        QCOMPARE(placeholder.size(), QSize(1, 1));
+        QCOMPARE(placeholder.pixelColor(0, 0).alpha(), 0);
+        QVERIFY(preview.requestedResources().contains(url.toString()));
+    }
+}
+
+void QtDocumentSpikeTests::previewLeavesSourceUndoIndependent()
+{
+    QTextDocument source;
+    source.setPlainText(QStringLiteral("原文"));
+    source.clearUndoRedoStacks();
+    QTextCursor cursor(&source);
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(QStringLiteral("新增"));
+    QVERIFY(source.isUndoAvailable());
+
+    RestrictedPreview preview;
+    preview.render(source.toPlainText());
+    QCOMPARE(preview.toPlainText(), QStringLiteral("原文新增"));
+    QVERIFY(source.isUndoAvailable());
+    source.undo();
+    QCOMPARE(source.toPlainText(), QStringLiteral("原文"));
+    preview.render(source.toPlainText());
+    QCOMPARE(preview.toPlainText(), QStringLiteral("原文"));
 }
 
 void QtDocumentSpikeTests::openIntentFramesHandlePartialAndInvalidInput()

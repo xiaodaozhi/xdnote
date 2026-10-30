@@ -70,7 +70,7 @@ function Get-SourceFingerprint {
         'src/spike_ipc.h', 'src/spike_ipc.cpp', 'manual/handoff.cpp', 'manual/handoff.qml',
         'ipc/send_open.cpp', 'tests/file_identity_probe.h', 'tests/file_identity_probe.cpp',
         'tests/fixture_writer.cpp', 'tests/displaced_probe.h', 'tests/displaced_probe.cpp',
-        'tests/qt_spike_test.cpp', 'benchmark/benchmark.cpp')
+        'tests/qt_spike_test.cpp', 'tests/fixtures/markdown-core.md', 'benchmark/benchmark.cpp')
     $xdnoteEntries = foreach ($xdnoteRelativePath in $xdnoteRelativePaths) {
         $xdnoteSourceFile = Join-Path $PSScriptRoot $xdnoteRelativePath
         [ordered]@{

@@ -36,6 +36,10 @@ target_include_directories(qt_document_spike_tests PRIVATE src)
 target_link_libraries(qt_document_spike_tests PRIVATE
     Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::Test
 )
+qt_add_resources(qt_document_spike_tests markdown_fixture
+    PREFIX "/"
+    FILES tests/fixtures/markdown-core.md
+)
 if(MSVC)
     target_compile_options(qt_open_intent_sender PRIVATE /utf-8)
     target_compile_options(qt_fixture_writer PRIVATE /utf-8)
