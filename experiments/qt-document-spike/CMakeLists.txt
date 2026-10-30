@@ -20,6 +20,8 @@ add_executable(qt_document_spike_tests
     src/spike_handoff.h
     src/spike_ipc.cpp
     src/spike_ipc.h
+    tests/file_identity_probe.cpp
+    tests/file_identity_probe.h
     tests/qt_spike_test.cpp
 )
 add_dependencies(qt_document_spike_tests qt_open_intent_sender)
