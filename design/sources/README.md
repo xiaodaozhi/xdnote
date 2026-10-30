@@ -12,6 +12,7 @@
 | [compare-titlebar-heights.cjs](compare-titlebar-heights.cjs) | 程序绘制 40／48 逻辑像素标题栏及双行文件信息的等比例对照图 |
 | [standalone-chrome-edit.cjs](standalone-chrome-edit.cjs) | 独立窗口标题栏与工具栏局部修改记录；输入摘要用于防止对现有图板重复应用 |
 | [align-standalone-titlebar.cjs](align-standalone-titlebar.cjs)、[compare-standalone-header.cjs](compare-standalone-header.cjs) | 参考工作区图板调整标题栏，按原图比例展示对照 |
+| [align-standalone-title-text.cjs](align-standalone-title-text.cjs) | 浅色独立窗口两处文件名的局部视觉对齐记录，坐标仅用于图稿像素 |
 | [ui-icon-paths.cjs](ui-icon-paths.cjs) | 本项目原创图标几何路径，不依赖图标字体 |
 | [build-ui-assets.cjs](build-ui-assets.cjs) | SVG／透明 PNG、原图切片、图册、缩略图与静态画廊生成源 |
 | [export-native-icons.py](export-native-icons.py) | 从已确认的应用图标 PNG 导出 ICO 与 ICNS |

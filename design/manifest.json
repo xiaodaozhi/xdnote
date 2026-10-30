@@ -249,8 +249,8 @@
       "path": "hifi/v2/boards/05-standalone-light.png",
       "kind": "ui-mockup-board",
       "status": "baseline",
-      "bytes": 1094778,
-      "sha256": "56b09916e291550c2ecdd92bbe86d6929052e57b69b16a4b98f9051912657739",
+      "bytes": 1094790,
+      "sha256": "eea95b8caf6db8e9bbb321d7cde45b12b6efb3750ae3921169d1c7966e3a880c",
       "pixelSize": {
         "width": 1536,
         "height": 1024,
@@ -1058,7 +1058,7 @@
       "kind": "design-source",
       "status": "source",
       "bytes": 83768,
-      "sha256": "c87c75063f1e37d9191eaeef50e095a777ad30bc304cfc0f00e5858cd5b5d9a1",
+      "sha256": "087db4a77090913d489f296cd3e99ce8aece6532db5490c102bb8884f992db5b",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1110,7 +1110,7 @@
       "kind": "design-source",
       "status": "source",
       "bytes": 32689,
-      "sha256": "1171ab0fed67731c44b5a549ece5ec96d65bfae0d15730393e1720eb5e492625",
+      "sha256": "855bb6be01f08e6b62892675410053168686b6f65f21b95271874d136bf08120",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1183,6 +1183,19 @@
       }
     },
     {
+      "id": "source-v2-align-standalone-title-text.cjs",
+      "path": "sources/align-standalone-title-text.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 2802,
+      "sha256": "5dd3ff7e87b14e0bf85b9bbd036e6c853ef5e9f4d2a39182c08b78010cc1d4a9",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "align-standalone-title-text.cjs"
+      }
+    },
+    {
       "id": "source-v2-build-ui-assets.cjs",
       "path": "sources/build-ui-assets.cjs",
       "kind": "design-source",
@@ -1239,8 +1252,8 @@
       "path": "sources/index-design-materials.py",
       "kind": "design-source",
       "status": "source",
-      "bytes": 3037,
-      "sha256": "e3af2e7cb06943c9bde2a3ac617b5acf0466e9a3638d0a13d5f81417bced6cfa",
+      "bytes": 3072,
+      "sha256": "0b26727e62c0be405c74fb3ad70f3524875569b510f94e5cfa65620e65a6f9e1",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1265,8 +1278,8 @@
       "path": "sources/README.md",
       "kind": "design-source",
       "status": "source",
-      "bytes": 3888,
-      "sha256": "0b8eeb371e0cf1bfcb732f49ba75f292cbe2c00ca465e14fc828939befccc37e",
+      "bytes": 4052,
+      "sha256": "54def605179749257897e12902d007507f5714170ddfe18017859cb087d67273",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1279,7 +1292,7 @@
       "kind": "asset-manifest",
       "status": "source",
       "bytes": 807583,
-      "sha256": "07934cbb0254df24a7afd06bcfd67199a2f2563fb2a79ef552102c88b2a29b47",
+      "sha256": "49d24103ac1ee9a1dcec069ee8ed06eb7aa6987d5636ce6e605c6b2a9e4cd64d",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1304,8 +1317,8 @@
       "path": "hifi/v2/overview.png",
       "kind": "contact-sheet",
       "status": "current",
-      "bytes": 4292126,
-      "sha256": "5d1deca1e029cb73329ed7752801231fbd98ad216fb5cc2de26a8705dfdfae4a",
+      "bytes": 4292171,
+      "sha256": "a3dd56c9f970bb82a9235557fa27bf985f3cc04b33ac1059bbe75adb58325d30",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1322,8 +1335,8 @@
       "path": "hifi/v2/featured.png",
       "kind": "contact-sheet",
       "status": "current",
-      "bytes": 1784568,
-      "sha256": "114b8bd0cfb2b435de35974aea1f30422335da871eb48ef14bd2a95629ff338e",
+      "bytes": 1784626,
+      "sha256": "778af363826e5d620d0ccccf2ee7e6c75438df47612aa198c3f240f0529406b4",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1358,8 +1371,8 @@
       "path": "hifi/v2/comparisons/standalone-header-alignment.png",
       "kind": "design-comparison",
       "status": "exploration",
-      "bytes": 199087,
-      "sha256": "0cbd07bfc22dbe61c2f31cc8edf3d298f6f8a921932cebaf65dc53ed23bda948",
+      "bytes": 199137,
+      "sha256": "559cf18accfdd7ba25ef3dec1389a5fa8f43079837b4dff02aa33adc25b77a29",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
