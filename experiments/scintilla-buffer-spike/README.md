@@ -2,7 +2,7 @@
 
 本目录只比较文本存储候选，不是 xdnote 产品，也不决定采用 Scintilla。实验直接编译 Scintilla 5.6.7 的内部 `CellBuffer`，检查 UTF-8 字节、普通换行与字面 U+2029 的区别，以及插入／删除的撤销重做。样本包括中文、表情、U+2028、U+2029、非断行空格、NUL、LF 和 CRLF；测试不读写用户文档。
 
-核心缓冲区测试不验证 GUI、输入法或保存。可选的 Qt 控件试验另外检查共享文档、反向选区、撤销重做和合成输入法组合；它不是 Qt Quick 集成、真实输入法、字体、双向文本、可访问性或保存验收。内部 API 和 UTF-8 字节下标不等同于最终产品接口或 Qt 的 UTF-16 下标；候选需要更多证据。Scintilla 的 Qt 端是 QWidget 控件，Qt 6 构建还使用 Core5Compat；与现有 Qt Quick 候选的结合方式尚未确定。
+核心缓冲区测试不验证 GUI、输入法或保存。可选的 Qt 控件试验另外检查共享文档、反向选区、撤销重做和合成输入法组合；辅助功能对照试验检查 Qt 接口暴露的测试文字。它们不是 Qt Quick 集成、真实输入法、字体、双向文本、屏幕阅读器或保存验收。内部 API 和 UTF-8 字节下标不等同于最终产品接口或 Qt 的 UTF-16 下标；候选需要更多证据。Scintilla 的 Qt 端是 QWidget 控件，Qt 6 构建还使用 Core5Compat；与现有 Qt Quick 候选的结合方式尚未确定。
 
 ## 显式准备源码
 
@@ -38,6 +38,8 @@ ctest --test-dir build/scintilla-widget-spike -C Release --output-on-failure --n
 ```
 
 `scintilla_widget_spike` 使用隐藏控件和合成 `QInputMethodEvent`，检查两个视图共享文档、选区、撤销重做，以及组合期间拒绝接管。试验观察到组合文字暂时进入共享缓冲区，因此产品方案必须验证如何阻止暂存文字被保存；仅依赖该试验中的状态判断不足以证明所有输入法安全。只读标记也属于共享文档；手动工具通过禁用非活动控件限制当前操作，不表示最终多窗口设计已经确定。
+
+`scintilla_accessibility_spike` 在离屏环境遍历当前控件的 Qt 辅助功能对象树，并以 `QPlainTextEdit` 验证测试环境能够读取对照文字。当前固定版本的 Scintilla Qt 控件未通过被遍历节点的文本接口或值暴露样本文字；该负面观察只针对本试验控件和 Qt 接口，不能证明其他封装、平台桥接或屏幕阅读器的全部表现。未来若更换候选或添加辅助功能适配，应重新评估并更新这个对照；不能把其通过视为辅助功能验收。
 
 完成构建后，在已配置 Qt 动态库和平台插件的真实桌面环境启动 `scintilla_widget_manual`；单配置生成器的程序位于 `build/scintilla-widget-spike/`，多配置生成器在 `build/scintilla-widget-spike/Release/`，Windows 可执行文件带 `.exe`。工具只使用内存测试文字，不读取或保存文件，不要输入需要保留的内容。
 
