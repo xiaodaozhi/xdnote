@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(xdnote_qt_document_spike LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Qml Quick Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Qml Quick Test Widgets)
 
 add_executable(qt_open_intent_sender
     src/spike_ipc.cpp
@@ -40,10 +40,15 @@ qt_add_resources(qt_document_spike_tests markdown_fixture
     PREFIX "/"
     FILES tests/fixtures/markdown-core.md
 )
+
+add_executable(qt_widget_accessibility_tests tests/widget_accessibility_test.cpp)
+target_compile_features(qt_widget_accessibility_tests PRIVATE cxx_std_17)
+target_link_libraries(qt_widget_accessibility_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test Qt6::Widgets)
 if(MSVC)
     target_compile_options(qt_open_intent_sender PRIVATE /utf-8)
     target_compile_options(qt_fixture_writer PRIVATE /utf-8)
     target_compile_options(qt_document_spike_tests PRIVATE /utf-8)
+    target_compile_options(qt_widget_accessibility_tests PRIVATE /utf-8)
 endif()
 
 add_executable(qt_document_handoff_manual
@@ -80,6 +85,7 @@ endif()
 include(CTest)
 add_test(NAME qt_document_spike COMMAND qt_document_spike_tests)
 add_test(NAME qt_document_handoff_smoke COMMAND qt_document_handoff_manual --smoke-test)
-set_tests_properties(qt_document_spike qt_document_handoff_smoke PROPERTIES
+add_test(NAME qt_widget_accessibility COMMAND qt_widget_accessibility_tests)
+set_tests_properties(qt_document_spike qt_document_handoff_smoke qt_widget_accessibility PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
 )

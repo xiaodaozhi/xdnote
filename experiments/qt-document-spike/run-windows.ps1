@@ -64,13 +64,24 @@ function Invoke-HandoffSmoke {
     Write-Output 'Manual handoff offscreen smoke test: passed.'
 }
 
+function Invoke-WidgetAccessibilityTests {
+    param([string]$Platform, [string]$ReportPath)
+    $env:QT_QPA_PLATFORM = $Platform
+    & (Join-Path $xdnoteBuild 'qt_widget_accessibility_tests.exe') -o "$ReportPath,txt"
+    $xdnoteStatus = $LASTEXITCODE
+    if (Test-Path -LiteralPath $ReportPath) { Get-Content -LiteralPath $ReportPath -Raw }
+    if ($xdnoteStatus -ne 0) { throw "Widget accessibility tests on $Platform failed with exit code $xdnoteStatus. See $ReportPath" }
+    if (!(Test-Path -LiteralPath $ReportPath)) { throw "Widget accessibility tests did not create a report: $ReportPath" }
+}
+
 function Get-SourceFingerprint {
     $xdnoteRelativePaths = @('CMakeLists.txt', 'run-windows.ps1', 'src/spike_document.h',
         'src/spike_document.cpp', 'src/spike_handoff.h', 'src/spike_handoff.cpp',
         'src/spike_ipc.h', 'src/spike_ipc.cpp', 'manual/handoff.cpp', 'manual/handoff.qml',
         'ipc/send_open.cpp', 'tests/file_identity_probe.h', 'tests/file_identity_probe.cpp',
         'tests/fixture_writer.cpp', 'tests/displaced_probe.h', 'tests/displaced_probe.cpp',
-        'tests/qt_spike_test.cpp', 'tests/fixtures/markdown-core.md', 'benchmark/benchmark.cpp')
+        'tests/qt_spike_test.cpp', 'tests/widget_accessibility_test.cpp',
+        'tests/fixtures/markdown-core.md', 'benchmark/benchmark.cpp')
     $xdnoteEntries = foreach ($xdnoteRelativePath in $xdnoteRelativePaths) {
         $xdnoteSourceFile = Join-Path $PSScriptRoot $xdnoteRelativePath
         [ordered]@{
@@ -137,9 +148,11 @@ try {
     Invoke-BuildStep -Program $xdnoteCmake -CommandArguments $xdnoteConfigureArgs -LogPath (Join-Path $xdnoteRun 'configure.log')
     Invoke-BuildStep -Program $xdnoteCmake -CommandArguments @('--build', $xdnoteBuild) -LogPath (Join-Path $xdnoteRun 'build.log')
     Invoke-SpikeTests -Platform 'offscreen' -ReportPath (Join-Path $xdnoteRun 'offscreen.txt')
+    Invoke-WidgetAccessibilityTests -Platform 'offscreen' -ReportPath (Join-Path $xdnoteRun 'widget-accessibility-offscreen.txt')
     Invoke-HandoffSmoke -ReportPath (Join-Path $xdnoteRun 'handoff-smoke.txt')
     if ($NativeWindowTests) {
         Invoke-SpikeTests -Platform 'windows' -ReportPath (Join-Path $xdnoteRun 'windows.txt')
+        Invoke-WidgetAccessibilityTests -Platform 'windows' -ReportPath (Join-Path $xdnoteRun 'widget-accessibility-windows.txt')
     }
     if ($Benchmarks) {
         foreach ($xdnoteBytes in @(10240, 1048576, 10485760)) {
