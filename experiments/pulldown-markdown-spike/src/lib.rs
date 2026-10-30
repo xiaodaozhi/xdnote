@@ -1,14 +1,47 @@
 //! A parser-only experiment, not the xdnote renderer or a security filter.
 
 use pulldown_cmark::Options;
+use std::ops::Range;
 
 pub fn options() -> Options {
     Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS | Options::ENABLE_STRIKETHROUGH
 }
 
+/// Map an offset in the unchanged UTF-8 source to UTF-16 code units.
+/// This linear reference implementation is not a production indexing strategy.
+pub fn byte_offset_to_utf16(source: &str, offset: usize) -> Option<usize> {
+    if offset > source.len() || !source.is_char_boundary(offset) {
+        return None;
+    }
+    Some(source[..offset].encode_utf16().count())
+}
+
+/// Map UTF-16 code units back to a UTF-8 byte boundary in the same source.
+/// An offset between the two halves of a supplementary character is invalid.
+pub fn utf16_offset_to_byte(source: &str, offset: usize) -> Option<usize> {
+    let mut units = 0;
+    for (byte, character) in source.char_indices() {
+        if units == offset {
+            return Some(byte);
+        }
+        units += character.len_utf16();
+        if units > offset {
+            return None;
+        }
+    }
+    (units == offset).then_some(source.len())
+}
+
+pub fn byte_range_to_utf16(source: &str, range: Range<usize>) -> Option<Range<usize>> {
+    if range.start > range.end {
+        return None;
+    }
+    Some(byte_offset_to_utf16(source, range.start)?..byte_offset_to_utf16(source, range.end)?)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::options;
+    use super::{byte_offset_to_utf16, byte_range_to_utf16, options, utf16_offset_to_byte};
     use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag};
 
     const CORPUS: &str = include_str!("../../qt-document-spike/tests/fixtures/markdown-core.md");
@@ -112,5 +145,58 @@ mod tests {
         assert_eq!(&source[strong], "乙");
         assert_eq!(heading.end - heading.start, "甲🙂".len());
         assert_ne!("甲🙂".len(), "甲🙂".encode_utf16().count());
+    }
+
+    #[test]
+    fn offset_mapping_respects_unicode_and_crlf_boundaries() {
+        let source = "甲🙂e\u{301}\r\n乙";
+        // Combining marks and both CRLF code units remain distinct source positions.
+        let boundaries = [
+            (0, 0),
+            (3, 1),
+            (7, 3),
+            (8, 4),
+            (10, 5),
+            (11, 6),
+            (12, 7),
+            (15, 8),
+        ];
+        for (byte, utf16) in boundaries {
+            assert_eq!(byte_offset_to_utf16(source, byte), Some(utf16));
+            assert_eq!(utf16_offset_to_byte(source, utf16), Some(byte));
+        }
+        for byte in [1, 2, 4, 5, 6, 9, 13, 14, 16] {
+            assert_eq!(byte_offset_to_utf16(source, byte), None);
+        }
+        assert_eq!(utf16_offset_to_byte(source, 2), None); // Inside the emoji's surrogate pair.
+        assert_eq!(utf16_offset_to_byte(source, 9), None);
+        assert_eq!(byte_range_to_utf16(source, 3..7), Some(1..3));
+        assert_eq!(byte_range_to_utf16(source, 4..7), None);
+        assert_eq!(byte_range_to_utf16(source, 7..3), None);
+        assert_eq!(byte_range_to_utf16(source, 0..16), None);
+        assert_eq!(byte_offset_to_utf16("", 0), Some(0));
+        assert_eq!(utf16_offset_to_byte("", 0), Some(0));
+    }
+
+    #[test]
+    fn parser_ranges_map_to_source_not_decoded_rendered_text() {
+        let source = "# 甲🙂\r\n\r\n文 &amp; 🙂\n";
+        let mut decoded_entity_range = None;
+        for input in [source, CORPUS] {
+            for (event, bytes) in Parser::new_ext(input, options()).into_offset_iter() {
+                let utf16 = byte_range_to_utf16(input, bytes.clone()).expect("valid source range");
+                assert_eq!(utf16_offset_to_byte(input, utf16.start), Some(bytes.start));
+                assert_eq!(utf16_offset_to_byte(input, utf16.end), Some(bytes.end));
+                if input == source {
+                    if let Event::Text(text) = event {
+                        if text.as_ref() == "&" {
+                            decoded_entity_range = Some(bytes);
+                        }
+                    }
+                }
+            }
+        }
+        let entity = decoded_entity_range.expect("decoded entity event");
+        assert_eq!(&source[entity], "&amp;");
     }
 }
