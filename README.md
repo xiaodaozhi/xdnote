@@ -61,7 +61,7 @@ xdnote/
 
 应用目录随技术验证结果建立，不预建没有实现的模块。当前架构草案把 xdzip 的 Qt Quick、薄 C++ 与 Rust 分层作为候选方向，尚未锁定框架、渲染器和版本。
 
-技术验证入口：[Qt 文档与窗口试验](experiments/qt-document-spike/README.md) · [Scintilla 文本缓冲区试验](experiments/scintilla-buffer-spike/README.md)。两者均不是产品实现。
+技术验证入口：[Qt 文档与窗口试验](experiments/qt-document-spike/README.md) · [Scintilla 文本缓冲区试验](experiments/scintilla-buffer-spike/README.md) · [Markdown 解析候选试验](experiments/pulldown-markdown-spike/README.md)。这些均不是产品实现。
 
 ## 维护方式
 
