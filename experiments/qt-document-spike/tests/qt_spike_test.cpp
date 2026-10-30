@@ -17,6 +17,7 @@
 #include <QQuickItem>
 #include <QQuickTextDocument>
 #include <QQuickWindow>
+#include <QSaveFile>
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -108,9 +109,12 @@ private slots:
     void utf8BomAndCrlfRoundTrip();
     void nonBreakingSpaceIsNotRewritten();
     void unsupportedUnicodeSeparatorsDoNotOverwrite();
+    void paragraphSeparatorBecomesIndistinguishableFromNewline();
     void rejectsInvalidUtf8AndMixedLineEndings();
     void externalChangeBeforeSaveIsConflict();
     void externalChangeBeforeCommitIsConflict();
+    void identicalBytesReplacementIsNotDetected();
+    void changeAfterFinalCheckCanBeOverwritten();
     void editDuringSaveStaysDirty();
     void deletedTargetIsNotRecreated();
 };
@@ -405,6 +409,21 @@ void QtDocumentSpikeTests::unsupportedUnicodeSeparatorsDoNotOverwrite()
     QCOMPARE(readFile(path), QByteArray("original"));
 }
 
+void QtDocumentSpikeTests::paragraphSeparatorBecomesIndistinguishableFromNewline()
+{
+    // This records a loss of information in the candidate text model. It is
+    // not a desired product behavior or a license to normalize user input.
+    QTextDocument newlineDocument;
+    QTextDocument separatorDocument;
+    QTextCursor newlineCursor(&newlineDocument);
+    QTextCursor separatorCursor(&separatorDocument);
+    newlineCursor.insertText(QStringLiteral("a\nb"));
+    separatorCursor.insertText(QStringLiteral("a\u2029b"));
+    QCOMPARE(newlineDocument.toRawText(), QStringLiteral("a\u2029b"));
+    QCOMPARE(separatorDocument.toRawText(), newlineDocument.toRawText());
+    QCOMPARE(separatorDocument.toPlainText(), newlineDocument.toPlainText());
+}
+
 void QtDocumentSpikeTests::rejectsInvalidUtf8AndMixedLineEndings()
 {
     auto temporary = fixtureDirectory();
@@ -456,6 +475,50 @@ void QtDocumentSpikeTests::externalChangeBeforeCommitIsConflict()
     QVERIFY(result == SpikeFile::SaveOutcome::Conflict);
     QCOMPARE(readFile(path), QByteArray("external\n"));
     QVERIFY(session.isDirty());
+}
+
+void QtDocumentSpikeTests::identicalBytesReplacementIsNotDetected()
+{
+    // Keep the original file under a different name so the replacement is a
+    // distinct object, even though the bytes at the original path are equal.
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    const QString oldPath = temporary->filePath(QStringLiteral("old-note.md"));
+    QVERIFY(writeFile(path, "original"));
+    SpikeSession session;
+    QString error;
+    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QTextCursor cursor(session.document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(QStringLiteral(" local"));
+    QVERIFY(QFile::rename(path, oldPath));
+    QVERIFY(writeFile(path, "original"));
+
+    // The experimental byte-only baseline misses this replacement.
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QCOMPARE(readFile(path), QByteArray("original local"));
+    QCOMPARE(readFile(oldPath), QByteArray("original"));
+}
+
+void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
+{
+    // Reproduce the candidate's check-then-commit sequence on a test-owned
+    // file. QSaveFile's atomic replacement does not make the preceding check
+    // conditional on the target remaining unchanged.
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    const QByteArray baseline("original");
+    QVERIFY(writeFile(path, baseline));
+    QSaveFile output(path);
+    output.setDirectWriteFallback(false);
+    QVERIFY2(output.open(QIODevice::WriteOnly), qPrintable(output.errorString()));
+    QCOMPARE(output.write("local"), qint64(5));
+    QCOMPARE(readFile(path), baseline); // Last comparison in the candidate sequence.
+    QVERIFY(writeFile(path, "external")); // Another actor writes after that comparison.
+    QVERIFY2(output.commit(), qPrintable(output.errorString()));
+    QCOMPARE(readFile(path), QByteArray("local")); // The intervening update was lost.
 }
 
 void QtDocumentSpikeTests::editDuringSaveStaysDirty()
