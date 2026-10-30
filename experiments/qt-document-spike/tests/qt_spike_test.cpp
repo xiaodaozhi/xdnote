@@ -1,4 +1,5 @@
 #include "spike_document.h"
+#include "spike_handoff.h"
 #include "spike_ipc.h"
 
 #include <QCoreApplication>
@@ -92,25 +93,6 @@ QQuickTextDocument *quickDocument(QQuickItem *editor)
     return editor->property("textDocument").value<QQuickTextDocument *>();
 }
 
-bool transferDocument(QQuickItem *from, QQuickItem *to)
-{
-    if (from->property("inputMethodComposing").toBool())
-        return false;
-    QQuickTextDocument *source = quickDocument(from);
-    QQuickTextDocument *destination = quickDocument(to);
-    if (!source || !destination || !source->textDocument())
-        return false;
-
-    const int start = from->property("selectionStart").toInt();
-    const int end = from->property("selectionEnd").toInt();
-    const int cursor = from->property("cursorPosition").toInt();
-    destination->setTextDocument(source->textDocument());
-    if (start == end)
-        return to->setProperty("cursorPosition", cursor);
-    const int anchor = cursor == start ? end : start;
-    return QMetaObject::invokeMethod(to, "select", Qt::DirectConnection,
-                                     Q_ARG(int, anchor), Q_ARG(int, cursor));
-}
 } // namespace
 
 class QtDocumentSpikeTests : public QObject

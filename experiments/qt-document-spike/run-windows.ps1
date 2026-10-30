@@ -4,6 +4,7 @@ param(
     [string]$NinjaPath = 'ninja',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$BuildName = 'qt-document-spike',
     [switch]$NativeWindowTests,
+    [switch]$ManualHandoff,
     [switch]$Benchmarks,
     [ValidateRange(1, 5)][int]$BenchmarkRepeats = 1
 )
@@ -53,9 +54,20 @@ function Invoke-SpikeTests {
     if (!(Test-Path -LiteralPath $ReportPath)) { throw "Qt tests did not create a report: $ReportPath" }
 }
 
+function Invoke-HandoffSmoke {
+    param([string]$ReportPath)
+    $env:QT_QPA_PLATFORM = 'offscreen'
+    & (Join-Path $xdnoteBuild 'qt_document_handoff_manual.exe') --smoke-test *> $ReportPath
+    $xdnoteStatus = $LASTEXITCODE
+    if (Test-Path -LiteralPath $ReportPath) { Get-Content -LiteralPath $ReportPath }
+    if ($xdnoteStatus -ne 0) { throw "Manual handoff smoke test failed with exit code $xdnoteStatus. See $ReportPath" }
+    Write-Output 'Manual handoff offscreen smoke test: passed.'
+}
+
 function Get-SourceFingerprint {
     $xdnoteRelativePaths = @('CMakeLists.txt', 'run-windows.ps1', 'src/spike_document.h',
-        'src/spike_document.cpp', 'src/spike_ipc.h', 'src/spike_ipc.cpp',
+        'src/spike_document.cpp', 'src/spike_handoff.h', 'src/spike_handoff.cpp',
+        'src/spike_ipc.h', 'src/spike_ipc.cpp', 'manual/handoff.cpp', 'manual/handoff.qml',
         'ipc/send_open.cpp', 'tests/qt_spike_test.cpp', 'benchmark/benchmark.cpp')
     $xdnoteEntries = foreach ($xdnoteRelativePath in $xdnoteRelativePaths) {
         $xdnoteSourceFile = Join-Path $PSScriptRoot $xdnoteRelativePath
@@ -123,6 +135,7 @@ try {
     Invoke-BuildStep -Program $xdnoteCmake -CommandArguments $xdnoteConfigureArgs -LogPath (Join-Path $xdnoteRun 'configure.log')
     Invoke-BuildStep -Program $xdnoteCmake -CommandArguments @('--build', $xdnoteBuild) -LogPath (Join-Path $xdnoteRun 'build.log')
     Invoke-SpikeTests -Platform 'offscreen' -ReportPath (Join-Path $xdnoteRun 'offscreen.txt')
+    Invoke-HandoffSmoke -ReportPath (Join-Path $xdnoteRun 'handoff-smoke.txt')
     if ($NativeWindowTests) {
         Invoke-SpikeTests -Platform 'windows' -ReportPath (Join-Path $xdnoteRun 'windows.txt')
     }
@@ -133,6 +146,11 @@ try {
                 Invoke-Benchmark -Bytes $xdnoteBytes -ReportPath (Join-Path $xdnoteRun $xdnoteReportName)
             }
         }
+    }
+    if ($ManualHandoff) {
+        $env:QT_QPA_PLATFORM = 'windows'
+        & (Join-Path $xdnoteBuild 'qt_document_handoff_manual.exe')
+        if ($LASTEXITCODE -ne 0) { throw "Manual handoff experiment exited with code $LASTEXITCODE." }
     }
     if ((Get-SourceFingerprint) -cne $xdnoteFingerprint) {
         throw 'Experiment sources changed during the run; results are not bound to a stable source snapshot.'
