@@ -33,7 +33,7 @@ sources = (
     "ui-suite-v2.json", "ui-suite-v2-extensions.json", "ui-suite-v2-revisions.json",
     "ui-suite-v2-refinements.json", "brand-placements.json", "brand-mark.cjs",
     "compare-titlebar-heights.cjs", "compare-standalone-header.cjs", "standalone-chrome-edit.cjs",
-    "align-standalone-titlebar.cjs", "build-ui-assets.cjs", "ui-icon-paths.cjs",
+    "align-standalone-titlebar.cjs", "align-standalone-title-text.cjs", "build-ui-assets.cjs", "ui-icon-paths.cjs",
     "export-native-icons.py", "finalize-ui-suite.cjs", "index-design-materials.py",
     "check-ui-materials.cjs", "README.md",
 )

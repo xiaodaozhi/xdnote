@@ -4,8 +4,8 @@
   "sourceFilename": "exec-d4fee5ef-ba20-4086-9635-d0bb9a54ca66.png",
   "tool": "built-in image_gen",
   "references": [],
-  "bytes": 1094778,
-  "sha256": "56b09916e291550c2ecdd92bbe86d6929052e57b69b16a4b98f9051912657739",
+  "bytes": 1094790,
+  "sha256": "eea95b8caf6db8e9bbb321d7cde45b12b6efb3750ae3921169d1c7966e3a880c",
   "prompt": "Use case: ui-mockup. Create one STATIC high-fidelity UI design image for xdnote, a modern cross-platform local Markdown reader/editor.\nThe supplied reference is VISUAL STYLE REFERENCE, not a screenshot to copy verbatim. Preserve its warm-white/pale-gray surfaces, graphite controls, refined Chinese typography, thin outline icons, 6px control corners, hairline neutral dividers and spacious uncluttered desktop proportions. Product name is now EXACTLY \"xdnote\", not \"Markdown\". Use a tiny outlined folded-document icon beside the product label.\nLIGHT tokens: surface #FFFFFF, navigation #F4F5F7, text #1F2937, secondary #667085, accent #374151 with white text, soft selection #EBECEE. DARK tokens when requested: background #1B1F25, surface #22272F, text #E6EAF0, secondary #AAB4C0, accent #B3BDCC with #171A21 text. Semantic green saved checks, amber warnings and muted red errors are independent of accent. Never use teal as the app accent.\nCrisp straight-on orthographic desktop UI, complete product bounds, landscape 3:2 canvas at very high resolution. A slim quiet outer margin; no devices, perspective, photographic props, marketing slogans, illustrations unrelated to reading, fake metrics, account/AI/cloud panes, watermarks or long outside annotations. Simplified Chinese must be correct and clearly readable, with comfortable product-sized text and consistent alignment.\nUse standard monochrome Windows window controls except in the explicit cross-platform board. Do not show a running implementation, code frameworks, licenses/versions not supplied, or testing results. All controls and feedback should look like practical shipping product design.\nFor multi-panel boards, all panels are equally polished. Separate panels with a generous neutral gutter, no overlaps. Each panel gets only a short Chinese state label OUTSIDE its product surface. Keep enough size for actual controls and their text. No arrows or explanatory prose inside the product.\nShared sample document: filename \"写作，从这里开始.md\"; parent \"文档 / 个人笔记\"; title \"写作，从这里开始\"; paragraph \"把想法写下来，让思考慢慢清晰。\"; quote \"少一点干扰，多一点专注。\"; heading \"一个安静的写作空间\"; task list \"记录一个新的想法\", \"整理本周的阅读笔记\", \"留一点时间，自由写作\". Source and preview content must correspond when both shown.\n\nComposition: exactly TWO equally sized product panels, LEFT and RIGHT, with a clear vertical gutter and short state labels above. Each panel is fully in frame. Aim for two tall desktop windows, not overlapping screenshots.\n\nBOARD: 独立文件，浅色\nPanel 1, label \"独立阅读\": Complete standalone document window, no library or tabs. Filename and 文档 / 个人笔记 in header, left subtle 在工作区打开 action, centered 阅读/编辑 switch with 阅读 selected, 导出 and more menu at right. Render the shared document with quote, headings, tasks and code. Bottom 已保存, UTF-8, 100%.\n\nPanel 2, label \"独立编辑\": The same standalone window in 编辑 mode. Filename has amber unsaved dot, primary 保存, formatting toolbar, monospaced Markdown source with line numbers and caret. Bottom 未保存. Final line 让每一次打开，都能直接进入写作。 No permanent preview or file tree.",
   "referencePathsAtGeneration": [
     "hifi/screens/markdown-standalone-graphite.png",
@@ -61,6 +61,28 @@
       "referenceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
       "matchedRasterHeaderHeight": 58,
       "rasterUnit": "image-pixels-not-runtime-geometry"
+    },
+    {
+      "type": "standalone-title-visual-alignment",
+      "source": "sources/align-standalone-title-text.cjs",
+      "inputSha256": "56b09916e291550c2ecdd92bbe86d6929052e57b69b16a4b98f9051912657739",
+      "outputSha256": "eea95b8caf6db8e9bbb321d7cde45b12b6efb3750ae3921169d1c7966e3a880c",
+      "verticalShiftImagePixels": 1,
+      "regions": [
+        {
+          "left": 200,
+          "top": 71,
+          "width": 185,
+          "height": 26
+        },
+        {
+          "left": 956,
+          "top": 71,
+          "width": 185,
+          "height": 26
+        }
+      ],
+      "unit": "image-pixels-not-runtime-geometry"
     }
   ]
 }

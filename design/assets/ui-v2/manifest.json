@@ -12045,7 +12045,7 @@
       "kind": "literal-reference-crop",
       "runtimeUse": false,
       "sourcePath": "hifi/v2/boards/05-standalone-light.png",
-      "sourceSha256": "56b09916e291550c2ecdd92bbe86d6929052e57b69b16a4b98f9051912657739",
+      "sourceSha256": "eea95b8caf6db8e9bbb321d7cde45b12b6efb3750ae3921169d1c7966e3a880c",
       "sourcePixelSize": {
         "width": 1536,
         "height": 1024
@@ -12070,7 +12070,7 @@
       "kind": "literal-reference-crop",
       "runtimeUse": false,
       "sourcePath": "hifi/v2/boards/05-standalone-light.png",
-      "sourceSha256": "56b09916e291550c2ecdd92bbe86d6929052e57b69b16a4b98f9051912657739",
+      "sourceSha256": "eea95b8caf6db8e9bbb321d7cde45b12b6efb3750ae3921169d1c7966e3a880c",
       "sourcePixelSize": {
         "width": 1536,
         "height": 1024
@@ -25999,7 +25999,7 @@
     {
       "path": "reference-slices/standalone-editing-light.png",
       "bytes": 541896,
-      "sha256": "e31088c18c65836cdc73f0231947ee4918c07ab0efe9852333560d98eb62e657"
+      "sha256": "6e52baba98ee3c4924ee5ccb583ea1bcc37d446d28a1af57c1ec01495928623b"
     },
     {
       "path": "reference-slices/standalone-reading-dark.png",
@@ -26008,8 +26008,8 @@
     },
     {
       "path": "reference-slices/standalone-reading-light.png",
-      "bytes": 553456,
-      "sha256": "780be1f76cb9e8b5c81cd7e4595fbe9e10720de613883c92af19a68bc8bc912b"
+      "bytes": 553454,
+      "sha256": "9516d19e644b65cc09a1b32826f383492d9cb8d6624575a1c5b04983617cb2de"
     },
     {
       "path": "reference-slices/tab-context-menu.png",
