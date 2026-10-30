@@ -286,10 +286,23 @@ void QtDocumentSpikeTests::openIntentMovesBetweenRealLocalProcesses()
     const QString path = temporary->filePath(QStringLiteral("双击 笔记.md"));
     QVERIFY(writeFile(path, "# fixture\n"));
 
-    QLocalServer server;
-    server.setSocketOptions(QLocalServer::UserAccessOption);
+#ifdef Q_OS_UNIX
+    // QLocalServer expands a relative name under TMPDIR; on macOS that path can
+    // exceed sockaddr_un::sun_path. A private short directory also protects
+    // access on systems that do not enforce socket-file permissions.
+    QTemporaryDir socketDirectory(QStringLiteral("/tmp/xdnote-ipc-XXXXXX"));
+    QVERIFY2(socketDirectory.isValid(), qPrintable(socketDirectory.errorString()));
+    const auto permissions = QFileInfo(socketDirectory.path()).permissions();
+    QVERIFY(!(permissions & (QFileDevice::ReadGroup | QFileDevice::WriteGroup | QFileDevice::ExeGroup
+                              | QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther)));
+    const QString endpoint = socketDirectory.filePath(QStringLiteral("socket"));
+    QVERIFY(QFile::encodeName(endpoint).size() < 104);
+#else
     const QString endpoint = QStringLiteral("xdnote-spike-")
         + QUuid::createUuid().toString(QUuid::WithoutBraces);
+#endif
+    QLocalServer server;
+    server.setSocketOptions(QLocalServer::UserAccessOption);
     QVERIFY2(server.listen(endpoint), qPrintable(server.errorString()));
 
     QString sender = QCoreApplication::applicationDirPath() + QStringLiteral("/qt_open_intent_sender");
