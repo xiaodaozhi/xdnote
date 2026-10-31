@@ -2,6 +2,8 @@
 
 当前采用图组包含 **33 张图板、89 个页面与状态**，使用 xdnote 产品名。材料覆盖主工作区、独立文件、六类设置、导航与编辑辅助、菜单、文件闭环、异常、兼容、导出和跨平台交接，均为静态设计。
 
+用户已授权以当前图组为开发基线；实施同时遵循产品规格和共享视觉参数，后续遇到实质问题再讨论调整。项目自有说明文档与原创设计素材采用 [CC BY 4.0](../LICENSES/CC-BY-4.0.txt)，范围和署名规则见[许可说明](../docs/engineering/licensing.md)。
+
 [打开完整画廊](index.html) · [重点界面](hifi/v2/featured.png) · [全部总览](hifi/v2/overview.png) · [覆盖清单](../docs/visual/screen-inventory.md)
 
 ![xdnote 主要界面](hifi/v2/featured.png)
