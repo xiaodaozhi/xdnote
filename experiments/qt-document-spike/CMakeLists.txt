@@ -32,6 +32,8 @@ add_executable(qt_document_spike_tests
     src/spike_ipc.h
     tests/file_identity_probe.cpp
     tests/file_identity_probe.h
+    tests/image_reference_probe.cpp
+    tests/image_reference_probe.h
     tests/displaced_probe.cpp
     tests/displaced_probe.h
     tests/qt_spike_test.cpp
