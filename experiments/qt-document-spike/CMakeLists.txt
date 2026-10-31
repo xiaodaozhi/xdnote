@@ -51,6 +51,14 @@ target_include_directories(qt_document_spike_tests PRIVATE src tests)
 target_link_libraries(qt_document_spike_tests PRIVATE
     Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::Test
 )
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8 AND Qt6_VERSION VERSION_LESS 6.9 AND TARGET Qt6::QuickPrivate)
+    target_sources(qt_document_spike_tests PRIVATE
+        tests/guarded_quick_accessibility.cpp tests/guarded_quick_accessibility.h)
+    target_compile_definitions(qt_document_spike_tests PRIVATE XDNOTE_QT68_GUARDED_ACCESSIBILITY)
+    target_link_libraries(qt_document_spike_tests PRIVATE Qt6::QuickPrivate)
+else()
+    message(STATUS "Qt 6.8 private accessibility candidate unavailable; its tests will report a skip.")
+endif()
 qt_add_resources(qt_document_spike_tests markdown_fixture
     PREFIX "/"
     FILES tests/fixtures/markdown-core.md
