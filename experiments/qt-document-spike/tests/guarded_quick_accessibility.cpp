@@ -47,30 +47,34 @@ public:
     {
         if (kind == QAccessible::Value)
             return plainFixtureText(currentDocument());
+        if (kind == QAccessible::Description) {
+            if (auto *editor = qobject_cast<GuardedFixtureTextEdit *>(object())) {
+                if (!editor->writeError().isEmpty())
+                    return editor->writeError();
+            }
+        }
         return QAccessibleQuickItem::text(kind);
     }
 
     void setText(QAccessible::Text kind, const QString &value) override
     {
-        QQuickItem *editor = qobject_cast<QQuickItem *>(object());
-        const auto writeState = m_writeState;
-        if (!editor || QThread::currentThread() != editor->thread() || writeState->writing
-            || kind != QAccessible::Value || role() != QAccessible::EditableText
-            || editor->property("readOnly").toBool() || state().readOnly
-            || editor->property("inputMethodComposing").toBool() || !supportedReplacement(value))
-            return;
-        QTextDocument *document = currentDocument();
-        if (!document || !document->isUndoRedoEnabled())
-            return;
-        const QString before = plainFixtureText(document);
-        if (before == value)
-            return;
-        QScopedValueRollback<bool> writing(writeState->writing, true);
-        QTextCursor cursor(document);
-        cursor.beginEditBlock();
-        cursor.select(QTextCursor::Document);
-        cursor.insertText(value);
-        cursor.endEditBlock();
+        auto *editor = qobject_cast<GuardedFixtureTextEdit *>(object());
+        if (editor && kind == QAccessible::Value && role() == QAccessible::EditableText)
+            editor->replaceAccessibleText(value);
+    }
+
+    QAccessible::State state() const override
+    {
+        auto result = QAccessibleQuickItem::state();
+        if (auto *editor = qobject_cast<GuardedFixtureTextEdit *>(object())) {
+            if (auto life = editor->lifetime().lock()) {
+                result.busy = life->busy;
+                result.invalid = life->closing;
+                result.readOnly = result.readOnly || life->closing || life->busy
+                    || editor->isReadOnly() || editor->isInputMethodComposing();
+            }
+        }
+        return result;
     }
 
     int characterCount() const override
@@ -114,8 +118,11 @@ public:
 private:
     QTextDocument *currentDocument() const
     {
-        QQuickItem *editor = qobject_cast<QQuickItem *>(object());
+        auto *editor = qobject_cast<GuardedFixtureTextEdit *>(object());
         if (!editor || QThread::currentThread() != editor->thread())
+            return nullptr;
+        const auto life = editor->lifetime().lock();
+        if (!life || life->closing)
             return nullptr;
         auto *quick = editor->property("textDocument").value<QQuickTextDocument *>();
         return quick ? quick->textDocument() : nullptr;
@@ -128,8 +135,6 @@ private:
         return offset;
     }
 
-    struct WriteState { bool writing = false; };
-    std::shared_ptr<WriteState> m_writeState = std::make_shared<WriteState>();
 };
 } // namespace
 
@@ -141,11 +146,124 @@ struct GuardedFixtureTextEdit::NotificationState
 };
 
 GuardedFixtureTextEdit::GuardedFixtureTextEdit(QQuickItem *parent)
-    : QQuickTextEdit(parent), m_notifications(std::make_shared<NotificationState>())
+    : QQuickTextEdit(parent), m_lifetime(std::make_shared<FixtureEditorLifetime>()),
+      m_notifications(std::make_shared<NotificationState>())
 {
+    m_lifetime->editor = this;
+    m_lifetime->document = std::make_shared<QTextDocument>();
     QQuickTextDocument *quick = textDocument();
+    quick->setTextDocument(m_lifetime->document.get());
     connect(quick, &QQuickTextDocument::textDocumentChanged, this, &GuardedFixtureTextEdit::bindDocument);
+    // Keep the document alive through QQuickTextEdit's base destructor, then
+    // release it even when a native provider retains the lifetime token.
+    connect(this, &QObject::destroyed, [life = m_lifetime] {
+        life->editor = nullptr;
+        life->closing = true;
+        life->document.reset();
+    });
     bindDocument();
+}
+
+GuardedFixtureTextEdit::~GuardedFixtureTextEdit()
+{
+    m_lifetime->closing = true;
+    m_lifetime->editor = nullptr;
+}
+
+FixtureEditResult GuardedFixtureTextEdit::reportWriteResult(FixtureEditResult result)
+{
+    QString message;
+    switch (result) {
+    case FixtureEditResult::ReadOnly: message = QStringLiteral("文档为只读，未写入。"); break;
+    case FixtureEditResult::Composing: message = QStringLiteral("输入法正在组合文字，请完成输入后重试。"); break;
+    case FixtureEditResult::Busy: message = QStringLiteral("文档正在处理编辑请求，请稍后重试。"); break;
+    case FixtureEditResult::Closing: message = QStringLiteral("文档正在关闭，未接受新的写入。"); break;
+    case FixtureEditResult::InvalidText: message = QStringLiteral("文字包含当前不支持的字符，未写入。"); break;
+    case FixtureEditResult::UndoUnavailable: message = QStringLiteral("无法保留撤销记录，未写入。"); break;
+    case FixtureEditResult::NoDocument: case FixtureEditResult::Detached:
+        message = QStringLiteral("文档会话不可用，未写入。"); break;
+    default: break;
+    }
+    m_writeError = message;
+    const auto life = m_lifetime;
+    if (life->reporting)
+        return result;
+    QScopedValueRollback<bool> reporting(life->reporting, true);
+    QPointer<GuardedFixtureTextEdit> alive(this);
+    emit accessibleWriteFinished(int(result), message);
+    if (alive && !message.isEmpty()) {
+        QAccessibleAnnouncementEvent event(alive, message);
+        QAccessible::updateAccessibility(&event);
+    }
+    return result;
+}
+
+FixtureEditResult GuardedFixtureTextEdit::replaceAccessibleText(const QString &value)
+{
+    if (QThread::currentThread() != thread())
+        return FixtureEditResult::WrongThread;
+    const auto life = m_lifetime;
+    if (life->closing) return reportWriteResult(FixtureEditResult::Closing);
+    if (life->busy) return reportWriteResult(FixtureEditResult::Busy);
+    if (isReadOnly()) return reportWriteResult(FixtureEditResult::ReadOnly);
+    if (isInputMethodComposing()) return reportWriteResult(FixtureEditResult::Composing);
+    if (auto *accessible = QAccessible::queryAccessibleInterface(this)) {
+        if (accessible->state().readOnly) return reportWriteResult(FixtureEditResult::ReadOnly);
+    }
+    if (!supportedReplacement(value)) return reportWriteResult(FixtureEditResult::InvalidText);
+    const auto document = life->document; // Pins the document across every synchronous callback.
+    if (!document) return reportWriteResult(FixtureEditResult::NoDocument);
+    if (textDocument()->textDocument() != document.get()) return reportWriteResult(FixtureEditResult::Detached);
+    if (!document->isUndoRedoEnabled()) return reportWriteResult(FixtureEditResult::UndoUnavailable);
+    if (plainFixtureText(document.get()) == value) return reportWriteResult(FixtureEditResult::Unchanged);
+    life->busy = true;
+    QPointer<GuardedFixtureTextEdit> alive(this);
+    {
+        QTextCursor cursor(document.get());
+        cursor.beginEditBlock();
+        cursor.select(QTextCursor::Document);
+        cursor.insertText(value);
+        cursor.endEditBlock();
+    }
+    if (!alive) {
+        life->busy = false;
+        return FixtureEditResult::Closing;
+    }
+    finishTransaction();
+    return reportWriteResult(FixtureEditResult::Applied);
+}
+
+FixtureEditResult GuardedFixtureTextEdit::replaceOwnedDocument(std::shared_ptr<QTextDocument> document)
+{
+    if (QThread::currentThread() != thread()) return FixtureEditResult::WrongThread;
+    const auto life = m_lifetime;
+    if (life->closing) return FixtureEditResult::Closing;
+    if (life->busy) return FixtureEditResult::Busy;
+    if (isInputMethodComposing()) return FixtureEditResult::Composing;
+    if (!document || document->parent() || document->thread() != thread()) return FixtureEditResult::NoDocument;
+    if (life->document == document) return FixtureEditResult::Unchanged;
+    life->busy = true;
+    const auto previous = life->document;
+    life->document = std::move(document);
+    textDocument()->setTextDocument(life->document.get());
+    finishTransaction();
+    return FixtureEditResult::Applied;
+}
+
+void GuardedFixtureTextEdit::finishTransaction()
+{
+    m_lifetime->busy = false;
+    if (m_lifetime->closing && !m_lifetime->closeScheduled) {
+        m_lifetime->closeScheduled = true;
+        deleteLater();
+    }
+}
+
+void GuardedFixtureTextEdit::requestClose()
+{
+    if (QThread::currentThread() != thread()) return;
+    m_lifetime->closing = true;
+    if (!m_lifetime->busy) finishTransaction();
 }
 
 void GuardedFixtureTextEdit::bindDocument()
@@ -181,6 +299,8 @@ void GuardedFixtureTextEdit::notifyDocumentText()
             continue; // Report the latest value rather than a stale reentrant value.
         QAccessibleValueChangeEvent valueEvent(alive, after);
         QAccessible::updateAccessibility(&valueEvent);
+        if (alive)
+            emit alive->accessibleValueChanged(before, after);
     }
 }
 
