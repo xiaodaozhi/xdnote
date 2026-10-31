@@ -59,3 +59,16 @@ jobs:
           if not report.is_file():
               raise SystemExit('The Qt document test report was not created.')
           print(report.read_text(encoding='utf-8', errors='replace'))
+      - name: Report Windows junction fixture result
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:QT_QUICK_BACKEND = 'software'
+          $xdnoteReport = Join-Path $env:RUNNER_TEMP ("xdnote-junction-$([guid]::NewGuid().ToString('N')).txt")
+          $xdnoteTest = Join-Path $env:GITHUB_WORKSPACE 'build/qt-document-spike/Release/qt_document_spike_tests.exe'
+          & $xdnoteTest windowsImageJunctionBypassesFinalNofollow -o "${xdnoteReport},txt"
+          $xdnoteStatus = $LASTEXITCODE
+          if (!(Test-Path -LiteralPath $xdnoteReport)) { throw 'The junction test did not create a report.' }
+          Get-Content -LiteralPath $xdnoteReport
+          if ($xdnoteStatus -ne 0) { throw "The junction test failed with exit code $xdnoteStatus." }

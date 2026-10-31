@@ -45,6 +45,7 @@
 #ifdef Q_OS_WIN
 #  define NOMINMAX
 #  include <windows.h>
+#  include "windows_junction_probe.h"
 #  include "windows_commit_diagnostic.h"
 #else
 #  include <unistd.h>
@@ -257,6 +258,7 @@ private slots:
     void deletedTargetIsNotRecreated();
 #ifdef Q_OS_WIN
     void windowsSharingFailuresRetainEdits();
+    void windowsImageJunctionBypassesFinalNofollow();
     void windowsSaveFailureObservations();
     void windowsUiaValueWrite_data();
     void windowsUiaValueWrite();
@@ -1475,6 +1477,103 @@ void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
     QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
     QCOMPARE(readFile(path), QByteArray("original local"));
     QVERIFY(!session.isDirty());
+}
+
+void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString workspace = temporary->filePath(QStringLiteral("workspace"));
+    const QString outside = temporary->filePath(QStringLiteral("outside"));
+    QVERIFY(QDir().mkpath(workspace));
+    QVERIFY(QDir().mkpath(outside));
+    const QString target = outside + QStringLiteral("/fixture.png");
+    QVERIFY(writeFile(target, QByteArray("fixture outside workspace")));
+    const QString junction = workspace + QStringLiteral("/linked");
+    const QString junctionNative = QDir::toNativeSeparators(junction);
+
+    QCOMPARE(createFixtureJunction(workspace), quint32(ERROR_INVALID_PARAMETER));
+    QVERIFY(!QFileInfo::exists(junction));
+    const quint32 creationError = createFixtureJunction(temporary->path());
+    if (creationError == ERROR_PRIVILEGE_NOT_HELD || creationError == ERROR_ACCESS_DENIED
+        || creationError == ERROR_NOT_SUPPORTED || creationError == ERROR_INVALID_FUNCTION) {
+        const QString reason = QStringLiteral("Fixture junction unavailable; Windows error %1").arg(creationError);
+        QSKIP(qPrintable(reason));
+    }
+    QVERIFY2(creationError == ERROR_SUCCESS,
+             qPrintable(QStringLiteral("Fixture junction creation error %1").arg(creationError)));
+    auto removeJunction = qScopeGuard([&junctionNative] {
+        RemoveDirectoryW(reinterpret_cast<LPCWSTR>(junctionNative.utf16()));
+    });
+
+    const auto components = candidateImageReference(QByteArray("linked/fixture.png"));
+    QVERIFY(components);
+    QCOMPARE(*components, (QStringList{QStringLiteral("linked"), QStringLiteral("fixture.png")}));
+    const QString indirect = junction + QStringLiteral("/fixture.png");
+    // On some Qt/Windows combinations this still names the apparent path
+    // inside workspace, so do not use it as the authorization check.
+    qInfo() << "QFileInfo canonical path resolves fixture junction:"
+            << (QFileInfo(indirect).canonicalFilePath() == QFileInfo(target).canonicalFilePath());
+
+    HANDLE junctionHandle = CreateFileW(reinterpret_cast<LPCWSTR>(junctionNative.utf16()), 0,
+                                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                        nullptr, OPEN_EXISTING,
+                                        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    const DWORD junctionError = junctionHandle == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
+    QVERIFY2(junctionHandle != INVALID_HANDLE_VALUE,
+             qPrintable(QStringLiteral("Open fixture junction error %1").arg(junctionError)));
+    auto closeJunction = qScopeGuard([junctionHandle] { CloseHandle(junctionHandle); });
+    BY_HANDLE_FILE_INFORMATION junctionInfo{};
+    QVERIFY(GetFileInformationByHandle(junctionHandle, &junctionInfo));
+    QVERIFY(junctionInfo.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT);
+
+    const QString targetNative = QDir::toNativeSeparators(target);
+    HANDLE expectedFile = CreateFileW(reinterpret_cast<LPCWSTR>(targetNative.utf16()), FILE_READ_ATTRIBUTES,
+                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                      nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    const DWORD expectedError = expectedFile == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
+    QVERIFY2(expectedFile != INVALID_HANDLE_VALUE,
+             qPrintable(QStringLiteral("Open expected fixture file error %1").arg(expectedError)));
+    auto closeExpected = qScopeGuard([expectedFile] { CloseHandle(expectedFile); });
+    const QString indirectNative = QDir::toNativeSeparators(indirect);
+    HANDLE file = CreateFileW(reinterpret_cast<LPCWSTR>(indirectNative.utf16()), GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    const DWORD openError = file == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
+    QVERIFY2(file != INVALID_HANDLE_VALUE,
+             qPrintable(QStringLiteral("Open fixture file error %1").arg(openError)));
+    auto closeFile = qScopeGuard([file] { CloseHandle(file); });
+    BY_HANDLE_FILE_INFORMATION fileInfo{};
+    QVERIFY(GetFileInformationByHandle(file, &fileInfo));
+    QVERIFY(!(fileInfo.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT));
+    FILE_ID_INFO expectedIdentity{};
+    FILE_ID_INFO actualIdentity{};
+    QVERIFY(GetFileInformationByHandleEx(expectedFile, FileIdInfo, &expectedIdentity, sizeof(expectedIdentity)));
+    QVERIFY(GetFileInformationByHandleEx(file, FileIdInfo, &actualIdentity, sizeof(actualIdentity)));
+    QCOMPARE(actualIdentity.VolumeSerialNumber, expectedIdentity.VolumeSerialNumber);
+    const QByteArray expectedId(reinterpret_cast<const char *>(expectedIdentity.FileId.Identifier),
+                                sizeof(expectedIdentity.FileId.Identifier));
+    const QByteArray actualId(reinterpret_cast<const char *>(actualIdentity.FileId.Identifier),
+                              sizeof(actualIdentity.FileId.Identifier));
+    QVERIFY(expectedId != QByteArray(expectedId.size(), '\0'));
+    QCOMPARE(actualId, expectedId);
+    // Only after comparing live handles do we read the self-created target.
+    char bytes[64]{};
+    DWORD count = 0;
+    QVERIFY(ReadFile(file, bytes, sizeof(bytes), &count, nullptr));
+    QCOMPARE(QByteArray(bytes, int(count)), QByteArray("fixture outside workspace"));
+
+    QVERIFY(CloseHandle(file));
+    closeFile.dismiss();
+    QVERIFY(CloseHandle(expectedFile));
+    closeExpected.dismiss();
+    QVERIFY(CloseHandle(junctionHandle));
+    closeJunction.dismiss();
+    const BOOL removed = RemoveDirectoryW(reinterpret_cast<LPCWSTR>(junctionNative.utf16()));
+    const DWORD removalError = removed ? ERROR_SUCCESS : GetLastError();
+    QVERIFY2(removed, qPrintable(QStringLiteral("Remove fixture junction error %1").arg(removalError)));
+    removeJunction.dismiss();
+    QCOMPARE(readFile(target), QByteArray("fixture outside workspace"));
 }
 
 void QtDocumentSpikeTests::windowsUiaValueWrite_data()
