@@ -147,6 +147,11 @@ bool run()
     FixtureScintillaEdit mixedInactive;
     mixedInactive.send(SCI_SETDOCPOINTER, 0, mixedActive.send(SCI_GETDOCPOINTER));
     mixedInactive.setEnabled(false);
+    QInputMethodEvent previousPreedit(QStringLiteral("previous"), {});
+    QCoreApplication::sendEvent(&mixedActive, &previousPreedit);
+    if (text(mixedActive) != QByteArray("previous")
+        || snapshotForSaveFixture(mixedActive, mixedInactive).status != FixtureSnapshotStatus::Composing)
+        return false;
     int callbacksDuringInput = 0;
     bool unsafeCallback = false;
     QObject::connect(&mixedActive, &ScintillaEditBase::notifyChange, &mixedActive, [&] {
@@ -156,16 +161,23 @@ bool run()
             || transferFixture(mixedActive, mixedInactive) != FixtureHandoff::Composing)
             unsafeCallback = true;
     });
-    QInputMethodEvent mixedEvent(QStringLiteral("next"), {});
+    QInputMethodEvent mixedEvent(QStringLiteral("next"),
+                                 {QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, 2, 1, QVariant())});
     mixedEvent.setCommitString(QStringLiteral("先"));
+    mixedEvent.ignore(); // The fixture must not invent acceptance for the original event.
     QCoreApplication::sendEvent(&mixedActive, &mixedEvent);
     const auto mixedSnapshot = snapshotForSaveFixture(mixedActive, mixedInactive);
-    if (callbacksDuringInput == 0 || unsafeCallback
+    if (mixedEvent.isAccepted() || callbacksDuringInput == 0 || unsafeCallback
         || mixedSnapshot.status != FixtureSnapshotStatus::Composing || !mixedSnapshot.bytes.isEmpty()
         || transferFixture(mixedActive, mixedInactive) != FixtureHandoff::Composing
         || !mixedActive.isEnabled() || mixedInactive.isEnabled()) {
         qCritical() << "Snapshot allowed after an IME event with both commit and preedit; tentative marker:"
                     << mixedActive.send(SCI_GETUNDOTENTATIVE);
+        return false;
+    }
+    if (text(mixedActive) != QStringLiteral("先next").toUtf8()
+        || mixedActive.send(SCI_GETCURRENTPOS) != QStringLiteral("先ne").toUtf8().size()) {
+        qCritical("Mixed input event did not retain both committed and preedit text");
         return false;
     }
     QInputMethodEvent continued(QStringLiteral("next"), {});
@@ -179,6 +191,52 @@ bool run()
     if (unsafeCallback || mixedCommitted.status != FixtureSnapshotStatus::Ready
         || mixedCommitted.bytes != QStringLiteral("先后").toUtf8()
         || transferFixture(mixedActive, mixedInactive) != FixtureHandoff::Completed)
+        return false;
+
+    FixtureScintillaEdit replacementActive;
+    FixtureScintillaEdit replacementInactive;
+    replacementActive.send(SCI_SETCODEPAGE, SC_CP_UTF8);
+    const QByteArray replacementOriginal = QStringLiteral("甲🙂乙").toUtf8();
+    replacementActive.send(SCI_ADDTEXT, replacementOriginal.size(),
+                           reinterpret_cast<sptr_t>(replacementOriginal.constData()));
+    replacementActive.send(SCI_EMPTYUNDOBUFFER);
+    replacementInactive.send(SCI_SETDOCPOINTER, 0, replacementActive.send(SCI_GETDOCPOINTER));
+    replacementInactive.setEnabled(false);
+    replacementActive.send(SCI_GOTOPOS, QStringLiteral("甲🙂").toUtf8().size());
+    QInputMethodEvent previousReplacement(QStringLiteral("temporary"), {});
+    QCoreApplication::sendEvent(&replacementActive, &previousReplacement);
+    if (text(replacementActive) != QStringLiteral("甲🙂temporary乙").toUtf8()
+        || snapshotForSaveFixture(replacementActive, replacementInactive).status != FixtureSnapshotStatus::Composing)
+        return false;
+    QInputMethodEvent replacement(QStringLiteral("续"), {});
+    replacement.setCommitString(QStringLiteral("改"), -2, 2);
+    QCoreApplication::sendEvent(&replacementActive, &replacement);
+    const auto replacementSnapshot = snapshotForSaveFixture(replacementActive, replacementInactive);
+    if (text(replacementActive) != QStringLiteral("甲改续乙").toUtf8()
+        || replacementSnapshot.status != FixtureSnapshotStatus::Composing
+        || !replacementSnapshot.bytes.isEmpty()
+        || transferFixture(replacementActive, replacementInactive) != FixtureHandoff::Composing)
+        return false;
+    QInputMethodEvent replacementCommit;
+    replacementCommit.setCommitString(QStringLiteral("终"));
+    QCoreApplication::sendEvent(&replacementActive, &replacementCommit);
+    const QByteArray replacementFinal = QStringLiteral("甲改终乙").toUtf8();
+    if (text(replacementActive) != replacementFinal)
+        return false;
+    int undoCount = 0;
+    while (text(replacementActive) != replacementOriginal && undoCount < 8
+           && replacementActive.send(SCI_CANUNDO)) {
+        replacementActive.send(SCI_UNDO);
+        ++undoCount;
+    }
+    if (!undoCount || text(replacementActive) != replacementOriginal)
+        return false;
+    for (int i = 0; i < undoCount; ++i) {
+        if (!replacementActive.send(SCI_CANREDO))
+            return false;
+        replacementActive.send(SCI_REDO);
+    }
+    if (text(replacementActive) != replacementFinal)
         return false;
     return true;
 }
