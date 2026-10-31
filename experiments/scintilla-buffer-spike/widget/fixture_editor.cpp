@@ -20,10 +20,6 @@ void FixtureScintillaEdit::inputMethodEvent(QInputMethodEvent *event)
         ScintillaEditBase::inputMethodEvent(&commit);
         QInputMethodEvent preedit(event->preeditString(), event->attributes());
         ScintillaEditBase::inputMethodEvent(&preedit);
-        if (!commit.isAccepted() || !preedit.isAccepted())
-            event->ignore();
-        else
-            event->accept();
         return;
     }
     ScintillaEditBase::inputMethodEvent(event);

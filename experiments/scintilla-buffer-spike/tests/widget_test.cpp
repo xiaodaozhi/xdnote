@@ -164,9 +164,10 @@ bool run()
     QInputMethodEvent mixedEvent(QStringLiteral("next"),
                                  {QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, 2, 1, QVariant())});
     mixedEvent.setCommitString(QStringLiteral("先"));
+    mixedEvent.ignore(); // The fixture must not invent acceptance for the original event.
     QCoreApplication::sendEvent(&mixedActive, &mixedEvent);
     const auto mixedSnapshot = snapshotForSaveFixture(mixedActive, mixedInactive);
-    if (callbacksDuringInput == 0 || unsafeCallback
+    if (mixedEvent.isAccepted() || callbacksDuringInput == 0 || unsafeCallback
         || mixedSnapshot.status != FixtureSnapshotStatus::Composing || !mixedSnapshot.bytes.isEmpty()
         || transferFixture(mixedActive, mixedInactive) != FixtureHandoff::Composing
         || !mixedActive.isEnabled() || mixedInactive.isEnabled()) {
