@@ -1709,6 +1709,16 @@ void QtDocumentSpikeTests::windowsNativeCommitTrace()
     QVERIFY(successful.restored);
     QVERIFY(successful.calls > 0);
     QCOMPARE(successful.failures, 0u);
+    QVERIFY(successful.ntInstalled);
+    QVERIFY(successful.ntRestored);
+    QCOMPARE(successful.ntCalls, 1u);
+    QVERIFY(!(successful.ntReturnStatus & 0x80000000u));
+    QVERIFY(successful.sourceAccessQueried);
+    QCOMPARE(successful.sourceAccessStatus, quint32(0));
+    QVERIFY(successful.sourceHasDeleteAccess);
+    QVERIFY(successful.requestBoundsValid);
+    QVERIFY(successful.requestTerminated);
+    QVERIFY(successful.requestTargetMatches);
     QCOMPARE(readFile(path), QByteArray("updated"));
 
     QSaveFile blocked(path);
@@ -1726,6 +1736,20 @@ void QtDocumentSpikeTests::windowsNativeCommitTrace()
     QVERIFY(failed.calls > 0);
     QVERIFY(failed.failures > 0);
     QVERIFY(failed.lastFailureError != 0);
+    QVERIFY(failed.ntInstalled);
+    QVERIFY(failed.ntRestored);
+    QCOMPARE(failed.ntCalls, 1u);
+    QVERIFY(failed.ntReturnStatus & 0x80000000u);
+    QVERIFY(failed.sourceAccessQueried);
+    QCOMPARE(failed.sourceAccessStatus, quint32(0));
+    QVERIFY(failed.sourceHasDeleteAccess);
+    QVERIFY(failed.targetAttributesAvailable);
+    QVERIFY(!failed.targetReadOnly);
+    QVERIFY(failed.requestBoundsValid && failed.requestTerminated && failed.requestTargetMatches);
+    using StatusMapper = ULONG (WINAPI *)(LONG);
+    auto mapper = reinterpret_cast<StatusMapper>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlNtStatusToDosError"));
+    QVERIFY(mapper);
+    QCOMPARE(quint32(mapper(LONG(failed.ntReturnStatus))), failed.lastFailureError);
     QVERIFY(failed.sourceInfoAvailable);
     QVERIFY(!failed.sourceDeletePending);
     QVERIFY(failed.targetDeleteAttempted);
@@ -1742,7 +1766,7 @@ void QtDocumentSpikeTests::windowsNativeCommitTrace()
     LocalFree(message);
     QCOMPARE(blocked.errorString().trimmed(), formatted);
     QCOMPARE(readFile(path), QByteArray("updated"));
-    qInfo() << "Controlled fixture native rename failure:" << failed.lastFailureError;
+    qInfo().noquote() << describeFixtureNativeRename(failed);
 }
 
 void QtDocumentSpikeTests::windowsTargetSharingControl()

@@ -14,6 +14,18 @@ struct FixtureNativeRenameObservation
     unsigned calls = 0;
     unsigned failures = 0;
     quint32 lastFailureError = 0;
+    bool ntInstalled = false;
+    bool ntRestored = false;
+    unsigned ntCalls = 0;
+    quint32 ntReturnStatus = 0;
+    bool sourceAccessQueried = false;
+    quint32 sourceAccessStatus = 0;
+    bool sourceHasDeleteAccess = false;
+    bool targetAttributesAvailable = false;
+    bool targetReadOnly = false;
+    bool requestBoundsValid = false;
+    bool requestTerminated = false;
+    bool requestTargetMatches = false;
     bool sourceInfoAvailable = false;
     bool sourceDeletePending = false;
     bool targetDeleteAttempted = false;
@@ -63,6 +75,8 @@ private:
     FixtureNativeRenameObservation m_observation;
     void **m_slot = nullptr;
     void *m_original = nullptr;
+    void **m_ntSlot = nullptr;
+    void *m_ntOriginal = nullptr;
     bool m_finished = false;
     std::wstring m_targetPath;
     std::wstring m_fixtureRoot;

@@ -6,6 +6,7 @@
 
 #define NOMINMAX
 #include <windows.h>
+#include <winternl.h>
 #include <RestartManager.h>
 
 #include <array>
@@ -16,7 +17,11 @@
 
 namespace {
 using SetFileInfo = decltype(&SetFileInformationByHandle);
+using NtSetInfo = LONG (NTAPI *)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, ULONG);
+using NtQueryInfo = LONG (NTAPI *)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, ULONG);
 std::atomic<SetFileInfo> originalSetFileInfo{nullptr};
+std::atomic<NtSetInfo> originalNtSetInfo{nullptr};
+std::atomic<NtQueryInfo> queryNativeFileInfo{nullptr};
 std::atomic_flag traceInUse = ATOMIC_FLAG_INIT;
 thread_local FixtureNativeRenameObservation *currentObservation = nullptr;
 thread_local const wchar_t *currentTarget = nullptr;
@@ -24,6 +29,55 @@ thread_local const wchar_t *currentFixtureRoot = nullptr;
 thread_local DWORD currentUsersSession = 0;
 thread_local DWORD currentExpectedFixturePid = 0;
 thread_local bool currentUsersRegistered = false;
+thread_local HANDLE currentRenameHandle = INVALID_HANDLE_VALUE;
+
+LONG NTAPI tracedNtSetInformationFile(HANDLE file, PIO_STATUS_BLOCK statusBlock,
+                                      PVOID information, ULONG length, ULONG kind)
+{
+    const auto original = originalNtSetInfo.load(std::memory_order_acquire);
+    if (currentObservation && file == currentRenameHandle && kind == 10) {
+        currentObservation->sourceAccessQueried = false;
+        currentObservation->sourceAccessStatus = 0;
+        currentObservation->sourceHasDeleteAccess = false;
+        if (const auto query = queryNativeFileInfo.load(std::memory_order_acquire)) {
+            ACCESS_MASK access = 0;
+            IO_STATUS_BLOCK io{};
+            const LONG status = query(file, &io, &access, sizeof(access), 8); // FileAccessInformation
+            currentObservation->sourceAccessQueried = true;
+            currentObservation->sourceAccessStatus = quint32(status);
+            currentObservation->sourceHasDeleteAccess = status == 0 && (access & DELETE) != 0;
+        }
+    }
+    const LONG status = original(file, statusBlock, information, length, kind);
+    // FileRenameInformation is 10. This is the actual return of the matched
+    // call, not the thread's potentially stale LastStatusValue.
+    if (currentObservation && file == currentRenameHandle && kind == 10) {
+        ++currentObservation->ntCalls;
+        currentObservation->ntReturnStatus = quint32(status);
+    }
+    return status;
+}
+
+void inspectRenameRequest(const void *information, DWORD size)
+{
+    auto *observation = currentObservation;
+    observation->requestBoundsValid = false;
+    observation->requestTerminated = false;
+    observation->requestTargetMatches = false;
+    constexpr size_t offset = offsetof(FILE_RENAME_INFO, FileName);
+    if (!information || size < offset + sizeof(wchar_t)) return;
+    const auto *request = static_cast<const FILE_RENAME_INFO *>(information);
+    const DWORD bytes = request->FileNameLength;
+    if (bytes % sizeof(wchar_t) || bytes > size - offset - sizeof(wchar_t)
+        || request->RootDirectory || !request->ReplaceIfExists) return;
+    observation->requestBoundsValid = true;
+    const wchar_t *name = request->FileName;
+    int count = int(bytes / sizeof(wchar_t));
+    observation->requestTerminated = name[count] == 0;
+    if (count >= 4 && std::wcsncmp(name, L"\\\\?\\", 4) == 0) { name += 4; count -= 4; }
+    if (currentTarget)
+        observation->requestTargetMatches = CompareStringOrdinal(name, count, currentTarget, -1, TRUE) == CSTR_EQUAL;
+}
 
 struct FixtureUsers
 {
@@ -117,8 +171,16 @@ BOOL WINAPI tracedSetFileInformationByHandle(HANDLE file, FILE_INFO_BY_HANDLE_CL
                                              LPVOID information, DWORD size)
 {
     const SetFileInfo original = originalSetFileInfo.load(std::memory_order_acquire);
+    const DWORD incomingError = GetLastError();
+    const HANDLE previousHandle = currentRenameHandle;
+    if (currentObservation && kind == FileRenameInfo) {
+        inspectRenameRequest(information, size);
+        currentRenameHandle = file;
+    }
+    SetLastError(incomingError);
     const BOOL result = original(file, kind, information, size);
     const DWORD error = GetLastError();
+    currentRenameHandle = previousHandle;
     if (currentObservation && kind == FileRenameInfo) {
         ++currentObservation->calls;
         if (!result) {
@@ -151,6 +213,10 @@ BOOL WINAPI tracedSetFileInformationByHandle(HANDLE file, FILE_INFO_BY_HANDLE_CL
                 currentObservation->sourceDeletePending = info.DeletePending != FALSE;
             }
             if (currentTarget) {
+                const DWORD attributes = GetFileAttributesW(currentTarget);
+                currentObservation->targetAttributesAvailable = attributes != INVALID_FILE_ATTRIBUTES;
+                currentObservation->targetReadOnly = attributes != INVALID_FILE_ATTRIBUTES
+                    && (attributes & FILE_ATTRIBUTE_READONLY) != 0;
                 currentObservation->targetDeleteAttempted = true;
                 HANDLE target = CreateFileW(currentTarget, DELETE | FILE_READ_ATTRIBUTES,
                                             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -170,9 +236,9 @@ BOOL WINAPI tracedSetFileInformationByHandle(HANDLE file, FILE_INFO_BY_HANDLE_CL
     return result;
 }
 
-void **qtCoreSetFileInfoImport()
+void **moduleImport(const wchar_t *module, const char *library, const char *function)
 {
-    const auto base = reinterpret_cast<unsigned char *>(GetModuleHandleW(L"Qt6Core.dll"));
+    const auto base = reinterpret_cast<unsigned char *>(GetModuleHandleW(module));
     if (!base)
         return nullptr;
     const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(base);
@@ -187,7 +253,7 @@ void **qtCoreSetFileInfoImport()
     auto descriptor = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR *>(base + imports.VirtualAddress);
     const auto end = reinterpret_cast<const unsigned char *>(descriptor) + imports.Size;
     for (; reinterpret_cast<const unsigned char *>(descriptor + 1) <= end && descriptor->Name; ++descriptor) {
-        if (_stricmp(reinterpret_cast<const char *>(base + descriptor->Name), "KERNEL32.dll") != 0
+        if (_stricmp(reinterpret_cast<const char *>(base + descriptor->Name), library) != 0
             || !descriptor->OriginalFirstThunk || !descriptor->FirstThunk)
             continue;
         auto names = reinterpret_cast<const IMAGE_THUNK_DATA *>(base + descriptor->OriginalFirstThunk);
@@ -196,7 +262,7 @@ void **qtCoreSetFileInfoImport()
             if (IMAGE_SNAP_BY_ORDINAL(names->u1.Ordinal))
                 continue;
             const auto name = reinterpret_cast<const IMAGE_IMPORT_BY_NAME *>(base + names->u1.AddressOfData);
-            if (std::strcmp(reinterpret_cast<const char *>(name->Name), "SetFileInformationByHandle") == 0)
+            if (std::strcmp(reinterpret_cast<const char *>(name->Name), function) == 0)
                 return reinterpret_cast<void **>(&importSlot->u1.Function);
         }
     }
@@ -249,7 +315,7 @@ FixtureCommitNativeTrace::FixtureCommitNativeTrace(const QString &fixtureRoot, c
         }
         m_observation.usersRegistrationError = status;
     }
-    m_slot = qtCoreSetFileInfoImport();
+    m_slot = moduleImport(L"Qt6Core.dll", "KERNEL32.dll", "SetFileInformationByHandle");
     if (!m_slot) {
         traceInUse.clear();
         return;
@@ -269,6 +335,18 @@ FixtureCommitNativeTrace::FixtureCommitNativeTrace(const QString &fixtureRoot, c
         return;
     }
     m_observation.installed = true;
+    queryNativeFileInfo.store(reinterpret_cast<NtQueryInfo>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),
+                                                                          "NtQueryInformationFile")),
+                              std::memory_order_release);
+    m_ntSlot = moduleImport(L"KernelBase.dll", "ntdll.dll", "NtSetInformationFile");
+    if (m_ntSlot && *m_ntSlot) {
+        m_ntOriginal = *m_ntSlot;
+        originalNtSetInfo.store(reinterpret_cast<NtSetInfo>(m_ntOriginal), std::memory_order_release);
+        m_observation.ntInstalled = exchangeImport(m_ntSlot, m_ntOriginal,
+                                                   reinterpret_cast<void *>(&tracedNtSetInformationFile));
+        if (*m_ntSlot == reinterpret_cast<void *>(&tracedNtSetInformationFile))
+            m_observation.ntInstalled = true;
+    }
 }
 
 FixtureCommitNativeTrace::~FixtureCommitNativeTrace()
@@ -303,7 +381,10 @@ FixtureNativeRenameObservation FixtureCommitNativeTrace::finish()
         }
         m_observation.restored = exchangeImport(m_slot, reinterpret_cast<void *>(&tracedSetFileInformationByHandle),
                                                 m_original);
-        if (m_observation.restored)
+        if (m_observation.ntInstalled)
+            m_observation.ntRestored = exchangeImport(m_ntSlot, reinterpret_cast<void *>(&tracedNtSetInformationFile),
+                                                       m_ntOriginal);
+        if (m_observation.restored && (!m_observation.ntInstalled || m_observation.ntRestored))
             traceInUse.clear(); // Otherwise never mistake the wrapper for the original import.
     }
     if (!m_finished && m_usersSessionStarted) {
@@ -321,7 +402,14 @@ QString describeFixtureNativeRename(const FixtureNativeRenameObservation &observ
         .arg(observation.installed).arg(observation.captureStarted).arg(observation.restored).arg(observation.calls)
         .arg(observation.failures).arg(observation.lastFailureError)
         .arg(observation.sourceInfoAvailable).arg(observation.sourceDeletePending)
-        .arg(observation.targetDeleteAttempted).arg(observation.targetDeleteOpened).arg(observation.targetDeleteError);
+        .arg(observation.targetDeleteAttempted).arg(observation.targetDeleteOpened).arg(observation.targetDeleteError)
+        + QStringLiteral("; NT installed=%1; restored=%2; calls=%3; return=0x%4; request bounds=%5; terminated=%6; target matches=%7")
+              .arg(observation.ntInstalled).arg(observation.ntRestored).arg(observation.ntCalls)
+              .arg(observation.ntReturnStatus, 8, 16, QLatin1Char('0')).arg(observation.requestBoundsValid)
+              .arg(observation.requestTerminated).arg(observation.requestTargetMatches)
+        + QStringLiteral("; source access queried=%1; access status=0x%2; DELETE granted=%3; target attributes=%4; target readonly=%5")
+              .arg(observation.sourceAccessQueried).arg(observation.sourceAccessStatus, 8, 16, QLatin1Char('0'))
+              .arg(observation.sourceHasDeleteAccess).arg(observation.targetAttributesAvailable).arg(observation.targetReadOnly);
     if (!observation.usersRequested)
         return result;
     return result + QStringLiteral("; fixture users registration error=%1; queried=%2; query error=%3; "
