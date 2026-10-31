@@ -34,6 +34,8 @@ add_executable(qt_document_spike_tests
     tests/file_identity_probe.h
     tests/image_reference_probe.cpp
     tests/image_reference_probe.h
+    tests/windows_commit_diagnostic.cpp
+    tests/windows_commit_diagnostic.h
     tests/displaced_probe.cpp
     tests/displaced_probe.h
     tests/qt_spike_test.cpp
