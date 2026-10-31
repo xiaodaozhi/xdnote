@@ -2,6 +2,7 @@
 #include "spike_handoff.h"
 #include "spike_ipc.h"
 #include "file_identity_probe.h"
+#include "image_reference_probe.h"
 #include "displaced_probe.h"
 
 #include <QAccessible>
@@ -30,6 +31,7 @@
 #include <QTextCursor>
 #include <QTextFrame>
 #include <QTextFragment>
+#include <QTextImageFormat>
 #include <QTextList>
 #include <QTextTable>
 #include <QTimer>
@@ -225,6 +227,10 @@ private slots:
     void markdownCorpusParsesBasicSemantics();
     void markdownAnchorsRemainUntrusted();
     void previewUsesPlaceholdersForLocalAndRemoteImages();
+    void imageReferenceLexicalCandidate_data();
+    void imageReferenceLexicalCandidate();
+    void markdownImageNamesStayBlocked();
+    void imageReferenceCanEscapeThroughSymlink();
     void previewLeavesSourceUndoIndependent();
     void openIntentFramesHandlePartialAndInvalidInput();
     void openIntentMovesBetweenRealLocalProcesses();
@@ -608,6 +614,122 @@ void QtDocumentSpikeTests::previewUsesPlaceholdersForLocalAndRemoteImages()
         QCOMPARE(placeholder.pixelColor(0, 0).alpha(), 0);
         QVERIFY(preview.requestedResources().contains(url.toString()));
     }
+}
+
+void QtDocumentSpikeTests::imageReferenceLexicalCandidate_data()
+{
+    QTest::addColumn<QByteArray>("reference");
+    QTest::addColumn<bool>("accepted");
+    QTest::addColumn<QStringList>("expectedComponents");
+    const auto allow = [](const char *name, const QByteArray &reference, const QStringList &parts) {
+        QTest::newRow(name) << reference << true << parts;
+    };
+    const auto reject = [](const char *name, const QByteArray &reference) {
+        QTest::newRow(name) << reference << false << QStringList{};
+    };
+    allow("relative", "images/cover.png", {QStringLiteral("images"), QStringLiteral("cover.png")});
+    allow("dot component", "./images/./cover.png", {QStringLiteral("images"), QStringLiteral("cover.png")});
+    allow("unicode", "images/%E5%9B%BE.png", {QStringLiteral("images"), QStringLiteral("图.png")});
+    allow("space and hash", "images/a%20%23b.png", {QStringLiteral("images"), QStringLiteral("a #b.png")});
+    allow("literal percent", "images/100%25.png", {QStringLiteral("images"), QStringLiteral("100%.png")});
+    allow("decode once", "images/%252e%252e.png", {QStringLiteral("images"), QStringLiteral("%2e%2e.png")});
+    reject("empty", "");
+    reject("remote", "https://example.invalid/image.png");
+    reject("remote authority", "//example.invalid/image.png");
+    reject("file scheme", "file:///tmp/image.png");
+    reject("embedded data", "data:image/png;base64,AA==");
+    reject("absolute path", "/images/cover.png");
+    reject("parent", "../outside.png");
+    reject("encoded parent", "images/%2e%2e/outside.png");
+    reject("mixed encoded parent", "images/%2e./outside.png");
+    reject("encoded separators", "images%2f..%2foutside.png");
+    reject("backslash", "images\\..\\outside.png");
+    reject("encoded backslash", "images%5c..%5coutside.png");
+    reject("drive absolute", "C:/outside.png");
+    reject("drive relative", "C:outside.png");
+    reject("encoded drive", "C%3Aoutside.png");
+    reject("alternate stream", "images/cover.png%3Asecret");
+    reject("empty component", "images//cover.png");
+    reject("trailing separator", "images/");
+    reject("query", "images/cover.png?x=1");
+    reject("empty query", "images/cover.png?");
+    reject("fragment", "images/cover.png#part");
+    reject("nul", "images/%00.png");
+    reject("control", "images/%1f.png");
+    reject("invalid utf8", "images/%FF.png");
+    reject("truncated utf8", "images/%E5%9B.png");
+    reject("invalid escape", "images/%ZZ.png");
+    reject("device with extension", "images/CON.png");
+    reject("device with case", "images/aux.txt");
+    reject("device with superscript", "images/com%C2%B9.png");
+    reject("trailing dot", "images/cover.png.");
+    reject("trailing space", "images/cover.png%20");
+    reject("encoded wildcard", "images/cover%3F.png");
+}
+
+void QtDocumentSpikeTests::imageReferenceLexicalCandidate()
+{
+    QFETCH(QByteArray, reference);
+    QFETCH(bool, accepted);
+    QFETCH(QStringList, expectedComponents);
+    const auto components = candidateImageReference(reference);
+    QCOMPARE(components.has_value(), accepted);
+    if (components)
+        QCOMPARE(*components, expectedComponents);
+}
+
+void QtDocumentSpikeTests::markdownImageNamesStayBlocked()
+{
+    RestrictedPreview preview;
+    preview.render(QStringLiteral("![local](./images/%E5%9B%BE.png)\n\n"
+                                  "![parent](../outside.png)\n\n"
+                                  "![encoded](images/%2e%2e/outside.png)\n\n"
+                                  "![remote](https://example.invalid/cover.png)"));
+    QStringList names;
+    for (QTextBlock block = preview.begin(); block.isValid(); block = block.next()) {
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment fragment = it.fragment();
+            if (fragment.isValid() && fragment.charFormat().isImageFormat())
+                names.append(fragment.charFormat().toImageFormat().name());
+        }
+    }
+    QCOMPARE(names.size(), 4);
+    const auto local = candidateImageReference(names.at(0).toUtf8());
+    QVERIFY(local);
+    QCOMPARE(*local, (QStringList{QStringLiteral("images"), QStringLiteral("图.png")}));
+    QVERIFY(!candidateImageReference(names.at(1).toUtf8()));
+    QVERIFY(!candidateImageReference(names.at(2).toUtf8()));
+    QVERIFY(!candidateImageReference(names.at(3).toUtf8()));
+    for (const QString &name : names) {
+        const QVariant resource = preview.resource(QTextDocument::ImageResource, QUrl(name));
+        QVERIFY(resource.canConvert<QImage>());
+        const QImage placeholder = qvariant_cast<QImage>(resource);
+        QCOMPARE(placeholder.size(), QSize(1, 1));
+        QCOMPARE(placeholder.pixelColor(0, 0).alpha(), 0);
+    }
+}
+
+void QtDocumentSpikeTests::imageReferenceCanEscapeThroughSymlink()
+{
+#ifdef Q_OS_WIN
+    QSKIP("This counterexample uses a POSIX symbolic link in the test fixture.");
+#else
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString workspace = temporary->filePath(QStringLiteral("workspace"));
+    QVERIFY(QDir().mkpath(workspace + QStringLiteral("/images")));
+    const QString outside = temporary->filePath(QStringLiteral("outside.bin"));
+    QVERIFY(writeFile(outside, QByteArray("fixture outside workspace")));
+    const QString link = workspace + QStringLiteral("/images/link.png");
+    QCOMPARE(::symlink("../../outside.bin", QFile::encodeName(link).constData()), 0);
+    const auto removeLink = qScopeGuard([&link] { QFile::remove(link); });
+    const auto components = candidateImageReference(QByteArray("images/link.png"));
+    QVERIFY(components); // A lexical check cannot see where the link leads.
+    QCOMPARE(QFileInfo(link).canonicalFilePath(), QFileInfo(outside).canonicalFilePath());
+    QFile followed(link);
+    QVERIFY(followed.open(QIODevice::ReadOnly));
+    QCOMPARE(followed.readAll(), QByteArray("fixture outside workspace"));
+#endif
 }
 
 void QtDocumentSpikeTests::previewLeavesSourceUndoIndependent()
