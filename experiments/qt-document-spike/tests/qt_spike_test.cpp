@@ -258,6 +258,7 @@ private slots:
     void deletedTargetIsNotRecreated();
 #ifdef Q_OS_WIN
     void windowsSharingFailuresRetainEdits();
+    void windowsSharingFailureWhileEditingPreservesAllChanges_data();
     void windowsSharingFailureWhileEditingPreservesAllChanges();
     void windowsImageJunctionBypassesFinalNofollow();
     void windowsSaveFailureObservations();
@@ -1181,8 +1182,8 @@ void QtDocumentSpikeTests::readerHandleAndReplacement()
     });
 
 #ifdef Q_OS_WIN
-    // This is a separate native call with Qt's inspected replacement flag.
-    // Its immediately captured error does not describe QSaveFile's later call.
+    // This is a separate MoveFileExW comparison. The tested QSaveFile path can
+    // instead rename its open temporary handle; this error does not describe it.
     const QString prepared = temporary->filePath(QStringLiteral("prepared.md"));
     const QString backup = temporary->filePath(QStringLiteral("displaced.md"));
     QVERIFY(writeFile(prepared, QByteArray("candidate")));
@@ -1370,6 +1371,11 @@ void QtDocumentSpikeTests::windowsSaveFailureObservations()
     const QString path = temporary->filePath(QStringLiteral("note.md"));
     QVERIFY(writeFile(path, QByteArray("original")));
     QVERIFY(!observeFixtureCommitFailure(temporary->filePath(QStringLiteral("not-a-fixture"))).valid);
+    QVERIFY(!observeFixtureCommitFailure(temporary->path(), nullptr, nullptr,
+                                         QStringLiteral("../note.md")).valid);
+    QCOMPARE(fixtureOtherEntryCount(temporary->path(), QStringLiteral("../note.md")), -1);
+    QVERIFY(!observeFixtureCommitFailure(temporary->path(), nullptr, nullptr,
+                                         QStringLiteral("other.md")).valid);
     const auto initial = observeFixtureCommitFailure(temporary->path());
     QVERIFY(initial.valid);
     QCOMPARE(initial.targetState, QStringLiteral("original"));
@@ -1427,6 +1433,16 @@ void QtDocumentSpikeTests::windowsSaveFailureObservations()
     QVERIFY(missing.valid);
     QCOMPARE(missing.targetState, QStringLiteral("missing"));
     QVERIFY(!missing.deleteOpenAttempted);
+
+    const QString unicodeName = QStringLiteral("笔记 空格.md");
+    QVERIFY(writeFile(temporary->filePath(unicodeName), QByteArray("original")));
+    QVERIFY(writeFile(path, QByteArray("external"))); // Decoy with the former fixed name.
+    const auto unicodeTarget = observeFixtureCommitFailure(temporary->path(), nullptr, nullptr, unicodeName);
+    QVERIFY(unicodeTarget.valid);
+    QCOMPARE(unicodeTarget.targetState, QStringLiteral("original"));
+    QCOMPARE(unicodeTarget.otherEntries, 1);
+    QCOMPARE(fixtureOtherEntryCount(temporary->path(), unicodeName), 1);
+    QCOMPARE(observeFixtureCommitFailure(temporary->path()).targetState, QStringLiteral("external"));
 }
 
 void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
@@ -1480,12 +1496,24 @@ void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
     QVERIFY(!session.isDirty());
 }
 
+void QtDocumentSpikeTests::windowsSharingFailureWhileEditingPreservesAllChanges_data()
+{
+    QTest::addColumn<QString>("targetName");
+    QTest::newRow("note") << QStringLiteral("note.md");
+    QTest::newRow("unicode") << QStringLiteral("笔记 空格.md");
+    QTest::newRow("nbsp") << QStringLiteral("nbsp.md");
+    QTest::newRow("edited") << QStringLiteral("edited.md");
+}
+
 void QtDocumentSpikeTests::windowsSharingFailureWhileEditingPreservesAllChanges()
 {
+    QFETCH(QString, targetName);
     auto temporary = fixtureDirectory();
     QVERIFY(temporary);
-    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    const QString path = temporary->filePath(targetName);
     QVERIFY(writeFile(path, QByteArray("original")));
+    if (targetName != QStringLiteral("note.md"))
+        QVERIFY(writeFile(temporary->filePath(QStringLiteral("note.md")), QByteArray("decoy")));
     SpikeSession session;
     QString error;
     QVERIFY2(session.open(path, &error), qUtf8Printable(error));

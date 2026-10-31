@@ -33,6 +33,12 @@ QString validatedFixtureRoot(const QString &requested)
     return root;
 }
 
+bool isFixtureTargetName(const QString &name)
+{
+    return name == QStringLiteral("note.md") || name == QStringLiteral("nbsp.md")
+        || name == QStringLiteral("笔记 空格.md") || name == QStringLiteral("edited.md");
+}
+
 QString classifyFixtureBytes(const QByteArray &bytes, const QByteArray *baseline, const QByteArray *attempted)
 {
     if (baseline && attempted) {
@@ -55,27 +61,28 @@ QString classifyFixtureBytes(const QByteArray &bytes, const QByteArray *baseline
 }
 } // namespace
 
-int fixtureOtherEntryCount(const QString &fixtureRoot)
+int fixtureOtherEntryCount(const QString &fixtureRoot, const QString &targetName)
 {
     const QString root = validatedFixtureRoot(fixtureRoot);
-    if (root.isEmpty())
+    if (root.isEmpty() || !isFixtureTargetName(targetName))
         return -1;
     QStringList entries = QDir(root).entryList(QDir::AllEntries | QDir::Hidden | QDir::System
                                               | QDir::NoDotAndDotDot);
-    entries.removeAll(QStringLiteral("note.md"));
+    entries.removeAll(targetName);
     return entries.size();
 }
 
 FixtureCommitObservation observeFixtureCommitFailure(const QString &fixtureRoot,
-                                                     const QByteArray *baseline, const QByteArray *attempted)
+                                                     const QByteArray *baseline, const QByteArray *attempted,
+                                                     const QString &targetName)
 {
     FixtureCommitObservation observation;
     const QString root = validatedFixtureRoot(fixtureRoot);
-    if (root.isEmpty())
+    if (root.isEmpty() || !isFixtureTargetName(targetName))
         return observation;
     observation.valid = true;
-    observation.otherEntries = fixtureOtherEntryCount(root);
-    const QString native = QDir::toNativeSeparators(root + QStringLiteral("/note.md"));
+    observation.otherEntries = fixtureOtherEntryCount(root, targetName);
+    const QString native = QDir::toNativeSeparators(root + QLatin1Char('/') + targetName);
     const auto path = reinterpret_cast<LPCWSTR>(native.utf16());
     const DWORD attributes = GetFileAttributesW(path);
     if (attributes == INVALID_FILE_ATTRIBUTES) {
