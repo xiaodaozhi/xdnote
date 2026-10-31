@@ -51,6 +51,9 @@
 #  include "windows_junction_probe.h"
 #  include "windows_commit_diagnostic.h"
 #  include "windows_commit_native_trace.h"
+#  ifdef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+#    include "windows_value_bridge.h"
+#  endif
 #else
 #  include <unistd.h>
 #endif
@@ -239,6 +242,8 @@ private slots:
     void guardedAccessibilityTracksReplacedDocument_data();
     void guardedAccessibilityTracksReplacedDocument();
     void guardedAccessibilityPreservesReadOnlyAndUndo();
+    void guardedEditorLifetimeAndRejections();
+    void guardedReplacementRejectsReentry();
     void singleEditorReparentPreservesAccessibilityAndUndo_data();
     void singleEditorReparentPreservesAccessibilityAndUndo();
     void previewParsesMarkdownAndBlocksResources();
@@ -283,6 +288,8 @@ private slots:
     void windowsFixtureUseProbe();
     void windowsUiaValueWrite_data();
     void windowsUiaValueWrite();
+    void windowsUiaResultFeedback_data();
+    void windowsUiaResultFeedback();
 #endif
 };
 
@@ -457,8 +464,8 @@ void QtDocumentSpikeTests::guardedAccessibilityTracksReplacedDocument()
     QAccessible::installFactory(guardedQuickAccessibilityFactory);
     const auto removeFactory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
     QAccessible::setActive(true);
-    QTextDocument replacement;
-    QTextDocument secondReplacement;
+    auto replacement = std::make_shared<QTextDocument>();
+    auto secondReplacement = std::make_shared<QTextDocument>();
     QQmlEngine engine;
     auto source = std::make_unique<QQuickWindow>();
     auto destination = std::make_unique<QQuickWindow>();
@@ -482,8 +489,8 @@ void QtDocumentSpikeTests::guardedAccessibilityTracksReplacedDocument()
     }
 
     const QString sample = QStringLiteral("新🙂文本\nsecond");
-    replacement.setPlainText(sample);
-    quick->setTextDocument(&replacement);
+    replacement->setPlainText(sample);
+    QCOMPARE(qobject_cast<GuardedFixtureTextEdit *>(editor)->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
     QVERIFY(original.isNull());
     QAccessibleInterface *after = QAccessible::queryAccessibleInterface(editor);
     QVERIFY(after);
@@ -513,22 +520,22 @@ void QtDocumentSpikeTests::guardedAccessibilityTracksReplacedDocument()
     QCOMPARE(accessible->window(), destination.get());
     QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
     QCOMPARE(text->text(0, text->characterCount()), sample);
-    replacement.clearUndoRedoStacks();
-    QTextCursor tail(&replacement);
+    replacement->clearUndoRedoStacks();
+    QTextCursor tail(replacement.get());
     tail.movePosition(QTextCursor::End);
     tail.insertText(QStringLiteral("!"));
     QCOMPARE(text->text(0, text->characterCount()), sample + QStringLiteral("!"));
     accessible->setText(QAccessible::Value, QStringLiteral("接管后修改"));
     QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("接管后修改"));
-    replacement.undo();
+    replacement->undo();
     QCOMPARE(text->text(0, text->characterCount()), sample + QStringLiteral("!"));
-    replacement.undo();
+    replacement->undo();
     QCOMPARE(text->text(0, text->characterCount()), sample);
-    replacement.redo();
-    replacement.redo();
+    replacement->redo();
+    replacement->redo();
     QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("接管后修改"));
-    secondReplacement.setPlainText(QStringLiteral("再次替换"));
-    quick->setTextDocument(&secondReplacement);
+    secondReplacement->setPlainText(QStringLiteral("再次替换"));
+    QCOMPARE(qobject_cast<GuardedFixtureTextEdit *>(editor)->replaceOwnedDocument(secondReplacement), FixtureEditResult::Applied);
     QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
     QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("再次替换"));
 #endif
@@ -607,6 +614,106 @@ void QtDocumentSpikeTests::guardedAccessibilityPreservesReadOnlyAndUndo()
     QInputMethodEvent cancel;
     QCoreApplication::sendEvent(editor, &cancel);
     QVERIFY(!editor->property("inputMethodComposing").toBool());
+#endif
+}
+
+void QtDocumentSpikeTests::guardedEditorLifetimeAndRejections()
+{
+#ifndef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    QSKIP("The private accessibility candidate is limited to Qt 6.8.");
+#else
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QAccessible::setActive(true);
+    QQmlEngine engine;
+    QQuickWindow window;
+    auto *editor = qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true));
+    QVERIFY(editor);
+    editor->setParent(&engine);
+    QPointer<GuardedFixtureTextEdit> alive = editor;
+    const auto life = editor->lifetime().lock();
+    QVERIFY(life);
+    auto document = std::make_shared<QTextDocument>();
+    document->setPlainText(QStringLiteral("original"));
+    QCOMPARE(editor->replaceOwnedDocument(document), FixtureEditResult::Applied);
+    QAccessibleInterface *accessible = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(accessible);
+    const auto accessibleId = QAccessible::uniqueId(accessible);
+    QSignalSpy feedback(editor, &GuardedFixtureTextEdit::accessibleWriteFinished);
+    editor->setReadOnly(true);
+    QCOMPARE(editor->replaceAccessibleText(QStringLiteral("denied")), FixtureEditResult::ReadOnly);
+    QCOMPARE(feedback.size(), 1);
+    QVERIFY(!feedback.last().at(1).toString().isEmpty());
+    QCOMPARE(accessible->text(QAccessible::Description), feedback.last().at(1).toString());
+    QCOMPARE(document->toPlainText(), QStringLiteral("original"));
+    editor->setReadOnly(false);
+    QCOMPARE(editor->replaceAccessibleText(QString(QChar(0xd800))), FixtureEditResult::InvalidText);
+    QCOMPARE(document->toPlainText(), QStringLiteral("original"));
+    QCOMPARE(editor->replaceAccessibleText(QStringLiteral("original")), FixtureEditResult::Unchanged);
+    QVERIFY(editor->writeError().isEmpty());
+    document->setUndoRedoEnabled(false);
+    QCOMPARE(editor->replaceAccessibleText(QStringLiteral("denied")), FixtureEditResult::UndoUnavailable);
+    document->setUndoRedoEnabled(true);
+
+    auto next = std::make_shared<QTextDocument>();
+    bool entered = false;
+    connect(document.get(), &QTextDocument::contentsChanged, &engine, [&] {
+        if (entered) return;
+        entered = true;
+        QCOMPARE(editor->replaceOwnedDocument(next), FixtureEditResult::Busy);
+        QCOMPARE(editor->replaceAccessibleText(QStringLiteral("nested")), FixtureEditResult::Busy);
+        editor->requestClose();
+        QCOMPARE(editor->replaceAccessibleText(QStringLiteral("closing")), FixtureEditResult::Closing);
+        QCOMPARE(quickDocument(editor)->textDocument(), document.get());
+        QVERIFY(alive);
+    });
+    QCOMPARE(editor->replaceAccessibleText(QStringLiteral("accepted")), FixtureEditResult::Applied);
+    QVERIFY(entered);
+    QVERIFY(life->closing);
+    QVERIFY(!life->busy);
+    QCOMPARE(document->toPlainText(), QStringLiteral("accepted"));
+    QVERIFY(document->isUndoAvailable());
+    std::weak_ptr<QTextDocument> weakDocument(document);
+    document.reset();
+    QVERIFY(!weakDocument.expired());
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(alive.isNull());
+    QVERIFY(QAccessible::accessibleInterface(accessibleId) == nullptr);
+    QVERIFY(!life->document);
+    QVERIFY(weakDocument.expired());
+#endif
+}
+
+void QtDocumentSpikeTests::guardedReplacementRejectsReentry()
+{
+#ifndef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    QSKIP("The private accessibility candidate is limited to Qt 6.8.");
+#else
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QQmlEngine engine;
+    QQuickWindow window;
+    auto *editor = qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true));
+    QVERIFY(editor);
+    const auto life = editor->lifetime().lock();
+    std::weak_ptr<QTextDocument> previous(life->document);
+    auto replacement = std::make_shared<QTextDocument>();
+    replacement->setPlainText(QStringLiteral("replacement"));
+    auto nested = std::make_shared<QTextDocument>();
+    QAccessibleInterface *cached = QAccessible::queryAccessibleInterface(editor);
+    bool entered = false;
+    connect(quickDocument(editor), &QQuickTextDocument::textDocumentChanged, &engine, [&] {
+        entered = true;
+        QVERIFY(!previous.expired());
+        QCOMPARE(editor->replaceOwnedDocument(nested), FixtureEditResult::Busy);
+        QCOMPARE(editor->replaceAccessibleText(QStringLiteral("nested")), FixtureEditResult::Busy);
+        QCOMPARE(cached->textInterface()->text(0, cached->textInterface()->characterCount()),
+                 QStringLiteral("replacement"));
+    });
+    QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
+    QVERIFY(entered);
+    QVERIFY(previous.expired());
+    QCOMPARE(quickDocument(editor)->textDocument(), replacement.get());
 #endif
 }
 
@@ -2089,6 +2196,137 @@ void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
     QCOMPARE(readFile(target), QByteArray("fixture outside workspace"));
 }
 
+void QtDocumentSpikeTests::windowsUiaResultFeedback_data()
+{
+    QTest::addColumn<QString>("mode");
+    QTest::addColumn<int>("condition");
+    QTest::addColumn<quint32>("expectedStatus");
+    QTest::newRow("accepted") << QStringLiteral("valid") << 0 << quint32(0);
+    QTest::newRow("invalid UTF16") << QStringLiteral("invalid") << 0 << quint32(0x80070057);
+    QTest::newRow("unsupported separator") << QStringLiteral("separator") << 0 << quint32(0x80070057);
+    QTest::newRow("read only") << QStringLiteral("valid") << 1 << quint32(0x80131509);
+    QTest::newRow("composing") << QStringLiteral("valid") << 2 << quint32(0x80131509);
+    QTest::newRow("undo unavailable") << QStringLiteral("valid") << 3 << quint32(0x80131509);
+    QTest::newRow("cached provider after close") << QStringLiteral("close") << 4 << quint32(0x80040201);
+    QTest::newRow("reentrant document transaction") << QStringLiteral("valid") << 5 << quint32(0x80131509);
+}
+
+void QtDocumentSpikeTests::windowsUiaResultFeedback()
+{
+#ifndef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    QSKIP("The private accessibility candidate is limited to Qt 6.8.");
+#else
+    QFETCH(QString, mode);
+    QFETCH(int, condition);
+    QFETCH(quint32, expectedStatus);
+    if (QGuiApplication::platformName() != QStringLiteral("windows"))
+        QSKIP("The native result bridge requires a Windows window.");
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.setFlag(Qt::WindowDoesNotAcceptFocus);
+    window.setTitle(QStringLiteral("xdnote-result-uia-fixture"));
+    window.resize(400, 200);
+    window.setPosition(-10000, -10000);
+    window.show();
+    auto *editor = qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true));
+    QVERIFY(editor);
+    QPointer<GuardedFixtureTextEdit> alive(editor);
+    editor->setText(QStringLiteral("origina"));
+    editor->insert(7, QStringLiteral("l"));
+    auto document = editor->lifetime().lock()->document;
+    QVERIFY(document->isUndoAvailable());
+    if (condition == 1) editor->setReadOnly(true);
+    if (condition == 2) {
+        editor->forceActiveFocus();
+        QInputMethodEvent preedit(QStringLiteral("pin"), {});
+        QCoreApplication::sendEvent(editor, &preedit);
+        QVERIFY(editor->isInputMethodComposing());
+    }
+    if (condition == 3) document->setUndoRedoEnabled(false);
+    FixtureWindowsValueBridge bridge(&window, editor);
+    QEventLoop loop;
+    QProcess client;
+    client.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/qt_uia_result_client.exe"));
+    client.setArguments({QString::number(quintptr(window.winId())), mode});
+    QByteArray output;
+    bool closed = false;
+    connect(&client, &QProcess::readyReadStandardOutput, &loop, [&] {
+        output += client.readAllStandardOutput();
+        if (mode == QStringLiteral("close") && !closed && output.contains("READY")) {
+            closed = true;
+            editor->requestClose();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            client.write("CONTINUE\n");
+        }
+    });
+    const auto cleanup = qScopeGuard([&] {
+        if (client.state() != QProcess::NotRunning) { client.kill(); client.waitForFinished(5000); }
+    });
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(&client, &QProcess::finished, &loop, &QEventLoop::quit);
+    auto runClient = [&] {
+        client.start();
+        QVERIFY(client.waitForStarted(5000));
+        timeout.start(15000);
+        if (client.state() != QProcess::NotRunning) loop.exec();
+    };
+    if (condition == 5) {
+        auto replacement = std::make_shared<QTextDocument>();
+        replacement->setPlainText(QStringLiteral("origina"));
+        QTextCursor cursor(replacement.get());
+        cursor.movePosition(QTextCursor::End);
+        cursor.insertText(QStringLiteral("l"));
+        bool entered = false;
+        const auto connection = connect(quickDocument(editor), &QQuickTextDocument::textDocumentChanged, &loop, [&] {
+            entered = true;
+            runClient(); // Exercise a real UIA request inside the document swap.
+        });
+        QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
+        disconnect(connection);
+        QVERIFY(entered);
+        document = replacement;
+    } else runClient();
+    QVERIFY2(client.state() == QProcess::NotRunning, "Native result bridge client timed out");
+    QCOMPARE(client.exitStatus(), QProcess::NormalExit);
+    QVERIFY2(client.exitCode() == 0, qPrintable(QStringLiteral("Native client exit %1").arg(client.exitCode())));
+    output += client.readAllStandardOutput();
+    QList<QByteArray> lines = output.trimmed().split('\n');
+    QVERIFY(!lines.isEmpty());
+    if (condition == 4) {
+        QVERIFY(closed);
+        QVERIFY(alive.isNull());
+        QCOMPARE(lines.takeFirst().trimmed(), QByteArray("READY"));
+    }
+    QVERIFY(lines.at(0).startsWith("HRESULT "));
+    bool ok = false;
+    const quint32 status = lines.at(0).mid(8).trimmed().toUInt(&ok);
+    QVERIFY(ok);
+    qInfo() << "Native result HRESULT:" << status;
+    QCOMPARE(status, expectedStatus);
+    QVERIFY(lines.at(1).startsWith("READSTATUS "));
+    const quint32 readStatus = lines.at(1).mid(11).trimmed().toUInt(&ok);
+    QVERIFY(ok);
+    if (condition == 4) QCOMPARE(readStatus, quint32(0x80040201));
+    else QCOMPARE(readStatus, quint32(0));
+    if (expectedStatus == 0) {
+        QCOMPARE(lines.last().trimmed(), QByteArray("VALUE accepted"));
+        QCOMPARE(document->toPlainText(), QStringLiteral("accepted"));
+        document->undo();
+        QCOMPARE(document->toPlainText(), QStringLiteral("original"));
+        document->undo();
+        QCOMPARE(document->toPlainText(), QStringLiteral("origina"));
+    } else {
+        QCOMPARE(document->toPlainText(), QStringLiteral("original"));
+        if (condition != 3) QVERIFY(document->isUndoAvailable());
+        if (condition != 4) QCOMPARE(lines.last().trimmed(), QByteArray("VALUE original"));
+    }
+#endif
+}
+
 void QtDocumentSpikeTests::windowsUiaValueWrite_data()
 {
     QTest::addColumn<bool>("readOnly");
@@ -2118,8 +2356,7 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
         QSKIP("The private accessibility candidate is limited to Qt 6.8.");
 #endif
     QAccessible::setActive(true);
-    // Keep the replacement alive until after the window and its editor.
-    QTextDocument replacement;
+    auto replacement = std::make_shared<QTextDocument>();
     QQmlEngine engine;
     QQuickWindow window;
     window.setFlag(Qt::WindowDoesNotAcceptFocus);
@@ -2145,18 +2382,21 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
         QVERIFY(isGuardedQuickAccessibility(accessible));
 #endif
     QCOMPARE(bool(accessible->state().readOnly), readOnly);
+#ifdef XDNOTE_QT68_GUARDED_ACCESSIBILITY
     if (guarded && !readOnly) {
-        replacement.setPlainText(QStringLiteral("original"));
-        QTextCursor cursor(&replacement);
+        replacement->setPlainText(QStringLiteral("original"));
+        QTextCursor cursor(replacement.get());
         cursor.movePosition(QTextCursor::End);
         cursor.insertText(QStringLiteral(" tail"));
         QPointer<QTextDocument> oldDocument(document);
-        quick->setTextDocument(&replacement);
+        QCOMPARE(qobject_cast<GuardedFixtureTextEdit *>(editor)->replaceOwnedDocument(replacement),
+                 FixtureEditResult::Applied);
         QVERIFY(oldDocument.isNull());
         QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
-        document = &replacement;
+        document = replacement.get();
         QVERIFY(document->isUndoAvailable());
     }
+#endif
 
     QEventLoop loop;
     QProcess client;

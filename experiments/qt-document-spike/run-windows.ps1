@@ -84,6 +84,7 @@ function Get-SourceFingerprint {
         'ipc/send_open.cpp', 'tests/file_identity_probe.h', 'tests/file_identity_probe.cpp',
         'tests/image_reference_probe.h', 'tests/image_reference_probe.cpp',
         'tests/guarded_quick_accessibility.h', 'tests/guarded_quick_accessibility.cpp',
+        'tests/windows_value_bridge.h', 'tests/windows_value_bridge.cpp', 'tests/uia_result_client.cpp',
         'tests/windows_junction_probe.h', 'tests/windows_junction_probe.cpp',
         'tests/windows_commit_diagnostic.h', 'tests/windows_commit_diagnostic.cpp',
         'tests/windows_commit_native_trace.h', 'tests/windows_commit_native_trace.cpp',
