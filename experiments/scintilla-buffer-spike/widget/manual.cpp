@@ -1,5 +1,5 @@
 #include "handoff.h"
-#include "ScintillaEditBase.h"
+#include "fixture_editor.h"
 
 #include <QApplication>
 #include <QByteArray>
@@ -20,7 +20,7 @@ struct FixtureWindow
         auto *layout = new QVBoxLayout(&window);
         auto *description = new QLabel(QStringLiteral("仅使用内存测试文字；F8 或按钮接管到另一窗口。"), &window);
         layout->addWidget(description);
-        editor = new ScintillaEditBase(&window);
+        editor = new FixtureScintillaEdit(&window);
         layout->addWidget(editor, 1);
         state = new QLabel(&window);
         state->setWordWrap(true);
@@ -34,7 +34,7 @@ struct FixtureWindow
     }
 
     QWidget window;
-    ScintillaEditBase *editor = nullptr;
+    FixtureScintillaEdit *editor = nullptr;
     QLabel *state = nullptr;
     QPushButton *button = nullptr;
     QLabel *status = nullptr;
@@ -59,7 +59,7 @@ int main(int argc, char **argv)
     QString lastStatus = QStringLiteral("试验已就绪；不读取或保存文件。");
     const auto refresh = [&] {
         for (int i = 0; i < 2; ++i) {
-            const bool composing = windows[i]->editor->send(SCI_GETUNDOTENTATIVE) >= 0;
+            const bool composing = windows[i]->editor->compositionPending();
             windows[i]->state->setText(QStringLiteral("%1；输入法临时组合：%2；文本字节：%3")
                 .arg(i == active ? QStringLiteral("当前编辑窗口") : QStringLiteral("非活动窗口（控件禁用）"))
                 .arg(composing ? QStringLiteral("是") : QStringLiteral("否"))
@@ -68,8 +68,8 @@ int main(int argc, char **argv)
         }
     };
     const auto request = [&] {
-        ScintillaEditBase &from = *windows[active]->editor;
-        ScintillaEditBase &to = *windows[1 - active]->editor;
+        FixtureScintillaEdit &from = *windows[active]->editor;
+        FixtureScintillaEdit &to = *windows[1 - active]->editor;
         const FixtureHandoff result = transferFixture(from, to);
         if (result == FixtureHandoff::Composing) {
             lastStatus = QStringLiteral("已拒绝接管：请求时输入法仍在组合。请提交或取消后重试。");

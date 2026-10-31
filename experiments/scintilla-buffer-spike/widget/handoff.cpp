@@ -1,13 +1,16 @@
 #include "handoff.h"
-#include "ScintillaEditBase.h"
+#include "fixture_editor.h"
 
-FixtureHandoff transferFixture(ScintillaEditBase &from, ScintillaEditBase &to)
+#include <QThread>
+
+FixtureHandoff transferFixture(FixtureScintillaEdit &from, FixtureScintillaEdit &to)
 {
-    if (&from == &to || !from.isEnabled() || to.isEnabled()
+    if (&from == &to || QThread::currentThread() != from.thread() || from.thread() != to.thread()
+        || !from.isEnabled() || to.isEnabled()
         || from.send(SCI_GETDOCPOINTER) != to.send(SCI_GETDOCPOINTER))
         return FixtureHandoff::Failed;
-    // The observed Qt port exposes tentative IME text in the document buffer.
-    if (from.send(SCI_GETUNDOTENTATIVE) >= 0)
+    // Check both the observed Scintilla state and the input event state.
+    if (from.compositionPending() || to.compositionPending())
         return FixtureHandoff::Composing;
 
     const sptr_t anchor = from.send(SCI_GETANCHOR);

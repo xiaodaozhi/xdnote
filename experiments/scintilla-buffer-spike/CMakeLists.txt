@@ -55,6 +55,10 @@ if(XDNOTE_SCINTILLA_WIDGET)
         "${SCINTILLA_QT_DIR}/ScintillaEditBase.h"
         widget/handoff.cpp
         widget/handoff.h
+        widget/fixture_editor.cpp
+        widget/fixture_editor.h
+        widget/snapshot.cpp
+        widget/snapshot.h
     )
     set_target_properties(scintilla_qt_fixture PROPERTIES AUTOMOC ON CXX_EXTENSIONS OFF)
     target_compile_features(scintilla_qt_fixture PUBLIC cxx_std_17)
@@ -81,5 +85,5 @@ if(XDNOTE_SCINTILLA_WIDGET)
     add_test(NAME scintilla_widget_spike COMMAND scintilla_widget_spike)
     add_test(NAME scintilla_accessibility_spike COMMAND scintilla_accessibility_spike)
     set_tests_properties(scintilla_widget_spike scintilla_accessibility_spike
-        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1")
 endif()
