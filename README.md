@@ -69,8 +69,8 @@ xdnote/
 
 设计原稿、素材和提示词是持久输入，保留在 `design`；不在源码目录保存设计导出 ZIP。构建、运行截图、测量与检查报告进入忽略的 `build/`、`target/` 或 `dist/`。任务进度使用 GitHub Issues，文档维护可复用规则，不累积执行流水账。
 
-平台最低版本、架构矩阵、签名与发行策略均需在对应阶段确定，详见[开发路线](docs/planning/roadmap.md)。
+平台目标为 Windows 10 1809+ x86_64、macOS 13+ x86_64／arm64，以及以 Ubuntu 22.04 LTS 为最低参考的 Linux x86_64（GNOME，Wayland／X11）。这些是后续开发和验证基线，尚非产品兼容性通过记录；详见[平台目标](docs/engineering/platform-support.md)。签名与发行策略仍在对应阶段确定。
 
 ## 许可范围
 
-本仓库的自有软件代码（包括工具脚本和技术试验代码）采用 [Apache-2.0](LICENSE)。文档、品牌标识、图标、设计图及其他设计素材的许可另行决定；素材即使嵌入代码，其设计内容也不因此获得代码许可。第三方内容按其自身条款处理。详情与待决事项见[许可范围与依赖](docs/engineering/licensing.md)。
+本仓库的自有软件代码（包括工具脚本和技术试验代码）采用 [Apache-2.0](LICENSE)；自有文档与原创设计素材采用 [CC BY 4.0](LICENSES/CC-BY-4.0.txt)。设计内容即使嵌入代码，仍按设计许可处理；第三方内容按其自身条款处理。适用范围、署名及品牌权利边界见[许可范围与依赖](docs/engineering/licensing.md)。

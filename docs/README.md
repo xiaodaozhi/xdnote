@@ -13,7 +13,8 @@
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [架构草案](engineering/architecture.md) | 分层候选、文档模型、保存和渲染边界 |
 | 协作 | [产研与 GitHub 流程](engineering/workflow.md) | Issue、分支、PR、CI、验收及清理规则 |
-| 许可 | [许可范围与依赖](engineering/licensing.md) | 代码许可、文档与设计素材的待决范围、第三方依赖 |
+| 许可 | [许可范围与依赖](engineering/licensing.md) | Apache-2.0、CC BY 4.0 的内容范围、署名与第三方依赖 |
+| 平台 | [平台目标与验证基线](engineering/platform-support.md) | 最低系统、64 位架构、Linux 图形环境及实际验收边界 |
 | 参考 | [xdzip 实践](engineering/xdzip-practices.md) | 实际仓库依据及在 xdnote 中的采用方式 |
 | 计划 | [开发路线](planning/roadmap.md) | 阶段顺序、产物和退出条件 |
 | 验收 | [验收规格](qa/acceptance.md) | 需求映射、真实文件与平台验证方法 |
