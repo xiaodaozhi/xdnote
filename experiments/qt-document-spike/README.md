@@ -73,7 +73,7 @@ pwsh -NoProfile -File experiments/qt-document-spike/run-windows.ps1 `
 
 Windows 脚本每次使用 CMake 的 `--clean-first` 重建其管理的构建产物，避免某些本地化 MSVC／Ninja 组合错误解析头文件依赖、使旧对象与新源码摘要混用；这会增加构建耗时。
 
-需要进一步归因时，`trace-windows-rename.ps1` 准备专用 WPR 配置，只筛选随机命名的夹具进程及 5 类文件事件，并为该实例单独启停采集。`-Mode prepare` 只校验配置并报告二进制摘要和管理员状态；`-Mode collect -ExpectedExeSha256 <prepare 返回的摘要>` 要求管理员令牌且拒绝二进制变化，最多运行 200 个聚焦夹具进程、首次失败即停止。它不安装驱动、修改系统配置或停止其他 WPR 实例；原始 ETL 与报告仅存入忽略的 `build/`。Windows CI 校验准备流程，不宣称执行了管理员内核栈采集。实际采集与分析结果以 Issue #26 为准。
+需要进一步归因时，`trace-windows-rename.ps1` 准备专用 WPR 配置，只筛选随机命名的夹具进程及 5 类文件事件，并为该实例单独启停采集。`-Mode prepare` 校验配置列表和实际配置解析，报告二进制摘要和管理员状态；这些检查不启动采集，也不能证明提供程序启用成功。`-Mode collect -ExpectedExeSha256 <prepare 返回的摘要>` 要求管理员令牌且拒绝二进制变化，最多运行 200 个聚焦夹具进程、首次失败即停止。脚本使用 Windows 系统 WPR、非分页缓冲和严格提供程序校验，启用失败时记录原生错误码，不能把未启用的提供程序当作采集成功。它不安装驱动、修改系统配置或停止其他 WPR 实例；原始 ETL 与报告仅存入忽略的 `build/`。Windows CI 校验准备流程，不宣称执行了管理员内核栈采集。实际采集与分析结果以 Issue #26 为准。
 
 若 CMake 或 Ninja 未在 PATH，可通过 `-CMakePath`、`-NinjaPath` 传入已有工具的绝对路径。脚本不会下载安装工具。更换 SDK 或编译器时传入不同的 `-BuildName`，避免复用旧 CMake 缓存。脚本在当前进程临时设置 Qt 路径和项目内的 `build/temp`，结束时恢复原环境；构建与报告位于忽略的 `build/`。MSVC 临时目录应使用该编译器能够处理的路径；本机遇到中文临时目录时使用项目内纯英文路径。
 

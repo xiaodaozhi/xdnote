@@ -8,6 +8,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'This diagnostic requires Windows.' }
+$xdnoteWpr = Join-Path ([Environment]::GetFolderPath('System')) 'wpr.exe'
+if (!(Test-Path -LiteralPath $xdnoteWpr)) { throw 'The Windows system WPR executable is unavailable.' }
 $xdnoteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 $xdnoteBuildRoot = Join-Path $xdnoteRoot 'build'
 $xdnoteBuild = Join-Path $xdnoteBuildRoot $BuildName
@@ -43,7 +45,7 @@ $xdnoteXml = @"
     <EventCollector Id="RenameCollector" Name="xdnote rename $xdnoteId">
       <BufferSize Value="64"/><Buffers Value="64"/>
     </EventCollector>
-    <EventProvider Id="RenameProvider" Name="edd08927-9cc4-4e65-b970-c2560fb5c289" Level="5" Stack="true" ProcessExeFilter="$xdnoteProbeName">
+    <EventProvider Id="RenameProvider" Name="edd08927-9cc4-4e65-b970-c2560fb5c289" Level="5" Stack="true" NonPagedMemory="true" Strict="true" ProcessExeFilter="$xdnoteProbeName">
       <Keywords><Keyword Value="0x860"/></Keywords>
       <EventFilters FilterIn="true"><EventId Value="17"/><EventId Value="19"/><EventId Value="24"/><EventId Value="27"/><EventId Value="29"/></EventFilters>
     </EventProvider>
@@ -54,8 +56,10 @@ $xdnoteXml = @"
 </WindowsPerformanceRecorder>
 "@
 Set-Content -LiteralPath $xdnoteProfile -Value $xdnoteXml -Encoding utf8NoBOM
-& wpr.exe -profiles $xdnoteProfile *> (Join-Path $xdnoteRun 'profile-validation.txt')
+& $xdnoteWpr -profiles $xdnoteProfile *> (Join-Path $xdnoteRun 'profile-validation.txt')
 if ($LASTEXITCODE -ne 0) { throw "WPR rejected the constrained profile; see $xdnoteRun" }
+& $xdnoteWpr -profiledetails "${xdnoteProfile}!XdnoteRename.Verbose" *> (Join-Path $xdnoteRun 'profile-details.txt')
+if ($LASTEXITCODE -ne 0) { throw "WPR could not resolve the constrained profile; see $xdnoteRun" }
 $xdnotePrincipal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 $xdnoteAdmin = $xdnotePrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $xdnotePlan = [ordered]@{ executableSha256=$xdnoteHash; administrator=$xdnoteAdmin; mode=$Mode; runDirectory=$xdnoteRun; processFilter=$xdnoteProbeName; eventIds=@(17,19,24,27,29); maxRuns=$MaxRuns }
@@ -78,8 +82,11 @@ try {
     $env:QML_IMPORT_PATH = Join-Path $xdnoteQt 'qml'
     $env:QT_QPA_PLATFORM = 'offscreen'; $env:QT_QUICK_BACKEND = 'software'
     $env:XDNOTE_TRACE_QSAVEFILE = '1'; $env:XDNOTE_TRACE_FIXTURE_USERS = '0'
-    & wpr.exe -start "${xdnoteProfile}!XdnoteRename.Verbose" -instancename $xdnoteId -recordtempto $xdnoteRun *> (Join-Path $xdnoteRun 'start.txt')
-    if ($LASTEXITCODE -ne 0) { throw 'The dedicated WPR session did not start; no other session will be stopped.' }
+    & $xdnoteWpr -start "${xdnoteProfile}!XdnoteRename.Verbose" -instancename $xdnoteId -recordtempto $xdnoteRun *> (Join-Path $xdnoteRun 'start.txt')
+    if ($LASTEXITCODE -ne 0) {
+        $xdnoteStartError = '0x{0:x8}' -f [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$LASTEXITCODE), 0)
+        throw "The dedicated WPR session did not start ($xdnoteStartError); see start.txt. No other session will be stopped."
+    }
     $xdnoteRecording = $true
     for ($xdnoteAttempt=1; $xdnoteAttempt -le $MaxRuns; $xdnoteAttempt++) {
         $xdnoteReport=Join-Path $xdnoteRun "run-$xdnoteAttempt.txt"
@@ -103,10 +110,10 @@ try {
     throw
 } finally {
     if ($xdnoteRecording) {
-        & wpr.exe -stop (Join-Path $xdnoteRun 'rename.etl') 'xdnote fixture rename investigation' -instancename $xdnoteId -skipPdbGen *> (Join-Path $xdnoteRun 'stop.txt')
+        & $xdnoteWpr -stop (Join-Path $xdnoteRun 'rename.etl') 'xdnote fixture rename investigation' -instancename $xdnoteId -skipPdbGen *> (Join-Path $xdnoteRun 'stop.txt')
         if ($LASTEXITCODE -ne 0) {
             $xdnoteCollectionError = 'The dedicated WPR stop failed.'
-            & wpr.exe -cancel -instancename $xdnoteId *> (Join-Path $xdnoteRun 'cancel.txt')
+            & $xdnoteWpr -cancel -instancename $xdnoteId *> (Join-Path $xdnoteRun 'cancel.txt')
             Write-Error 'The dedicated WPR stop failed; cancellation was attempted for this instance only.' -ErrorAction Continue
         }
     }
