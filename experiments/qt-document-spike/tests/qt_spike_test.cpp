@@ -258,6 +258,7 @@ private slots:
     void deletedTargetIsNotRecreated();
 #ifdef Q_OS_WIN
     void windowsSharingFailuresRetainEdits();
+    void windowsSharingFailureWhileEditingPreservesAllChanges();
     void windowsImageJunctionBypassesFinalNofollow();
     void windowsSaveFailureObservations();
     void windowsUiaValueWrite_data();
@@ -796,7 +797,7 @@ void QtDocumentSpikeTests::openIntentMovesBetweenRealLocalProcesses()
     // exceed sockaddr_un::sun_path. A private short directory also protects
     // access on systems that do not enforce socket-file permissions.
     QTemporaryDir socketDirectory(QStringLiteral("/tmp/xdnote-ipc-XXXXXX"));
-    QVERIFY2(socketDirectory.isValid(), qPrintable(socketDirectory.errorString()));
+    QVERIFY2(socketDirectory.isValid(), qUtf8Printable(socketDirectory.errorString()));
     const auto permissions = QFileInfo(socketDirectory.path()).permissions();
     QVERIFY(!(permissions & (QFileDevice::ReadGroup | QFileDevice::WriteGroup | QFileDevice::ExeGroup
                               | QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther)));
@@ -808,7 +809,7 @@ void QtDocumentSpikeTests::openIntentMovesBetweenRealLocalProcesses()
 #endif
     QLocalServer server;
     server.setSocketOptions(QLocalServer::UserAccessOption);
-    QVERIFY2(server.listen(endpoint), qPrintable(server.errorString()));
+    QVERIFY2(server.listen(endpoint), qUtf8Printable(server.errorString()));
 
     QString sender = QCoreApplication::applicationDirPath() + QStringLiteral("/qt_open_intent_sender");
 #ifdef Q_OS_WIN
@@ -818,7 +819,7 @@ void QtDocumentSpikeTests::openIntentMovesBetweenRealLocalProcesses()
     child.setProgram(sender);
     child.setArguments({endpoint, path});
     child.start();
-    QVERIFY2(child.waitForStarted(5000), qPrintable(child.errorString()));
+    QVERIFY2(child.waitForStarted(5000), qUtf8Printable(child.errorString()));
     QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 5000);
     std::unique_ptr<QLocalSocket> socket(server.nextPendingConnection());
     QVERIFY(socket);
@@ -831,11 +832,11 @@ void QtDocumentSpikeTests::openIntentMovesBetweenRealLocalProcesses()
     auto state = SpikeIpc::DecodeResult::NeedMore;
     while (state == SpikeIpc::DecodeResult::NeedMore && deadline.elapsed() < 5000) {
         if (socket->bytesAvailable() == 0)
-            QVERIFY2(socket->waitForReadyRead(int(5000 - deadline.elapsed())), qPrintable(socket->errorString()));
+            QVERIFY2(socket->waitForReadyRead(int(5000 - deadline.elapsed())), qUtf8Printable(socket->errorString()));
         input += socket->readAll();
         state = SpikeIpc::takeFrame(&input, &request, &error);
     }
-    QVERIFY2(state == SpikeIpc::DecodeResult::Ready, qPrintable(error));
+    QVERIFY2(state == SpikeIpc::DecodeResult::Ready, qUtf8Printable(error));
     QCOMPARE(request.value(QStringLiteral("version")).toInt(), 1);
     QCOMPARE(request.value(QStringLiteral("path")).toString(), path);
     const QString id = request.value(QStringLiteral("requestId")).toString();
@@ -845,8 +846,8 @@ void QtDocumentSpikeTests::openIntentMovesBetweenRealLocalProcesses()
                                                {QStringLiteral("accepted"), true}});
     QCOMPARE(socket->write(reply), qint64(reply.size()));
     if (socket->bytesToWrite() > 0)
-        QVERIFY2(socket->waitForBytesWritten(5000), qPrintable(socket->errorString()));
-    QVERIFY2(child.waitForFinished(5000), qPrintable(child.errorString()));
+        QVERIFY2(socket->waitForBytesWritten(5000), qUtf8Printable(socket->errorString()));
+    QVERIFY2(child.waitForFinished(5000), qUtf8Printable(child.errorString()));
     QCOMPARE(child.exitStatus(), QProcess::NormalExit);
     QCOMPARE(child.exitCode(), 0);
 }
@@ -861,7 +862,7 @@ void QtDocumentSpikeTests::utf8BomAndCrlfRoundTrip()
     QVERIFY(writeFile(path, original));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QCOMPARE(session.document()->toPlainText(), QStringLiteral("# 标题\n第一行\n\n"));
     QVERIFY(!session.isDirty());
     QVERIFY(session.save({}, &error) == SpikeFile::SaveOutcome::Saved);
@@ -871,7 +872,7 @@ void QtDocumentSpikeTests::utf8BomAndCrlfRoundTrip()
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral("新增\n"));
     QVERIFY(session.isDirty());
-    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     const QByteArray expected = QByteArray::fromHex("efbbbf")
         + QStringLiteral("# 标题\r\n第一行\r\n\r\n新增\r\n").toUtf8();
     QCOMPARE(readFile(path), expected);
@@ -887,16 +888,16 @@ void QtDocumentSpikeTests::nonBreakingSpaceIsNotRewritten()
     QVERIFY(writeFile(path, original));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QVERIFY(!session.isDirty());
-    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     QCOMPARE(readFile(path), original);
 
     QTextCursor cursor(session.document());
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral("x"));
     QVERIFY(session.isDirty());
-    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     QCOMPARE(readFile(path), original + QByteArray("x"));
     QVERIFY(!session.isDirty());
 }
@@ -919,7 +920,7 @@ void QtDocumentSpikeTests::unsupportedUnicodeSeparatorsDoNotOverwrite()
     const QString path = temporary->filePath(QStringLiteral("edited.md"));
     QVERIFY(writeFile(path, "original"));
     SpikeSession session;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QString(QChar(0x2028)));
@@ -968,7 +969,7 @@ void QtDocumentSpikeTests::externalChangeBeforeSaveIsConflict()
     QVERIFY(writeFile(path, "original\n"));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.insertText(QStringLiteral("local "));
     QVERIFY(writeFile(path, "external\n"));
@@ -985,7 +986,7 @@ void QtDocumentSpikeTests::externalChangeBeforeCommitIsConflict()
     QVERIFY(writeFile(path, "original\n"));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.insertText(QStringLiteral("local "));
     bool injected = false;
@@ -1007,7 +1008,7 @@ void QtDocumentSpikeTests::identicalBytesReplacementIsNotDetected()
     QVERIFY(writeFile(path, "original"));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral(" local"));
@@ -1015,7 +1016,7 @@ void QtDocumentSpikeTests::identicalBytesReplacementIsNotDetected()
     QVERIFY(writeFile(path, "original"));
 
     // The experimental byte-only baseline misses this replacement.
-    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original local"));
     QCOMPARE(readFile(oldPath), QByteArray("original"));
 }
@@ -1033,30 +1034,30 @@ void QtDocumentSpikeTests::fileIdentityHandlesObserveAliasesAndReplacement()
     QString error;
     FixtureIdentityHandle original;
     FixtureFileIdentity originalId;
-    QVERIFY2(original.open(path, &error), qPrintable(error));
-    QVERIFY2(original.identity(&originalId, &error), qPrintable(error));
+    QVERIFY2(original.open(path, &error), qUtf8Printable(error));
+    QVERIFY2(original.identity(&originalId, &error), qUtf8Printable(error));
     QVERIFY2(createHardLink(path, alias), "Could not create a fixture hard link");
     FixtureIdentityHandle aliased;
     FixtureFileIdentity aliasId;
-    QVERIFY2(aliased.open(alias, &error), qPrintable(error));
-    QVERIFY2(aliased.identity(&aliasId, &error), qPrintable(error));
+    QVERIFY2(aliased.open(alias, &error), qUtf8Printable(error));
+    QVERIFY2(aliased.identity(&aliasId, &error), qUtf8Printable(error));
     QVERIFY(originalId == aliasId);
 
     QVERIFY(QFile::rename(path, renamed));
     FixtureIdentityHandle renamedHandle;
     FixtureFileIdentity renamedId;
-    QVERIFY2(renamedHandle.open(renamed, &error), qPrintable(error));
-    QVERIFY2(renamedHandle.identity(&renamedId, &error), qPrintable(error));
+    QVERIFY2(renamedHandle.open(renamed, &error), qUtf8Printable(error));
+    QVERIFY2(renamedHandle.identity(&renamedId, &error), qUtf8Printable(error));
     QVERIFY(renamedId == originalId);
     QVERIFY(writeFile(path, bytes));
     FixtureIdentityHandle replacement;
     FixtureFileIdentity replacementId;
-    QVERIFY2(replacement.open(path, &error), qPrintable(error));
-    QVERIFY2(replacement.identity(&replacementId, &error), qPrintable(error));
+    QVERIFY2(replacement.open(path, &error), qUtf8Printable(error));
+    QVERIFY2(replacement.identity(&replacementId, &error), qUtf8Printable(error));
     QVERIFY(!(originalId == replacementId));
     QCOMPARE(readFile(path), readFile(alias));
     FixtureFileIdentity heldId;
-    QVERIFY2(original.identity(&heldId, &error), qPrintable(error));
+    QVERIFY2(original.identity(&heldId, &error), qUtf8Printable(error));
     QVERIFY(heldId == aliasId);
 }
 
@@ -1103,7 +1104,7 @@ void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
 #endif
     QSaveFile output(path);
     output.setDirectWriteFallback(false);
-    QVERIFY2(output.open(QIODevice::WriteOnly), qPrintable(output.errorString()));
+    QVERIFY2(output.open(QIODevice::WriteOnly), qUtf8Printable(output.errorString()));
 #ifdef Q_OS_WIN
     const int entriesAfterOpen = fixtureOtherEntryCount(temporary->path());
     QVERIFY(entriesAfterOpen >= 0);
@@ -1120,7 +1121,7 @@ void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
         qWarning().noquote() << describeFixtureCommitFailure(observation, entriesBeforeOpen, entriesAfterOpen);
     }
 #endif
-    QVERIFY2(committed, qPrintable(commitError));
+    QVERIFY2(committed, qUtf8Printable(commitError));
     QCOMPARE(readFile(path), QByteArray("local")); // The intervening update was lost.
 }
 
@@ -1135,8 +1136,8 @@ void QtDocumentSpikeTests::fixtureWriterRejectsOutsideScope()
                                          QStringList{QStringLiteral("--hold-shared-read"), other}}) {
         QProcess writer;
         writer.start(fixtureWriterPath(), arguments);
-        QVERIFY2(writer.waitForStarted(5000), qPrintable(writer.errorString()));
-        QVERIFY2(writer.waitForFinished(5000), qPrintable(writer.errorString()));
+        QVERIFY2(writer.waitForStarted(5000), qUtf8Printable(writer.errorString()));
+        QVERIFY2(writer.waitForFinished(5000), qUtf8Printable(writer.errorString()));
         QCOMPARE(writer.exitStatus(), QProcess::NormalExit);
         QCOMPARE(writer.exitCode(), 3);
     }
@@ -1159,7 +1160,7 @@ void QtDocumentSpikeTests::readerHandleAndReplacement()
     QVERIFY(writeFile(path, QByteArray("original")));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral(" local"));
@@ -1168,7 +1169,7 @@ void QtDocumentSpikeTests::readerHandleAndReplacement()
     QProcess reader;
     const QString mode = nativeSharedReader ? QStringLiteral("--hold-shared-read")
                                             : QStringLiteral("--hold-qt-read");
-    QVERIFY2(startFixtureProcess(&reader, {mode, path}, &error), qPrintable(error));
+    QVERIFY2(startFixtureProcess(&reader, {mode, path}, &error), qUtf8Printable(error));
     const auto cleanupReader = qScopeGuard([&reader] {
         if (reader.state() != QProcess::NotRunning) {
             reader.closeWriteChannel();
@@ -1207,10 +1208,10 @@ void QtDocumentSpikeTests::readerHandleAndReplacement()
 #endif
     const auto result = session.save({}, &error);
 #ifdef Q_OS_WIN
-    QVERIFY2(result == SpikeFile::SaveOutcome::CommitUncertain, qPrintable(error));
+    QVERIFY2(result == SpikeFile::SaveOutcome::CommitUncertain, qUtf8Printable(error));
     const QString prefix = QStringLiteral("commit (Qt file error %1):")
                                .arg(int(QFileDevice::RenameError));
-    QVERIFY2(error.startsWith(prefix), qPrintable(error));
+    QVERIFY2(error.startsWith(prefix), qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original"));
     QVERIFY(session.isDirty());
 
@@ -1221,7 +1222,7 @@ void QtDocumentSpikeTests::readerHandleAndReplacement()
                                        0, nullptr, nullptr);
     const DWORD replaceError = replaced ? ERROR_SUCCESS : GetLastError();
     if (nativeSharedReader) {
-        QVERIFY2(replaced, qPrintable(QStringLiteral("ReplaceFileW error %1").arg(replaceError)));
+        QVERIFY2(replaced, qUtf8Printable(QStringLiteral("ReplaceFileW error %1").arg(replaceError)));
         QCOMPARE(readFile(path), QByteArray("candidate"));
         QCOMPARE(readFile(backup), QByteArray("original"));
     } else {
@@ -1232,17 +1233,17 @@ void QtDocumentSpikeTests::readerHandleAndReplacement()
         QCOMPARE(readFile(prepared), QByteArray("candidate"));
     }
 #else
-    QVERIFY2(result == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(result == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original local"));
     QVERIFY(!session.isDirty());
 #endif
 
     // The child reads from its previously opened handle, not by reopening the path.
-    QVERIFY2(finishFixtureReader(&reader, &error), qPrintable(error));
+    QVERIFY2(finishFixtureReader(&reader, &error), qUtf8Printable(error));
 #ifdef Q_OS_WIN
     if (!nativeSharedReader) {
         // This follows release of the deliberately held test handle.
-        QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+        QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
         QCOMPARE(readFile(path), QByteArray("original local"));
         QVERIFY(!session.isDirty());
     } else {
@@ -1269,11 +1270,11 @@ void QtDocumentSpikeTests::displacedFileRetainsInterveningWrite()
 
     QProcess writer;
     QString error;
-    QVERIFY2(startFixtureWriter(&writer, path, &error), qPrintable(error));
-    QVERIFY2(finishFixtureWriter(&writer, &error), qPrintable(error));
+    QVERIFY2(startFixtureWriter(&writer, path, &error), qUtf8Printable(error));
+    QVERIFY2(finishFixtureWriter(&writer, &error), qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("external"));
     QString displaced;
-    QVERIFY2(replaceAndKeepDisplaced(path, prepared, backup, &displaced, &error), qPrintable(error));
+    QVERIFY2(replaceAndKeepDisplaced(path, prepared, backup, &displaced, &error), qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("local"));
     QCOMPARE(readFile(displaced), QByteArray("external"));
 }
@@ -1290,12 +1291,12 @@ void QtDocumentSpikeTests::openWriterCanStillChangeDisplacedFile()
 
     QProcess writer;
     QString error;
-    QVERIFY2(startFixtureWriter(&writer, path, &error), qPrintable(error));
+    QVERIFY2(startFixtureWriter(&writer, path, &error), qUtf8Printable(error));
     QString displaced;
-    QVERIFY2(replaceAndKeepDisplaced(path, prepared, backup, &displaced, &error), qPrintable(error));
+    QVERIFY2(replaceAndKeepDisplaced(path, prepared, backup, &displaced, &error), qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("local"));
     QCOMPARE(readFile(displaced), QByteArray("original"));
-    QVERIFY2(finishFixtureWriter(&writer, &error), qPrintable(error));
+    QVERIFY2(finishFixtureWriter(&writer, &error), qUtf8Printable(error));
     // A process with a pre-existing handle can keep writing the displaced
     // object, so a post-swap snapshot is not automatically immutable.
     QCOMPARE(readFile(displaced), QByteArray("external"));
@@ -1326,7 +1327,7 @@ void QtDocumentSpikeTests::editDuringSaveStaysDirty()
     QVERIFY(writeFile(path, "original"));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral(" first"));
@@ -1335,11 +1336,11 @@ void QtDocumentSpikeTests::editDuringSaveStaysDirty()
         later.movePosition(QTextCursor::End);
         later.insertText(QStringLiteral(" later"));
     }, &error);
-    QVERIFY2(result == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(result == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original first"));
     QCOMPARE(session.document()->toPlainText(), QStringLiteral("original first later"));
     QVERIFY(session.isDirty());
-    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original first later"));
     QVERIFY(!session.isDirty());
 }
@@ -1352,7 +1353,7 @@ void QtDocumentSpikeTests::deletedTargetIsNotRecreated()
     QVERIFY(writeFile(path, "original"));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.insertText(QStringLiteral("local "));
     QVERIFY(QFile::remove(path));
@@ -1379,7 +1380,7 @@ void QtDocumentSpikeTests::windowsSaveFailureObservations()
     QSaveFile output(path);
     output.setDirectWriteFallback(false);
     const int entriesBeforeOpen = fixtureOtherEntryCount(temporary->path());
-    QVERIFY2(output.open(QIODevice::WriteOnly), qPrintable(output.errorString()));
+    QVERIFY2(output.open(QIODevice::WriteOnly), qUtf8Printable(output.errorString()));
     const int entriesAfterOpen = fixtureOtherEntryCount(temporary->path());
     QCOMPARE(output.write("local"), qint64(5));
     QFile held(path);
@@ -1436,7 +1437,7 @@ void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
     QVERIFY(writeFile(path, QByteArray("original")));
     SpikeSession session;
     QString error;
-    QVERIFY2(session.open(path, &error), qPrintable(error));
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
     QTextCursor cursor(session.document());
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral(" local"));
@@ -1453,7 +1454,7 @@ void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
     QVERIFY(readFailure == SpikeFile::SaveOutcome::FailedBeforeCommit);
     const QString readPrefix = QStringLiteral("baseline read: Qt file error %1:")
                                    .arg(int(QFileDevice::OpenError));
-    QVERIFY2(error.startsWith(readPrefix), qPrintable(error));
+    QVERIFY2(error.startsWith(readPrefix), qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original"));
     QVERIFY(session.isDirty());
 
@@ -1469,13 +1470,61 @@ void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
     QVERIFY(commitFailure == SpikeFile::SaveOutcome::CommitUncertain);
     const QString expectedPrefix = QStringLiteral("commit (Qt file error %1):")
                                        .arg(int(QFileDevice::RenameError));
-    QVERIFY2(error.startsWith(expectedPrefix), qPrintable(error));
+    QVERIFY2(error.startsWith(expectedPrefix), qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original"));
     QVERIFY(session.isDirty());
 
     // Retry only after the deliberately held test handle has been released.
-    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qPrintable(error));
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
     QCOMPARE(readFile(path), QByteArray("original local"));
+    QVERIFY(!session.isDirty());
+}
+
+void QtDocumentSpikeTests::windowsSharingFailureWhileEditingPreservesAllChanges()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    QVERIFY(writeFile(path, QByteArray("original")));
+    SpikeSession session;
+    QString error;
+    QVERIFY2(session.open(path, &error), qUtf8Printable(error));
+    QTextCursor first(session.document());
+    first.movePosition(QTextCursor::End);
+    first.insertText(QStringLiteral(" first"));
+
+    const QString native = QDir::toNativeSeparators(path);
+    HANDLE held = CreateFileW(reinterpret_cast<LPCWSTR>(native.utf16()), GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                              FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    QVERIFY(held != INVALID_HANDLE_VALUE);
+    auto closeHeld = qScopeGuard([&held] {
+        if (held != INVALID_HANDLE_VALUE)
+            CloseHandle(held);
+    });
+    bool editedDuringSave = false;
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral(
+        "fixture target=baseline;.*DELETE-access open=failed; its native error=32")));
+    const auto result = session.save([&] {
+        QTextCursor later(session.document());
+        later.movePosition(QTextCursor::End);
+        later.insertText(QStringLiteral(" later"));
+        editedDuringSave = true;
+    }, &error);
+
+    QVERIFY(editedDuringSave);
+    QVERIFY2(result == SpikeFile::SaveOutcome::CommitUncertain, qUtf8Printable(error));
+    QVERIFY2(error.startsWith(QStringLiteral("commit (Qt file error %1):")
+                                  .arg(int(QFileDevice::RenameError))), qUtf8Printable(error));
+    QCOMPARE(readFile(path), QByteArray("original"));
+    QCOMPARE(session.document()->toPlainText(), QStringLiteral("original first later"));
+    QVERIFY(session.isDirty());
+
+    // The retry is explicit and happens only after this test releases its own handle.
+    QVERIFY(CloseHandle(held));
+    held = INVALID_HANDLE_VALUE;
+    QVERIFY2(session.save({}, &error) == SpikeFile::SaveOutcome::Saved, qUtf8Printable(error));
+    QCOMPARE(readFile(path), QByteArray("original first later"));
     QVERIFY(!session.isDirty());
 }
 
@@ -1498,10 +1547,10 @@ void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
     if (creationError == ERROR_PRIVILEGE_NOT_HELD || creationError == ERROR_ACCESS_DENIED
         || creationError == ERROR_NOT_SUPPORTED || creationError == ERROR_INVALID_FUNCTION) {
         const QString reason = QStringLiteral("Fixture junction unavailable; Windows error %1").arg(creationError);
-        QSKIP(qPrintable(reason));
+        QSKIP(qUtf8Printable(reason));
     }
     QVERIFY2(creationError == ERROR_SUCCESS,
-             qPrintable(QStringLiteral("Fixture junction creation error %1").arg(creationError)));
+             qUtf8Printable(QStringLiteral("Fixture junction creation error %1").arg(creationError)));
     auto removeJunction = qScopeGuard([&junctionNative] {
         RemoveDirectoryW(reinterpret_cast<LPCWSTR>(junctionNative.utf16()));
     });
@@ -1521,7 +1570,7 @@ void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
                                         FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     const DWORD junctionError = junctionHandle == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
     QVERIFY2(junctionHandle != INVALID_HANDLE_VALUE,
-             qPrintable(QStringLiteral("Open fixture junction error %1").arg(junctionError)));
+             qUtf8Printable(QStringLiteral("Open fixture junction error %1").arg(junctionError)));
     auto closeJunction = qScopeGuard([junctionHandle] { CloseHandle(junctionHandle); });
     BY_HANDLE_FILE_INFORMATION junctionInfo{};
     QVERIFY(GetFileInformationByHandle(junctionHandle, &junctionInfo));
@@ -1533,7 +1582,7 @@ void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
                                       nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
     const DWORD expectedError = expectedFile == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
     QVERIFY2(expectedFile != INVALID_HANDLE_VALUE,
-             qPrintable(QStringLiteral("Open expected fixture file error %1").arg(expectedError)));
+             qUtf8Printable(QStringLiteral("Open expected fixture file error %1").arg(expectedError)));
     auto closeExpected = qScopeGuard([expectedFile] { CloseHandle(expectedFile); });
     const QString indirectNative = QDir::toNativeSeparators(indirect);
     HANDLE file = CreateFileW(reinterpret_cast<LPCWSTR>(indirectNative.utf16()), GENERIC_READ,
@@ -1541,7 +1590,7 @@ void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
                               nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
     const DWORD openError = file == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
     QVERIFY2(file != INVALID_HANDLE_VALUE,
-             qPrintable(QStringLiteral("Open fixture file error %1").arg(openError)));
+             qUtf8Printable(QStringLiteral("Open fixture file error %1").arg(openError)));
     auto closeFile = qScopeGuard([file] { CloseHandle(file); });
     BY_HANDLE_FILE_INFORMATION fileInfo{};
     QVERIFY(GetFileInformationByHandle(file, &fileInfo));
@@ -1571,7 +1620,7 @@ void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
     closeJunction.dismiss();
     const BOOL removed = RemoveDirectoryW(reinterpret_cast<LPCWSTR>(junctionNative.utf16()));
     const DWORD removalError = removed ? ERROR_SUCCESS : GetLastError();
-    QVERIFY2(removed, qPrintable(QStringLiteral("Remove fixture junction error %1").arg(removalError)));
+    QVERIFY2(removed, qUtf8Printable(QStringLiteral("Remove fixture junction error %1").arg(removalError)));
     removeJunction.dismiss();
     QCOMPARE(readFile(target), QByteArray("fixture outside workspace"));
 }
@@ -1627,7 +1676,7 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
     connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
     connect(&client, &QProcess::finished, &loop, &QEventLoop::quit);
     client.start();
-    QVERIFY2(client.waitForStarted(5000), qPrintable(client.errorString()));
+    QVERIFY2(client.waitForStarted(5000), qUtf8Printable(client.errorString()));
     timeout.start(15000);
     if (client.state() != QProcess::NotRunning)
         loop.exec(); // Service UI Automation requests on the window's GUI thread.
@@ -1635,7 +1684,7 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
     QCOMPARE(client.exitStatus(), QProcess::NormalExit);
     const QString clientError = QStringLiteral("UI Automation client exit %1: %2")
                                     .arg(client.exitCode()).arg(QString::fromUtf8(client.readAllStandardError()));
-    QVERIFY2(client.exitCode() == 0, qPrintable(clientError));
+    QVERIFY2(client.exitCode() == 0, qUtf8Printable(clientError));
 
     const QList<QByteArray> lines = client.readAllStandardOutput().trimmed().split('\n');
     QCOMPARE(lines.size(), 2);
