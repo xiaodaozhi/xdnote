@@ -4,6 +4,9 @@
 #include "file_identity_probe.h"
 #include "image_reference_probe.h"
 #include "displaced_probe.h"
+#ifdef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+#  include "guarded_quick_accessibility.h"
+#endif
 
 #include <QAccessible>
 #include <QCoreApplication>
@@ -181,13 +184,21 @@ bool createHardLink(const QString &existing, const QString &alias)
 #endif
 }
 
-QQuickItem *makeEditor(QQmlEngine &engine, QQuickWindow &window, bool accessible = false)
+QQuickItem *makeEditor(QQmlEngine &engine, QQuickWindow &window, bool accessible = false, bool guarded = false)
 {
     QQmlComponent component(&engine);
-    QByteArray source = QByteArrayLiteral(
-        "import QtQuick\n"
-        "TextEdit { width: 320; height: 200; textFormat: TextEdit.PlainText; "
-        "selectByMouse: true; objectName: 'spikeEditor'; ");
+    QByteArray source = QByteArrayLiteral("import QtQuick\n");
+#ifdef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    if (guarded) {
+        registerGuardedQuickFixtureType();
+        source += QByteArrayLiteral("import XdnoteFixture 1.0\nGuardedTextEdit { ");
+    } else
+#endif
+    {
+        source += QByteArrayLiteral("TextEdit { ");
+    }
+    source += QByteArrayLiteral("width: 320; height: 200; textFormat: TextEdit.PlainText; "
+                                "selectByMouse: true; objectName: 'spikeEditor'; ");
     if (accessible)
         source += QByteArrayLiteral("Accessible.role: Accessible.EditableText; "
                                     "Accessible.name: 'Document'; Accessible.readOnly: readOnly; ");
@@ -224,6 +235,9 @@ private slots:
     void syntheticImeCompositionDefersTransfer();
     void quickEditorAccessibilityWithExplicitRole();
     void quickAccessibilityInterfacePersistsAfterDocumentReplacement();
+    void guardedAccessibilityTracksReplacedDocument_data();
+    void guardedAccessibilityTracksReplacedDocument();
+    void guardedAccessibilityPreservesReadOnlyAndUndo();
     void singleEditorReparentPreservesAccessibilityAndUndo_data();
     void singleEditorReparentPreservesAccessibilityAndUndo();
     void previewParsesMarkdownAndBlocksResources();
@@ -420,6 +434,175 @@ void QtDocumentSpikeTests::quickAccessibilityInterfacePersistsAfterDocumentRepla
     // Windows Qt 6.8.2 experiment this caused an access violation. Upstream
     // caches a document in the accessible object; this check records the
     // observable preconditions without intentionally triggering a crash.
+}
+
+void QtDocumentSpikeTests::guardedAccessibilityTracksReplacedDocument_data()
+{
+    QTest::addColumn<bool>("queryBeforeReplacement");
+    QTest::newRow("query before replacement") << true;
+    QTest::newRow("query after replacement") << false;
+}
+
+void QtDocumentSpikeTests::guardedAccessibilityTracksReplacedDocument()
+{
+#ifndef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    QSKIP("The private accessibility candidate is limited to Qt 6.8.");
+#else
+    QFETCH(bool, queryBeforeReplacement);
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto removeFactory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QAccessible::setActive(true);
+    QTextDocument replacement;
+    QTextDocument secondReplacement;
+    QQmlEngine engine;
+    auto source = std::make_unique<QQuickWindow>();
+    auto destination = std::make_unique<QQuickWindow>();
+    source->create();
+    destination->create();
+    QQuickItem *editor = makeEditor(engine, *source, true, true);
+    QVERIFY(editor);
+    editor->setParent(&engine);
+    QVERIFY(editor->setProperty("text", QStringLiteral("旧文档")));
+    QQuickTextDocument *quick = quickDocument(editor);
+    QVERIFY(quick);
+    QPointer<QTextDocument> original = quick->textDocument();
+    QVERIFY(original);
+    QAccessibleInterface *accessible = nullptr;
+    if (queryBeforeReplacement) {
+        accessible = QAccessible::queryAccessibleInterface(editor);
+        QVERIFY(accessible);
+        QVERIFY(isGuardedQuickAccessibility(accessible));
+        QVERIFY(accessible->textInterface());
+        QCOMPARE(accessible->text(QAccessible::Value), QStringLiteral("旧文档"));
+    }
+
+    const QString sample = QStringLiteral("新🙂文本\nsecond");
+    replacement.setPlainText(sample);
+    quick->setTextDocument(&replacement);
+    QVERIFY(original.isNull());
+    QAccessibleInterface *after = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(after);
+    QVERIFY(isGuardedQuickAccessibility(after));
+    if (queryBeforeReplacement)
+        QCOMPARE(after, accessible);
+    accessible = after;
+    QAccessibleTextInterface *text = accessible->textInterface();
+    QCOMPARE(text->characterCount(), sample.size());
+    QCOMPARE(text->text(0, text->characterCount()), sample);
+    QCOMPARE(accessible->text(QAccessible::Value), sample);
+    int start = -1;
+    int end = -1;
+    QCOMPARE(text->textAtOffset(1, QAccessible::CharBoundary, &start, &end), QStringLiteral("🙂"));
+    QCOMPARE(start, 1);
+    QCOMPARE(end, 3);
+    QVERIFY(!text->textAfterOffset(0, QAccessible::CharBoundary, &start, &end).isEmpty());
+    QVERIFY(!text->textBeforeOffset(3, QAccessible::CharBoundary, &start, &end).isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(editor, "select", Qt::DirectConnection, Q_ARG(int, 0), Q_ARG(int, 3)));
+    QCOMPARE(text->selectionCount(), 1);
+    text->selection(0, &start, &end);
+    QCOMPARE(start, 0);
+    QCOMPARE(end, 3);
+
+    QVERIFY(reparentEditorFixture(editor, destination.get()));
+    source.reset();
+    QCOMPARE(accessible->window(), destination.get());
+    QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
+    QCOMPARE(text->text(0, text->characterCount()), sample);
+    replacement.clearUndoRedoStacks();
+    QTextCursor tail(&replacement);
+    tail.movePosition(QTextCursor::End);
+    tail.insertText(QStringLiteral("!"));
+    QCOMPARE(text->text(0, text->characterCount()), sample + QStringLiteral("!"));
+    accessible->setText(QAccessible::Value, QStringLiteral("接管后修改"));
+    QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("接管后修改"));
+    replacement.undo();
+    QCOMPARE(text->text(0, text->characterCount()), sample + QStringLiteral("!"));
+    replacement.undo();
+    QCOMPARE(text->text(0, text->characterCount()), sample);
+    replacement.redo();
+    replacement.redo();
+    QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("接管后修改"));
+    secondReplacement.setPlainText(QStringLiteral("再次替换"));
+    quick->setTextDocument(&secondReplacement);
+    QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
+    QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("再次替换"));
+#endif
+}
+
+void QtDocumentSpikeTests::guardedAccessibilityPreservesReadOnlyAndUndo()
+{
+#ifndef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    QSKIP("The private accessibility candidate is limited to Qt 6.8.");
+#else
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto removeFactory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QAccessible::setActive(true);
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.create();
+    QQuickItem *editor = makeEditor(engine, window, true, true);
+    QVERIFY(editor);
+    const QString initial = QStringLiteral("甲\u00a0🙂\n尾");
+    QVERIFY(editor->setProperty("text", initial));
+    QTextDocument *document = quickDocument(editor)->textDocument();
+    QVERIFY(document);
+    document->clearUndoRedoStacks();
+    QVERIFY(QMetaObject::invokeMethod(editor, "insert", Qt::DirectConnection,
+                                     Q_ARG(int, initial.size()), Q_ARG(QString, QStringLiteral("!"))));
+    const QString edited = initial + QStringLiteral("!");
+    QVERIFY(document->isUndoAvailable());
+    QAccessibleInterface *accessible = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(accessible);
+    QVERIFY(isGuardedQuickAccessibility(accessible));
+    QCOMPARE(accessible->text(QAccessible::Value), edited);
+    QVERIFY(editor->setProperty("readOnly", true));
+    QVERIFY(accessible->state().readOnly);
+    accessible->setText(QAccessible::Value, QStringLiteral("不应写入"));
+    QCOMPARE(accessible->text(QAccessible::Value), edited);
+    document->undo();
+    QCOMPARE(accessible->text(QAccessible::Value), initial);
+    document->redo();
+    QCOMPARE(accessible->text(QAccessible::Value), edited);
+
+    QVERIFY(editor->setProperty("readOnly", false));
+    const QString replacement = QStringLiteral("替换🙂\n下一行");
+    bool attemptedReentrantWrite = false;
+    const auto connection = connect(document, &QTextDocument::contentsChanged, &engine, [&] {
+        if (!attemptedReentrantWrite) {
+            attemptedReentrantWrite = true;
+            accessible->setText(QAccessible::Value, QStringLiteral("不应重入"));
+        }
+    });
+    accessible->setText(QAccessible::Value, replacement);
+    disconnect(connection);
+    QVERIFY(attemptedReentrantWrite);
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+    QCOMPARE(accessible->textInterface()->text(0, accessible->textInterface()->characterCount()), replacement);
+    accessible->setText(QAccessible::Value, replacement); // no-op must not consume an undo step
+    QString invalid;
+    invalid.append(QChar(0xd800));
+    accessible->setText(QAccessible::Value, invalid);
+    accessible->setText(QAccessible::Value, QString(QChar::ParagraphSeparator));
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+    document->undo();
+    QCOMPARE(accessible->text(QAccessible::Value), edited);
+    document->undo();
+    QCOMPARE(accessible->text(QAccessible::Value), initial);
+    document->redo();
+    QCOMPARE(accessible->text(QAccessible::Value), edited);
+    document->redo();
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+
+    editor->forceActiveFocus();
+    QInputMethodEvent preedit(QStringLiteral("pin"), {});
+    QCoreApplication::sendEvent(editor, &preedit);
+    QVERIFY(editor->property("inputMethodComposing").toBool());
+    accessible->setText(QAccessible::Value, QStringLiteral("组合中不应写入"));
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+    QInputMethodEvent cancel;
+    QCoreApplication::sendEvent(editor, &cancel);
+    QVERIFY(!editor->property("inputMethodComposing").toBool());
+#endif
 }
 
 void QtDocumentSpikeTests::singleEditorReparentPreservesAccessibilityAndUndo_data()
@@ -1656,17 +1839,34 @@ void QtDocumentSpikeTests::windowsImageJunctionBypassesFinalNofollow()
 void QtDocumentSpikeTests::windowsUiaValueWrite_data()
 {
     QTest::addColumn<bool>("readOnly");
-    QTest::newRow("read-only") << true;
-    QTest::newRow("editable") << false;
+    QTest::addColumn<bool>("guarded");
+    QTest::newRow("read-only") << true << false;
+    QTest::newRow("editable") << false << false;
+    QTest::newRow("guarded read-only") << true << true;
+    QTest::newRow("guarded editable") << false << true;
 }
 
 void QtDocumentSpikeTests::windowsUiaValueWrite()
 {
     QFETCH(bool, readOnly);
+    QFETCH(bool, guarded);
     if (QGuiApplication::platformName() != QStringLiteral("windows"))
         QSKIP("Windows UI Automation requires a native window; offscreen CI only builds the client.");
 
+#ifdef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    if (guarded)
+        QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto removeFactory = qScopeGuard([guarded] {
+        if (guarded)
+            QAccessible::removeFactory(guardedQuickAccessibilityFactory);
+    });
+#else
+    if (guarded)
+        QSKIP("The private accessibility candidate is limited to Qt 6.8.");
+#endif
     QAccessible::setActive(true);
+    // Keep the replacement alive until after the window and its editor.
+    QTextDocument replacement;
     QQmlEngine engine;
     QQuickWindow window;
     window.setFlag(Qt::WindowDoesNotAcceptFocus);
@@ -1674,7 +1874,7 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
     window.resize(400, 200);
     window.setPosition(-10000, -10000);
     window.show();
-    QQuickItem *editor = makeEditor(engine, window, true);
+    QQuickItem *editor = makeEditor(engine, window, true, guarded);
     QVERIFY(editor);
     QVERIFY(editor->setProperty("text", QStringLiteral("original")));
     QVERIFY(QMetaObject::invokeMethod(editor, "insert", Qt::DirectConnection,
@@ -1687,18 +1887,50 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
     QVERIFY(document->isUndoAvailable());
     QAccessibleInterface *accessible = QAccessible::queryAccessibleInterface(editor);
     QVERIFY(accessible);
+#ifdef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    if (guarded)
+        QVERIFY(isGuardedQuickAccessibility(accessible));
+#endif
     QCOMPARE(bool(accessible->state().readOnly), readOnly);
+    if (guarded && !readOnly) {
+        replacement.setPlainText(QStringLiteral("original"));
+        QTextCursor cursor(&replacement);
+        cursor.movePosition(QTextCursor::End);
+        cursor.insertText(QStringLiteral(" tail"));
+        QPointer<QTextDocument> oldDocument(document);
+        quick->setTextDocument(&replacement);
+        QVERIFY(oldDocument.isNull());
+        QCOMPARE(QAccessible::queryAccessibleInterface(editor), accessible);
+        document = &replacement;
+        QVERIFY(document->isUndoAvailable());
+    }
 
+    QEventLoop loop;
     QProcess client;
     client.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/qt_uia_client.exe"));
-    client.setArguments({QString::number(quintptr(window.winId()))});
+    const bool observeUndo = guarded && !readOnly;
+    QStringList clientArguments{QString::number(quintptr(window.winId()))};
+    if (observeUndo)
+        clientArguments.append(QStringLiteral("--observe-undo"));
+    client.setArguments(clientArguments);
+    QByteArray clientOutput;
+    bool undoRequested = false;
+    bool undoStartedFromReplacement = false;
+    connect(&client, &QProcess::readyReadStandardOutput, &loop, [&] {
+        clientOutput += client.readAllStandardOutput();
+        if (observeUndo && !undoRequested && clientOutput.contains("UNDO_READY")) {
+            undoRequested = true;
+            undoStartedFromReplacement = editor->property("text").toString() == QStringLiteral("UIA modified");
+            document->undo();
+            client.write("CONTINUE\n");
+        }
+    });
     const auto cleanup = qScopeGuard([&client] {
         if (client.state() != QProcess::NotRunning) {
             client.kill();
             client.waitForFinished(5000);
         }
     });
-    QEventLoop loop;
     QTimer timeout;
     timeout.setSingleShot(true);
     connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
@@ -1714,8 +1946,14 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
                                     .arg(client.exitCode()).arg(QString::fromUtf8(client.readAllStandardError()));
     QVERIFY2(client.exitCode() == 0, qUtf8Printable(clientError));
 
-    const QList<QByteArray> lines = client.readAllStandardOutput().trimmed().split('\n');
-    QCOMPARE(lines.size(), 2);
+    clientOutput += client.readAllStandardOutput();
+    QList<QByteArray> lines = clientOutput.trimmed().split('\n');
+    if (observeUndo) {
+        QVERIFY(undoRequested);
+        QVERIFY(undoStartedFromReplacement);
+        QCOMPARE(lines.takeFirst().trimmed(), QByteArray("UNDO_READY"));
+    }
+    QCOMPARE(lines.size(), observeUndo ? 7 : 5);
     QCOMPARE(lines.at(0).trimmed(), readOnly ? QByteArray("READONLY 1") : QByteArray("READONLY 0"));
     const QByteArray statusLine = lines.at(1).trimmed();
     QVERIFY(statusLine.startsWith("HRESULT "));
@@ -1723,6 +1961,17 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
     const quint32 status = statusLine.mid(8).toUInt(&parsed);
     QVERIFY(parsed);
     qInfo() << "UI Automation SetValue HRESULT:" << status;
+    QVERIFY(lines.at(2).trimmed().startsWith("TEXT_EVENTS "));
+    QVERIFY(lines.at(3).trimmed().startsWith("VALUE_EVENTS "));
+    QVERIFY(lines.at(4).trimmed().startsWith("MATCHING_VALUE_EVENTS "));
+    bool textEventsOk = false;
+    bool valueEventsOk = false;
+    bool matchingEventsOk = false;
+    const auto textEvents = lines.at(2).trimmed().mid(12).toUInt(&textEventsOk);
+    const auto valueEvents = lines.at(3).trimmed().mid(13).toUInt(&valueEventsOk);
+    const auto matchingEvents = lines.at(4).trimmed().mid(22).toUInt(&matchingEventsOk);
+    QVERIFY(textEventsOk && valueEventsOk && matchingEventsOk);
+    qInfo().noquote() << lines.at(2).trimmed() << lines.at(3).trimmed() << lines.at(4).trimmed();
 
     if (readOnly) {
         QVERIFY(status & 0x80000000u);
@@ -1734,9 +1983,32 @@ void QtDocumentSpikeTests::windowsUiaValueWrite()
         QCOMPARE(editor->property("text").toString(), QStringLiteral("original tail"));
     } else {
         QCOMPARE(status, quint32(0));
-        QCOMPARE(editor->property("text").toString(), QStringLiteral("UIA modified"));
-        // This negative observation is not the desired product undo behavior.
-        QVERIFY(!document->isUndoAvailable());
+        if (guarded) {
+            QVERIFY(textEvents > 0);
+            QVERIFY(valueEvents > 0);
+            QVERIFY(matchingEvents > 0);
+            QVERIFY(lines.at(5).trimmed().startsWith("UNDO_TEXT_EVENTS "));
+            QVERIFY(lines.at(6).trimmed().startsWith("UNDO_MATCHING_VALUE_EVENTS "));
+            bool undoTextOk = false;
+            bool undoValueOk = false;
+            const auto undoTextEvents = lines.at(5).trimmed().mid(17).toUInt(&undoTextOk);
+            const auto undoValueEvents = lines.at(6).trimmed().mid(27).toUInt(&undoValueOk);
+            QVERIFY(undoTextOk && undoValueOk);
+            qInfo().noquote() << lines.at(5).trimmed() << lines.at(6).trimmed();
+            QVERIFY(undoTextEvents > 0);
+            QVERIFY(undoValueEvents > 0);
+            QCOMPARE(editor->property("text").toString(), QStringLiteral("original tail"));
+            QVERIFY(document->isUndoAvailable());
+            document->undo();
+            QCOMPARE(editor->property("text").toString(), QStringLiteral("original"));
+            document->redo();
+            document->redo();
+            QCOMPARE(editor->property("text").toString(), QStringLiteral("UIA modified"));
+        } else {
+            QCOMPARE(editor->property("text").toString(), QStringLiteral("UIA modified"));
+            // This negative observation is not the desired product undo behavior.
+            QVERIFY(!document->isUndoAvailable());
+        }
     }
 }
 #endif
