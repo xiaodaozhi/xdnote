@@ -24,6 +24,7 @@
 #include <QQuickItem>
 #include <QQuickTextDocument>
 #include <QQuickWindow>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QScopeGuard>
 #include <QTemporaryDir>
@@ -1196,6 +1197,12 @@ void QtDocumentSpikeTests::readerHandleAndReplacement()
     QCOMPARE(readFile(path), QByteArray("original"));
 #endif
 
+#ifdef Q_OS_WIN
+    const QString expectedObservation = nativeSharedReader
+        ? QStringLiteral("fixture target=baseline;.*DELETE-access open=opened; its native error=0")
+        : QStringLiteral("fixture target=baseline;.*DELETE-access open=failed; its native error=32");
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(expectedObservation));
+#endif
     const auto result = session.save({}, &error);
 #ifdef Q_OS_WIN
     QVERIFY2(result == SpikeFile::SaveOutcome::CommitUncertain, qPrintable(error));
@@ -1382,6 +1389,10 @@ void QtDocumentSpikeTests::windowsSaveFailureObservations()
     QCOMPARE(qtError, QFileDevice::RenameError);
     QVERIFY(blocked.valid);
     QCOMPARE(blocked.targetState, QStringLiteral("original"));
+    const QByteArray baseline("original");
+    const QByteArray attempted("local");
+    QCOMPARE(observeFixtureCommitFailure(temporary->path(), &baseline, &attempted).targetState,
+             QStringLiteral("baseline"));
     QVERIFY(blocked.deleteOpenAttempted);
     QVERIFY(!blocked.deleteOpenSucceeded);
     QCOMPARE(blocked.deleteOpenNativeError, quint32(ERROR_SHARING_VIOLATION));
@@ -1400,8 +1411,14 @@ void QtDocumentSpikeTests::windowsSaveFailureObservations()
     QCOMPARE(observeFixtureCommitFailure(temporary->path()).targetState, QStringLiteral("external"));
     QVERIFY(writeFile(path, QByteArray("local")));
     QCOMPARE(observeFixtureCommitFailure(temporary->path()).targetState, QStringLiteral("local"));
+    QCOMPARE(observeFixtureCommitFailure(temporary->path(), &baseline, &attempted).targetState,
+             QStringLiteral("attempted"));
+    QCOMPARE(observeFixtureCommitFailure(temporary->path(), &attempted, &attempted).targetState,
+             QStringLiteral("baseline-and-attempted"));
     QVERIFY(writeFile(path, QByteArray("other fixture value")));
     QCOMPARE(observeFixtureCommitFailure(temporary->path()).targetState, QStringLiteral("other"));
+    QVERIFY(writeFile(path, QByteArray(65, 'x')));
+    QCOMPARE(observeFixtureCommitFailure(temporary->path()).targetState, QStringLiteral("too-large-to-classify"));
     QVERIFY(QFile::remove(path));
     const auto missing = observeFixtureCommitFailure(temporary->path());
     QVERIFY(missing.valid);
@@ -1443,6 +1460,8 @@ void QtDocumentSpikeTests::windowsSharingFailuresRetainEdits()
                        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
                        FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
     QVERIFY(held != INVALID_HANDLE_VALUE);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral(
+        "fixture target=baseline;.*DELETE-access open=failed; its native error=32")));
     const auto commitFailure = session.save({}, &error);
     CloseHandle(held);
     QVERIFY(commitFailure == SpikeFile::SaveOutcome::CommitUncertain);

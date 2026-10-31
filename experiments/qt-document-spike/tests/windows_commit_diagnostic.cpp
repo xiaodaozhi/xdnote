@@ -33,8 +33,18 @@ QString validatedFixtureRoot(const QString &requested)
     return root;
 }
 
-QString classifyFixtureBytes(const QByteArray &bytes)
+QString classifyFixtureBytes(const QByteArray &bytes, const QByteArray *baseline, const QByteArray *attempted)
 {
+    if (baseline && attempted) {
+        const bool matchesBaseline = bytes == *baseline;
+        const bool matchesAttempted = bytes == *attempted;
+        if (matchesBaseline && matchesAttempted)
+            return QStringLiteral("baseline-and-attempted");
+        if (matchesBaseline)
+            return QStringLiteral("baseline");
+        if (matchesAttempted)
+            return QStringLiteral("attempted");
+    }
     if (bytes == QByteArray("original"))
         return QStringLiteral("original");
     if (bytes == QByteArray("external"))
@@ -56,7 +66,8 @@ int fixtureOtherEntryCount(const QString &fixtureRoot)
     return entries.size();
 }
 
-FixtureCommitObservation observeFixtureCommitFailure(const QString &fixtureRoot)
+FixtureCommitObservation observeFixtureCommitFailure(const QString &fixtureRoot,
+                                                     const QByteArray *baseline, const QByteArray *attempted)
 {
     FixtureCommitObservation observation;
     const QString root = validatedFixtureRoot(fixtureRoot);
@@ -96,11 +107,23 @@ FixtureCommitObservation observeFixtureCommitFailure(const QString &fixtureRoot)
         } else {
             char bytes[64]{};
             DWORD count = 0;
-            if (!ReadFile(reader, bytes, sizeof(bytes), &count, nullptr)) {
+            LARGE_INTEGER before{};
+            LARGE_INTEGER after{};
+            if (!GetFileSizeEx(reader, &before)) {
+                observation.targetNativeError = GetLastError();
+                observation.targetState = QStringLiteral("size-error");
+            } else if (before.QuadPart < 0 || before.QuadPart > qint64(sizeof(bytes))) {
+                observation.targetState = QStringLiteral("too-large-to-classify");
+            } else if (!ReadFile(reader, bytes, sizeof(bytes), &count, nullptr)) {
                 observation.targetNativeError = GetLastError();
                 observation.targetState = QStringLiteral("read-error");
+            } else if (!GetFileSizeEx(reader, &after)) {
+                observation.targetNativeError = GetLastError();
+                observation.targetState = QStringLiteral("size-error");
+            } else if (before.QuadPart != after.QuadPart || before.QuadPart != qint64(count)) {
+                observation.targetState = QStringLiteral("changed-during-read");
             } else {
-                observation.targetState = classifyFixtureBytes(QByteArray(bytes, int(count)));
+                observation.targetState = classifyFixtureBytes(QByteArray(bytes, int(count)), baseline, attempted);
             }
         }
         CloseHandle(reader);

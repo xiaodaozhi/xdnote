@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 #include <QtGlobal>
 
@@ -17,7 +18,9 @@ struct FixtureCommitObservation
 
 // Only accepts a test-owned spike-test-data/fixture-XXXXXX directory.
 int fixtureOtherEntryCount(const QString &fixtureRoot);
-FixtureCommitObservation observeFixtureCommitFailure(const QString &fixtureRoot);
+FixtureCommitObservation observeFixtureCommitFailure(const QString &fixtureRoot,
+                                                     const QByteArray *baseline = nullptr,
+                                                     const QByteArray *attempted = nullptr);
 QString describeFixtureCommitFailure(const FixtureCommitObservation &observation,
                                      int beforeOpenEntries, int afterOpenEntries);
 #endif

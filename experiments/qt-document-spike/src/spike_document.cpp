@@ -6,6 +6,11 @@
 #include <QSaveFile>
 #include <QStringConverter>
 
+#if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+#  include "windows_commit_diagnostic.h"
+#  include <QDebug>
+#endif
+
 namespace {
 const QByteArray utf8Bom = QByteArray::fromHex("efbbbf");
 
@@ -128,6 +133,10 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
     if (m_bom)
         encoded.prepend(utf8Bom);
 
+#if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+    const QString fixtureRoot = QFileInfo(m_path).absolutePath();
+    const int entriesBeforeOpen = fixtureOtherEntryCount(fixtureRoot);
+#endif
     QSaveFile output(m_path);
     output.setDirectWriteFallback(false);
     if (!output.open(QIODevice::WriteOnly)) {
@@ -135,6 +144,9 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
                      .arg(int(output.error())).arg(output.errorString());
         return SaveOutcome::FailedBeforeCommit;
     }
+#if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+    const int entriesAfterOpen = entriesBeforeOpen >= 0 ? fixtureOtherEntryCount(fixtureRoot) : -1;
+#endif
     if (output.write(encoded) != encoded.size()) {
         *error = QStringLiteral("temporary write (Qt file error %1): %2")
                      .arg(int(output.error())).arg(output.errorString());
@@ -153,6 +165,12 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
     if (!output.commit()) {
         *error = QStringLiteral("commit (Qt file error %1): %2")
                      .arg(int(output.error())).arg(output.errorString());
+#if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+        if (entriesBeforeOpen >= 0) {
+            const auto observation = observeFixtureCommitFailure(fixtureRoot, &m_baseline, &encoded);
+            qWarning().noquote() << describeFixtureCommitFailure(observation, entriesBeforeOpen, entriesAfterOpen);
+        }
+#endif
         return SaveOutcome::CommitUncertain;
     }
 
