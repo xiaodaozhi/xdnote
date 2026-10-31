@@ -70,6 +70,7 @@ $xdnoteRecording = $false
 $xdnoteFirstFailure = 0
 $xdnoteExit = 0
 $xdnoteCollectionError = $null
+$xdnoteAttempts = [Collections.Generic.List[object]]::new()
 try {
     $env:PATH = (Join-Path $xdnoteQt 'bin') + ';' + $env:PATH
     $env:TEMP = $xdnoteRun; $env:TMP = $xdnoteRun
@@ -89,10 +90,12 @@ try {
         $xdnoteInfo.WindowStyle=[Diagnostics.ProcessWindowStyle]::Hidden
         foreach ($xdnoteArgument in @('changeAfterFinalCheckCanBeOverwritten','editDuringSaveStaysDirty','nonBreakingSpaceIsNotRewritten','-o',"${xdnoteReport},txt")) { [void]$xdnoteInfo.ArgumentList.Add($xdnoteArgument) }
         $xdnoteProcess=[Diagnostics.Process]::Start($xdnoteInfo)
+        $xdnotePid = $xdnoteProcess.Id
         try {
             if (!$xdnoteProcess.WaitForExit(10000)) { $xdnoteProcess.Kill(); $xdnoteProcess.WaitForExit(); throw 'The fixture process exceeded its limit.' }
             $xdnoteExit=$xdnoteProcess.ExitCode
         } finally { $xdnoteProcess.Dispose() }
+        $xdnoteAttempts.Add([ordered]@{ attempt=$xdnoteAttempt; fixtureProcessId=$xdnotePid; exit=$xdnoteExit })
         if ($xdnoteExit -ne 0) { $xdnoteFirstFailure=$xdnoteAttempt; break }
     }
 } catch {
@@ -109,6 +112,7 @@ try {
     }
     foreach ($xdnoteKey in $xdnoteKeys) { [Environment]::SetEnvironmentVariable($xdnoteKey,$xdnotePrevious[$xdnoteKey],'Process') }
     [ordered]@{ collectionError=$xdnoteCollectionError; firstFailure=$xdnoteFirstFailure; testExit=$xdnoteExit; executableSha256=$xdnoteHash; runDirectory=$xdnoteRun } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $xdnoteRun 'result.json') -Encoding utf8NoBOM
+    ConvertTo-Json -InputObject @($xdnoteAttempts.ToArray()) | Set-Content -LiteralPath (Join-Path $xdnoteRun 'attempts.json') -Encoding utf8NoBOM
 }
 if ($xdnoteCollectionError) { throw $xdnoteCollectionError }
 Write-Output "Kernel fixture evidence: $xdnoteRun"
