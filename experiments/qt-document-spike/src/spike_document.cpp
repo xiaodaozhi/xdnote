@@ -8,6 +8,7 @@
 
 #if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
 #  include "windows_commit_diagnostic.h"
+#  include "windows_commit_native_trace.h"
 #  include <QDebug>
 #endif
 
@@ -155,6 +156,12 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
         return SaveOutcome::FailedBeforeCommit;
     }
 
+#if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+    // Install before the final check so the diagnostic does not add setup
+    // operations between that check and the actual commit.
+    const bool traceRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_QSAVEFILE") == 1;
+    FixtureCommitNativeTrace trace(fixtureRoot, fixtureTarget, traceRequested);
+#endif
     // Tests use this hook to make a real external change before the last check.
     if (beforeFinalCheck)
         beforeFinalCheck();
@@ -163,7 +170,16 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
         output.cancelWriting();
         return checked;
     }
-    if (!output.commit()) {
+#if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+    trace.start();
+#endif
+    const bool committed = output.commit();
+#if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+    const auto nativeRename = trace.finish();
+    if (traceRequested && !committed)
+        qInfo().noquote() << describeFixtureNativeRename(nativeRename);
+#endif
+    if (!committed) {
         *error = QStringLiteral("commit (Qt file error %1): %2")
                      .arg(int(output.error())).arg(output.errorString());
 #if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)

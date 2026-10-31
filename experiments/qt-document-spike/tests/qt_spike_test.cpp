@@ -50,6 +50,7 @@
 #  include <windows.h>
 #  include "windows_junction_probe.h"
 #  include "windows_commit_diagnostic.h"
+#  include "windows_commit_native_trace.h"
 #else
 #  include <unistd.h>
 #endif
@@ -276,6 +277,8 @@ private slots:
     void windowsSharingFailureWhileEditingPreservesAllChanges();
     void windowsImageJunctionBypassesFinalNofollow();
     void windowsSaveFailureObservations();
+    void windowsNativeCommitTrace();
+    void windowsTargetSharingControl();
     void windowsUiaValueWrite_data();
     void windowsUiaValueWrite();
 #endif
@@ -1294,9 +1297,21 @@ void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
     QVERIFY(entriesAfterOpen >= 0);
 #endif
     QCOMPARE(output.write("local"), qint64(5));
+#ifdef Q_OS_WIN
+    const bool traceRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_QSAVEFILE") == 1;
+    FixtureCommitNativeTrace trace(temporary->path(), QStringLiteral("note.md"), traceRequested);
+#endif
     QCOMPARE(readFile(path), baseline); // Last comparison in the candidate sequence.
     QVERIFY(writeFile(path, "external")); // Another actor writes after that comparison.
+#ifdef Q_OS_WIN
+    trace.start();
+#endif
     const bool committed = output.commit();
+#ifdef Q_OS_WIN
+    const auto nativeRename = trace.finish();
+    if (traceRequested && !committed)
+        qInfo().noquote() << describeFixtureNativeRename(nativeRename);
+#endif
     const QString commitError = QStringLiteral("QSaveFile::commit (Qt file error %1): %2")
                                     .arg(int(output.error())).arg(output.errorString());
 #ifdef Q_OS_WIN
@@ -1547,6 +1562,165 @@ void QtDocumentSpikeTests::deletedTargetIsNotRecreated()
 }
 
 #ifdef Q_OS_WIN
+void QtDocumentSpikeTests::windowsNativeCommitTrace()
+{
+    FixtureCommitNativeTrace rejected(QDir::rootPath(), QStringLiteral("note.md"), true);
+    QVERIFY(!rejected.installed());
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    FixtureCommitNativeTrace rejectedTarget(temporary->path(), QStringLiteral("outside.md"), true);
+    QVERIFY(!rejectedTarget.installed());
+    QVERIFY(!rejectedTarget.start());
+    FixtureCommitNativeTrace disabled(temporary->path(), QStringLiteral("note.md"), false);
+    QVERIFY(!disabled.installed());
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    QVERIFY(writeFile(path, QByteArray("original")));
+
+    QSaveFile success(path);
+    success.setDirectWriteFallback(false);
+    const int beforeOpen = fixtureOtherEntryCount(temporary->path());
+    QVERIFY(success.open(QIODevice::WriteOnly));
+    const int afterOpen = fixtureOtherEntryCount(temporary->path());
+    QCOMPARE(success.write("updated"), qint64(7));
+    FixtureCommitNativeTrace successfulTrace(temporary->path(), QStringLiteral("note.md"), true);
+    if (!successfulTrace.installed())
+        QSKIP("The Qt Core native rename import is unavailable for this diagnostic.");
+    QVERIFY(successfulTrace.start());
+    const bool committed = success.commit();
+    const auto successful = successfulTrace.finish();
+    if (!committed) {
+        qInfo().noquote() << describeFixtureNativeRename(successful);
+        qWarning().noquote() << describeFixtureCommitFailure(observeFixtureCommitFailure(temporary->path()),
+                                                              beforeOpen, afterOpen);
+    }
+    QVERIFY2(committed, qUtf8Printable(success.errorString()));
+    QVERIFY(successful.installed);
+    QVERIFY(successful.restored);
+    QVERIFY(successful.calls > 0);
+    QCOMPARE(successful.failures, 0u);
+    QCOMPARE(readFile(path), QByteArray("updated"));
+
+    QSaveFile blocked(path);
+    blocked.setDirectWriteFallback(false);
+    QVERIFY(blocked.open(QIODevice::WriteOnly));
+    QCOMPARE(blocked.write("blocked"), qint64(7));
+    QFile held(path);
+    QVERIFY(held.open(QIODevice::ReadOnly));
+    FixtureCommitNativeTrace failedTrace(temporary->path(), QStringLiteral("note.md"), true);
+    QVERIFY(failedTrace.installed());
+    QVERIFY(failedTrace.start());
+    QVERIFY(!blocked.commit());
+    const auto failed = failedTrace.finish();
+    QVERIFY(failed.restored);
+    QVERIFY(failed.calls > 0);
+    QVERIFY(failed.failures > 0);
+    QVERIFY(failed.lastFailureError != 0);
+    QVERIFY(failed.sourceInfoAvailable);
+    QVERIFY(!failed.sourceDeletePending);
+    QVERIFY(failed.targetDeleteAttempted);
+    QVERIFY(!failed.targetDeleteOpened);
+    QCOMPARE(failed.targetDeleteError, quint32(ERROR_SHARING_VIOLATION));
+    QCOMPARE(blocked.error(), QFileDevice::RenameError);
+    wchar_t *message = nullptr;
+    const DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+                                            | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                        nullptr, failed.lastFailureError, 0,
+                                        reinterpret_cast<LPWSTR>(&message), 0, nullptr);
+    QVERIFY(length > 0);
+    const QString formatted = QString::fromWCharArray(message, int(length)).trimmed();
+    LocalFree(message);
+    QCOMPARE(blocked.errorString().trimmed(), formatted);
+    QCOMPARE(readFile(path), QByteArray("updated"));
+    qInfo() << "Controlled fixture native rename failure:" << failed.lastFailureError;
+}
+
+void QtDocumentSpikeTests::windowsTargetSharingControl()
+{
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    const QString native = QDir::toNativeSeparators(path);
+    const auto targetName = reinterpret_cast<LPCWSTR>(native.utf16());
+    QVERIFY(writeFile(path, QByteArray("original")));
+
+    QSaveFile blocked(path);
+    blocked.setDirectWriteFallback(false);
+    QVERIFY(blocked.open(QIODevice::WriteOnly));
+    QCOMPARE(blocked.write("local"), qint64(5));
+    HANDLE reader = CreateFileW(targetName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    QVERIFY(reader != INVALID_HANDLE_VALUE);
+    auto closeReader = qScopeGuard([&reader] { if (reader != INVALID_HANDLE_VALUE) CloseHandle(reader); });
+    HANDLE blockedPin = CreateFileW(targetName, DELETE | FILE_READ_ATTRIBUTES,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    const DWORD pinError = blockedPin == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
+    if (blockedPin != INVALID_HANDLE_VALUE)
+        CloseHandle(blockedPin);
+    QCOMPARE(pinError, DWORD(ERROR_SHARING_VIOLATION));
+    FixtureCommitNativeTrace blockedTrace(temporary->path(), QStringLiteral("note.md"), true);
+    if (!blockedTrace.installed())
+        QSKIP("The Qt Core native rename import is unavailable for this diagnostic.");
+    QVERIFY(blockedTrace.start());
+    QVERIFY(!blocked.commit());
+    const auto blockedResult = blockedTrace.finish();
+    QVERIFY(blockedResult.restored);
+    QVERIFY(blockedResult.failures > 0);
+    QVERIFY(blockedResult.lastFailureError != 0);
+    QCOMPARE(blockedResult.targetDeleteError, quint32(ERROR_SHARING_VIOLATION));
+    QCOMPARE(readFile(path), QByteArray("original"));
+    QVERIFY(CloseHandle(reader));
+    reader = INVALID_HANDLE_VALUE;
+
+    QSaveFile pinned(path);
+    pinned.setDirectWriteFallback(false);
+    QVERIFY(pinned.open(QIODevice::WriteOnly));
+    QCOMPARE(pinned.write("updated"), qint64(7));
+    HANDLE pin = CreateFileW(targetName, DELETE | FILE_READ_ATTRIBUTES,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                             nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    QVERIFY(pin != INVALID_HANDLE_VALUE);
+    const auto closePin = qScopeGuard([&pin] { if (pin != INVALID_HANDLE_VALUE) CloseHandle(pin); });
+    HANDLE deniedReader = CreateFileW(targetName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                      nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    const DWORD readerError = deniedReader == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS;
+    if (deniedReader != INVALID_HANDLE_VALUE)
+        CloseHandle(deniedReader);
+    QCOMPARE(readerError, DWORD(ERROR_SHARING_VIOLATION));
+    FixtureCommitNativeTrace pinnedTrace(temporary->path(), QStringLiteral("note.md"), true);
+    QVERIFY(pinnedTrace.installed());
+    QVERIFY(pinnedTrace.start());
+    const bool committed = pinned.commit();
+    const auto pinnedResult = pinnedTrace.finish();
+    QVERIFY(pinnedResult.restored);
+    QVERIFY(!committed);
+    QVERIFY(pinnedResult.failures > 0);
+    QVERIFY(pinnedResult.lastFailureError != 0);
+    QVERIFY(pinnedResult.targetDeleteAttempted);
+    QVERIFY(pinnedResult.targetDeleteOpened);
+    qInfo().noquote() << describeFixtureNativeRename(pinnedResult);
+    QVERIFY(CloseHandle(pin));
+    pin = INVALID_HANDLE_VALUE;
+    QCOMPARE(readFile(path), QByteArray("original"));
+
+    // This is an explicit control after releasing the test's handle, not an
+    // automatic retry policy for a real document.
+    QSaveFile released(path);
+    released.setDirectWriteFallback(false);
+    QVERIFY(released.open(QIODevice::WriteOnly));
+    QCOMPARE(released.write("updated"), qint64(7));
+    FixtureCommitNativeTrace releasedTrace(temporary->path(), QStringLiteral("note.md"), true);
+    QVERIFY(releasedTrace.installed());
+    QVERIFY(releasedTrace.start());
+    const bool releasedCommitted = released.commit();
+    const auto releasedResult = releasedTrace.finish();
+    QVERIFY(releasedResult.restored);
+    if (!releasedCommitted)
+        qInfo().noquote() << describeFixtureNativeRename(releasedResult);
+    QVERIFY2(releasedCommitted, qUtf8Printable(released.errorString()));
+    QCOMPARE(readFile(path), QByteArray("updated"));
+}
+
 void QtDocumentSpikeTests::windowsSaveFailureObservations()
 {
     auto temporary = fixtureDirectory();
