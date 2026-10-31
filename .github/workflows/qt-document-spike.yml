@@ -41,4 +41,17 @@ jobs:
       - name: Build experiment
         run: cmake --build build/qt-document-spike --config Release --parallel 2
       - name: Run offscreen experiment tests
-        run: ctest --test-dir build/qt-document-spike -C Release --verbose --output-on-failure --no-tests=error
+        run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error
+      - name: Report Windows junction fixture result
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:QT_QUICK_BACKEND = 'software'
+          $xdnoteReport = Join-Path $env:RUNNER_TEMP 'xdnote-junction-test.txt'
+          $xdnoteTest = Join-Path $env:GITHUB_WORKSPACE 'build/qt-document-spike/Release/qt_document_spike_tests.exe'
+          & $xdnoteTest windowsImageJunctionBypassesFinalNofollow -o "${xdnoteReport},txt"
+          $xdnoteStatus = $LASTEXITCODE
+          if (!(Test-Path -LiteralPath $xdnoteReport)) { throw 'The junction test did not create a report.' }
+          Get-Content -LiteralPath $xdnoteReport
+          if ($xdnoteStatus -ne 0) { throw "The junction test failed with exit code $xdnoteStatus." }
