@@ -41,4 +41,4 @@ jobs:
       - name: Build experiment
         run: cmake --build build/qt-document-spike --config Release --parallel 2
       - name: Run offscreen experiment tests
-        run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error
+        run: ctest --test-dir build/qt-document-spike -C Release --verbose --output-on-failure --no-tests=error
