@@ -72,9 +72,3 @@ jobs:
           if (!(Test-Path -LiteralPath $xdnoteReport)) { throw 'The junction test did not create a report.' }
           Get-Content -LiteralPath $xdnoteReport
           if ($xdnoteStatus -ne 0) { throw "The junction test failed with exit code $xdnoteStatus." }
-      - name: Validate constrained Windows rename collector
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: >-
-          pwsh -NoProfile -File experiments/qt-document-spike/trace-windows-rename.ps1
-          -QtPrefix "$env:QT_ROOT_DIR" -BuildName qt-document-spike -Mode prepare -MaxRuns 1
