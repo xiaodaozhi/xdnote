@@ -135,7 +135,8 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
 
 #if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
     const QString fixtureRoot = QFileInfo(m_path).absolutePath();
-    const int entriesBeforeOpen = fixtureOtherEntryCount(fixtureRoot);
+    const QString fixtureTarget = QFileInfo(m_path).fileName();
+    const int entriesBeforeOpen = fixtureOtherEntryCount(fixtureRoot, fixtureTarget);
 #endif
     QSaveFile output(m_path);
     output.setDirectWriteFallback(false);
@@ -145,7 +146,7 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
         return SaveOutcome::FailedBeforeCommit;
     }
 #if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
-    const int entriesAfterOpen = entriesBeforeOpen >= 0 ? fixtureOtherEntryCount(fixtureRoot) : -1;
+    const int entriesAfterOpen = entriesBeforeOpen >= 0 ? fixtureOtherEntryCount(fixtureRoot, fixtureTarget) : -1;
 #endif
     if (output.write(encoded) != encoded.size()) {
         *error = QStringLiteral("temporary write (Qt file error %1): %2")
@@ -167,7 +168,7 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
                      .arg(int(output.error())).arg(output.errorString());
 #if defined(Q_OS_WIN) && defined(XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
         if (entriesBeforeOpen >= 0) {
-            const auto observation = observeFixtureCommitFailure(fixtureRoot, &m_baseline, &encoded);
+            const auto observation = observeFixtureCommitFailure(fixtureRoot, &m_baseline, &encoded, fixtureTarget);
             qWarning().noquote() << describeFixtureCommitFailure(observation, entriesBeforeOpen, entriesAfterOpen);
         }
 #endif
