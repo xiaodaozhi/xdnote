@@ -34,6 +34,8 @@ add_executable(qt_document_spike_tests
     tests/file_identity_probe.h
     tests/image_reference_probe.cpp
     tests/image_reference_probe.h
+    tests/windows_commit_diagnostic.cpp
+    tests/windows_commit_diagnostic.h
     tests/displaced_probe.cpp
     tests/displaced_probe.h
     tests/qt_spike_test.cpp
@@ -41,10 +43,11 @@ add_executable(qt_document_spike_tests
 add_dependencies(qt_document_spike_tests qt_open_intent_sender qt_fixture_writer)
 if(WIN32)
     target_sources(qt_document_spike_tests PRIVATE tests/windows_junction_probe.cpp tests/windows_junction_probe.h)
+    target_compile_definitions(qt_document_spike_tests PRIVATE XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
     add_dependencies(qt_document_spike_tests qt_uia_client)
 endif()
 target_compile_features(qt_document_spike_tests PRIVATE cxx_std_17)
-target_include_directories(qt_document_spike_tests PRIVATE src)
+target_include_directories(qt_document_spike_tests PRIVATE src tests)
 target_link_libraries(qt_document_spike_tests PRIVATE
     Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::Test
 )
@@ -95,7 +98,8 @@ if(WIN32)
 endif()
 
 include(CTest)
-add_test(NAME qt_document_spike COMMAND qt_document_spike_tests)
+add_test(NAME qt_document_spike COMMAND qt_document_spike_tests
+    -o "${CMAKE_CURRENT_BINARY_DIR}/qt_document_spike_ctest.txt,txt")
 add_test(NAME qt_document_handoff_smoke COMMAND qt_document_handoff_manual --smoke-test)
 add_test(NAME qt_widget_accessibility COMMAND qt_widget_accessibility_tests)
 set_tests_properties(qt_document_spike qt_document_handoff_smoke qt_widget_accessibility PROPERTIES

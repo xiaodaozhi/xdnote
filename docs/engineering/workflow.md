@@ -20,7 +20,7 @@
 
 ## 当前 CI 与边界
 
-`Design and repository checks` 在 Windows、macOS、Linux 上安装锁定的 Node 开发依赖，检查当前设计材料、链接、JSON、图片身份、参考切片和 Git 索引卫生。`Qt document experiment` 使用独立的 Qt 6.8.3 试验工具链，在三个平台配置、编译并运行现有 Qt 文档实验的离屏 CTest；这只约束实验，不决定正式产品工具链。两者均在 main push、PR 和手动触发，使用只读仓库权限；实际结论以对应提交的 Actions 运行为准。
+`Design and repository checks` 在 Windows、macOS、Linux 上安装锁定的 Node 开发依赖，检查当前设计材料、链接、JSON、图片身份、参考切片和 Git 索引卫生。`Qt document experiment` 使用独立的 Qt 6.8.3 试验工具链，在三个平台配置、编译并运行现有 Qt 文档实验的离屏 CTest，并在失败时输出首次文档测试报告；这只约束实验，不决定正式产品工具链。两者均在 main push、PR 和手动触发，使用只读仓库权限；实际结论以对应提交的 Actions 运行为准。
 
 `Scintilla buffer experiment` 在相关实验或工作流变化时以及手动触发时运行；它在三平台显式下载并核验固定摘要的试验源码，分别测试核心文本缓冲区、Qt 控件的离屏文档接管与合成输入法事件，以及 Qt 辅助功能接口对照。该工作流不验证真实输入法或屏幕阅读器，不代表最终采用 Scintilla，也不与其他 PR 的必需检查混为一谈。
 

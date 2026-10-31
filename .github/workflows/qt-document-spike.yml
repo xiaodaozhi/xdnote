@@ -40,15 +40,32 @@ jobs:
         run: cmake -S experiments/qt-document-spike -B build/qt-document-spike -DCMAKE_BUILD_TYPE=Release
       - name: Build experiment
         run: cmake --build build/qt-document-spike --config Release --parallel 2
+      - name: Clear previous Qt document test report
+        shell: python
+        run: |
+          from pathlib import Path
+
+          Path('build/qt-document-spike/qt_document_spike_ctest.txt').unlink(missing_ok=True)
       - name: Run offscreen experiment tests
+        id: qt_tests
         run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error
+      - name: Report first Qt document test run
+        if: ${{ always() && steps.qt_tests.outcome != 'skipped' && steps.qt_tests.outcome != '' }}
+        shell: python
+        run: |
+          from pathlib import Path
+
+          report = Path('build/qt-document-spike/qt_document_spike_ctest.txt')
+          if not report.is_file():
+              raise SystemExit('The Qt document test report was not created.')
+          print(report.read_text(encoding='utf-8', errors='replace'))
       - name: Report Windows junction fixture result
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = 'offscreen'
           $env:QT_QUICK_BACKEND = 'software'
-          $xdnoteReport = Join-Path $env:RUNNER_TEMP 'xdnote-junction-test.txt'
+          $xdnoteReport = Join-Path $env:RUNNER_TEMP ("xdnote-junction-$([guid]::NewGuid().ToString('N')).txt")
           $xdnoteTest = Join-Path $env:GITHUB_WORKSPACE 'build/qt-document-spike/Release/qt_document_spike_tests.exe'
           & $xdnoteTest windowsImageJunctionBypassesFinalNofollow -o "${xdnoteReport},txt"
           $xdnoteStatus = $LASTEXITCODE
