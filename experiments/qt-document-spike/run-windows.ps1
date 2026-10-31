@@ -4,6 +4,7 @@ param(
     [string]$NinjaPath = 'ninja',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$BuildName = 'qt-document-spike',
     [switch]$NativeWindowTests,
+    [switch]$NativeCommitTrace,
     [switch]$ManualHandoff,
     [switch]$Benchmarks,
     [ValidateRange(1, 5)][int]$BenchmarkRepeats = 1
@@ -28,7 +29,7 @@ $xdnoteRun = Join-Path $xdnoteBuild ("runs/" + $xdnoteRunId)
 New-Item -ItemType Directory -Path $xdnoteBuild,$xdnoteTemp,$xdnoteRun -Force | Out-Null
 
 $xdnoteEnvironmentKeys = @('PATH','TEMP','TMP','VSLANG','QT_PLUGIN_PATH','QML_IMPORT_PATH','QML2_IMPORT_PATH',
-    'QT_QPA_PLATFORM','QT_QUICK_BACKEND','QT_FORCE_STDERR_LOGGING')
+    'QT_QPA_PLATFORM','QT_QUICK_BACKEND','QT_FORCE_STDERR_LOGGING','XDNOTE_TRACE_QSAVEFILE')
 $xdnotePreviousEnvironment = @{}
 foreach ($xdnoteKey in $xdnoteEnvironmentKeys) {
     $xdnotePreviousEnvironment[$xdnoteKey] = [Environment]::GetEnvironmentVariable($xdnoteKey, 'Process')
@@ -83,6 +84,7 @@ function Get-SourceFingerprint {
         'tests/guarded_quick_accessibility.h', 'tests/guarded_quick_accessibility.cpp',
         'tests/windows_junction_probe.h', 'tests/windows_junction_probe.cpp',
         'tests/windows_commit_diagnostic.h', 'tests/windows_commit_diagnostic.cpp',
+        'tests/windows_commit_native_trace.h', 'tests/windows_commit_native_trace.cpp',
         'tests/fixture_writer.cpp', 'tests/uia_client.cpp', 'tests/displaced_probe.h', 'tests/displaced_probe.cpp',
         'tests/qt_spike_test.cpp', 'tests/widget_accessibility_test.cpp',
         'tests/fixtures/markdown-core.md', 'benchmark/benchmark.cpp')
@@ -142,6 +144,7 @@ try {
     $env:QML2_IMPORT_PATH = $null
     $env:QT_QUICK_BACKEND = 'software'
     $env:QT_FORCE_STDERR_LOGGING = '1'
+    $env:XDNOTE_TRACE_QSAVEFILE = if ($NativeCommitTrace) { '1' } else { $null }
 
     $xdnoteSource = Join-Path $xdnoteRoot 'experiments/qt-document-spike'
     $xdnoteFingerprint = Get-SourceFingerprint

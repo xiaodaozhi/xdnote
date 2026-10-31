@@ -42,7 +42,8 @@ add_executable(qt_document_spike_tests
 )
 add_dependencies(qt_document_spike_tests qt_open_intent_sender qt_fixture_writer)
 if(WIN32)
-    target_sources(qt_document_spike_tests PRIVATE tests/windows_junction_probe.cpp tests/windows_junction_probe.h)
+    target_sources(qt_document_spike_tests PRIVATE tests/windows_junction_probe.cpp tests/windows_junction_probe.h
+        tests/windows_commit_native_trace.cpp tests/windows_commit_native_trace.h)
     target_compile_definitions(qt_document_spike_tests PRIVATE XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
     add_dependencies(qt_document_spike_tests qt_uia_client)
 endif()
