@@ -279,6 +279,8 @@ private slots:
     void windowsSaveFailureObservations();
     void windowsNativeCommitTrace();
     void windowsTargetSharingControl();
+    void windowsFixtureUseProbe_data();
+    void windowsFixtureUseProbe();
     void windowsUiaValueWrite_data();
     void windowsUiaValueWrite();
 #endif
@@ -1299,7 +1301,8 @@ void QtDocumentSpikeTests::changeAfterFinalCheckCanBeOverwritten()
     QCOMPARE(output.write("local"), qint64(5));
 #ifdef Q_OS_WIN
     const bool traceRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_QSAVEFILE") == 1;
-    FixtureCommitNativeTrace trace(temporary->path(), QStringLiteral("note.md"), traceRequested);
+    const bool usersRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_FIXTURE_USERS") == 1;
+    FixtureCommitNativeTrace trace(temporary->path(), QStringLiteral("note.md"), traceRequested, usersRequested);
 #endif
     QCOMPARE(readFile(path), baseline); // Last comparison in the candidate sequence.
     QVERIFY(writeFile(path, "external")); // Another actor writes after that comparison.
@@ -1582,7 +1585,8 @@ void QtDocumentSpikeTests::windowsNativeCommitTrace()
     QVERIFY(success.open(QIODevice::WriteOnly));
     const int afterOpen = fixtureOtherEntryCount(temporary->path());
     QCOMPARE(success.write("updated"), qint64(7));
-    FixtureCommitNativeTrace successfulTrace(temporary->path(), QStringLiteral("note.md"), true);
+    const bool usersRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_FIXTURE_USERS") == 1;
+    FixtureCommitNativeTrace successfulTrace(temporary->path(), QStringLiteral("note.md"), true, usersRequested);
     if (!successfulTrace.installed())
         QSKIP("The Qt Core native rename import is unavailable for this diagnostic.");
     QVERIFY(successfulTrace.start());
@@ -1709,7 +1713,8 @@ void QtDocumentSpikeTests::windowsTargetSharingControl()
     released.setDirectWriteFallback(false);
     QVERIFY(released.open(QIODevice::WriteOnly));
     QCOMPARE(released.write("updated"), qint64(7));
-    FixtureCommitNativeTrace releasedTrace(temporary->path(), QStringLiteral("note.md"), true);
+    const bool usersRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_FIXTURE_USERS") == 1;
+    FixtureCommitNativeTrace releasedTrace(temporary->path(), QStringLiteral("note.md"), true, usersRequested);
     QVERIFY(releasedTrace.installed());
     QVERIFY(releasedTrace.start());
     const bool releasedCommitted = released.commit();
@@ -1719,6 +1724,80 @@ void QtDocumentSpikeTests::windowsTargetSharingControl()
         qInfo().noquote() << describeFixtureNativeRename(releasedResult);
     QVERIFY2(releasedCommitted, qUtf8Printable(released.errorString()));
     QCOMPARE(readFile(path), QByteArray("updated"));
+}
+
+void QtDocumentSpikeTests::windowsFixtureUseProbe_data()
+{
+    QTest::addColumn<bool>("childReader");
+    QTest::newRow("current process") << false;
+    QTest::newRow("controlled child") << true;
+}
+
+void QtDocumentSpikeTests::windowsFixtureUseProbe()
+{
+    QFETCH(bool, childReader);
+    auto temporary = fixtureDirectory();
+    QVERIFY(temporary);
+    const QString path = temporary->filePath(QStringLiteral("note.md"));
+    QVERIFY(writeFile(path, QByteArray("original")));
+    QSaveFile output(path);
+    output.setDirectWriteFallback(false);
+    QVERIFY(output.open(QIODevice::WriteOnly));
+    QCOMPARE(output.write("local"), qint64(5));
+
+    QFile local(path);
+    QProcess child;
+    const auto cleanupChild = qScopeGuard([&child] {
+        if (child.state() != QProcess::NotRunning) {
+            child.kill();
+            child.waitForFinished(5000);
+        }
+    });
+    QString error;
+    quint32 expectedProcess = GetCurrentProcessId();
+    if (childReader) {
+        QVERIFY2(startFixtureProcess(&child, {QStringLiteral("--hold-shared-read"), path}, &error),
+                 qUtf8Printable(error));
+        expectedProcess = quint32(child.processId());
+    } else {
+        QVERIFY(local.open(QIODevice::ReadOnly));
+    }
+
+    FixtureCommitNativeTrace trace(temporary->path(), QStringLiteral("note.md"), true, true, expectedProcess);
+    if (!trace.installed())
+        QSKIP("The Qt Core native rename import is unavailable for this diagnostic.");
+    if (!trace.usersRegistered()) {
+        const auto unavailable = trace.finish();
+        const QString reason = QStringLiteral("Fixture use query unavailable; Windows error %1")
+                                   .arg(unavailable.usersRegistrationError);
+        QSKIP(qUtf8Printable(reason));
+    }
+    QVERIFY(trace.start());
+    QVERIFY(!output.commit());
+    const auto result = trace.finish();
+    QVERIFY(result.restored);
+    QVERIFY(result.usersRequested);
+    QVERIFY(result.usersQueryAttempted);
+    QCOMPARE(result.usersQueryError, quint32(ERROR_SUCCESS));
+    QVERIFY(result.usersSessionEnded);
+    QVERIFY(result.expectedProcessListed);
+    QVERIFY(result.sourcePathValidated);
+    QVERIFY(result.sourceUsersRegistrationAttempted);
+    QCOMPARE(result.sourceUsersRegistrationError, quint32(ERROR_SUCCESS));
+    QVERIFY(result.sourceUsersQueryAttempted);
+    QCOMPARE(result.sourceUsersQueryError, quint32(ERROR_SUCCESS));
+    QVERIFY(result.sourceCurrentProcessListed);
+    QVERIFY(result.sourceUsersSessionEnded);
+    if (childReader)
+        QVERIFY(result.otherUserCount > 0);
+    else
+        QVERIFY(result.currentProcessListed);
+    qInfo().noquote() << describeFixtureNativeRename(result);
+    if (childReader)
+        QVERIFY2(finishFixtureReader(&child, &error), qUtf8Printable(error));
+    else
+        local.close();
+    QCOMPARE(readFile(path), QByteArray("original"));
 }
 
 void QtDocumentSpikeTests::windowsSaveFailureObservations()

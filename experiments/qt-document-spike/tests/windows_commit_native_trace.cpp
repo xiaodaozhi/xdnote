@@ -6,9 +6,13 @@
 
 #define NOMINMAX
 #include <windows.h>
+#include <RestartManager.h>
 
+#include <array>
 #include <atomic>
 #include <cstring>
+#include <cwchar>
+#include <iterator>
 
 namespace {
 using SetFileInfo = decltype(&SetFileInformationByHandle);
@@ -16,6 +20,98 @@ std::atomic<SetFileInfo> originalSetFileInfo{nullptr};
 std::atomic_flag traceInUse = ATOMIC_FLAG_INIT;
 thread_local FixtureNativeRenameObservation *currentObservation = nullptr;
 thread_local const wchar_t *currentTarget = nullptr;
+thread_local const wchar_t *currentFixtureRoot = nullptr;
+thread_local DWORD currentUsersSession = 0;
+thread_local DWORD currentExpectedFixturePid = 0;
+thread_local bool currentUsersRegistered = false;
+
+struct FixtureUsers
+{
+    DWORD error = ERROR_SUCCESS;
+    UINT count = 0;
+    UINT others = 0;
+    bool current = false;
+    bool expected = false;
+};
+
+FixtureUsers queryFixtureUsers(DWORD session, DWORD expectedPid)
+{
+    FixtureUsers result;
+    std::array<RM_PROCESS_INFO, 64> entries{};
+    UINT needed = 0;
+    UINT count = UINT(entries.size());
+    DWORD reason = 0;
+    result.error = RmGetList(session, &needed, &count, entries.data(), &reason);
+    if (result.error != ERROR_SUCCESS)
+        return result; // An incomplete or unsupported snapshot is not an empty one.
+    result.count = count;
+    for (UINT i = 0; i < count; ++i) {
+        const DWORD id = entries[i].Process.dwProcessId;
+        if (id == GetCurrentProcessId())
+            result.current = true;
+        else
+            ++result.others;
+        if (expectedPid && id == expectedPid)
+            result.expected = true;
+    }
+    return result;
+}
+
+void observeFixtureUsers(FixtureNativeRenameObservation *observation)
+{
+    if (!currentUsersRegistered)
+        return;
+    observation->usersQueryAttempted = true;
+    const auto users = queryFixtureUsers(currentUsersSession, currentExpectedFixturePid);
+    observation->usersQueryError = users.error;
+    observation->userCount = users.count;
+    observation->otherUserCount = users.others;
+    observation->currentProcessListed = users.current;
+    observation->expectedProcessListed = users.expected;
+}
+
+void observeSourceFixtureUsers(HANDLE file, FixtureNativeRenameObservation *observation)
+{
+    if (!currentUsersRegistered || !currentFixtureRoot || !currentTarget || GetFileType(file) != FILE_TYPE_DISK)
+        return;
+    BY_HANDLE_FILE_INFORMATION info{};
+    if (!GetFileInformationByHandle(file, &info)
+        || (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)))
+        return;
+    wchar_t path[32768]{};
+    const DWORD length = GetFinalPathNameByHandleW(file, path, DWORD(std::size(path)),
+                                                   FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    if (!length || length >= std::size(path) || std::wcsncmp(path, L"\\\\?\\", 4) != 0)
+        return;
+    const wchar_t *source = path + 4;
+    const size_t rootLength = std::wcslen(currentFixtureRoot);
+    if (std::wcslen(source) <= rootLength + 1
+        || CompareStringOrdinal(source, int(rootLength), currentFixtureRoot, int(rootLength), TRUE) != CSTR_EQUAL
+        || (source[rootLength] != L'\\' && source[rootLength] != L'/'))
+        return;
+    const wchar_t *name = source + rootLength + 1;
+    if (std::wcschr(name, L'\\') || std::wcschr(name, L'/') || _wcsicmp(source, currentTarget) == 0)
+        return;
+    observation->sourcePathValidated = true;
+    observation->sourceUsersRegistrationAttempted = true;
+    DWORD session = 0;
+    wchar_t key[CCH_RM_SESSION_KEY + 1]{};
+    DWORD status = RmStartSession(&session, 0, key);
+    if (status == ERROR_SUCCESS) {
+        status = RmRegisterResources(session, 1, &source, 0, nullptr, 0, nullptr);
+        if (status == ERROR_SUCCESS) {
+            observation->sourceUsersQueryAttempted = true;
+            const auto users = queryFixtureUsers(session, 0);
+            observation->sourceUsersQueryError = users.error;
+            observation->sourceUserCount = users.count;
+            observation->sourceOtherUserCount = users.others;
+            observation->sourceCurrentProcessListed = users.current;
+        }
+        observation->sourceUsersSessionEndError = RmEndSession(session);
+        observation->sourceUsersSessionEnded = observation->sourceUsersSessionEndError == ERROR_SUCCESS;
+    }
+    observation->sourceUsersRegistrationError = status;
+}
 
 BOOL WINAPI tracedSetFileInformationByHandle(HANDLE file, FILE_INFO_BY_HANDLE_CLASS kind,
                                              LPVOID information, DWORD size)
@@ -33,6 +129,22 @@ BOOL WINAPI tracedSetFileInformationByHandle(HANDLE file, FILE_INFO_BY_HANDLE_CL
             currentObservation->targetDeleteAttempted = false;
             currentObservation->targetDeleteOpened = false;
             currentObservation->targetDeleteError = 0;
+            currentObservation->usersQueryAttempted = false;
+            currentObservation->usersQueryError = 0;
+            currentObservation->userCount = 0;
+            currentObservation->otherUserCount = 0;
+            currentObservation->currentProcessListed = false;
+            currentObservation->expectedProcessListed = false;
+            currentObservation->sourcePathValidated = false;
+            currentObservation->sourceUsersRegistrationAttempted = false;
+            currentObservation->sourceUsersRegistrationError = 0;
+            currentObservation->sourceUsersQueryAttempted = false;
+            currentObservation->sourceUsersQueryError = 0;
+            currentObservation->sourceUserCount = 0;
+            currentObservation->sourceOtherUserCount = 0;
+            currentObservation->sourceCurrentProcessListed = false;
+            currentObservation->sourceUsersSessionEnded = false;
+            currentObservation->sourceUsersSessionEndError = 0;
             FILE_STANDARD_INFO info{};
             if (GetFileInformationByHandleEx(file, FileStandardInfo, &info, sizeof(info))) {
                 currentObservation->sourceInfoAvailable = true;
@@ -50,6 +162,8 @@ BOOL WINAPI tracedSetFileInformationByHandle(HANDLE file, FILE_INFO_BY_HANDLE_CL
                     CloseHandle(target);
                 }
             }
+            observeFixtureUsers(currentObservation);
+            observeSourceFixtureUsers(file, currentObservation);
         }
     }
     SetLastError(error);
@@ -108,7 +222,8 @@ bool exchangeImport(void **slot, void *expected, void *replacement)
 } // namespace
 
 FixtureCommitNativeTrace::FixtureCommitNativeTrace(const QString &fixtureRoot, const QString &targetName,
-                                                   bool enabled)
+                                                   bool enabled, bool queryFixtureUsers,
+                                                   quint32 expectedFixturePid)
 {
     if (!enabled || fixtureOtherEntryCount(fixtureRoot, targetName) < 0 || traceInUse.test_and_set())
         return;
@@ -117,7 +232,23 @@ FixtureCommitNativeTrace::FixtureCommitNativeTrace(const QString &fixtureRoot, c
         traceInUse.clear();
         return;
     }
+    m_fixtureRoot = QDir::toNativeSeparators(root).toStdWString();
     m_targetPath = QDir::toNativeSeparators(root + QLatin1Char('/') + targetName).toStdWString();
+    m_observation.usersRequested = queryFixtureUsers;
+    m_expectedFixturePid = expectedFixturePid;
+    if (queryFixtureUsers) {
+        wchar_t key[CCH_RM_SESSION_KEY + 1]{};
+        DWORD session = 0;
+        DWORD status = RmStartSession(&session, 0, key);
+        if (status == ERROR_SUCCESS) {
+            m_usersSessionStarted = true;
+            m_usersSession = session;
+            const wchar_t *target = m_targetPath.c_str();
+            status = RmRegisterResources(session, 1, &target, 0, nullptr, 0, nullptr);
+            m_usersRegistered = status == ERROR_SUCCESS;
+        }
+        m_observation.usersRegistrationError = status;
+    }
     m_slot = qtCoreSetFileInfoImport();
     if (!m_slot) {
         traceInUse.clear();
@@ -151,6 +282,10 @@ bool FixtureCommitNativeTrace::start()
         return false;
     currentObservation = &m_observation;
     currentTarget = m_targetPath.c_str();
+    currentFixtureRoot = m_fixtureRoot.c_str();
+    currentUsersSession = m_usersSession;
+    currentUsersRegistered = m_usersRegistered;
+    currentExpectedFixturePid = m_expectedFixturePid;
     m_observation.captureStarted = true;
     return true;
 }
@@ -161,11 +296,19 @@ FixtureNativeRenameObservation FixtureCommitNativeTrace::finish()
         if (currentObservation == &m_observation) {
             currentObservation = nullptr;
             currentTarget = nullptr;
+            currentFixtureRoot = nullptr;
+            currentUsersRegistered = false;
+            currentUsersSession = 0;
+            currentExpectedFixturePid = 0;
         }
         m_observation.restored = exchangeImport(m_slot, reinterpret_cast<void *>(&tracedSetFileInformationByHandle),
                                                 m_original);
         if (m_observation.restored)
             traceInUse.clear(); // Otherwise never mistake the wrapper for the original import.
+    }
+    if (!m_finished && m_usersSessionStarted) {
+        m_observation.usersSessionEndError = RmEndSession(m_usersSession);
+        m_observation.usersSessionEnded = m_observation.usersSessionEndError == ERROR_SUCCESS;
     }
     m_finished = true;
     return m_observation;
@@ -173,11 +316,27 @@ FixtureNativeRenameObservation FixtureCommitNativeTrace::finish()
 
 QString describeFixtureNativeRename(const FixtureNativeRenameObservation &observation)
 {
-    return QStringLiteral("fixture native rename trace: installed=%1; capture started=%2; restored=%3; calls=%4; failures=%5; last failure error=%6; "
+    const QString result = QStringLiteral("fixture native rename trace: installed=%1; capture started=%2; restored=%3; calls=%4; failures=%5; last failure error=%6; "
                           "source info=%7; source delete pending=%8; immediate target DELETE probe attempted=%9; opened=%10; error=%11")
         .arg(observation.installed).arg(observation.captureStarted).arg(observation.restored).arg(observation.calls)
         .arg(observation.failures).arg(observation.lastFailureError)
         .arg(observation.sourceInfoAvailable).arg(observation.sourceDeletePending)
         .arg(observation.targetDeleteAttempted).arg(observation.targetDeleteOpened).arg(observation.targetDeleteError);
+    if (!observation.usersRequested)
+        return result;
+    return result + QStringLiteral("; fixture users registration error=%1; queried=%2; query error=%3; "
+                                   "count=%4; other count=%5; current process listed=%6; expected fixture process listed=%7; "
+                                   "session ended=%8; end error=%9")
+                        .arg(observation.usersRegistrationError).arg(observation.usersQueryAttempted)
+                        .arg(observation.usersQueryError).arg(observation.userCount).arg(observation.otherUserCount)
+                        .arg(observation.currentProcessListed).arg(observation.expectedProcessListed)
+                        .arg(observation.usersSessionEnded).arg(observation.usersSessionEndError)
+           + QStringLiteral("; source path validated=%1; registration attempted=%2; registration error=%3; queried=%4; "
+                            "query error=%5; count=%6; other count=%7; current process listed=%8; session ended=%9; end error=%10")
+                 .arg(observation.sourcePathValidated).arg(observation.sourceUsersRegistrationAttempted)
+                 .arg(observation.sourceUsersRegistrationError).arg(observation.sourceUsersQueryAttempted)
+                 .arg(observation.sourceUsersQueryError).arg(observation.sourceUserCount)
+                 .arg(observation.sourceOtherUserCount).arg(observation.sourceCurrentProcessListed)
+                 .arg(observation.sourceUsersSessionEnded).arg(observation.sourceUsersSessionEndError);
 }
 #endif

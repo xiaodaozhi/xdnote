@@ -19,6 +19,26 @@ struct FixtureNativeRenameObservation
     bool targetDeleteAttempted = false;
     bool targetDeleteOpened = false;
     quint32 targetDeleteError = 0;
+    bool usersRequested = false;
+    quint32 usersRegistrationError = 0;
+    bool usersQueryAttempted = false;
+    quint32 usersQueryError = 0;
+    quint32 userCount = 0;
+    quint32 otherUserCount = 0;
+    bool currentProcessListed = false;
+    bool expectedProcessListed = false;
+    bool usersSessionEnded = false;
+    quint32 usersSessionEndError = 0;
+    bool sourcePathValidated = false;
+    bool sourceUsersRegistrationAttempted = false;
+    quint32 sourceUsersRegistrationError = 0;
+    bool sourceUsersQueryAttempted = false;
+    quint32 sourceUsersQueryError = 0;
+    quint32 sourceUserCount = 0;
+    quint32 sourceOtherUserCount = 0;
+    bool sourceCurrentProcessListed = false;
+    bool sourceUsersSessionEnded = false;
+    quint32 sourceUsersSessionEndError = 0;
 };
 
 QString describeFixtureNativeRename(const FixtureNativeRenameObservation &observation);
@@ -28,12 +48,14 @@ QString describeFixtureNativeRename(const FixtureNativeRenameObservation &observ
 class FixtureCommitNativeTrace
 {
 public:
-    FixtureCommitNativeTrace(const QString &fixtureRoot, const QString &targetName, bool enabled);
+    FixtureCommitNativeTrace(const QString &fixtureRoot, const QString &targetName, bool enabled,
+                             bool queryFixtureUsers = false, quint32 expectedFixturePid = 0);
     ~FixtureCommitNativeTrace();
     FixtureCommitNativeTrace(const FixtureCommitNativeTrace &) = delete;
     FixtureCommitNativeTrace &operator=(const FixtureCommitNativeTrace &) = delete;
 
     bool installed() const { return m_observation.installed; }
+    bool usersRegistered() const { return m_usersRegistered; }
     bool start();
     FixtureNativeRenameObservation finish();
 
@@ -43,5 +65,10 @@ private:
     void *m_original = nullptr;
     bool m_finished = false;
     std::wstring m_targetPath;
+    std::wstring m_fixtureRoot;
+    quint32 m_usersSession = 0;
+    quint32 m_expectedFixturePid = 0;
+    bool m_usersSessionStarted = false;
+    bool m_usersRegistered = false;
 };
 #endif

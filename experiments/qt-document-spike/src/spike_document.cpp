@@ -160,7 +160,8 @@ SpikeFile::SaveOutcome SpikeFile::save(const QString &text,
     // Install before the final check so the diagnostic does not add setup
     // operations between that check and the actual commit.
     const bool traceRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_QSAVEFILE") == 1;
-    FixtureCommitNativeTrace trace(fixtureRoot, fixtureTarget, traceRequested);
+    const bool usersRequested = qEnvironmentVariableIntValue("XDNOTE_TRACE_FIXTURE_USERS") == 1;
+    FixtureCommitNativeTrace trace(fixtureRoot, fixtureTarget, traceRequested, usersRequested);
 #endif
     // Tests use this hook to make a real external change before the last check.
     if (beforeFinalCheck)

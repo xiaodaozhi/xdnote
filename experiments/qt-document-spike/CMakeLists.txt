@@ -45,6 +45,7 @@ if(WIN32)
     target_sources(qt_document_spike_tests PRIVATE tests/windows_junction_probe.cpp tests/windows_junction_probe.h
         tests/windows_commit_native_trace.cpp tests/windows_commit_native_trace.h)
     target_compile_definitions(qt_document_spike_tests PRIVATE XDNOTE_FIXTURE_COMMIT_DIAGNOSTICS)
+    target_link_libraries(qt_document_spike_tests PRIVATE Rstrtmgr)
     add_dependencies(qt_document_spike_tests qt_uia_client)
 endif()
 target_compile_features(qt_document_spike_tests PRIVATE cxx_std_17)

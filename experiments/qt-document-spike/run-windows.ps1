@@ -5,6 +5,7 @@ param(
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$BuildName = 'qt-document-spike',
     [switch]$NativeWindowTests,
     [switch]$NativeCommitTrace,
+    [switch]$FixtureUseProbe,
     [switch]$ManualHandoff,
     [switch]$Benchmarks,
     [ValidateRange(1, 5)][int]$BenchmarkRepeats = 1
@@ -12,6 +13,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'This entry point is for Windows; use the CMake instructions on other platforms.' }
+if ($FixtureUseProbe -and !$NativeCommitTrace) { throw 'FixtureUseProbe requires NativeCommitTrace.' }
 
 $xdnoteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 $xdnoteQt = (Resolve-Path -LiteralPath $QtPrefix).Path
@@ -29,7 +31,7 @@ $xdnoteRun = Join-Path $xdnoteBuild ("runs/" + $xdnoteRunId)
 New-Item -ItemType Directory -Path $xdnoteBuild,$xdnoteTemp,$xdnoteRun -Force | Out-Null
 
 $xdnoteEnvironmentKeys = @('PATH','TEMP','TMP','VSLANG','QT_PLUGIN_PATH','QML_IMPORT_PATH','QML2_IMPORT_PATH',
-    'QT_QPA_PLATFORM','QT_QUICK_BACKEND','QT_FORCE_STDERR_LOGGING','XDNOTE_TRACE_QSAVEFILE')
+    'QT_QPA_PLATFORM','QT_QUICK_BACKEND','QT_FORCE_STDERR_LOGGING','XDNOTE_TRACE_QSAVEFILE','XDNOTE_TRACE_FIXTURE_USERS')
 $xdnotePreviousEnvironment = @{}
 foreach ($xdnoteKey in $xdnoteEnvironmentKeys) {
     $xdnotePreviousEnvironment[$xdnoteKey] = [Environment]::GetEnvironmentVariable($xdnoteKey, 'Process')
@@ -145,6 +147,7 @@ try {
     $env:QT_QUICK_BACKEND = 'software'
     $env:QT_FORCE_STDERR_LOGGING = '1'
     $env:XDNOTE_TRACE_QSAVEFILE = if ($NativeCommitTrace) { '1' } else { $null }
+    $env:XDNOTE_TRACE_FIXTURE_USERS = if ($FixtureUseProbe) { '1' } else { $null }
 
     $xdnoteSource = Join-Path $xdnoteRoot 'experiments/qt-document-spike'
     $xdnoteFingerprint = Get-SourceFingerprint
@@ -153,7 +156,10 @@ try {
         "-DCMAKE_PREFIX_PATH=$xdnoteQt", "-DCMAKE_MAKE_PROGRAM=$xdnoteNinja",
         '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_TRY_COMPILE_CONFIGURATION=Release')
     Invoke-BuildStep -Program $xdnoteCmake -CommandArguments $xdnoteConfigureArgs -LogPath (Join-Path $xdnoteRun 'configure.log')
-    Invoke-BuildStep -Program $xdnoteCmake -CommandArguments @('--build', $xdnoteBuild) -LogPath (Join-Path $xdnoteRun 'build.log')
+    # Some localized MSVC/Ninja combinations do not decode /showIncludes
+    # consistently. A clean build prevents stale objects from being associated
+    # with the current source fingerprint.
+    Invoke-BuildStep -Program $xdnoteCmake -CommandArguments @('--build', $xdnoteBuild, '--clean-first') -LogPath (Join-Path $xdnoteRun 'build.log')
     Invoke-SpikeTests -Platform 'offscreen' -ReportPath (Join-Path $xdnoteRun 'offscreen.txt')
     Invoke-WidgetAccessibilityTests -Platform 'offscreen' -ReportPath (Join-Path $xdnoteRun 'widget-accessibility-offscreen.txt')
     Invoke-HandoffSmoke -ReportPath (Join-Path $xdnoteRun 'handoff-smoke.txt')
