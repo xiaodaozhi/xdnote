@@ -5,10 +5,14 @@ Button {
     id: control
     property bool keyboardOutline: false
     function updateOutline() {
-        keyboardOutline = activeFocus && (focusReason === Qt.TabFocusReason || focusReason === Qt.BacktabFocusReason)
+        keyboardOutline = inputMode.keyboardNavigation && activeFocus && (focusReason === Qt.TabFocusReason || focusReason === Qt.BacktabFocusReason)
     }
     onActiveFocusChanged: updateOutline()
     onFocusReasonChanged: updateOutline()
+    Connections {
+        target: inputMode
+        function onChanged() { control.updateOutline() }
+    }
     onPressed: keyboardOutline = false
     onCanceled: keyboardOutline = false
     onClicked: keyboardOutline = false

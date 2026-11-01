@@ -67,6 +67,8 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/SourceEditor.cpp apps/desktop/src/SourceEditor.h
     apps/desktop/src/MarkdownPreview.cpp apps/desktop/src/MarkdownPreview.h
     apps/desktop/src/VisualTokens.cpp apps/desktop/src/VisualTokens.h
+    apps/desktop/src/InputModality.cpp apps/desktop/src/InputModality.h
+    apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h
     apps/desktop/src/AdmissionWindow.cpp apps/desktop/src/AdmissionWindow.h)
 target_include_directories(xdnote_desktop PUBLIC apps/desktop/src)
 target_link_libraries(xdnote_desktop PUBLIC xdnote_scintilla xdnote_markdown

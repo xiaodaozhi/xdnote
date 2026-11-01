@@ -3,6 +3,7 @@
 #include "MarkdownPreview.h"
 #include "SourceEditor.h"
 #include "VisualTokens.h"
+#include "InputModality.h"
 
 #include <QLabel>
 #include <QQmlContext>
@@ -25,6 +26,7 @@ AdmissionWindow::AdmissionWindow(DocumentSession *session, QWidget *parent) : QW
     m_chrome->setResizeMode(QQuickWidget::SizeRootObjectToView);
     m_chrome->rootContext()->setContextProperty(QStringLiteral("admission"), this);
     m_chrome->rootContext()->setContextProperty(QStringLiteral("visual"), visualTokens().toVariantMap());
+    m_chrome->rootContext()->setContextProperty(QStringLiteral("inputMode"), InputModality::forApplication());
     m_chrome->setFixedHeight(geometry.value(QStringLiteral("toolbarHeight")).toInt());
     m_chrome->setSource(QUrl(QStringLiteral("qrc:/xdnote/apps/desktop/ui/Chrome.qml")));
     layout->addWidget(m_chrome);

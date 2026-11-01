@@ -73,6 +73,9 @@ jobs:
         run: xvfb-run -a python scripts/desktop.py test
       - name: Test desktop admission
         if: runner.os != 'Linux'
+        env:
+          QSG_RHI_PREFER_SOFTWARE_RENDERER: ${{ runner.os == 'Windows' && '1' || '' }}
+          QSG_INFO: '1'
         run: python scripts/desktop.py test
       - name: Preserve diagnostics
         if: always()

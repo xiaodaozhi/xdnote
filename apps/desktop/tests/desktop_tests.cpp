@@ -3,6 +3,7 @@
 #include "MarkdownPreview.h"
 #include "SourceEditor.h"
 #include "VisualTokens.h"
+#include "GuiRuntime.h"
 
 #include <QAccessible>
 #include <QApplication>
@@ -192,7 +193,14 @@ private slots:
         QVERIFY(session.isReadOnly());
         QVERIFY(!button->property("keyboardOutline").toBool());
         quick->setFocus();
-        button->forceActiveFocus(Qt::TabFocusReason);
+        button->forceActiveFocus(Qt::OtherFocusReason);
+        QTest::keyClick(quick, Qt::Key_Tab, Qt::ShiftModifier);
+        QTest::keyClick(quick, Qt::Key_Tab);
+        QTRY_VERIFY(button->property("keyboardOutline").toBool());
+        QTest::mouseClick(quick, Qt::LeftButton, Qt::NoModifier, QPoint(2, 2));
+        QVERIFY(!button->property("keyboardOutline").toBool());
+        QTest::keyClick(quick, Qt::Key_Tab, Qt::ShiftModifier);
+        QTest::keyClick(quick, Qt::Key_Tab);
         QTRY_VERIFY(button->property("keyboardOutline").toBool());
         QTest::keyClick(quick, Qt::Key_Space);
         QVERIFY(!session.isReadOnly());
@@ -216,9 +224,7 @@ private slots:
 };
 
 int main(int argc, char **argv) {
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    initializeGuiRuntime();
     QApplication app(argc, argv);
     SourceEditor::installAccessibility();
     DesktopTests tests;

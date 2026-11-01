@@ -1,6 +1,7 @@
 #include "AdmissionWindow.h"
 #include "DocumentSession.h"
 #include "SourceEditor.h"
+#include "GuiRuntime.h"
 
 #include <QApplication>
 #include <QQuickStyle>
@@ -8,9 +9,7 @@
 #include <QSGRendererInterface>
 
 int main(int argc, char **argv) {
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    xdnote::initializeGuiRuntime();
     QApplication application(argc, argv);
     application.setApplicationName(QStringLiteral("xdnote-admission"));
     xdnote::SourceEditor::installAccessibility();
