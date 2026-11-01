@@ -8,6 +8,9 @@
 #include <QAccessible>
 #include <QApplication>
 #include <QInputMethodEvent>
+#include <QFontDatabase>
+#include <QGlyphRun>
+#include <QTextLayout>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWidget>
@@ -24,6 +27,20 @@ using namespace xdnote;
 class DesktopTests final : public QObject {
     Q_OBJECT
 private slots:
+    void systemFontsCanShapeChinese() {
+        for (auto family : {QFontDatabase::GeneralFont, QFontDatabase::FixedFont}) {
+            QTextLayout layout(QStringLiteral("中文界面"), QFontDatabase::systemFont(family));
+            layout.beginLayout();
+            auto line = layout.createLine();
+            line.setLineWidth(300);
+            layout.endLayout();
+            const auto runs = layout.glyphRuns();
+            QVERIFY(!runs.isEmpty());
+            for (const auto &run : runs)
+                for (auto glyph : run.glyphIndexes()) QVERIFY2(glyph != 0, "System font fallback has missing Chinese glyphs");
+        }
+    }
+
     void literalTextAndAtomicUndo() {
         QByteArray original = QStringLiteral("中文😀\u00a0\u2028\u2029\r\n末尾").toUtf8();
         original.append('\0'); original.append("after NUL\n");
@@ -184,7 +201,7 @@ private slots:
     }
 
     void mixedHostAndSharedChrome() {
-        DocumentSession session("# integration");
+        DocumentSession session(QStringLiteral("# 集成验证\n\n中文正文与共享控件。\n").toUtf8());
         AdmissionWindow window(&session);
         auto *quick = window.findChild<QQuickWidget *>("sharedChrome");
         QVERIFY(quick);
