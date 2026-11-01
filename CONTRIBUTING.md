@@ -1,6 +1,6 @@
 # 参与 xdnote 产研
 
-先阅读[文档导航](docs/README.md)、[产研流程](docs/engineering/workflow.md)和受影响的产品／视觉规格。仓库仍处于设计与技术验证阶段；实验代码不是产品实现。
+先阅读[文档导航](docs/README.md)、[产研流程](docs/engineering/workflow.md)和受影响的产品／视觉规格。[实施架构](docs/engineering/architecture.md)已确定方向，仓库继续技术准入与工程准备；实验代码不是产品实现。
 
 1. 在 [Issues](https://github.com/xiaodaozhi/xdnote/issues) 查重，需求、Bug、设计或研究按模板建立或关联任务，写明范围和验收。
 2. 从最新 `main` 创建 `feat/<issue>-<slug>`、`fix/<issue>-<slug>`、`design/<issue>-<slug>`、`docs/<issue>-<slug>` 或 `chore/<issue>-<slug>` 短期分支。
