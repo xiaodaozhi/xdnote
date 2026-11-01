@@ -136,7 +136,8 @@ private slots:
         QSignalSpy ready(&preview, &MarkdownPreview::previewReady);
         QSignalSpy errors(&preview, &MarkdownPreview::previewError);
         preview.resize(700, 500); preview.show();
-        QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0, 30000);
+        QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0 || errors.count() > 0, 30000);
+        QVERIFY2(ready.count() > 0, errors.isEmpty() ? "preview did not complete" : qPrintable(errors.first().first().toString()));
         QVERIFY(!preview.view()->settings()->testAttribute(QWebEngineSettings::JavascriptEnabled));
         QVERIFY(!preview.view()->settings()->testAttribute(QWebEngineSettings::LocalContentCanAccessFileUrls));
         QString html;
@@ -174,12 +175,30 @@ private slots:
         QCOMPARE(quick->height(), geometry["toolbarHeight"].toInt());
         window.show();
         QTRY_VERIFY(window.isVisible());
+        QSignalSpy previewReady(window.preview(), &MarkdownPreview::previewReady);
+        QSignalSpy frames(quick->quickWindow(), &QQuickWindow::frameSwapped);
+        QTRY_VERIFY_WITH_TIMEOUT(previewReady.count() > 0, 30000);
+        QTRY_VERIFY_WITH_TIMEOUT(frames.count() > 0, 10000);
+        QVERIFY(!quick->grabFramebuffer().isNull());
+        QVERIFY(window.preview()->width() > 100);
         window.toggleReadOnly();
         QVERIFY(session.isReadOnly());
         window.toggleReadOnly();
         QVERIFY(!session.isReadOnly());
         const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
         if (!evidence.isEmpty()) QVERIFY(window.grab().save(evidence + "/desktop-admission.png"));
+    }
+
+    void oversizedTransportReportsErrorAndCloseInvalidatesWork() {
+        DocumentSession large(QString(300000, QChar(0x7532)).toUtf8());
+        auto preview = std::make_unique<MarkdownPreview>(&large);
+        QSignalSpy errors(preview.get(), &MarkdownPreview::previewError);
+        QSignalSpy ready(preview.get(), &MarkdownPreview::previewReady);
+        QTRY_VERIFY_WITH_TIMEOUT(errors.count() > 0, 10000);
+        QCOMPARE(ready.count(), 0);
+        preview->refresh();
+        preview.reset(); // a running Rust task owns no widget or session pointer
+        QTest::qWait(100);
     }
 };
 

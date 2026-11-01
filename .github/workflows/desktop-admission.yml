@@ -56,6 +56,8 @@ jobs:
         run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }}
       - name: Prepare pinned source dependencies
         run: python scripts/desktop.py prepare --download
+      - name: Check build entry point guards
+        run: python -m unittest discover -s scripts/tests -v
       - name: Build desktop admission (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -79,6 +81,8 @@ jobs:
           name: desktop-admission-${{ matrix.os }}
           path: |
             build/desktop-admission/*.log
+            build/desktop-admission/desktop-qtest.txt
+            build/desktop-admission/Testing/Temporary/LastTest.log
             build/desktop-admission/build-identity.json
             build/desktop-admission/evidence/
           if-no-files-found: ignore

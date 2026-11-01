@@ -156,6 +156,11 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
     send(SCI_SETCODEPAGE, SC_CP_UTF8);
     send(SCI_SETWRAPMODE, SC_WRAP_WORD);
     send(SCI_SETMARGINWIDTHN, 1, 0);
+    // Native popup and drag/drop commands are admitted with the application
+    // command gateway later; this fixture does not expose a second edit route.
+    send(SCI_USEPOPUP, SC_POPUP_NEVER);
+    setAcceptDrops(false);
+    viewport()->setAcceptDrops(false);
     auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     setFont(font);
     const QByteArray family = font.family().toUtf8();

@@ -50,10 +50,15 @@ def main():
     if not build.resolve().is_relative_to(ROOT.resolve()):
         parser.error("Build directory escapes the repository")
     os.chdir(build)
+    archives_to_install = ["qtbase", "qtdeclarative", "qttools", "qtshadertools", "qtsvg"]
+    if args.host == "linux":
+        # Official Linux Qt binaries require the SDK's matching ICU libraries.
+        # The minimum reference system ships an older incompatible ICU SONAME.
+        archives_to_install.append("icu")
     return Cli().run([
         "install-qt", args.host, "desktop", qt["version"], args.arch,
         "-O", str(build / "Qt"), "-m", *qt["modules"],
-        "--archives", "qtbase", "qtdeclarative", "qttools", "qtshadertools", "qtsvg",
+        "--archives", *archives_to_install,
     ])
 
 

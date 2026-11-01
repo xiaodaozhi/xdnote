@@ -133,7 +133,14 @@ void DocumentSession::reportRejection(EditResult result) {
 
 EditResult DocumentSession::complete(EditResult result) {
     if (result != EditResult::Applied && result != EditResult::Unchanged) reportRejection(result);
-    else { m_rejection.clear(); flush(); }
+    else {
+        if (!m_rejection.isEmpty()) {
+            m_rejection.clear();
+            QScopedValueRollback<bool> notifying(m_notifying, true);
+            emit stateChanged();
+        }
+        flush();
+    }
     return result;
 }
 

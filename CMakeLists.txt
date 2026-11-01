@@ -96,6 +96,7 @@ if(BUILD_TESTING)
     if(MSVC)
         target_compile_options(xdnote_desktop_tests PRIVATE /utf-8 /EHsc)
     endif()
-    add_test(NAME desktop_admission COMMAND xdnote_desktop_tests)
+    add_test(NAME desktop_admission COMMAND xdnote_desktop_tests
+        -o -,txt -o "${CMAKE_BINARY_DIR}/desktop-qtest.txt,txt")
     set_tests_properties(desktop_admission PROPERTIES TIMEOUT 180)
 endif()

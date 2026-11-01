@@ -16,6 +16,7 @@ class AdmissionWindow final : public QWidget {
     Q_PROPERTY(QString feedback READ feedback NOTIFY sessionStateChanged)
 public:
     explicit AdmissionWindow(DocumentSession *session, QWidget *parent = nullptr);
+    ~AdmissionWindow() override;
     bool readOnly() const;
     QString feedback() const;
     SourceEditor *editor() const { return m_editor; }

@@ -6,6 +6,7 @@
 #include <QScopeGuard>
 #include <QVBoxLayout>
 #include <QWebEnginePage>
+#include <QWebEngineLoadingInfo>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include <QWebEngineUrlRequestInterceptor>
@@ -39,17 +40,24 @@ public:
 class RestrictedPage final : public QWebEnginePage {
 public:
     RestrictedPage(QWebEngineProfile *profile, QObject *parent) : QWebEnginePage(profile, parent) {}
-    void present(const QString &html) { m_generatedNavigation = true; setHtml(html); }
+    void present(const QString &html, quint64 generation) {
+        m_expectedData = QUrl(QStringLiteral("data:text/html;charset=UTF-8,")
+            + QString::fromLatin1(html.toUtf8().toPercentEncoding()));
+        m_expectedBase = QUrl(QStringLiteral("about:blank#xdnote-%1").arg(generation));
+        setHtml(html, m_expectedBase);
+    }
+    QUrl expectedBase() const { return m_expectedBase; }
 protected:
     bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool mainFrame) override {
-        const bool bootstrap = m_generatedNavigation && mainFrame && type == NavigationTypeOther
-            && (url.scheme() == QStringLiteral("data") || url == QUrl(QStringLiteral("about:blank")));
-        if (bootstrap) m_generatedNavigation = false;
-        return bootstrap;
+        // Qt setHtml is a Typed navigation from its API. Authorize only the
+        // exact generated document, rather than trusting a navigation type.
+        Q_UNUSED(type);
+        return mainFrame && !m_expectedData.isEmpty() && (url == m_expectedData || url == m_expectedBase);
     }
     QWebEnginePage *createWindow(WebWindowType) override { return nullptr; }
 private:
-    bool m_generatedNavigation = false;
+    QUrl m_expectedData;
+    QUrl m_expectedBase;
 };
 
 RenderResult renderSnapshot(QByteArray source, quint64 generation, quint64 revision) {
@@ -124,7 +132,7 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent) : QW
                 // Fail explicitly rather than leaving a silent blank preview.
                 if (QUrl::toPercentEncoding(document).size() > 2 * 1024 * 1024 - 1024)
                     emit previewError(QStringLiteral("预览超过当前页面加载额度，请缩小准入样本"));
-                else page->present(document);
+                else page->present(document, result.generation);
             }
         }
         startPending();
@@ -141,6 +149,14 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent) : QW
             emit guard->previewReady(revision);
         });
     });
+    connect(page, &QWebEnginePage::loadingChanged, this, [this, page](const QWebEngineLoadingInfo &info) {
+        if (m_closed || !m_session || m_session->isClosing() || m_presentingGeneration != m_generation) return;
+        if (info.status() == QWebEngineLoadingInfo::LoadFailedStatus && info.url() == page->expectedBase())
+            emit previewError(QStringLiteral("预览页面加载失败：%1").arg(info.errorString()));
+    });
+    connect(page, &QWebEnginePage::renderProcessTerminated, this, [this] {
+        if (!m_closed && m_session && !m_session->isClosing()) emit previewError(QStringLiteral("预览进程已停止，请重新生成预览"));
+    });
     refresh();
 }
 
@@ -156,7 +172,10 @@ MarkdownPreview::~MarkdownPreview() {
 void MarkdownPreview::refresh() {
     if (m_closed || !m_session) return;
     const auto snapshot = m_session->snapshot();
-    if (snapshot.result != EditResult::Applied) return;
+    if (snapshot.result != EditResult::Applied) {
+        if (snapshot.result == EditResult::InvalidText) emit previewError(resultDescription(snapshot.result));
+        return;
+    }
     if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
     ++m_generation;
     m_pending = snapshot.utf8;

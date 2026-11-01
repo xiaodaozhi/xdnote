@@ -35,6 +35,7 @@ AdmissionWindow::AdmissionWindow(DocumentSession *session, QWidget *parent) : QW
     split->addWidget(m_preview);
     split->setStretchFactor(0, 1);
     split->setStretchFactor(1, 1);
+    split->setSizes({width() / 2, width() / 2});
     layout->addWidget(split, 1);
     auto *notice = new QLabel(QStringLiteral("组件准入：内容仅在内存中，不读取或保存文件。链接与图片暂作惰性展示。"), this);
     notice->setWordWrap(true);
@@ -43,6 +44,11 @@ AdmissionWindow::AdmissionWindow(DocumentSession *session, QWidget *parent) : QW
     connect(session, &DocumentSession::stateChanged, this, &AdmissionWindow::sessionStateChanged);
     connect(session, &DocumentSession::changed, this, [this] { emit sessionStateChanged(); });
     connect(session, &QObject::destroyed, this, &AdmissionWindow::sessionStateChanged);
+}
+AdmissionWindow::~AdmissionWindow() {
+    // Destroy bindings while their context object still has this class's metaobject.
+    delete m_chrome;
+    m_chrome = nullptr;
 }
 bool AdmissionWindow::readOnly() const { return !m_session || m_session->isReadOnly(); }
 QString AdmissionWindow::feedback() const {

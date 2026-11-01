@@ -35,7 +35,7 @@ def run(command, env, log=None):
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, encoding="utf-8", errors="replace")
     fatal = False
-    with (log.open("w", encoding="utf-8") if log else open(os.devnull, "w")) as report:
+    with process.stdout, (log.open("w", encoding="utf-8") if log else open(os.devnull, "w")) as report:
         for line in process.stdout:
             print(line, end="", flush=True)
             report.write(line)
@@ -72,6 +72,8 @@ def source_fingerprint():
     paths = [ROOT / name for name in ("CMakeLists.txt", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "docs/visual/tokens.json")]
     for folder in ("apps/desktop", "crates", "cmake", "tools"):
         paths.extend(path for path in (ROOT / folder).rglob("*") if path.is_file())
+    vendor = BUILD / f"scintilla-{DEPS['scintilla']['version']}" / "scintilla"
+    paths.extend(path for path in vendor.rglob("*") if path.suffix in (".h", ".cxx", ".cpp"))
     paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py"))
     digest = hashlib.sha256()
     for path in sorted(paths):
@@ -117,6 +119,8 @@ def main():
     env["PATH"] = str(qt / "bin") + os.pathsep + env["PATH"]
     env["QML_IMPORT_PATH"] = str(qt / "qml")
     env["QT_PLUGIN_PATH"] = str(qt / "plugins")
+    if platform.system() == "Linux":
+        env["LD_LIBRARY_PATH"] = str(qt / "lib") + os.pathsep + env.get("LD_LIBRARY_PATH", "")
     env["CARGO_NET_OFFLINE"] = "true"
     if args.command == "doctor":
         print(f"Qt prefix: {qt}\nScintilla: {BUILD / 'scintilla-5.6.7'}\nBuild: {build}")
