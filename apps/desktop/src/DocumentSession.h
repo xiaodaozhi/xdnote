@@ -38,7 +38,7 @@ public:
     EditResult requestClose();
     bool isReadOnly() const;
     bool isClosing() const { return m_closing; }
-    bool isBusy() const { return m_mutations != 0 || m_notifying || m_reporting; }
+    bool isBusy() const;
     bool isComposing() const;
     quint64 revision();
     QString rejection() const { return m_rejection; }
@@ -61,6 +61,7 @@ private:
     EditResult writable() const;
     QByteArray bytes() const;
     EditResult complete(EditResult result);
+    void finishClose();
     std::unique_ptr<ScintillaEditBase> m_owner;
     QVector<QPointer<SourceEditor>> m_views;
     quint64 m_revision = 0;

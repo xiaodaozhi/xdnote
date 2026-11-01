@@ -131,6 +131,24 @@ private slots:
         edit->insertText(0, "ignored");
     }
 
+    void nativeInputNotificationRejectsReentrantWrite() {
+        DocumentSession session;
+        SourceEditor editor(&session);
+        EditResult result = EditResult::Applied;
+        bool observed = false;
+        connect(&editor, &ScintillaEditBase::notifyChange, &session, [&] {
+            observed = true;
+            result = session.replace(0, 0, "reentrant", 0);
+            QCOMPARE(session.snapshot().result, EditResult::Busy);
+        });
+        QTest::keyClick(&editor, Qt::Key_A);
+        QVERIFY(observed);
+        QCOMPARE(result, EditResult::Busy);
+        QCOMPARE(session.snapshot().utf8, QByteArray("a"));
+        QCOMPARE(session.undo(), EditResult::Applied);
+        QVERIFY(session.snapshot().utf8.isEmpty());
+    }
+
     void previewIsolationAndLatestRevision() {
         DocumentSession session("# safe\n<script>alert(1)</script>\n![x](file:///private)\n[x](https://example.invalid)");
         MarkdownPreview preview(&session);

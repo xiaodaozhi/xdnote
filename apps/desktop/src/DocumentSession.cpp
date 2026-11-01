@@ -71,6 +71,11 @@ bool DocumentSession::isComposing() const {
         if (view && view->compositionPending()) return true;
     return false;
 }
+bool DocumentSession::isBusy() const {
+    if (m_mutations || m_notifying || m_reporting) return true;
+    for (const auto &view : m_views) if (view && view->dispatching()) return true;
+    return false;
+}
 
 EditResult DocumentSession::writable() const {
     if (QThread::currentThread() != thread()) return EditResult::WrongThread;
@@ -210,12 +215,13 @@ EditResult DocumentSession::requestClose() {
     m_closing = true;
     // Defer state changes and notification until the active Scintilla callback
     // and application observer have returned. Closing never deletes this object.
-    QTimer::singleShot(0, this, [this] {
-        if (m_mutations || m_notifying) { m_closing = false; requestClose(); return; }
-        m_owner->send(SCI_SETREADONLY, true);
-        emit stateChanged();
-        emit closed();
-    });
+    QTimer::singleShot(0, this, &DocumentSession::finishClose);
     return EditResult::Applied;
+}
+void DocumentSession::finishClose() {
+    if (isBusy()) { QTimer::singleShot(1, this, &DocumentSession::finishClose); return; }
+    m_owner->send(SCI_SETREADONLY, true);
+    emit stateChanged();
+    emit closed();
 }
 }
