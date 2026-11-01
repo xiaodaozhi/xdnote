@@ -171,6 +171,10 @@ private slots:
         MarkdownPreview preview(&session);
         QSignalSpy ready(&preview, &MarkdownPreview::previewReady);
         QSignalSpy errors(&preview, &MarkdownPreview::previewError);
+        int staleReady = 0;
+        connect(&preview, &MarkdownPreview::previewReady, &preview, [&](quint64 revision) {
+            if (revision != session.revision()) ++staleReady;
+        });
         preview.resize(700, 500); preview.show();
         QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0 || errors.count() > 0, 30000);
         QVERIFY2(ready.count() > 0, errors.isEmpty() ? "preview did not complete" : qPrintable(errors.first().first().toString()));
@@ -185,14 +189,15 @@ private slots:
         QVERIFY(!html.contains("file:///private"));
         QVERIFY(!html.contains("href=\"https://"));
         QVERIFY(html.contains("default-src 'none'"));
+        preview.refresh(); // an older snapshot may complete before queued refreshes
         for (int i = 0; i < 8; ++i) {
             const auto snap = session.snapshot();
             QCOMPARE(session.replace(0, QString::fromUtf8(snap.utf8).size(), QStringLiteral("# latest %1").arg(i), snap.revision), EditResult::Applied);
-            preview.refresh();
         }
         const auto latest = session.revision();
         QTRY_COMPARE_WITH_TIMEOUT(preview.displayedRevision(), latest, 30000);
         QCOMPARE(errors.count(), 0);
+        QCOMPARE(staleReady, 0);
         ready.clear();
         session.requestClose();
         QTRY_VERIFY(session.isClosing());

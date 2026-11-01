@@ -24,6 +24,13 @@ void xdnote_markdown_free(XdnoteRenderBuffer *buffer);
 
 namespace xdnote {
 namespace {
+bool currentRevision(DocumentSession *session, quint64 revision) {
+    if (!session || session->isClosing() || session->isBusy() || session->isComposing()) return false;
+    const auto latest = session->revision();
+    // Flushing pending edits may notify an observer that requests closure.
+    return !session->isClosing() && latest == revision;
+}
+
 class BlockResourceRequests final : public QWebEngineUrlRequestInterceptor {
 public:
     using QWebEngineUrlRequestInterceptor::QWebEngineUrlRequestInterceptor;
@@ -122,7 +129,7 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent) : QW
     connect(&m_worker, &QFutureWatcher<RenderResult>::finished, this, [this, page] {
         const auto result = m_worker.result();
         m_running = false;
-        if (!m_closed && m_session && !m_session->isClosing() && result.generation == m_generation) {
+        if (!m_closed && currentRevision(m_session, result.revision) && result.generation == m_generation) {
             if (!result.error.isEmpty()) emit previewError(result.error);
             else {
                 m_presentingGeneration = result.generation;
@@ -144,7 +151,7 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent) : QW
         const auto marker = QStringLiteral("<meta name=\"xdnote-generation\" content=\"%1\">").arg(generation);
         page->toHtml([guard = QPointer<MarkdownPreview>(this), generation, revision, marker](const QString &html) {
             if (!guard || guard->m_closed || !guard->m_session || guard->m_session->isClosing()
-                || generation != guard->m_generation || !html.contains(marker)) return;
+                || generation != guard->m_generation || !currentRevision(guard->m_session, revision) || !html.contains(marker)) return;
             guard->m_displayedRevision = revision;
             emit guard->previewReady(revision);
         });
