@@ -1,0 +1,96 @@
+name: Desktop admission
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            host: windows
+            qt-arch: win64_msvc2022_64
+          - os: ubuntu-22.04
+            host: linux
+            qt-arch: linux_gcc_64
+          - os: macos-15-intel
+            host: mac
+            qt-arch: clang_64
+          - os: macos-15
+            host: mac
+            qt-arch: clang_64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: '1.99.0'
+          components: rustfmt, clippy
+      - name: Prepare SDK tools explicitly
+        run: python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+      - name: Prepare Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0 libnss3 libasound2 libxdamage1 libxcomposite1 libxrandr2 libxtst6 libdrm2 libgbm1 xvfb
+      - name: Prepare pinned Qt SDK with checksums
+        run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }}
+      - name: Prepare pinned source dependencies
+        run: python scripts/desktop.py prepare --download
+      - name: Build desktop admission (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
+          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+      - name: Build desktop admission (Unix)
+        if: runner.os != 'Windows'
+        run: python scripts/desktop.py build
+      - name: Test admission on Linux virtual display
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python scripts/desktop.py test
+      - name: Test desktop admission
+        if: runner.os != 'Linux'
+        run: python scripts/desktop.py test
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-admission-${{ matrix.os }}
+          path: |
+            build/desktop-admission/*.log
+            build/desktop-admission/build-identity.json
+            build/desktop-admission/evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  aggregate:
+    name: Desktop admission
+    needs: [desktop]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every desktop matrix result
+        env:
+          XDNOTE_DESKTOP_RESULT: ${{ needs.desktop.result }}
+        run: test "$XDNOTE_DESKTOP_RESULT" = success

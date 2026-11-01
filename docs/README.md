@@ -1,6 +1,6 @@
 # 文档导航
 
-本目录保存产品设计、视觉规范、架构决策依据与通用验收方法。当前文档是一份实现前基线，不是应用已完成的证明。
+本目录保存产品设计、视觉规范、架构决策依据、构建方法与通用验收方法。功能完成度以对应实现和实际验收为准，规格与参考图不是应用已完成的证明。
 
 | 领域 | 文档 | 用途 |
 | --- | --- | --- |
@@ -13,6 +13,7 @@
 | 参数 | [tokens.json](visual/tokens.json) | 精确颜色、逻辑尺寸和字体参数 |
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
+| 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
 | 窗口几何 | [跨显示器缩放与窗口几何](engineering/window-geometry.md) | 逻辑客户区、原生 DPI 约束、可用区、窗口状态与恢复 |
 | 协作 | [产研与 GitHub 流程](engineering/workflow.md) | Issue、分支、PR、CI、验收及清理规则 |
 | 许可 | [许可范围与依赖](engineering/licensing.md) | Apache-2.0、CC BY 4.0 的内容范围、署名与第三方依赖 |

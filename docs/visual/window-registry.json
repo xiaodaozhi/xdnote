@@ -7,6 +7,19 @@
   "designInventory": "docs/visual/screen-inventory.md",
   "windows": [
     {
+      "id": "desktop-admission",
+      "label": "桌面组件准入",
+      "kind": "validation-window",
+      "purpose": "内存样本文档验证 QWidget、QML、Scintilla 与受限预览的集成；不是主工作区的视觉交付，也不读写用户文件。",
+      "sizeToken": "windows.main",
+      "sizeRationale": "复用双栏主窗口的逻辑客户区和最小尺寸，保留平台原生窗口装饰。",
+      "designAssetIds": ["ui-v2-01-workspace-light"],
+      "designStatus": "reference-available",
+      "implementationStatus": "component-admission",
+      "implementationSource": "apps/desktop/src/AdmissionWindow.cpp",
+      "nativeValidation": "not-run"
+    },
+    {
       "id": "main",
       "label": "主工作区",
       "kind": "application-window",
