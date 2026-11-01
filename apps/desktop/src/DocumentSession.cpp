@@ -112,7 +112,7 @@ quint64 DocumentSession::revision() { flush(); return m_revision; }
 DocumentSnapshot DocumentSession::snapshot() {
     if (QThread::currentThread() != thread()) return {EditResult::WrongThread, {}, 0};
     if (m_closing) return {EditResult::Closing, {}, m_revision};
-    if (m_mutations || m_notifying) return {EditResult::Busy, {}, m_revision};
+    if (isBusy()) return {EditResult::Busy, {}, m_revision};
     if (isComposing()) return {EditResult::Composing, {}, m_revision};
     for (const auto &view : m_views) if (view && view->dispatching()) return {EditResult::Busy, {}, m_revision};
     flush();
@@ -188,7 +188,7 @@ EditResult DocumentSession::setReadOnly(bool readOnly) {
     if (isBusy()) return complete(EditResult::Busy);
     if (isComposing()) return complete(EditResult::Composing);
     m_owner->send(SCI_SETREADONLY, readOnly);
-    emit stateChanged();
+    { QScopedValueRollback<bool> notifying(m_notifying, true); emit stateChanged(); }
     return complete(EditResult::Applied);
 }
 

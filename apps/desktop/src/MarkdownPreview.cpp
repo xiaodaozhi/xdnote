@@ -114,23 +114,29 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent) : QW
     connect(&m_worker, &QFutureWatcher<RenderResult>::finished, this, [this, page] {
         const auto result = m_worker.result();
         m_running = false;
-        if (!m_closed && result.generation == m_generation) {
+        if (!m_closed && m_session && !m_session->isClosing() && result.generation == m_generation) {
             if (!result.error.isEmpty()) emit previewError(result.error);
             else {
                 m_presentingGeneration = result.generation;
                 m_presentingRevision = result.revision;
-                page->present(pageFor(result.html, result.generation));
+                const auto document = pageFor(result.html, result.generation);
+                // setHtml uses a data URL with Chromium's 2 MiB encoded limit.
+                // Fail explicitly rather than leaving a silent blank preview.
+                if (QUrl::toPercentEncoding(document).size() > 2 * 1024 * 1024 - 1024)
+                    emit previewError(QStringLiteral("预览超过当前页面加载额度，请缩小准入样本"));
+                else page->present(document);
             }
         }
         startPending();
     });
     connect(page, &QWebEnginePage::loadFinished, this, [this, page](bool success) {
-        if (!success || m_closed) return;
+        if (!success || m_closed || !m_session || m_session->isClosing()) return;
         const auto generation = m_presentingGeneration;
         const auto revision = m_presentingRevision;
         const auto marker = QStringLiteral("<meta name=\"xdnote-generation\" content=\"%1\">").arg(generation);
         page->toHtml([guard = QPointer<MarkdownPreview>(this), generation, revision, marker](const QString &html) {
-            if (!guard || guard->m_closed || generation != guard->m_generation || !html.contains(marker)) return;
+            if (!guard || guard->m_closed || !guard->m_session || guard->m_session->isClosing()
+                || generation != guard->m_generation || !html.contains(marker)) return;
             guard->m_displayedRevision = revision;
             emit guard->previewReady(revision);
         });

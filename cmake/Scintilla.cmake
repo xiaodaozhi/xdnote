@@ -14,5 +14,6 @@ add_library(xdnote_scintilla STATIC ${XDNOTE_SCINTILLA_SOURCES}
 target_compile_definitions(xdnote_scintilla PUBLIC SCINTILLA_QT=1 EXPORT_IMPORT_API=)
 target_include_directories(xdnote_scintilla PUBLIC
     "${XDNOTE_SCINTILLA_SOURCE}/include" "${XDNOTE_SCINTILLA_QT}"
-    PRIVATE "${XDNOTE_SCINTILLA_SOURCE}/src")
+    # The upstream public Qt port header itself includes Debugging.h and Geometry.h.
+    "${XDNOTE_SCINTILLA_SOURCE}/src")
 target_link_libraries(xdnote_scintilla PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Core5Compat)

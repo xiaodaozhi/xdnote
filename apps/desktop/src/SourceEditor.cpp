@@ -173,7 +173,10 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
     send(SCI_STYLESETBACK, STYLE_DEFAULT, colorRef(colors.value(QStringLiteral("background")).toString()));
     send(SCI_STYLECLEARALL);
     connect(session, &DocumentSession::stateChanged, this, [this] {
-        QAccessibleStateChangeEvent event(this, QAccessible::State());
+        QAccessible::State changed;
+        changed.readOnly = true;
+        changed.editable = true;
+        QAccessibleStateChangeEvent event(this, changed);
         QAccessible::updateAccessibility(&event);
     });
     connect(session, &DocumentSession::changed, this, [this] {
@@ -186,10 +189,12 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
 bool SourceEditor::compositionPending() const {
     return m_inIme || m_preedit || send(SCI_GETUNDOTENTATIVE) >= 0;
 }
+DocumentSession *SourceEditor::session() const { return m_session; }
 
 void SourceEditor::inputMethodEvent(QInputMethodEvent *event) {
     if (!m_session || m_session->isClosing() || m_session->isBusy() || m_session->isReadOnly()) {
-        if (m_session) m_session->reportRejection(m_session->isReadOnly() ? EditResult::ReadOnly : EditResult::Busy);
+        if (m_session) m_session->reportRejection(m_session->isClosing() ? EditResult::Closing
+            : m_session->isReadOnly() ? EditResult::ReadOnly : EditResult::Busy);
         event->accept(); return;
     }
     if (!DocumentSession::validText(event->commitString()) || !DocumentSession::validText(event->preeditString())) {

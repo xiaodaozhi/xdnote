@@ -43,4 +43,4 @@ python scripts/desktop.py run
 - 本阶段预览转义原始 HTML，图片和链接只有惰性文字占位，不生成文档控制的资源或导航 URL；WebEngine 禁用脚本、文件访问和远端访问，页面策略与请求拦截再次限制资源。尚未准入图片授权、工作区链接和外部导航，不将占位行为当作完整产品语义。
 - `AdmissionWindow` 采用 QWidget 容器，QQuickWidget 承载共享操作，Scintilla 与 WebEngine 保持各自公开 QWidget 端口。共享控件从同一视觉参数读取尺寸、字体、颜色与 Tab 焦点外框；此窗口只验证承载，原生装饰和主界面复刻另行验收。
 
-2 MiB 源文与 8 MiB HTML 是本阶段验证额度，不是产品长文承诺；控件原生输入可能暂时超过快照额度，此时拒绝生成快照，撤销仍可恢复。正式容量、延迟及拒绝交互必须在接入用户文件前确定。真实输入法、屏幕阅读器、混合 DPI 物理拖动、完整明暗主题与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。
+2 MiB 源文与 8 MiB HTML 是本阶段解析额度，页面传输另受 `setHtml` 的 2 MiB 编码后大小限制，超出时明确返回预览错误。这些不是产品长文承诺；控件原生输入可能暂时超过快照额度，此时拒绝生成快照，撤销仍可恢复。正式容量、延迟及拒绝交互必须在接入用户文件前确定。真实输入法、屏幕阅读器、混合 DPI 物理拖动、完整明暗主题与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。

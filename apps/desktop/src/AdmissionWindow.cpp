@@ -42,12 +42,14 @@ AdmissionWindow::AdmissionWindow(DocumentSession *session, QWidget *parent) : QW
     layout->addWidget(notice);
     connect(session, &DocumentSession::stateChanged, this, &AdmissionWindow::sessionStateChanged);
     connect(session, &DocumentSession::changed, this, [this] { emit sessionStateChanged(); });
+    connect(session, &QObject::destroyed, this, &AdmissionWindow::sessionStateChanged);
 }
-bool AdmissionWindow::readOnly() const { return m_session->isReadOnly(); }
+bool AdmissionWindow::readOnly() const { return !m_session || m_session->isReadOnly(); }
 QString AdmissionWindow::feedback() const {
+    if (!m_session) return QStringLiteral("文档会话已关闭");
     return m_session->rejection().isEmpty() ? QStringLiteral("Markdown 源文与受限预览") : m_session->rejection();
 }
-void AdmissionWindow::undo() { m_session->undo(); }
-void AdmissionWindow::redo() { m_session->redo(); }
-void AdmissionWindow::toggleReadOnly() { m_session->setReadOnly(!m_session->isReadOnly()); }
+void AdmissionWindow::undo() { if (m_session) m_session->undo(); }
+void AdmissionWindow::redo() { if (m_session) m_session->redo(); }
+void AdmissionWindow::toggleReadOnly() { if (m_session) m_session->setReadOnly(!m_session->isReadOnly()); }
 }

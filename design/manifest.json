@@ -1265,8 +1265,8 @@
       "path": "sources/check-ui-materials.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 12298,
-      "sha256": "1ffe6d29a394742a0c828e21d137d1d2eb2f2e5c74d3cd16e47e2bb9661fbb57",
+      "bytes": 12729,
+      "sha256": "f798aba2ab774676aad6ec6efbfa9d9f22e8a2cbb2048b10f7f13ff81c44d341",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",

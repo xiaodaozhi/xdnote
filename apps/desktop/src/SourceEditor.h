@@ -10,7 +10,7 @@ class SourceEditor final : public ScintillaEditBase {
     Q_OBJECT
 public:
     explicit SourceEditor(DocumentSession *session, QWidget *parent = nullptr);
-    DocumentSession *session() const { return m_session; }
+    DocumentSession *session() const;
     bool compositionPending() const;
     bool dispatching() const { return m_inputDepth != 0; }
     static void installAccessibility();

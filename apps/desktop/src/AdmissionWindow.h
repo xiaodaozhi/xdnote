@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QPointer>
 
 class QQuickWidget;
 
@@ -26,7 +27,7 @@ public:
 signals:
     void sessionStateChanged();
 private:
-    DocumentSession *m_session;
+    QPointer<DocumentSession> m_session;
     SourceEditor *m_editor;
     MarkdownPreview *m_preview;
     QQuickWidget *m_chrome;
