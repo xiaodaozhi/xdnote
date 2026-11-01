@@ -252,13 +252,15 @@ private slots:
 
     void oversizedTransportReportsErrorAndCloseInvalidatesWork() {
         DocumentSession large(QString(300000, QChar(0x7532)).toUtf8());
-        auto preview = std::make_unique<MarkdownPreview>(&large);
-        QSignalSpy errors(preview.get(), &MarkdownPreview::previewError);
-        QSignalSpy ready(preview.get(), &MarkdownPreview::previewReady);
+        auto window = std::make_unique<AdmissionWindow>(&large);
+        auto *preview = window->preview();
+        QSignalSpy errors(preview, &MarkdownPreview::previewError);
+        QSignalSpy ready(preview, &MarkdownPreview::previewReady);
         QTRY_VERIFY_WITH_TIMEOUT(errors.count() > 0, 10000);
         QCOMPARE(ready.count(), 0);
+        QCOMPARE(window->feedback(), errors.first().first().toString());
         preview->refresh();
-        preview.reset(); // a running Rust task owns no widget or session pointer
+        window.reset(); // a running Rust task owns no widget or session pointer
         QTest::qWait(100);
     }
 };

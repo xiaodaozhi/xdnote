@@ -32,5 +32,6 @@ private:
     SourceEditor *m_editor;
     MarkdownPreview *m_preview;
     QQuickWidget *m_chrome;
+    QString m_previewError;
 };
 }

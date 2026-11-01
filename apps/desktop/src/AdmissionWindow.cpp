@@ -33,6 +33,13 @@ AdmissionWindow::AdmissionWindow(DocumentSession *session, QWidget *parent) : QW
     auto *split = new QSplitter(Qt::Horizontal, this);
     m_editor = new SourceEditor(session, split);
     m_preview = new MarkdownPreview(session, split);
+    connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) {
+        m_previewError = message;
+        emit sessionStateChanged();
+    });
+    connect(m_preview, &MarkdownPreview::previewReady, this, [this] {
+        if (!m_previewError.isEmpty()) { m_previewError.clear(); emit sessionStateChanged(); }
+    });
     split->addWidget(m_editor);
     split->addWidget(m_preview);
     split->setStretchFactor(0, 1);
@@ -55,7 +62,8 @@ AdmissionWindow::~AdmissionWindow() {
 bool AdmissionWindow::readOnly() const { return !m_session || m_session->isReadOnly(); }
 QString AdmissionWindow::feedback() const {
     if (!m_session) return QStringLiteral("文档会话已关闭");
-    return m_session->rejection().isEmpty() ? QStringLiteral("Markdown 源文与受限预览") : m_session->rejection();
+    if (!m_session->rejection().isEmpty()) return m_session->rejection();
+    return m_previewError.isEmpty() ? QStringLiteral("Markdown 源文与受限预览") : m_previewError;
 }
 void AdmissionWindow::undo() { if (m_session) m_session->undo(); }
 void AdmissionWindow::redo() { if (m_session) m_session->redo(); }
