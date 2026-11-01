@@ -30,7 +30,7 @@
 | 配色、主题和其他偏好 | [设置规格](docs/product/settings.md) |
 | 颜色、密度、组件和窗口约定 | [视觉规范](docs/visual/design-system.md)、[视觉参数](docs/visual/tokens.json)、[窗口清单](docs/visual/window-registry.json) |
 | 已确认的技术方向、模块契约与准入条件 | [技术架构](docs/engineering/architecture.md) |
-| 从 xdzip 借鉴的实际做法 | [xdzip 实践参考](docs/engineering/xdzip-practices.md) |
+| 跨屏缩放、窗口尺寸与恢复 | [窗口几何契约](docs/engineering/window-geometry.md) |
 | 阶段顺序与验收要求 | [开发路线](docs/planning/roadmap.md)、[验收规格](docs/qa/acceptance.md) |
 | Issue、分支、PR 与 CI | [产研流程](docs/engineering/workflow.md)、[贡献指南](CONTRIBUTING.md) |
 | 查看设计原稿和素材 | [设计材料](design/README.md)、[高保真图](design/hifi/README.md)、[素材交付](docs/visual/asset-handoff.md) |
