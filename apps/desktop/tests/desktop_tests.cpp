@@ -268,6 +268,7 @@ private slots:
 int main(int argc, char **argv) {
     initializeGuiRuntime();
     QApplication app(argc, argv);
+    configureGuiApplication();
     SourceEditor::installAccessibility();
     DesktopTests tests;
     return QTest::qExec(&tests, argc, argv);

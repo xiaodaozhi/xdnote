@@ -11,6 +11,7 @@
 int main(int argc, char **argv) {
     xdnote::initializeGuiRuntime();
     QApplication application(argc, argv);
+    xdnote::configureGuiApplication();
     application.setApplicationName(QStringLiteral("xdnote-admission"));
     xdnote::SourceEditor::installAccessibility();
     xdnote::DocumentSession session(QStringLiteral(

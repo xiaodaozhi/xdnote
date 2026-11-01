@@ -2,6 +2,8 @@
 #include <QCoreApplication>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QGuiApplication>
+#include <QStyleHints>
 
 namespace xdnote {
 void initializeGuiRuntime() {
@@ -13,5 +15,10 @@ void initializeGuiRuntime() {
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 #endif
     QQuickStyle::setStyle(QStringLiteral("Basic"));
+}
+void configureGuiApplication() {
+    // The product's Tab contract includes buttons on every platform. This
+    // application hint does not modify the operating system's preferences.
+    QGuiApplication::styleHints()->setTabFocusBehavior(Qt::TabFocusAllControls);
 }
 }
