@@ -2,7 +2,7 @@
 
 一款面向 Windows、macOS 和 Linux 的 Markdown 阅读与编辑桌面应用，让打开、阅读和修改本地文档保持简单。
 
-**当前阶段：产品设计与技术验证。** 仓库已整理需求、交互、视觉规范和高保真参考图，并保留独立的技术试验；尚无正式产品源码或安装包。下文描述目标能力，不代表已经实现。
+**当前阶段：实施架构已确定方向，继续技术准入与工程准备。** 仓库已整理需求、交互、视觉规范和高保真参考图，并保留独立的技术试验；尚无正式产品源码或安装包。下文描述目标能力，不代表已经实现。
 
 ![xdnote 主要界面设计参考](design/hifi/v2/featured.png)
 
@@ -26,9 +26,10 @@
 | --- | --- |
 | 产品定位、首版范围 | [产品需求](docs/product/requirements.md) |
 | 双击打开、多窗口、保存与关闭行为 | [交互规格](docs/product/interaction-spec.md) |
+| 工作区图片、文档链接与移动维护 | [资源与链接规格](docs/product/workspace-resources.md) |
 | 配色、主题和其他偏好 | [设置规格](docs/product/settings.md) |
 | 颜色、密度、组件和窗口约定 | [视觉规范](docs/visual/design-system.md)、[视觉参数](docs/visual/tokens.json)、[窗口清单](docs/visual/window-registry.json) |
-| 技术方案与需要先验证的问题 | [架构草案](docs/engineering/architecture.md) |
+| 已确认的技术方向、模块契约与准入条件 | [技术架构](docs/engineering/architecture.md) |
 | 从 xdzip 借鉴的实际做法 | [xdzip 实践参考](docs/engineering/xdzip-practices.md) |
 | 阶段顺序与验收要求 | [开发路线](docs/planning/roadmap.md)、[验收规格](docs/qa/acceptance.md) |
 | Issue、分支、PR 与 CI | [产研流程](docs/engineering/workflow.md)、[贡献指南](CONTRIBUTING.md) |
@@ -43,9 +44,9 @@ xdnote/
 ├── README.md
 ├── AGENTS.md                  # 协作与材料维护约定
 ├── docs/
-│   ├── product/               # 需求、交互、设置
+│   ├── product/               # 需求、交互、设置与工作区资源
 │   ├── visual/                # 视觉规则、参数、窗口登记
-│   ├── engineering/           # 架构草案与可复用工程实践
+│   ├── engineering/           # 实施架构与可复用工程实践
 │   ├── planning/              # 阶段与退出条件
 │   └── qa/                    # 可复用验收规格
 ├── design/
@@ -59,7 +60,7 @@ xdnote/
 └── experiments/              # 与产品实现明确区分的技术验证源码
 ```
 
-应用目录随技术验证结果建立，不预建没有实现的模块。当前架构草案把 xdzip 的 Qt Quick、薄 C++ 与 Rust 分层作为候选方向，尚未锁定框架、渲染器和版本。
+应用目录随真实实现建立，不预建空模块。已确认采用 Qt 桌面路线，C++ 会话持有唯一原文与撤销，Rust 提供解析等服务；Scintilla、Qt Quick 具体承载和受限 Web 预览按架构准入条件验证，具体依赖版本及正式产品工具链尚未锁定。
 
 技术验证入口：[Qt 文档与窗口试验](experiments/qt-document-spike/README.md) · [Scintilla 文本缓冲区试验](experiments/scintilla-buffer-spike/README.md) · [Markdown 解析候选试验](experiments/pulldown-markdown-spike/README.md)。这些均不是产品实现。
 

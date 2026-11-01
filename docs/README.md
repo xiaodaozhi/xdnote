@@ -6,12 +6,13 @@
 | --- | --- | --- |
 | 产品 | [需求](product/requirements.md) | 用户场景、需求来源、首版与后续范围 |
 | 交互 | [交互规格](product/interaction-spec.md) | 打开路由、文档状态、窗口迁移、保存和关闭 |
+| 工作区资源 | [图片与文档链接](product/workspace-resources.md) | 集中图片目录、相对链接、引用索引、移动维护与授权 |
 | 控件 | [控件交互与焦点](product/control-interactions.md) | 点击反馈、Tab 外框、激活／取消后的清除与逻辑焦点 |
 | 设置 | [设置规格](product/settings.md) | 主题与六种强调色、默认值、作用域和持久化 |
 | 视觉 | [设计系统](visual/design-system.md) | 信息层级、跨界面公共组件一致性、缩放与材料权威 |
 | 参数 | [tokens.json](visual/tokens.json) | 精确颜色、逻辑尺寸和字体参数 |
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
-| 工程 | [架构草案](engineering/architecture.md) | 分层候选、文档模型、保存和渲染边界 |
+| 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
 | 协作 | [产研与 GitHub 流程](engineering/workflow.md) | Issue、分支、PR、CI、验收及清理规则 |
 | 许可 | [许可范围与依赖](engineering/licensing.md) | Apache-2.0、CC BY 4.0 的内容范围、署名与第三方依赖 |
 | 平台 | [平台目标与验证基线](engineering/platform-support.md) | 最低系统、64 位架构、Linux 图形环境及实际验收边界 |
@@ -28,7 +29,7 @@
 2. `product/interaction-spec.md` 决定打开、保存、冲突和关闭行为；`product/settings.md` 决定设置语义。参考图不能替代这些契约。
 3. `visual/tokens.json` 决定精确颜色与初始逻辑参数，窗口用途和待补状态见窗口清单。尺寸目前是建议值，尚未经过原生量测。
 4. 当前核心高保真图以 [design/manifest.json](../design/manifest.json) 中的 `baseline` 项为准；完整采用图组见 `boardAssetIds` 和[图板目录](../design/sources/ui-suite-v2.json)。同一图板只保存稳定文件名下的当前图片。
-5. 架构草案不是最终技术决策。选择框架、渲染器、平台支持范围后，更新草案与相关产品契约，不保留两套相互冲突的现行规则。
+5. 架构已区分用户确认的实施方向与具体实现的准入条件。后续调整框架承载、渲染器、平台支持范围或资源契约时，更新现行架构与相关产品规格，不保留两套冲突规则；确认方向不等于实现或平台验收完成。
 
 ## 维护与检查
 

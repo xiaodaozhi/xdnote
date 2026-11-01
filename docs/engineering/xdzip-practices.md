@@ -11,7 +11,7 @@
 | 分别测量主界面、菜单和独立入口 | 视觉规范明确区分密度、DPR、辅助字号与独立窗口 | 三类窗口与菜单共同验收，不用缩小截图或二次乘缩放修复布局 |
 | 用统一意图连接鼠标、键盘和辅助功能 | `docs/ux/settings-localization.md` 的单选、复选与下拉契约 | 主题、六色单选和开关更新同一设置模型，不能只改勾选图形 |
 | 所有文件入口经过会话协调 | `docs/engineering/application-sessions.md`、`apps/desktop/ApplicationSessions.h` | 统一 OpenIntent 和文档去重，不让双击／拖入／工作区各开一套缓冲区 |
-| GUI 与领域分层 | `Cargo.toml`、`CMakeLists.txt`、`docs/engineering/repository-layout.md` | 将职责作为架构候选；最终编辑模型与语言边界先验证再确定 |
+| GUI 与领域分层 | `Cargo.toml`、`CMakeLists.txt`、`docs/engineering/repository-layout.md` | Qt 桌面、C++ 会话与 Rust 服务分工已按本产品架构确认；编辑器与具体承载按自己的准入验证 |
 | 本地与 CI 共用分阶段入口 | `scripts/desktop.py`、`docs/engineering/developer-build.md` | 技术选定后再实现统一入口；不现在伪造一份不可运行的构建说明 |
 | 验证按改动类型分层 | `docs/engineering/ci-policy.md`、`.github/workflows/qt-components.yml` | 文档检查、核心测试、原生行为与视觉验收分开，不能以 CI 状态推定人工验收 |
 | 开发就绪与发行就绪分别评审 | `docs/planning/readiness.md`、`docs/engineering/release-protocol.md` | 阶段完成不自动变成可公开发行，不把打包成功写成许可和安装通过 |
@@ -40,6 +40,6 @@ xdzip 的最低平台、签名状态、Mac 普通 CI 与专用 Release 的不同
 
 ## 当前采用结果
 
-当前只落实可复用的材料结构与契约：文档入口、需求映射、六色参数、窗口清单、原稿摘要、持久／生成内容边界和分层验收方法。没有搬入 xdzip 的源码、品牌图标、字体、锁文件、构建产物、公共发行声明或历史验收记录。
+当前落实可复用的材料结构、分层和统一入口契约：文档入口、需求映射、六色参数、窗口清单、原稿摘要、持久／生成内容边界和分层验收方法。xdnote 自己的[实施架构](architecture.md)已确认 Qt、C++ 会话与 Rust 服务路线，具体编辑器、承载和工具链仍须准入。没有搬入 xdzip 的源码、品牌图标、字体、锁文件、构建产物、公共发行声明或历史验收记录。
 
-后续选型应先完成[架构验证](architecture.md)，按[开发路线](../planning/roadmap.md)进入实现，不能把本页作为框架已批准或平台验证已通过的记录。
+后续实现按[架构准入](architecture.md)和[开发路线](../planning/roadmap.md)推进。本页是方法来源，不能替代 xdnote 自身的具体依赖决定、实现或平台验收记录。

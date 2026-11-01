@@ -16,7 +16,7 @@
 
 ## 基线依据与构建约束
 
-当前 Qt 6.8 的[平台支持表](https://doc.qt.io/qt-6.8/supported-platforms.html)列出了 Windows 10 1809+ 的 x86_64、macOS 12+ 的 x86_64／arm64，以及 Ubuntu 22.04／24.04 的桌面配置。上述 xdnote 目标在此范围内选取；macOS 13 是本项目的最低目标选择。这是现有候选的选型依据，不将试验使用的 Qt 版本直接变成正式产品工具链。
+当前 Qt 6.8 的[平台支持表](https://doc.qt.io/qt-6.8/supported-platforms.html)列出了 Windows 10 1809+ 的 x86_64、macOS 12+ 的 x86_64／arm64，以及 Ubuntu 22.04／24.04 的桌面配置。上述 xdnote 目标在此范围内选取；macOS 13 是本项目的最低目标选择。Qt 桌面路线已按[实施架构](architecture.md)确认，但该支持表和现有试验都不将 Qt 6.8 或某个试验版本直接变成正式产品工具链。
 
 1. Windows 选用的 SDK、编译器运行库和依赖须保留 Windows 10 1809 的运行条件，不能只在更新的 CI 系统构建成功就提高最低版本。
 2. macOS 构建显式设置最低部署目标，并逐一核验输出架构和全部随包依赖；构建主机系统版本与部署目标分别记录。
