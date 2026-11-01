@@ -121,6 +121,11 @@ def main():
     env["QT_PLUGIN_PATH"] = str(qt / "plugins")
     if platform.system() == "Linux":
         env["LD_LIBRARY_PATH"] = str(qt / "lib") + os.pathsep + env.get("LD_LIBRARY_PATH", "")
+        for binary in (qt / "plugins/platforms/libqxcb.so", qt / "libexec/QtWebEngineProcess"):
+            libraries = subprocess.check_output(["ldd", str(binary)], env=env, text=True)
+            missing = [line.strip() for line in libraries.splitlines() if "not found" in line]
+            if missing:
+                raise RuntimeError(f"Runtime dependencies missing for {binary.name}: {'; '.join(missing)}")
     env["CARGO_NET_OFFLINE"] = "true"
     if args.command == "doctor":
         print(f"Qt prefix: {qt}\nScintilla: {BUILD / 'scintilla-5.6.7'}\nBuild: {build}")
