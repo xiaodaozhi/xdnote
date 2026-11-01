@@ -1,0 +1,12 @@
+[workspace]
+members = ["crates/markdown"]
+exclude = ["experiments/pulldown-markdown-spike"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[profile.release]
+panic = "unwind"

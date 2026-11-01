@@ -60,7 +60,13 @@ async function main() {
     let size = tokens;
     for (const key of w.sizeToken.split('.')) size = size?.[key];
     assert(size, 'Unknown window token ' + w.id);
-    assert(w.implementationStatus === 'not-started' && w.nativeValidation === 'not-run', 'Design phase boundary ' + w.id);
+    const admission = w.id === 'desktop-admission' && w.kind === 'validation-window';
+    assert(w.implementationStatus === (admission ? 'component-admission' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    if (admission) {
+      assert(w.sizeToken === 'windows.main' && w.purpose && w.sizeRationale, 'Admission window scope');
+      assert(w.implementationSource === 'apps/desktop/src/AdmissionWindow.cpp', 'Admission source identity');
+      await fs.access(path.join(ROOT, w.implementationSource));
+    }
     for (const ref of w.designAssetIds) assert(material.assets.some(a => a.id === ref && ['baseline', 'current'].includes(a.status)), 'Window reference ' + w.id + '/' + ref);
   }
   assert(Object.keys(tokens.accents).length === 6 && geometry.unit === 'logical-pixel', 'Shared parameter contract');

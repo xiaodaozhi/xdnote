@@ -2,7 +2,7 @@
 
 一款面向 Windows、macOS 和 Linux 的 Markdown 阅读与编辑桌面应用，让打开、阅读和修改本地文档保持简单。
 
-**当前阶段：实施架构已确定方向，继续技术准入与工程准备。** 仓库已整理需求、交互、视觉规范和高保真参考图，并保留独立的技术试验；尚无正式产品源码或安装包。下文描述目标能力，不代表已经实现。
+**当前阶段：桌面基础工程与组件准入。** 仓库已整理需求、交互、视觉规范和高保真参考图，并开始实现会话、编辑适配和受限预览基础代码。当前运行目标仅处理内存样本，尚无可读写用户文件的产品或安装包。下文描述目标能力，不代表已经实现。
 
 ![xdnote 主要界面设计参考](design/hifi/v2/featured.png)
 
@@ -30,6 +30,7 @@
 | 配色、主题和其他偏好 | [设置规格](docs/product/settings.md) |
 | 颜色、密度、组件和窗口约定 | [视觉规范](docs/visual/design-system.md)、[视觉参数](docs/visual/tokens.json)、[窗口清单](docs/visual/window-registry.json) |
 | 已确认的技术方向、模块契约与准入条件 | [技术架构](docs/engineering/architecture.md) |
+| 构建桌面基础工程与运行组件验证 | [开发构建](docs/engineering/developer-build.md) |
 | 跨屏缩放、窗口尺寸与恢复 | [窗口几何契约](docs/engineering/window-geometry.md) |
 | 阶段顺序与验收要求 | [开发路线](docs/planning/roadmap.md)、[验收规格](docs/qa/acceptance.md) |
 | Issue、分支、PR 与 CI | [产研流程](docs/engineering/workflow.md)、[贡献指南](CONTRIBUTING.md) |
@@ -43,6 +44,11 @@
 xdnote/
 ├── README.md
 ├── AGENTS.md                  # 协作与材料维护约定
+├── apps/desktop/              # 桌面基础模块与内存样本准入窗口
+├── crates/markdown/           # Rust 只读解析服务
+├── cmake/                    # 桌面构建定义
+├── scripts/                  # 准备、构建与检查入口
+├── tools/                    # 固定依赖清单
 ├── docs/
 │   ├── product/               # 需求、交互、设置与工作区资源
 │   ├── visual/                # 视觉规则、参数、窗口登记
@@ -60,7 +66,7 @@ xdnote/
 └── experiments/              # 与产品实现明确区分的技术验证源码
 ```
 
-应用目录随真实实现建立，不预建空模块。已确认采用 Qt 桌面路线，C++ 会话持有唯一原文与撤销，Rust 提供解析等服务；Scintilla、Qt Quick 具体承载和受限 Web 预览按架构准入条件验证，具体依赖版本及正式产品工具链尚未锁定。
+应用目录随真实实现建立，不预建空模块。C++ 会话持有唯一 Scintilla 原文与撤销，Rust 提供只读解析；当前采用 QWidget 容器与 QQuickWidget 共享操作区验证混合承载。依赖及实际构建入口见[开发构建](docs/engineering/developer-build.md)，完整编辑器、预览、文件服务和原生平台仍按[架构准入](docs/engineering/architecture.md)逐项验证。
 
 技术验证入口：[Qt 文档与窗口试验](experiments/qt-document-spike/README.md) · [Scintilla 文本缓冲区试验](experiments/scintilla-buffer-spike/README.md) · [Markdown 解析候选试验](experiments/pulldown-markdown-spike/README.md)。这些均不是产品实现。
 

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "phase": "desktop-admission",
+  "qt": {
+    "version": "6.11.3",
+    "modules": ["qt5compat", "qtwebengine", "qtwebchannel", "qtpositioning"],
+    "aqtinstall": "3.3.0",
+    "py7zr": "1.0.0"
+  },
+  "rust": {"toolchain": "1.99.0"},
+  "scintilla": {
+    "version": "5.6.7",
+    "url": "https://www.scintilla.org/scite567.tgz",
+    "sha256": "ad31f6e89aefe9c4e2c48f64c720f311e6a43369288e7b109d90b507ca623198"
+  }
+}
