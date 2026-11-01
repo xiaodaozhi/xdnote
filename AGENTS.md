@@ -1,6 +1,6 @@
 # xdnote 工作约定
 
-- 开始前阅读 `README.md`、`docs/README.md` 和相关规格。当前是设计阶段，不将设计、候选技术或未执行验收写成已有产品能力。
+- 开始前阅读 `README.md`、`docs/README.md` 和相关规格。当前推进桌面基础工程与技术准入，不将设计、候选技术或未执行验收写成已有产品能力；实际构建入口与内存样本边界见 `docs/engineering/developer-build.md`。
 - 产品名使用 xdnote。需求与交互在 `docs/product`，视觉规则及权威参数在 `docs/visual`，原稿及素材在 `design`。
 - 自有代码采用 Apache-2.0，自有文档与原创设计采用 CC BY 4.0，按 `docs/engineering/licensing.md` 区分内容范围及第三方权利。最低系统、64 位架构和 Linux 图形环境遵循 `docs/engineering/platform-support.md`，不得将目标矩阵写成已通过的产品验收。
 - 已确认提供六种强调色；石墨灰是当前展示默认值，不表示永久锁定品牌色。主题明暗与强调色分别设置。

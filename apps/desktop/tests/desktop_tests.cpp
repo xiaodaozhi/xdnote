@@ -176,15 +176,28 @@ private slots:
         window.show();
         QTRY_VERIFY(window.isVisible());
         QSignalSpy previewReady(window.preview(), &MarkdownPreview::previewReady);
-        QSignalSpy frames(quick->quickWindow(), &QQuickWindow::frameSwapped);
         QTRY_VERIFY_WITH_TIMEOUT(previewReady.count() > 0, 30000);
-        QTRY_VERIFY_WITH_TIMEOUT(frames.count() > 0, 10000);
-        QVERIFY(!quick->grabFramebuffer().isNull());
+        const QImage chrome = quick->grabFramebuffer();
+        QVERIFY(!chrome.isNull());
+        bool hasContent = false;
+        for (int y = 0; y < chrome.height() && !hasContent; ++y)
+            for (int x = 0; x < chrome.width() && !hasContent; ++x)
+                hasContent = chrome.pixel(x, y) != chrome.pixel(0, 0);
+        QVERIFY2(hasContent, "QML operation area rendered blank");
         QVERIFY(window.preview()->width() > 100);
-        window.toggleReadOnly();
+        auto *button = quick->rootObject()->findChild<QQuickItem *>("readOnlyButton");
+        QVERIFY(button);
+        const auto point = button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
+        QTest::mouseClick(quick, Qt::LeftButton, Qt::NoModifier, point);
         QVERIFY(session.isReadOnly());
-        window.toggleReadOnly();
+        QVERIFY(!button->property("keyboardOutline").toBool());
+        quick->setFocus();
+        button->forceActiveFocus(Qt::TabFocusReason);
+        QTRY_VERIFY(button->property("keyboardOutline").toBool());
+        QTest::keyClick(quick, Qt::Key_Space);
         QVERIFY(!session.isReadOnly());
+        QVERIFY(!button->property("keyboardOutline").toBool());
+        QVERIFY(button->hasActiveFocus());
         const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
         if (!evidence.isEmpty()) QVERIFY(window.grab().save(evidence + "/desktop-admission.png"));
     }

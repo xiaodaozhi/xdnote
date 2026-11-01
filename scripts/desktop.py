@@ -147,7 +147,17 @@ def main():
         env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
         ctest = str(Path(args.cmake).with_name("ctest" + (".exe" if platform.system() == "Windows" else ""))) if Path(args.cmake).is_absolute() else "ctest"
         # Verbose output retains Qt diagnostics even when QtTest itself passes.
-        run([ctest, "--test-dir", build, "--verbose", "--no-tests=error"], env, build / "desktop-test.log")
+        native_report = build / "desktop-qtest.txt"
+        native_report.unlink(missing_ok=True)
+        try:
+            run([ctest, "--test-dir", build, "--verbose", "--no-tests=error"], env, build / "desktop-test.log")
+        finally:
+            if not native_report.is_file():
+                raise RuntimeError("This test run did not create its QtTest report")
+            report_text = native_report.read_text(encoding="utf-8", errors="replace")
+            print(report_text, flush=True)
+            if re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", report_text):
+                raise RuntimeError("The native QtTest report contains a fatal diagnostic")
     else:
         executable = build / ("xdnote-admission.exe" if platform.system() == "Windows" else "xdnote-admission")
         run([executable], env)

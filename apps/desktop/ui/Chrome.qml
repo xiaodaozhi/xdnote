@@ -24,6 +24,6 @@ Rectangle {
         }
         SharedButton { text: "撤销"; onClicked: admission.undo() }
         SharedButton { text: "重做"; onClicked: admission.redo() }
-        SharedButton { text: admission.readOnly ? "恢复编辑" : "设为只读"; onClicked: admission.toggleReadOnly() }
+        SharedButton { objectName: "readOnlyButton"; text: admission.readOnly ? "恢复编辑" : "设为只读"; onClicked: admission.toggleReadOnly() }
     }
 }

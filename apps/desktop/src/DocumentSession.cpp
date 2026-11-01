@@ -52,7 +52,11 @@ DocumentSession::DocumentSession(const QByteArray &utf8, QObject *parent) : QObj
     });
 }
 
-DocumentSession::~DocumentSession() = default;
+DocumentSession::~DocumentSession() {
+    // Invalidate adapters before the hidden owner's destructor releases its
+    // document reference and before QObject clears cached weak references.
+    m_closing = true;
+}
 
 void DocumentSession::attach(SourceEditor *view) {
     Q_ASSERT(QThread::currentThread() == thread());
@@ -60,7 +64,7 @@ void DocumentSession::attach(SourceEditor *view) {
     m_views.append(view);
 }
 
-bool DocumentSession::isReadOnly() const { return m_owner->send(SCI_GETREADONLY) != 0; }
+bool DocumentSession::isReadOnly() const { return m_closing || m_owner->send(SCI_GETREADONLY) != 0; }
 
 bool DocumentSession::isComposing() const {
     for (const auto &view : m_views)
