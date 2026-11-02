@@ -27,8 +27,9 @@ class DesktopToolTests(unittest.TestCase):
         self.assertEqual(env["PATH"], "compiler;工具")
 
     def test_compatibility_profile_is_explicit_and_windows_only(self):
-        self.assertEqual(desktop.profile_settings("default", "Linux")["qtVersion"], "6.11.3")
-        self.assertEqual(desktop.profile_settings("msvc2019", "Windows")["qtVersion"], "6.8.3")
+        for system in ("Windows", "Linux", "Darwin"):
+            self.assertEqual(desktop.profile_settings("default", system)["qtVersion"], "6.8.2")
+        self.assertEqual(desktop.profile_settings("msvc2019", "Windows")["qtVersion"], "6.8.2")
         self.assertTrue(desktop.profile_settings("msvc2019", "Windows")["compatibilityOnly"])
         with self.assertRaises(ValueError):
             desktop.profile_settings("msvc2019", "Darwin")

@@ -74,7 +74,7 @@ def profile_settings(profile, system=None):
     config = DEPS["compatibilityProfiles"].get(profile)
     if not config or (system or platform.system()) != "Windows":
         raise ValueError("Unknown or non-Windows compatibility profile")
-    return {"qtVersion": config["qtVersion"], "compatibilityOnly": True}
+    return {"qtVersion": DEPS["qt"]["version"], "compatibilityOnly": True}
 
 
 def find_msvc2019():

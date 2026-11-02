@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "phase": "desktop-admission",
   "qt": {
-    "version": "6.11.3",
+    "version": "6.8.2",
     "modules": ["qt5compat", "qtwebengine", "qtwebchannel", "qtpositioning"],
     "aqtinstall": "3.3.0",
     "py7zr": "1.0.0"
@@ -11,7 +11,6 @@
   "compatibilityProfiles": {
     "msvc2019": {
       "host": "windows",
-      "qtVersion": "6.8.3",
       "minimumMsvc": 1929,
       "distributionInput": false
     }
