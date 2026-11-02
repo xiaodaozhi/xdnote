@@ -4,6 +4,9 @@
 #include "SourceEditor.h"
 #include "VisualTokens.h"
 #include "GuiRuntime.h"
+#include "FileService.h"
+#include "SessionRegistry.h"
+#include "file_fixtures.h"
 
 #include <QAccessible>
 #include <QApplication>
@@ -11,6 +14,7 @@
 #include <QFontDatabase>
 #include <QGlyphRun>
 #include <QTextLayout>
+#include <QTemporaryDir>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWidget>
@@ -27,6 +31,307 @@ using namespace xdnote;
 class DesktopTests final : public QObject {
     Q_OBJECT
 private slots:
+    void fileBaselinePreservesUtf8BomAndMixedNewlines() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath(QStringLiteral("中文😀.md"));
+        const auto body = QStringLiteral("第一行😀\r\n第二行\n第三行\r末尾\u2028\u2029").toUtf8();
+        for (bool bom : {false, true}) {
+            const auto disk = (bom ? QByteArray::fromHex("efbbbf") : QByteArray()) + body;
+            QVERIFY(fileFixtures::write(path, disk));
+            auto probe = std::async(std::launch::async, [path] { return FileService::probe(path); }).get();
+            QVERIFY(probe.file);
+            SessionRegistry registry;
+            const auto request = registry.beginOpen(probe.file).read;
+            auto loaded = std::async(std::launch::async, [request] { return FileService::read(request); }).get();
+            QVERIFY2(loaded.baseline, qPrintable(loaded.problem.description()));
+            QCOMPARE(loaded.baseline->diskBytes(), disk);
+            QCOMPARE(loaded.baseline->utf8(), body);
+            QCOMPARE(loaded.baseline->hasUtf8Bom(), bom);
+            QCOMPARE(loaded.baseline->sha256().size(), 32);
+            auto adopted = registry.complete(request, loaded.baseline);
+            QCOMPARE(adopted.result, RegistryResult::Created);
+            QCOMPARE(adopted.session->snapshot().utf8, body);
+            QVERIFY(!adopted.session->isDirty());
+            QVERIFY(!adopted.session->documentId().isNull());
+            QCOMPARE(adopted.session->snapshot().documentId, adopted.session->documentId());
+            // A later disk write cannot mutate the captured baseline.
+            QVERIFY(fileFixtures::write(path, "external"));
+            QCOMPARE(loaded.baseline->diskBytes(), disk);
+        }
+    }
+
+    void fileAliasesReuseDirtySessionAndUndoWithoutReadingAgain() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("original.md"), alias = directory.filePath("alias.md");
+        QVERIFY(fileFixtures::write(path, "original"));
+        QVERIFY(fileFixtures::hardLink(path, alias));
+        auto first = FileService::probe(path);
+        auto second = FileService::probe(alias);
+        QVERIFY(first.file && second.file);
+        QCOMPARE(first.file->identity(), second.file->identity());
+        SessionRegistry registry;
+        const auto opening = registry.beginOpen(first.file);
+        QVERIFY(opening.startRead);
+        const auto request = opening.read;
+        const auto pending = registry.beginOpen(second.file);
+        QCOMPARE(pending.read.requestId, request.requestId);
+        QVERIFY(!pending.startRead);
+        auto loaded = FileService::read(request);
+        QVERIFY(loaded.baseline);
+        auto original = registry.complete(request, loaded.baseline);
+        QVERIFY(original.session);
+        const auto id = original.session->documentId();
+        QCOMPARE(original.session->replace(0, 0, "unsaved ", original.session->revision()), EditResult::Applied);
+        QVERIFY(original.session->isDirty());
+        const auto edited = original.session->snapshot();
+        // Disk now has invalid UTF-8. A duplicate open must still activate the
+        // existing session, before attempting a text read or decoder.
+        QVERIFY(fileFixtures::write(path, QByteArray::fromHex("ffff")));
+        auto repeated = FileService::probe(directory.path() + "/./alias.md");
+        QVERIFY(repeated.file);
+        auto reused = registry.lookup(repeated.file);
+        QCOMPARE(reused.result, RegistryResult::Reused);
+        QCOMPARE(reused.session, original.session);
+        QCOMPARE(reused.session->documentId(), id);
+        QCOMPARE(reused.session->snapshot().utf8, edited.utf8);
+        QCOMPARE(FileService::read(FileReadRequest{second.file}).problem.code, FileError::InvalidUtf8);
+        // A late successful read from an earlier request also cannot reset it.
+        QCOMPARE(registry.complete(request, loaded.baseline).session, original.session);
+        QCOMPARE(registry.beginOpen(repeated.file).session, original.session);
+        QCOMPARE(original.session->undo(), EditResult::Applied);
+        QCOMPARE(original.session->snapshot().utf8, QByteArray("original"));
+        QVERIFY(!original.session->isDirty());
+        QCOMPARE(original.session->redo(), EditResult::Applied);
+        QVERIFY(original.session->isDirty());
+    }
+
+    void fileBomDoesNotConsumeLeadingContentCharacterOrOffsets() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("double-bom.md");
+        const auto body = QStringLiteral("\ufeff中文😀").toUtf8();
+        const auto disk = QByteArray::fromHex("efbbbf") + body;
+        QVERIFY(fileFixtures::write(path, disk));
+        auto probe = FileService::probe(path);
+        QVERIFY(probe.file);
+        SessionRegistry registry;
+        const auto request = registry.beginOpen(probe.file).read;
+        auto loaded = FileService::read(request);
+        QVERIFY2(loaded.baseline, qPrintable(loaded.problem.description()));
+        QCOMPARE(loaded.baseline->utf8(), body);
+        QCOMPARE(loaded.baseline->diskBytes(), disk);
+        auto opened = registry.complete(request, loaded.baseline);
+        QVERIFY(opened.session);
+        SourceEditor editor(opened.session);
+        auto *accessible = QAccessible::queryAccessibleInterface(&editor);
+        QVERIFY(accessible && accessible->textInterface());
+        QCOMPARE(accessible->textInterface()->text(0, -1), QStringLiteral("\ufeff中文😀"));
+        QCOMPARE(opened.session->replace(1, 1, "+", opened.session->revision()), EditResult::Applied);
+        QCOMPARE(opened.session->snapshot().utf8, QStringLiteral("\ufeff+中文😀").toUtf8());
+        QCOMPARE(opened.session->undo(), EditResult::Applied);
+        QCOMPARE(opened.session->snapshot().utf8, body);
+    }
+
+    void fileReplacementHasNewIdentityAndCannotSatisfyOldRead() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("document.md"), moved = directory.filePath("moved.md");
+        QVERIFY(fileFixtures::write(path, "before"));
+        auto original = FileService::probe(path);
+        QVERIFY(original.file);
+        SessionRegistry registry;
+        const auto request = registry.beginOpen(original.file).read;
+        auto originalText = FileService::read(request);
+        QVERIFY(originalText.baseline);
+        auto previous = registry.complete(request, originalText.baseline);
+        QVERIFY(QFile::rename(path, moved));
+        QVERIFY(fileFixtures::write(path, "after"));
+        auto replacement = FileService::probe(path);
+        QVERIFY(replacement.file);
+        QVERIFY(original.file->identity() != replacement.file->identity());
+        QCOMPARE(FileService::read(FileReadRequest{original.file}).problem.code, FileError::Changed);
+        auto movedProbe = FileService::probe(moved);
+        QVERIFY(movedProbe.file);
+        QCOMPARE(movedProbe.file->identity(), original.file->identity());
+        QCOMPARE(registry.lookup(movedProbe.file).session, previous.session);
+        const auto replacementRequest = registry.beginOpen(replacement.file).read;
+        auto replacementText = FileService::read(replacementRequest);
+        QVERIFY(replacementText.baseline);
+        auto next = registry.complete(replacementRequest, replacementText.baseline);
+        QVERIFY(next.session != previous.session);
+        QVERIFY(next.session->documentId() != previous.session->documentId());
+        QCOMPARE(previous.session->snapshot().utf8, QByteArray("before"));
+        QCOMPARE(next.session->snapshot().utf8, QByteArray("after"));
+    }
+
+    void fileFailuresAreTypedAndDoNotModifyBytes() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("invalid.md");
+        QCOMPARE(FileService::probe("relative.md").problem.code, FileError::InvalidPath);
+        QCOMPARE(FileService::probe(directory.path() + '/' + QChar(0xd800)).problem.code, FileError::InvalidPath);
+        QCOMPARE(FileService::probe(path).problem.code, FileError::Missing);
+        QCOMPARE(FileService::probe(directory.path()).problem.code, FileError::UnsupportedFile);
+        const QList<QByteArray> rejected{QByteArray::fromHex("fffe6100"), QByteArray::fromHex("c0af"),
+            QByteArray::fromHex("eda080"), QByteArray::fromHex("e4b8"), QByteArray("a\0b", 3)};
+        for (const auto &bytes : rejected) {
+            QVERIFY(fileFixtures::write(path, bytes));
+            auto probe = FileService::probe(path);
+            QVERIFY(probe.file);
+            auto read = FileService::read(FileReadRequest{probe.file});
+            QVERIFY(!read.baseline);
+            QCOMPARE(read.problem.code, bytes.contains('\0') && QString::fromUtf8(bytes).toUtf8() == bytes
+                ? FileError::UnsupportedContent : FileError::InvalidUtf8);
+            QVERIFY(!read.problem.description().isEmpty());
+            QFile actual(path);
+            QVERIFY(actual.open(QIODevice::ReadOnly));
+            QCOMPARE(actual.readAll(), bytes);
+        }
+        QVERIFY(fileFixtures::write(path, {}));
+        auto empty = FileService::read(FileReadRequest{FileService::probe(path).file});
+        QVERIFY(empty.baseline);
+        QVERIFY(empty.baseline->utf8().isEmpty());
+        SessionRegistry registry;
+        QCOMPARE(registry.complete({}, {}).result, RegistryResult::InvalidBaseline);
+    }
+
+    void fileSourceQuotaIncludesBomWithoutTruncation() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("quota.md");
+        const QByteArray body(FileService::SourceLimit, 'a');
+        QVERIFY(fileFixtures::write(path, QByteArray::fromHex("efbbbf") + body));
+        auto accepted = FileService::read(FileReadRequest{FileService::probe(path).file});
+        QVERIFY(accepted.baseline);
+        QCOMPARE(accepted.baseline->utf8(), body);
+        QVERIFY(fileFixtures::write(path, body + "x"));
+        auto rejected = FileService::read(FileReadRequest{FileService::probe(path).file});
+        QVERIFY(!rejected.baseline);
+        QCOMPARE(rejected.problem.code, FileError::TooLarge);
+    }
+
+    void fileFinalLinksAndNonRegularObjectsAreRejected() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("regular.md"), alias = directory.filePath("link");
+        QVERIFY(fileFixtures::write(path, "text"));
+#ifdef Q_OS_WIN
+        fileFixtures::Junction junction;
+        QVERIFY(junction.create(alias, directory.path()));
+        QCOMPARE(FileService::probe(alias).problem.code, FileError::UnsupportedFile);
+        QCOMPARE(FileService::probe(QStringLiteral("//./pipe/xdnote-should-not-open")).problem.code, FileError::InvalidPath);
+        QCOMPARE(FileService::probe(path + ":alternate").problem.code, FileError::InvalidPath);
+#else
+        QVERIFY(::symlink(path.toUtf8().constData(), alias.toUtf8().constData()) == 0);
+        QCOMPARE(FileService::probe(alias).problem.code, FileError::UnsupportedFile);
+        const auto fifo = directory.filePath("fifo").toUtf8();
+        QVERIFY(::mkfifo(fifo.constData(), 0600) == 0);
+        QCOMPARE(FileService::probe(QString::fromUtf8(fifo)).problem.code, FileError::UnsupportedFile);
+#endif
+    }
+
+    void fileReadDenialKeepsExistingSessionUsable() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("document.md");
+        QVERIFY(fileFixtures::write(path, "retained"));
+        auto probe = FileService::probe(path);
+        SessionRegistry registry;
+        const auto request = registry.beginOpen(probe.file).read;
+        auto loaded = FileService::read(request);
+        QVERIFY(loaded.baseline);
+        auto original = registry.complete(request, loaded.baseline);
+        QVERIFY(original.session);
+#ifdef Q_OS_WIN
+        fileFixtures::ReadBlock block(path);
+        QVERIFY(block.valid());
+        auto failed = FileService::read(FileReadRequest{probe.file});
+        QCOMPARE(failed.problem.code, FileError::InUse);
+        QVERIFY(failed.problem.nativeCode != 0);
+        QVERIFY(!failed.problem.description().isEmpty());
+#else
+        QVERIFY(::chmod(path.toUtf8().constData(), 0000) == 0);
+        auto failed = FileService::read(FileReadRequest{probe.file});
+        // Root bypasses discretionary read permissions; CI uses an ordinary
+        // account. Both cases retain the registry without rewriting anything.
+        if (::geteuid() != 0) QCOMPARE(failed.problem.code, FileError::Denied);
+        QVERIFY(::chmod(path.toUtf8().constData(), 0600) == 0);
+#endif
+        auto same = FileService::probe(path);
+        QVERIFY(same.file);
+        QCOMPARE(registry.lookup(same.file).session, original.session);
+        QCOMPARE(original.session->snapshot().utf8, QByteArray("retained"));
+    }
+
+    void fileRegistryRejectsWorkerAccessAndRebindDuringClose() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("document.md");
+        QVERIFY(fileFixtures::write(path, "text"));
+        auto probe = FileService::probe(path);
+        SessionRegistry registry;
+        const auto request = registry.beginOpen(probe.file).read;
+        auto loaded = FileService::read(request);
+        QVERIFY(loaded.baseline);
+        auto original = registry.complete(request, loaded.baseline);
+        QVERIFY(original.session);
+        const auto id = original.session->documentId();
+        auto wrong = std::async(std::launch::async, [&] { return registry.complete(request, loaded.baseline).result; }).get();
+        QCOMPARE(wrong, RegistryResult::WrongThread);
+        OpenRegistration pendingReopen;
+        bool oldAliveWhenReserved = false;
+        // This queued observer runs after registry removal but before the old
+        // session's deleteLater event. Its destroyed callback must not erase
+        // the new request which now occupies the same file identity.
+        connect(original.session, &DocumentSession::closed, &registry, [&] {
+            oldAliveWhenReserved = !original.session.isNull();
+            pendingReopen = registry.beginOpen(probe.file);
+        }, Qt::QueuedConnection);
+        QCOMPARE(original.session->requestClose(), EditResult::Applied);
+        QCOMPARE(registry.complete(request, loaded.baseline).result, RegistryResult::Closing);
+        QTRY_VERIFY(pendingReopen.startRead);
+        QVERIFY(oldAliveWhenReserved);
+        QTRY_VERIFY(original.session.isNull());
+        QCOMPARE(registry.lookup(probe.file).result, RegistryResult::Pending);
+        QCOMPARE(registry.complete(request, loaded.baseline).result, RegistryResult::StaleRequest);
+        const auto nextRequest = pendingReopen.read;
+        QCOMPARE(registry.complete(request, loaded.baseline).result, RegistryResult::StaleRequest);
+        QCOMPARE(registry.complete(nextRequest, loaded.baseline).result, RegistryResult::InvalidBaseline);
+        auto newRead = FileService::read(nextRequest);
+        auto reopened = registry.complete(nextRequest, newRead.baseline);
+        QCOMPARE(reopened.result, RegistryResult::Created);
+        QVERIFY(reopened.session->documentId() != id);
+        QCOMPARE(registry.cancel(nextRequest), RegistryResult::Reused);
+        QCOMPARE(reopened.session->snapshot().utf8, QByteArray("text"));
+    }
+
+    void cancelledFileReadCannotCreateOrOverwriteSession() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("document.md");
+        QVERIFY(fileFixtures::write(path, "before"));
+        auto probe = FileService::probe(path);
+        QVERIFY(probe.file);
+        SessionRegistry registry;
+        const auto first = registry.beginOpen(probe.file).read;
+        auto delayed = FileService::read(first);
+        QVERIFY(delayed.baseline);
+        QCOMPARE(registry.cancel(first), RegistryResult::Cancelled);
+        QCOMPARE(registry.complete(first, delayed.baseline).result, RegistryResult::StaleRequest);
+        QVERIFY(fileFixtures::write(path, "after"));
+        const auto second = registry.beginOpen(probe.file).read;
+        QVERIFY(first.requestId != second.requestId);
+        QCOMPARE(registry.complete(first, delayed.baseline).result, RegistryResult::StaleRequest);
+        auto current = FileService::read(second);
+        QVERIFY(current.baseline);
+        auto opened = registry.complete(second, current.baseline);
+        QCOMPARE(opened.result, RegistryResult::Created);
+        QCOMPARE(opened.session->snapshot().utf8, QByteArray("after"));
+        QCOMPARE(registry.complete(first, delayed.baseline).result, RegistryResult::StaleRequest);
+    }
+
     void systemFontsCanShapeChinese() {
         for (auto family : {QFontDatabase::GeneralFont, QFontDatabase::FixedFont}) {
             QTextLayout layout(QStringLiteral("中文界面"), QFontDatabase::systemFont(family));

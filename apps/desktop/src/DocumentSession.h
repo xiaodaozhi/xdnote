@@ -5,6 +5,7 @@
 #include <QPointer>
 #include <QString>
 #include <QVector>
+#include <QUuid>
 #include <memory>
 
 class ScintillaEditBase;
@@ -19,6 +20,7 @@ struct DocumentSnapshot {
     EditResult result = EditResult::Busy;
     QByteArray utf8;
     quint64 revision = 0;
+    QUuid documentId;
 };
 
 // The hidden public Scintilla control owns the sole document independently of
@@ -37,6 +39,8 @@ public:
     EditResult setReadOnly(bool readOnly);
     EditResult requestClose();
     bool isReadOnly() const;
+    bool isDirty() const;
+    QUuid documentId() const { return m_documentId; }
     bool isClosing() const { return m_closing; }
     bool isBusy() const;
     bool isComposing() const;
@@ -63,6 +67,7 @@ private:
     EditResult complete(EditResult result);
     void finishClose();
     std::unique_ptr<ScintillaEditBase> m_owner;
+    const QUuid m_documentId = QUuid::createUuid();
     QVector<QPointer<SourceEditor>> m_views;
     quint64 m_revision = 0;
     bool m_pending = false;
