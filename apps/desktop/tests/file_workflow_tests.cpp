@@ -63,6 +63,18 @@ void capture(QWidget *widget, const QString &name) {
     const auto directory = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
     if (!directory.isEmpty()) { QDir().mkpath(directory); widget->grab().save(directory + '/' + name + ".png"); }
 }
+bool readerHasPainted(MarkdownPreview *preview) {
+    // DOM completion can precede Chromium's first composited frame. Check the
+    // actual preview pixels before recording visual evidence, not just HTML.
+    const QImage pixels = preview->view()->grab().toImage().convertToFormat(QImage::Format_RGB32);
+    int ink = 0;
+    for (int y = 8; y < pixels.height() - 8; y += 2)
+        for (int x = 8; x < pixels.width() - 8; x += 2) {
+            const auto pixel = pixels.pixel(x, y);
+            if (qRed(pixel) < 100 && qGreen(pixel) < 100 && qBlue(pixel) < 100 && ++ink > 100) return true;
+        }
+    return false;
+}
 void chooseDialog(const QString &name, int choice, const QString &screenshot = {}) {
     auto *timer = new QTimer(qApp); timer->setInterval(10);
     auto elapsed = std::make_shared<QElapsedTimer>(); elapsed->start();
@@ -172,6 +184,7 @@ private slots:
         FileManager manager(nullptr, {}, false); auto *document = open(manager, path); QVERIFY(document);
         OwnedWindow owned{new SingleFileWindow(&manager)}; auto *window = owned.value.data(); window->setDocument(document); window->show();
         QSignalSpy ready(window->preview(), &MarkdownPreview::previewReady); QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0, 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(readerHasPainted(window->preview()), 15000);
         capture(window, "standalone-reading"); QVERIFY(!window->editing());
         auto *edit = window->findChild<QPushButton *>("editMode"); QVERIFY(edit); QTest::mouseClick(edit, Qt::LeftButton); QVERIFY(window->editing());
         window->editor()->setFocus(); window->editor()->send(SCI_GOTOPOS, window->editor()->send(SCI_GETLENGTH)); QTest::keyClicks(window->editor(), "edited");
