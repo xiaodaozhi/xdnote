@@ -38,6 +38,8 @@ public:
     EditResult redo();
     EditResult setReadOnly(bool readOnly);
     EditResult requestClose();
+    EditResult confirmSaved(const DocumentSnapshot &snapshot);
+    EditResult reloadText(const QByteArray &utf8, quint64 expectedRevision);
     bool isReadOnly() const;
     bool isDirty() const;
     QUuid documentId() const { return m_documentId; }
@@ -68,6 +70,8 @@ private:
     void finishClose();
     std::unique_ptr<ScintillaEditBase> m_owner;
     const QUuid m_documentId = QUuid::createUuid();
+    QByteArray m_savedUtf8;
+    quint64 m_savedRevision = 0;
     QVector<QPointer<SourceEditor>> m_views;
     quint64 m_revision = 0;
     bool m_pending = false;

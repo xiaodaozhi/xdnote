@@ -150,12 +150,18 @@ def main():
     parser.add_argument("--vcvars", type=Path)
     parser.add_argument("--vcvars-version", help="explicit installed MSVC toolset, for example 14.29")
     parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
+    parser.add_argument("--file", type=Path, action="append", default=[], help="local Markdown file to open with run; repeat for multiple files")
+    parser.add_argument("--admission", action="store_true", help="run the memory-only component window instead of xdnote")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
     args = parser.parse_args()
     if args.fresh and args.command != "build":
         parser.error("--fresh is supported by build only")
+    if (args.file or args.admission) and args.command != "run":
+        parser.error("--file and --admission are supported by run only")
+    if args.file and args.admission:
+        parser.error("The admission window does not accept user files")
     settings = profile_settings(args.profile)
     build = build_path(args.build_dir or BUILD / ("desktop-admission" if args.profile == "default" else "desktop-msvc2019"))
     BUILD.mkdir(exist_ok=True)
@@ -174,11 +180,12 @@ def main():
         return
     if args.download:
         parser.error("--download is supported by prepare only")
-    for tool in (args.cmake, args.ninja, "rustup"):
-        if not shutil.which(str(tool), path=env.get("PATH")):
-            raise RuntimeError(f"Missing prepared tool: {tool}")
-    run([args.cmake, "--version"], env)
-    run(["rustup", "run", DEPS["rust"]["toolchain"], "rustc", "-vV"], env)
+    if args.command != "run":
+        for tool in (args.cmake, args.ninja, "rustup"):
+            if not shutil.which(str(tool), path=env.get("PATH")):
+                raise RuntimeError(f"Missing prepared tool: {tool}")
+        run([args.cmake, "--version"], env)
+        run(["rustup", "run", DEPS["rust"]["toolchain"], "rustc", "-vV"], env)
     if not args.qt_prefix:
         arch = {"Windows": "msvc2022_64", "Darwin": "macos", "Linux": "gcc_64"}[platform.system()]
         args.qt_prefix = BUILD / "Qt" / settings["qtVersion"] / arch
@@ -222,24 +229,30 @@ def main():
         env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
         ctest = str(Path(args.cmake).with_name("ctest" + (".exe" if platform.system() == "Windows" else ""))) if Path(args.cmake).is_absolute() else "ctest"
         # Verbose output retains Qt diagnostics even when QtTest itself passes.
-        native_report = build / "desktop-qtest.txt"
-        native_report.unlink(missing_ok=True)
+        native_reports = [build / name for name in ("desktop-qtest.txt", "file-qtest.txt")]
+        for report in native_reports:
+            report.unlink(missing_ok=True)
         try:
             run([ctest, "--test-dir", build, "--verbose", "--no-tests=error"], env, build / "desktop-test.log")
         finally:
-            if not native_report.is_file():
-                raise RuntimeError("This test run did not create its QtTest report")
-            report_text = native_report.read_text(encoding="utf-8", errors="replace")
-            print(report_text, flush=True)
-            if re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", report_text):
-                raise RuntimeError("The native QtTest report contains a fatal diagnostic")
+            for native_report in native_reports:
+                if not native_report.is_file():
+                    raise RuntimeError(f"This test run did not create {native_report.name}")
+                report_text = native_report.read_text(encoding="utf-8", errors="replace")
+                print(report_text, flush=True)
+                if re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", report_text):
+                    raise RuntimeError("The native QtTest report contains a fatal diagnostic")
     else:
         verify_build_identity(build, args.profile, qt)
-        executable = build / ("xdnote-admission.exe" if platform.system() == "Windows" else "xdnote-admission")
-        run([executable], env)
+        name = "xdnote-admission" if args.admission else "xdnote"
+        executable = build / (name + (".exe" if platform.system() == "Windows" else ""))
+        run([executable, *(path.absolute() for path in args.file)], env)
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     try:
         with utf8_console():
             main()

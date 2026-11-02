@@ -89,7 +89,7 @@ jobs:
           name: desktop-admission-${{ matrix.label || matrix.os }}
           path: |
             build/desktop-*/*.log
-            build/desktop-*/desktop-qtest.txt
+            build/desktop-*/*-qtest.txt
             build/desktop-*/Testing/Temporary/LastTest.log
             build/desktop-*/build-identity.json
             build/desktop-*/native-toolchain.json

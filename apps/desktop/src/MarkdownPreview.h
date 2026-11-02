@@ -14,7 +14,7 @@ struct RenderResult { QByteArray html; QString error; quint64 generation = 0; qu
 class MarkdownPreview final : public QWidget {
     Q_OBJECT
 public:
-    explicit MarkdownPreview(DocumentSession *session, QWidget *parent = nullptr);
+    explicit MarkdownPreview(DocumentSession *session, QWidget *parent = nullptr, int padding = 24);
     ~MarkdownPreview() override;
     QWebEngineView *view() const { return m_view; }
     quint64 requestedGeneration() const { return m_generation; }
@@ -37,5 +37,6 @@ private:
     bool m_hasPending = false;
     bool m_running = false;
     bool m_closed = false;
+    int m_padding = 24;
 };
 }
