@@ -8,6 +8,7 @@
 namespace xdnote {
 class Appearance;
 QIcon themedIcon(const QString &name, const QColor &color);
+QString themedScrollBars(Appearance *appearance);
 class SharedButton final : public QPushButton {
     Q_OBJECT
     Q_PROPERTY(bool keyboardOutline READ keyboardOutline)

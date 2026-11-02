@@ -122,6 +122,7 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
         "h1{font-size:%11px}h2{font-size:%12px}h3{font-size:%13px}h1,h2,h3{line-height:1.4;margin:1.2em 0 .65em}"
         "body>:first-child{margin-top:0}pre{border:1px solid %8;border-radius:6px}"
         "input[type=checkbox]{accent-color:%15;pointer-events:none}::selection{background:%16;color:%17}"
+        "::-webkit-scrollbar{width:%18px;height:%18px}::-webkit-scrollbar-track{background:%6}::-webkit-scrollbar-thumb{background:%9;border:%19px solid %6;border-radius:%20px;min-height:%21px}"
         "blockquote{border-left:3px solid %8;margin-left:0;padding-left:16px}</style></head><body>")
         .arg(generation).arg(reader.value(QStringLiteral("maxContentWidth")).toInt())
         .arg(reader.value(QStringLiteral("size")).toInt()).arg(reader.value(QStringLiteral("lineHeight")).toDouble())
@@ -131,7 +132,11 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
         .arg(padding).arg(typography.value("headings").toObject().value("documentH1").toInt())
         .arg(typography.value("headings").toObject().value("documentH2").toInt())
         .arg(typography.value("headings").toObject().value("documentH3").toInt())
-        .arg(appearance->scheme(), appearance->accentColor().name(), appearance->accentColor("soft").name(), appearance->accentColor("softForeground").name());
+        .arg(appearance->scheme(), appearance->accentColor().name(), appearance->accentColor("soft").name(), appearance->accentColor("softForeground").name())
+        .arg(visualTokens().value("controls").toObject().value("scrollbarWidth").toInt())
+        .arg(visualTokens().value("controls").toObject().value("scrollbarInset").toInt())
+        .arg(visualTokens().value("controls").toObject().value("scrollbarWidth").toInt() / 2)
+        .arg(visualTokens().value("controls").toObject().value("scrollbarHandleMin").toInt());
     return head + QString::fromUtf8(body) + QStringLiteral("</body></html>");
 }
 }

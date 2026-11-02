@@ -39,6 +39,7 @@ QIcon themedIcon(const QString &name, const QColor &color) {
 SharedButton::SharedButton(const QString &text, const QString &name, Appearance *appearance, QWidget *parent)
     : QPushButton(text, parent), m_appearance(appearance) {
     setObjectName(name); setFocusPolicy(Qt::StrongFocus); setAutoDefault(false);
+    setAttribute(Qt::WA_MacShowFocusRect, false);
     // Native styles can supply a class-specific button font instead of the
     // parent's explicit logical UI size (notably on macOS).
     if (parent) setFont(parent->font());
@@ -46,6 +47,11 @@ SharedButton::SharedButton(const QString &text, const QString &name, Appearance 
     connect(appearance, &Appearance::changed, this, [this] { update(); });
     connect(InputModality::forApplication(), &InputModality::changed, this, [this] { update(); });
     connect(this, &QPushButton::pressed, this, [this] { m_tab = false; InputModality::forApplication()->clear(); update(); });
+}
+QString themedScrollBars(Appearance *appearance) {
+    return QStringLiteral("QScrollBar{background:%1;border:0;margin:0} QScrollBar:vertical{width:%3px} QScrollBar:horizontal{height:%3px} QScrollBar::handle{background:%2;border:%4px solid %1;border-radius:%5px} QScrollBar::handle:vertical{min-height:%6px} QScrollBar::handle:horizontal{min-width:%6px} QScrollBar::add-line,QScrollBar::sub-line{width:0;height:0;border:0;background:transparent} QScrollBar::add-page,QScrollBar::sub-page{background:transparent} QAbstractScrollArea::corner{background:%1;border:0}")
+        .arg(appearance->color("background").name(), appearance->color("textSecondary").name())
+        .arg(control("scrollbarWidth")).arg(control("scrollbarInset")).arg(control("scrollbarWidth") / 2).arg(control("scrollbarHandleMin"));
 }
 bool SharedButton::keyboardOutline() const {
     return m_tab && hasFocus() && isEnabled() && InputModality::forApplication()->keyboardNavigation() && window()->isActiveWindow();

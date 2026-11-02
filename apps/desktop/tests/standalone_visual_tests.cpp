@@ -19,6 +19,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QStyleHints>
 #include <QTemporaryDir>
@@ -64,6 +65,16 @@ QString html(MarkdownPreview *preview) {
     return result->text;
 }
 bool contained(SingleFileWindow *window, QWidget *child) { return child && window->rect().contains(QRect(child->mapTo(window, QPoint()), child->size())); }
+bool noOuterRing(QWidget *owner, QWidget *button, QColor background) {
+    const auto pixels = owner->grab().toImage(); const auto dpr = owner->devicePixelRatioF();
+    const QRect area(button->mapTo(owner, QPoint()), button->size());
+    for (int y = area.top() - 3; y <= area.bottom() + 3; ++y) for (int x = area.left() - 3; x <= area.right() + 3; ++x) {
+        if (area.contains(x, y) || !owner->rect().contains(x, y)) continue;
+        const auto color = pixels.pixelColor(qRound(x * dpr), qRound(y * dpr));
+        if (qAbs(color.red() - background.red()) + qAbs(color.green() - background.green()) + qAbs(color.blue() - background.blue()) > 40) return false;
+    }
+    return true;
+}
 double inkCenter(const QImage &image, qreal dpr, int firstX, int lastX, QColor background) {
     int first = image.height(), last = -1;
     for (int y = 4 * dpr; y < image.height() - 4 * dpr; ++y) for (int x = firstX * dpr; x < qMin(image.width(), qRound(lastX * dpr)); ++x) {
@@ -140,6 +151,8 @@ private slots:
         window->resize(560, 480); QTest::qWait(30);
         for (const auto &name : {"readMode", "editMode", "saveButton", "moreActions", "contentZoom", "fileLocation"}) QVERIFY2(contained(window, window->findChild<QWidget *>(name)), name);
         QCOMPARE(window->findChild<SharedButton *>("saveButton")->font().pixelSize(), 14);
+        auto *scrollbar = window->editor()->verticalScrollBar(); QTRY_VERIFY(scrollbar->isVisible()); QCOMPARE(scrollbar->width(), 12);
+        QCOMPARE(scrollbar->grab().toImage().pixelColor(0, 3).rgb(), appearance.color("background").rgb());
         QCOMPARE(document->session()->undo(), EditResult::Applied); QCOMPARE(document->session()->snapshot().utf8, initial.utf8); QVERIFY(!document->dirty());
         QCOMPARE(document->session()->redo(), EditResult::Applied); QCOMPARE(document->session()->snapshot().utf8, edited.utf8);
     }
@@ -166,10 +179,11 @@ private slots:
     }
     void tabOutlineActivationCancelAndWindowDeactivation() {
         Appearance appearance; QVERIFY(appearance.setPreferences("light", "cobalt")); QWidget panel; auto *layout = new QHBoxLayout(&panel);
+        layout->setContentsMargins(12, 12, 12, 12); layout->setSpacing(12); auto palette = panel.palette(); palette.setColor(QPalette::Window, appearance.color("background")); panel.setPalette(palette); panel.setAutoFillBackground(true);
         auto *first = new SharedButton("First", "first", &appearance, &panel), *second = new SharedButton("Second", "second", &appearance, &panel); layout->addWidget(first); layout->addWidget(second);
         panel.show(); QApplication::setActiveWindow(&panel); first->setFocus(Qt::OtherFocusReason); InputModality::forApplication()->clear();
-        QVERIFY(!first->keyboardOutline()); QTest::keyClick(first, Qt::Key_Tab); QTRY_VERIFY(second->hasFocus()); QVERIFY(second->keyboardOutline());
-        QSignalSpy clicked(second, &QPushButton::clicked); QTest::keyClick(second, Qt::Key_Space); QCOMPARE(clicked.count(), 1); QVERIFY(second->hasFocus()); QVERIFY(!second->keyboardOutline());
+        QVERIFY(!first->keyboardOutline()); QTRY_VERIFY(noOuterRing(&panel, first, appearance.color("background"))); QTest::keyClick(first, Qt::Key_Tab); QTRY_VERIFY(second->hasFocus()); QVERIFY(second->keyboardOutline());
+        QSignalSpy clicked(second, &QPushButton::clicked); QTest::keyClick(second, Qt::Key_Space); QCOMPARE(clicked.count(), 1); QVERIFY(second->hasFocus()); QVERIFY(!second->keyboardOutline()); QTRY_VERIFY(noOuterRing(&panel, second, appearance.color("background")));
         QTest::keyClick(second, Qt::Key_Backtab); QTRY_VERIFY(first->hasFocus()); QVERIFY(first->keyboardOutline()); QTest::keyClick(first, Qt::Key_Escape); QVERIFY(!first->keyboardOutline()); QVERIFY(first->hasFocus());
         QTest::keyClick(first, Qt::Key_Tab); QVERIFY(second->keyboardOutline()); QTest::mouseClick(first, Qt::LeftButton); QVERIFY(!first->keyboardOutline()); QVERIFY(!second->keyboardOutline());
         QTest::keyClick(first, Qt::Key_Tab); QVERIFY(second->keyboardOutline()); QEvent inactive(QEvent::WindowDeactivate); QApplication::sendEvent(&panel, &inactive); QVERIFY(!second->keyboardOutline());
@@ -222,7 +236,7 @@ private slots:
             QVERIFY(dialog->findChild<QWidget *>("dialogFile")); QVERIFY(dialog->findChildren<QScrollArea *>().isEmpty());
             auto *cancel = dialog->findChild<SharedButton *>("choice0"); auto *save = dialog->findChild<SharedButton *>("choice1"); auto *discard = dialog->findChild<SharedButton *>("choice2");
             QVERIFY(cancel && save && discard); QVERIFY(discard->x() < cancel->x() && cancel->x() < save->x());
-            QVERIFY(!cancel->keyboardOutline()); capture(dialog, "unsaved-close-" + theme); QTest::keyClick(dialog, Qt::Key_Escape);
+            QVERIFY(!cancel->keyboardOutline()); QVERIFY(noOuterRing(dialog, cancel, appearance.color("background"))); capture(dialog, "unsaved-close-" + theme); QTest::keyClick(dialog, Qt::Key_Escape);
         });
         timer.start(); QTimer::singleShot(10000, &timer, [] { if (auto *dialog = qobject_cast<QDialog *>(qApp->activeModalWidget())) dialog->reject(); });
         QVERIFY(!owned.value->close()); QVERIFY(inspected); QVERIFY(owned.value->isVisible());

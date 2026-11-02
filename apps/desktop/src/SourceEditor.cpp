@@ -3,6 +3,7 @@
 #include "DocumentSession.h"
 #include "VisualTokens.h"
 #include "Appearance.h"
+#include "SharedWidgets.h"
 
 #include <QAccessibleWidget>
 #include <QColor>
@@ -204,6 +205,7 @@ void SourceEditor::setTextZoom(int percent) {
 }
 
 void SourceEditor::applyAppearance() {
+    setStyleSheet(themedScrollBars(m_appearance));
     const auto ref = [](const QColor &color) { return color.red() | (color.green() << 8) | (color.blue() << 16); };
     send(SCI_STYLESETFORE, STYLE_DEFAULT, ref(m_appearance->color("text")));
     send(SCI_STYLESETBACK, STYLE_DEFAULT, ref(m_appearance->color("background")));
