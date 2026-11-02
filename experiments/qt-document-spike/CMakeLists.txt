@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.21)
 project(xdnote_qt_document_spike LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Qml Quick Test Widgets)
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../../tools/desktop-dependencies.json" XDNOTE_DEPENDENCIES)
+string(JSON XDNOTE_QT_VERSION GET "${XDNOTE_DEPENDENCIES}" qt version)
+find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS Core Gui Network Qml Quick Test Widgets)
 
 add_executable(qt_open_intent_sender
     src/spike_ipc.cpp

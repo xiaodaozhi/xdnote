@@ -35,7 +35,9 @@ add_test(NAME scintilla_buffer_spike COMMAND scintilla_buffer_spike)
 
 option(XDNOTE_SCINTILLA_WIDGET "Build the separate Qt widget experiment" OFF)
 if(XDNOTE_SCINTILLA_WIDGET)
-    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Core5Compat)
+    file(READ "${XDNOTE_ROOT}/tools/desktop-dependencies.json" XDNOTE_DEPENDENCIES)
+    string(JSON XDNOTE_QT_VERSION GET "${XDNOTE_DEPENDENCIES}" qt version)
+    find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS Core Gui Widgets Core5Compat)
     set(SCINTILLA_QT_DIR "${SCINTILLA_SOURCE_DIR}/qt/ScintillaEditBase")
     set(SCINTILLA_CORE_NAMES
         AutoComplete CallTip CaseConvert CaseFolder CellBuffer ChangeHistory

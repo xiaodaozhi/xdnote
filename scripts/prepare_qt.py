@@ -24,32 +24,14 @@ def main():
         compatibility = manifest["compatibilityProfiles"][args.profile]
         if compatibility["host"] != args.host:
             parser.error("The selected compatibility profile is Windows-only")
-        version = compatibility["qtVersion"]
     if importlib.metadata.version("aqtinstall") != qt["aqtinstall"]:
         parser.error("Install the pinned aqtinstall version in an isolated tooling environment first")
     allowed = {"windows": "win64_msvc2022_64", "linux": "linux_gcc_64", "mac": "clang_64"}
     if args.arch != allowed[args.host]:
         parser.error("Architecture is outside this admission SDK matrix")
 
-    # Pinned aqt 3.3.0 expects the old shared Windows metadata directory. Qt
-    # 6.11.3 publishes per-compiler directories instead. Limit this adaptation to
-    # that exact Windows SDK, retaining aqt's XML and binary hash verification.
-    from aqt.archives import QtArchives
+    # Use aqt's supported metadata layout and retain XML and binary checksums.
     from aqt.installer import Cli
-
-    original = QtArchives._get_archives
-
-    def archives(instance):
-        if instance.os_name == "windows" and str(instance.version) == "6.11.3":
-            if instance.arch != "win64_msvc2022_64" or instance.target != "desktop":
-                raise ValueError("Unsupported SDK metadata adaptation")
-            instance._get_archives_base(
-                "qt6_6113/qt6_6113_msvc2022_64", instance._target_packages()
-            )
-        else:
-            original(instance)
-
-    QtArchives._get_archives = archives
     build = ROOT / "build"
     if build.is_symlink() or (hasattr(build, "is_junction") and build.is_junction()):
         parser.error("Build directory cannot be a symlink")

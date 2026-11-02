@@ -41,4 +41,4 @@ Windows 使用 `ReplaceFileW` 并保留被替换对象至校验完成，不设�
 
 自动化使用自建真实临时文件及实际 QWidget／Scintilla／WebEngine，覆盖 Unicode 路径、BOM、混合换行、硬链接保护、同文件多入口、保存期间编辑、另存为、占用／只读失败、提交前后竞争、重新载入、取消／放弃／保存后关闭和第二进程转交。测试输出和当前窗口截图只存放于忽略的构建目录或 CI 工件。构建入口见[开发构建](developer-build.md)；自动化不代替人工输入法、辅助技术、系统关联、最低系统、实际跨屏拖动及安装验收。
 
-平台 API 依据：[Qt 临时文件实现](https://github.com/qt/qtbase/blob/v6.8.3/src/corelib/io/qtemporaryfile.cpp)、[Windows ReplaceFileW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew)、[Linux renameat2](https://man7.org/linux/man-pages/man2/renameat2.2.html)、[Qt 私有页面传输 API](https://doc.qt.io/qt-6.8/qwebengineurlschemehandler.html)。
+平台 API 依据：[Qt 临时文件实现](https://github.com/qt/qtbase/blob/v6.8.2/src/corelib/io/qtemporaryfile.cpp)、[Windows ReplaceFileW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew)、[Linux renameat2](https://man7.org/linux/man-pages/man2/renameat2.2.html)、[Qt 私有页面传输 API](https://doc.qt.io/qt-6.8/qwebengineurlschemehandler.html)。
