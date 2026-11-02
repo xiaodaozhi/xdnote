@@ -49,8 +49,10 @@ bool nativeFrameSize(HWND hwnd, UINT dpi, qint64 clientWidth, qint64 clientHeigh
     if (!dpi || clientWidth <= 0 || clientHeight <= 0) return false;
     const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE), extra = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
     if ((style & WS_CAPTION) != WS_CAPTION || !(style & WS_THICKFRAME)) return false;
-    RECT border{}; if (!AdjustWindowRectExForDpi(&border, DWORD(style), FALSE, DWORD(extra), dpi)) return false;
-    const qint64 width = clientWidth - border.left + border.right, height = clientHeight + 1 + border.bottom;
+    Q_UNUSED(extra);
+    // A frameless QWidget treats the complete normal HWND as its client area.
+    // Native styles are retained for system commands, not extra client insets.
+    const qint64 width = clientWidth, height = clientHeight;
     if (width <= 0 || height <= 0 || width > std::numeric_limits<LONG>::max() || height > std::numeric_limits<LONG>::max()) return false;
     *result = SIZE{LONG(width), LONG(height)}; return true;
 }
@@ -237,11 +239,16 @@ bool SingleFileWindow::nativeEvent(const QByteArray &type, void *message, qintpt
         }
     }
     if (msg->message == WM_NCCALCSIZE && msg->wParam) {
-        auto *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(msg->lParam); const auto outer = params->rgrc[0];
-        DefWindowProcW(hwnd, msg->message, msg->wParam, msg->lParam);
-        const UINT dpi = GetDpiForWindow(hwnd);
-        const int border = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
-        if ((GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CAPTION) == WS_CAPTION) params->rgrc[0].top = outer.top + (IsZoomed(hwnd) ? border : 1); *result = 0; return true;
+        auto *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(msg->lParam);
+        if (IsZoomed(hwnd)) {
+            // Windows places the maximized resize band outside the work area.
+            // Exclude that band so the custom header stays fully visible.
+            MONITORINFO monitor{sizeof(MONITORINFO)};
+            if (GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor)) {
+                RECT visible{}; if (IntersectRect(&visible, &params->rgrc[0], &monitor.rcWork)) params->rgrc[0] = visible;
+            }
+        }
+        *result = 0; return true;
     }
     if (msg->message == WM_NCHITTEST) {
         RECT outer{}; GetWindowRect(hwnd, &outer); const int x = GET_X_LPARAM(msg->lParam), y = GET_Y_LPARAM(msg->lParam);
@@ -354,7 +361,12 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
     connect(m_resolve, &QPushButton::clicked, this, [this] { if (m_document && m_document->conflict()) { if (m_document->dirty()) resolveConflict(); else reloadDisk(); } else if (!m_previewError.isEmpty() && m_document && !m_document->hasError()) m_preview->refresh(); else chooseSaveAs(); });
     connect(m_retry, &QPushButton::clicked, m_saveAction, &QAction::trigger);
     connect(m_later, &QPushButton::clicked, this, [this] { m_dismissedNotice = m_notice->text(); m_banner->hide(); }); layout->addWidget(m_banner);
-    m_body = new QStackedWidget(this); auto *welcome = new QWidget(m_body); auto *welcomeLayout = new QVBoxLayout(welcome); welcomeLayout->setContentsMargins(40, 40, 40, 40);
+    m_body = new QStackedWidget(this);
+#ifdef Q_OS_WIN
+    // Keep the vertical scrollbar clear of the native right-edge resize hit.
+    m_body->setContentsMargins(0, 0, 8, 0);
+#endif
+    auto *welcome = new QWidget(m_body); auto *welcomeLayout = new QVBoxLayout(welcome); welcomeLayout->setContentsMargins(40, 40, 40, 40);
     welcomeLayout->setSpacing(16); welcomeLayout->addStretch();
     m_openSpinner = new SharedSpinner(m_appearance, welcome); welcomeLayout->addWidget(m_openSpinner, 0, Qt::AlignHCenter);
     m_emptySymbol = new QLabel(welcome); welcomeLayout->addWidget(m_emptySymbol, 0, Qt::AlignHCenter);
