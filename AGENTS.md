@@ -14,6 +14,7 @@
 - 跨屏缩放、原生约束和几何恢复遵循 `docs/engineering/window-geometry.md`。普通窗口高缩放移至低缩放不放大，往返不累积增长；正常逻辑客户区与原生设备外框分别处理，目标可用区不足只收敛，物理拖动验收独立记录。
 - 文件打开、文档会话、保存、外部冲突与退出遵守产品契约。同一文件不能因不同入口而产生彼此独立、可相互覆盖的编辑缓冲区。
 - 技术方向与模块契约遵循 `docs/engineering/architecture.md`：Qt 桌面、会话持有唯一原文与撤销、Rust 独立服务；Scintilla、具体界面承载和受限 Web 预览仍须准入验证。依赖版本、字体、许可与发布要求按本项目实际内容核验。
+- 本机 Windows 构建使用已安装的 MSVC 2019 v142／14.29，通过 `python scripts/desktop.py build --profile msvc2019` 选择独立 Qt 6.8.3 配置；不要求安装 VS 2022。默认 CI 与发行工具链保持独立，具体入口和兼容边界见 `docs/engineering/developer-build.md`。
 - 工作区图片默认集中在 `assets/images/`，正文使用相对当前文档的标准 Markdown 链接；导入、引用索引、移动与重命名遵循 `docs/product/workspace-resources.md`，不自动删除图片或绕过会话改写正文。
 - 文档变更检查本地链接、JSON、图片引用及材料摘要；产品实现按受影响路径验证，功能、视觉、平台集成分别记录实际结果。
 - 需求、Bug、设计和研究使用 GitHub Issue 跟踪；从最新 main 创建带 Issue 编号的短期分支，PR 关联 Issue。当前 head 的适用 CI、必要审查和验收完成后合并 main；仅完整满足 Issue 验收时关闭，部分交付保持开放。安全清理本次已合并的临时分支和临时数据，详见 `docs/engineering/workflow.md`。

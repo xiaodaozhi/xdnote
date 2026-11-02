@@ -149,7 +149,8 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent) : QW
         const auto generation = m_presentingGeneration;
         const auto revision = m_presentingRevision;
         const auto marker = QStringLiteral("<meta name=\"xdnote-generation\" content=\"%1\">").arg(generation);
-        page->toHtml([guard = QPointer<MarkdownPreview>(this), generation, revision, marker](const QString &html) {
+        const QPointer<MarkdownPreview> guard(this);
+        page->toHtml([guard, generation, revision, marker](const QString &html) {
             if (!guard || guard->m_closed || !guard->m_session || guard->m_session->isClosing()
                 || generation != guard->m_generation || !currentRevision(guard->m_session, revision) || !html.contains(marker)) return;
             guard->m_displayedRevision = revision;

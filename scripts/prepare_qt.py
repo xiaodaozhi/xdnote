@@ -15,9 +15,16 @@ def main():
     parser.add_argument("--download", action="store_true", required=True)
     parser.add_argument("--host", choices=("windows", "linux", "mac"), required=True)
     parser.add_argument("--arch", required=True)
+    parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
     args = parser.parse_args()
     manifest = json.loads((ROOT / "tools/desktop-dependencies.json").read_text(encoding="utf-8"))
     qt = manifest["qt"]
+    version = qt["version"]
+    if args.profile != "default":
+        compatibility = manifest["compatibilityProfiles"][args.profile]
+        if compatibility["host"] != args.host:
+            parser.error("The selected compatibility profile is Windows-only")
+        version = compatibility["qtVersion"]
     if importlib.metadata.version("aqtinstall") != qt["aqtinstall"]:
         parser.error("Install the pinned aqtinstall version in an isolated tooling environment first")
     allowed = {"windows": "win64_msvc2022_64", "linux": "linux_gcc_64", "mac": "clang_64"}
@@ -56,7 +63,7 @@ def main():
         # The minimum reference system ships an older incompatible ICU SONAME.
         archives_to_install.append("icu")
     return Cli().run([
-        "install-qt", args.host, "desktop", qt["version"], args.arch,
+        "install-qt", args.host, "desktop", version, args.arch,
         "-O", str(build / "Qt"), "-m", *qt["modules"],
         "--archives", *archives_to_install,
     ])

@@ -2,6 +2,7 @@
 """One explicit prepare/build/test/run entry point for desktop admission."""
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -15,6 +16,28 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
 DEPS = json.loads((ROOT / "tools/desktop-dependencies.json").read_text(encoding="utf-8"))
+
+
+@contextlib.contextmanager
+def utf8_console():
+    if platform.system() != "Windows":
+        yield
+        return
+    import ctypes
+    console = ctypes.windll.kernel32
+    input_page, output_page = console.GetConsoleCP(), console.GetConsoleOutputCP()
+    if not input_page or not output_page:
+        yield
+        return
+    try:
+        # CMake decodes /showIncludes using the input page, while cl writes
+        # using the output page. Keep both UTF-8 for the command, then restore.
+        if not console.SetConsoleCP(65001) or not console.SetConsoleOutputCP(65001):
+            raise OSError("Cannot select UTF-8 for this build console")
+        yield
+    finally:
+        console.SetConsoleCP(input_page)
+        console.SetConsoleOutputCP(output_page)
 
 
 def build_path(value):
@@ -45,19 +68,46 @@ def run(command, env, log=None):
         raise RuntimeError(f"Command failed (exit={code}, Qt fatal diagnostic={fatal})")
 
 
-def environment(vcvars):
-    env = os.environ.copy()
+def profile_settings(profile, system=None):
+    if profile == "default":
+        return {"qtVersion": DEPS["qt"]["version"], "compatibilityOnly": False}
+    config = DEPS["compatibilityProfiles"].get(profile)
+    if not config or (system or platform.system()) != "Windows":
+        raise ValueError("Unknown or non-Windows compatibility profile")
+    return {"qtVersion": config["qtVersion"], "compatibilityOnly": True}
+
+
+def find_msvc2019():
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio/Installer/vswhere.exe"
+    for versions in ("[16.0,17.0)", "[17.0,18.0)"):
+        install = subprocess.check_output([
+            str(vswhere), "-latest", "-products", "*", "-version", versions, "-utf8",
+            "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath",
+        ], text=True, encoding="utf-8").strip()
+        if install and list((Path(install) / "VC/Tools/MSVC").glob("14.29.*/bin/Hostx64/x64/cl.exe")):
+            return Path(install) / "VC/Auxiliary/Build/vcvars64.bat"
+    raise RuntimeError("Installed MSVC v142 14.29 tools not found; provide --vcvars explicitly")
+
+
+def environment(vcvars, toolset=None):
+    env = ({name.upper(): value for name, value in os.environ.items()}
+           if platform.system() == "Windows" else os.environ.copy())
     if vcvars:
         path = Path(vcvars).resolve(strict=True)
         if platform.system() != "Windows" or '"' in str(path):
             raise ValueError("--vcvars requires an ordinary Windows vcvars64.bat path")
         # Import toolchain variables without printing the machine environment.
-        output = subprocess.check_output(f'cmd.exe /d /u /s /c ""{path}" >nul && set"',
+        if toolset and not re.fullmatch(r"\d+\.\d+(?:\.\d+)?", toolset):
+            raise ValueError("Invalid MSVC toolset version")
+        option = f" -vcvars_ver={toolset}" if toolset else ""
+        output = subprocess.check_output(f'cmd.exe /d /u /s /c ""{path}"{option} >nul && set"',
                                          text=True, encoding="utf-16-le")
         for line in output.splitlines():
             name, separator, value = line.partition("=")
             if separator and name:
-                env[name] = value
+                # Windows names are case-insensitive. A plain dict otherwise keeps
+                # both PATH and Path, so child DLL lookup can ignore our Qt prefix.
+                env[name.upper()] = value
     env["CARGO_HOME"] = str(BUILD / "cargo-home")
     env["CARGO_TARGET_DIR"] = str(BUILD / "cargo-admission")
     env["RUSTUP_AUTO_INSTALL"] = "0"
@@ -81,6 +131,15 @@ def source_fingerprint():
     return digest.hexdigest()
 
 
+def verify_build_identity(build, profile, qt):
+    identity = json.loads((build / "build-identity.json").read_text(encoding="utf-8"))
+    if identity.get("profile") != profile or os.path.normcase(identity.get("qtPrefix", "")) != os.path.normcase(str(qt)):
+        raise RuntimeError("Build profile or Qt SDK differs from the successful build; rebuild in its own directory")
+    if identity["sourceSha256"] != source_fingerprint():
+        raise RuntimeError("Sources changed since the successful build; rebuild before testing or running")
+    return identity
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("doctor", "prepare", "build", "test", "run"))
@@ -89,12 +148,22 @@ def main():
     parser.add_argument("--cmake", default="cmake")
     parser.add_argument("--ninja", default="ninja")
     parser.add_argument("--vcvars", type=Path)
-    parser.add_argument("--build-dir", type=Path, default=BUILD / "desktop-admission")
+    parser.add_argument("--vcvars-version", help="explicit installed MSVC toolset, for example 14.29")
+    parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
+    parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
+    parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
     args = parser.parse_args()
-    build = build_path(args.build_dir)
+    if args.fresh and args.command != "build":
+        parser.error("--fresh is supported by build only")
+    settings = profile_settings(args.profile)
+    build = build_path(args.build_dir or BUILD / ("desktop-admission" if args.profile == "default" else "desktop-msvc2019"))
     BUILD.mkdir(exist_ok=True)
-    env = environment(args.vcvars)
+    if args.profile == "msvc2019" and args.command != "prepare" and not args.vcvars:
+        args.vcvars = find_msvc2019()
+    env = environment(args.vcvars, args.vcvars_version or ("14.29" if args.profile == "msvc2019" else None))
+    if args.profile != "default":
+        env["CARGO_TARGET_DIR"] = str(BUILD / f"cargo-{args.profile}")
     if args.command == "prepare":
         if not args.download:
             parser.error("prepare requires --download; build and test never download dependencies")
@@ -112,7 +181,7 @@ def main():
     run(["rustup", "run", DEPS["rust"]["toolchain"], "rustc", "-vV"], env)
     if not args.qt_prefix:
         arch = {"Windows": "msvc2022_64", "Darwin": "macos", "Linux": "gcc_64"}[platform.system()]
-        args.qt_prefix = BUILD / "Qt" / DEPS["qt"]["version"] / arch
+        args.qt_prefix = BUILD / "Qt" / settings["qtVersion"] / arch
     qt = args.qt_prefix.resolve(strict=True)
     if not (qt / "lib/cmake/Qt6WebEngineWidgets/Qt6WebEngineWidgetsConfig.cmake").is_file():
         raise RuntimeError("Qt WebEngine SDK missing; run the explicit SDK preparation first")
@@ -128,22 +197,23 @@ def main():
                 raise RuntimeError(f"Runtime dependencies missing for {binary.name}: {'; '.join(missing)}")
     env["CARGO_NET_OFFLINE"] = "true"
     if args.command == "doctor":
-        print(f"Qt prefix: {qt}\nScintilla: {BUILD / 'scintilla-5.6.7'}\nBuild: {build}")
+        print(f"Profile: {args.profile}\nQt {settings['qtVersion']}: {qt}\nScintilla: {BUILD / 'scintilla-5.6.7'}\nBuild: {build}")
         return
     build.mkdir(parents=True, exist_ok=True)
     if args.command == "build":
-        run([args.cmake, "-S", ROOT, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
+        run([args.cmake, *(["--fresh"] if args.fresh else []), "-S", ROOT, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
              f"-DCMAKE_MAKE_PROGRAM={args.ninja}", f"-DCMAKE_PREFIX_PATH={qt}",
+             f"-DXDNOTE_BUILD_PROFILE={args.profile}",
              f"-DPython3_EXECUTABLE={sys.executable}"], env, build / "configure.log")
         run([args.cmake, "--build", build, "--parallel", str(args.parallel)], env, build / "build.log")
         (build / "build-identity.json").write_text(json.dumps({
             "sourceSha256": source_fingerprint(), "dependencies": DEPS,
             "platform": platform.system(), "architecture": platform.machine(),
+            "profile": args.profile, "qtPrefix": str(qt), "compatibilityOnly": settings["compatibilityOnly"],
+            "nativeToolchain": json.loads((build / "native-toolchain.json").read_text(encoding="utf-8")),
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
-        identity = json.loads((build / "build-identity.json").read_text(encoding="utf-8"))
-        if identity["sourceSha256"] != source_fingerprint():
-            raise RuntimeError("Sources changed since the successful build; rebuild before testing")
+        verify_build_identity(build, args.profile, qt)
         run(cargo("fmt", "--all", "--", "--check"), env, build / "rust-fmt.log")
         run(cargo("clippy", "--locked", "--offline", "--workspace", "--all-targets", "--", "-D", "warnings"), env, build / "rust-clippy.log")
         run(cargo("test", "--locked", "--offline", "--workspace"), env, build / "rust-test.log")
@@ -164,13 +234,15 @@ def main():
             if re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", report_text):
                 raise RuntimeError("The native QtTest report contains a fatal diagnostic")
     else:
+        verify_build_identity(build, args.profile, qt)
         executable = build / ("xdnote-admission.exe" if platform.system() == "Windows" else "xdnote-admission")
         run([executable], env)
 
 
 if __name__ == "__main__":
     try:
-        main()
+        with utf8_console():
+            main()
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
         print(f"Desktop admission: {error}", file=sys.stderr)
         sys.exit(1)
