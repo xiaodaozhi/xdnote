@@ -81,6 +81,9 @@ set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUS
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/FileService.cpp apps/desktop/src/FileService.h
+    apps/desktop/src/Utf8Text.h
+    apps/desktop/src/SessionRegistry.cpp apps/desktop/src/SessionRegistry.h
     apps/desktop/src/DocumentSession.cpp apps/desktop/src/DocumentSession.h
     apps/desktop/src/SourceEditor.cpp apps/desktop/src/SourceEditor.h
     apps/desktop/src/MarkdownPreview.cpp apps/desktop/src/MarkdownPreview.h

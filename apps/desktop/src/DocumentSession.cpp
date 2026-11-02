@@ -1,5 +1,6 @@
 #include "DocumentSession.h"
 #include "SourceEditor.h"
+#include "Utf8Text.h"
 
 #include <QScopedValueRollback>
 #include <QThread>
@@ -39,7 +40,9 @@ bool DocumentSession::utf16Boundary(const QString &text, int offset) {
 }
 
 DocumentSession::DocumentSession(const QByteArray &utf8, QObject *parent) : QObject(parent) {
-    if (utf8.size() > AdmissionSourceLimit || QString::fromUtf8(utf8).toUtf8() != utf8)
+    bool valid = false;
+    if (utf8.size() <= AdmissionSourceLimit) decodeUtf8Literal(utf8, &valid);
+    if (!valid)
         throw std::invalid_argument("invalid admission UTF-8 snapshot");
     m_owner = std::make_unique<ScintillaEditBase>();
     m_owner->send(SCI_SETCODEPAGE, SC_CP_UTF8);
@@ -65,6 +68,10 @@ void DocumentSession::attach(SourceEditor *view) {
 }
 
 bool DocumentSession::isReadOnly() const { return m_closing || m_owner->send(SCI_GETREADONLY) != 0; }
+bool DocumentSession::isDirty() const {
+    Q_ASSERT(QThread::currentThread() == thread());
+    return m_owner->send(SCI_GETMODIFY) != 0;
+}
 
 bool DocumentSession::isComposing() const {
     for (const auto &view : m_views)
@@ -119,16 +126,16 @@ void DocumentSession::inputFinished() { if (m_pending) scheduleFlush(); }
 quint64 DocumentSession::revision() { flush(); return m_revision; }
 
 DocumentSnapshot DocumentSession::snapshot() {
-    if (QThread::currentThread() != thread()) return {EditResult::WrongThread, {}, 0};
-    if (m_closing) return {EditResult::Closing, {}, m_revision};
-    if (isBusy()) return {EditResult::Busy, {}, m_revision};
-    if (isComposing()) return {EditResult::Composing, {}, m_revision};
-    for (const auto &view : m_views) if (view && view->dispatching()) return {EditResult::Busy, {}, m_revision};
+    if (QThread::currentThread() != thread()) return {EditResult::WrongThread, {}, 0, m_documentId};
+    if (m_closing) return {EditResult::Closing, {}, m_revision, m_documentId};
+    if (isBusy()) return {EditResult::Busy, {}, m_revision, m_documentId};
+    if (isComposing()) return {EditResult::Composing, {}, m_revision, m_documentId};
+    for (const auto &view : m_views) if (view && view->dispatching()) return {EditResult::Busy, {}, m_revision, m_documentId};
     flush();
-    if (m_closing) return {EditResult::Closing, {}, m_revision};
+    if (m_closing) return {EditResult::Closing, {}, m_revision, m_documentId};
     if (m_owner->send(SCI_GETLENGTH) > AdmissionSourceLimit)
-        return {EditResult::InvalidText, {}, m_revision};
-    return {EditResult::Applied, bytes(), m_revision};
+        return {EditResult::InvalidText, {}, m_revision, m_documentId};
+    return {EditResult::Applied, bytes(), m_revision, m_documentId};
 }
 
 void DocumentSession::reportRejection(EditResult result) {
@@ -162,7 +169,7 @@ EditResult DocumentSession::replace(int start, int end, const QString &text, qui
     if (m_owner->send(SCI_GETLENGTH) > AdmissionSourceLimit) return complete(EditResult::InvalidText);
     if (!validText(text)) return complete(EditResult::InvalidText);
     const QByteArray before = bytes();
-    const QString current = QString::fromUtf8(before);
+    const QString current = decodeUtf8Literal(before);
     if (start > end || !utf16Boundary(current, start) || !utf16Boundary(current, end))
         return complete(EditResult::InvalidRange);
     const qsizetype first = current.left(start).toUtf8().size();

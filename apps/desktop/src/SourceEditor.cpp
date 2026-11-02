@@ -1,4 +1,5 @@
 #include "SourceEditor.h"
+#include "Utf8Text.h"
 #include "DocumentSession.h"
 #include "VisualTokens.h"
 
@@ -15,14 +16,14 @@ namespace {
 QString contents(SourceEditor *editor) {
     if (!editor || QThread::currentThread() != editor->thread() || !editor->session()) return {};
     const auto snapshot = editor->session()->snapshot();
-    return snapshot.result == EditResult::Applied ? QString::fromUtf8(snapshot.utf8) : QString();
+    return snapshot.result == EditResult::Applied ? decodeUtf8Literal(snapshot.utf8) : QString();
 }
 
 int byteToUtf16(const QString &text, sptr_t offset) {
     const QByteArray bytes = text.toUtf8();
     if (offset < 0 || offset > bytes.size()) return -1;
     const auto prefix = bytes.left(qsizetype(offset));
-    const QString decoded = QString::fromUtf8(prefix);
+    const QString decoded = decodeUtf8Literal(prefix);
     return decoded.toUtf8() == prefix ? int(decoded.size()) : -1;
 }
 
