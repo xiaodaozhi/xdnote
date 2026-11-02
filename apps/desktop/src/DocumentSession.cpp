@@ -17,7 +17,7 @@ QString resultDescription(EditResult result) {
     case EditResult::Composing: return QStringLiteral("请先完成或取消输入法组合");
     case EditResult::Busy: return QStringLiteral("编辑事务尚未结束，请稍后重试");
     case EditResult::Closing: return QStringLiteral("文档正在关闭");
-    case EditResult::InvalidText: return QStringLiteral("文字无效或超过准入样本限制");
+    case EditResult::InvalidText: return QStringLiteral("文字无效或超过当前支持的大小");
     case EditResult::InvalidRange: return QStringLiteral("文字范围不是有效字符边界");
     case EditResult::WrongThread: return QStringLiteral("编辑请求不在文档所属线程");
     case EditResult::StaleRevision: return QStringLiteral("文档已经变化，请重新取得当前位置");
@@ -49,6 +49,7 @@ DocumentSession::DocumentSession(const QByteArray &utf8, QObject *parent) : QObj
     m_owner->send(SCI_ADDTEXT, uptr_t(utf8.size()), reinterpret_cast<sptr_t>(utf8.constData()));
     m_owner->send(SCI_EMPTYUNDOBUFFER);
     m_owner->send(SCI_SETSAVEPOINT);
+    m_savedUtf8 = utf8;
     connect(m_owner.get(), &ScintillaEditBase::notifyChange, this, [this] {
         m_pending = true;
         scheduleFlush();
@@ -70,7 +71,7 @@ void DocumentSession::attach(SourceEditor *view) {
 bool DocumentSession::isReadOnly() const { return m_closing || m_owner->send(SCI_GETREADONLY) != 0; }
 bool DocumentSession::isDirty() const {
     Q_ASSERT(QThread::currentThread() == thread());
-    return m_owner->send(SCI_GETMODIFY) != 0;
+    return m_owner->send(SCI_GETLENGTH) > AdmissionSourceLimit || bytes() != m_savedUtf8;
 }
 
 bool DocumentSession::isComposing() const {
@@ -230,5 +231,47 @@ void DocumentSession::finishClose() {
     m_owner->send(SCI_SETREADONLY, true);
     emit stateChanged();
     emit closed();
+}
+
+EditResult DocumentSession::confirmSaved(const DocumentSnapshot &saved) {
+    if (QThread::currentThread() != thread()) return EditResult::WrongThread;
+    if (m_closing) return EditResult::Closing;
+    if (saved.result != EditResult::Applied || saved.documentId != m_documentId || saved.utf8.size() > AdmissionSourceLimit
+        || saved.revision < m_savedRevision || saved.revision > m_revision)
+        return EditResult::StaleRevision;
+    m_savedUtf8 = saved.utf8;
+    m_savedRevision = saved.revision;
+    if (!isBusy() && !isComposing() && bytes() == m_savedUtf8) m_owner->send(SCI_SETSAVEPOINT);
+    QScopedValueRollback<bool> notifying(m_notifying, true);
+    emit stateChanged();
+    return EditResult::Applied;
+}
+
+EditResult DocumentSession::reloadText(const QByteArray &utf8, quint64 expectedRevision) {
+    if (QThread::currentThread() != thread()) return EditResult::WrongThread;
+    if (m_closing) return EditResult::Closing;
+    if (isBusy()) return EditResult::Busy;
+    if (isComposing()) return EditResult::Composing;
+    flush();
+    if (m_revision != expectedRevision) return EditResult::StaleRevision;
+    bool valid = false;
+    if (utf8.size() <= AdmissionSourceLimit) decodeUtf8Literal(utf8, &valid);
+    if (!valid) return EditResult::InvalidText;
+    const bool readOnly = isReadOnly();
+    {
+        QScopedValueRollback<int> mutation(m_mutations, m_mutations + 1);
+        m_owner->send(SCI_SETREADONLY, false);
+        m_owner->send(SCI_BEGINUNDOACTION);
+        m_owner->send(SCI_SETTARGETSTART, 0);
+        m_owner->send(SCI_SETTARGETEND, m_owner->send(SCI_GETLENGTH));
+        m_owner->send(SCI_REPLACETARGET, uptr_t(utf8.size()), reinterpret_cast<sptr_t>(utf8.constData()));
+        m_owner->send(SCI_ENDUNDOACTION);
+        m_owner->send(SCI_SETREADONLY, readOnly);
+        m_savedUtf8 = utf8;
+        m_owner->send(SCI_SETSAVEPOINT);
+    }
+    const auto result = complete(EditResult::Applied);
+    m_savedRevision = m_revision;
+    return result;
 }
 }

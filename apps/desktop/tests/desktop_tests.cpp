@@ -503,6 +503,12 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(preview.displayedRevision(), latest, 30000);
         QCOMPARE(errors.count(), 0);
         QCOMPARE(staleReady, 0);
+        QSignalSpy navigation(preview.view()->page(), &QWebEnginePage::loadFinished);
+        for (const auto &url : {QUrl(QStringLiteral("xdnote-preview:/foreign-document")), QUrl(QStringLiteral("data:text/html,<h1>untrusted</h1>"))}) {
+            navigation.clear(); preview.view()->page()->load(url);
+            QTRY_VERIFY_WITH_TIMEOUT(!navigation.isEmpty(), 10000);
+            QVERIFY(!navigation.last().first().toBool());
+        }
         ready.clear();
         session.requestClose();
         QTRY_VERIFY(session.isClosing());
@@ -555,15 +561,20 @@ private slots:
         if (!evidence.isEmpty()) QVERIFY(window.grab().save(evidence + "/desktop-admission.png"));
     }
 
-    void oversizedTransportReportsErrorAndCloseInvalidatesWork() {
+    void largePreviewAndCloseInvalidateWork() {
         DocumentSession large(QString(300000, QChar(0x7532)).toUtf8());
         auto window = std::make_unique<AdmissionWindow>(&large);
         auto *preview = window->preview();
         QSignalSpy errors(preview, &MarkdownPreview::previewError);
         QSignalSpy ready(preview, &MarkdownPreview::previewReady);
-        QTRY_VERIFY_WITH_TIMEOUT(errors.count() > 0, 10000);
-        QCOMPARE(ready.count(), 0);
-        QCOMPARE(window->feedback(), errors.first().first().toString());
+        QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0 || errors.count() > 0, 30000);
+        QVERIFY2(!ready.isEmpty(), errors.isEmpty() ? "large preview did not finish" : qUtf8Printable(errors.first().first().toString()));
+        QCOMPARE(errors.count(), 0);
+        QCOMPARE(preview->view()->url().scheme(), QStringLiteral("xdnote-preview"));
+        QString text; bool received = false;
+        preview->view()->page()->toPlainText([&](const QString &value) { text = value; received = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
+        QCOMPARE(text.count(QChar(0x7532)), 300000);
         preview->refresh();
         window.reset(); // a running Rust task owns no widget or session pointer
         QTest::qWait(100);

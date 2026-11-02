@@ -51,20 +51,37 @@ RegisteredSession SessionRegistry::complete(const FileReadRequest &request, cons
     auto *session = new DocumentSession(baseline->utf8(), this);
     found->baseline = baseline;
     found->session = session;
+    found->documentId = session->documentId();
     const QPointer<DocumentSession> guard(session);
-    const auto requestId = request.requestId;
+    const auto documentId = session->documentId();
     // A new request may already occupy this key when deferred destruction runs.
-    connect(session, &DocumentSession::closed, this, [this, key, guard, requestId] {
-        const auto found = m_sessions.find(key);
-        if (found != m_sessions.end() && found->request.requestId == requestId && found->session == guard) {
-            m_sessions.erase(found);
-            if (guard) guard->deleteLater();
-        }
+    connect(session, &DocumentSession::closed, this, [this, guard, documentId] {
+        for (auto entry = m_sessions.begin(); entry != m_sessions.end(); ++entry)
+            if (entry->documentId == documentId) { m_sessions.erase(entry); break; }
+        if (guard) guard->deleteLater();
     }, Qt::QueuedConnection);
-    connect(session, &QObject::destroyed, this, [this, key, requestId] {
-        const auto found = m_sessions.find(key);
-        if (found != m_sessions.end() && found->request.requestId == requestId && !found->session) m_sessions.erase(found);
+    connect(session, &QObject::destroyed, this, [this, documentId] {
+        for (auto entry = m_sessions.begin(); entry != m_sessions.end(); ++entry)
+            if (entry->documentId == documentId) { m_sessions.erase(entry); break; }
     });
     return {RegistryResult::Created, session};
+}
+
+RegistryResult SessionRegistry::rebind(DocumentSession *session, const std::shared_ptr<const FileBaseline> &baseline) {
+    if (!onGuiThread()) return RegistryResult::WrongThread;
+    if (!session || session->isClosing()) return RegistryResult::Closing;
+    if (!baseline) return RegistryResult::InvalidBaseline;
+    auto target = m_sessions.find(baseline->file()->identity());
+    if (target != m_sessions.end() && target->session != session) return RegistryResult::TargetInUse;
+    for (auto old = m_sessions.begin(); old != m_sessions.end(); ++old) {
+        if (old->session != session) continue;
+        auto entry = old.value();
+        m_sessions.erase(old);
+        entry.baseline = baseline;
+        entry.request = {baseline->file(), baseline->requestId()};
+        m_sessions.insert(baseline->file()->identity(), entry);
+        return RegistryResult::Reused;
+    }
+    return RegistryResult::NotRegistered;
 }
 }

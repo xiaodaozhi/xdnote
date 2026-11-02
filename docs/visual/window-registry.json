@@ -54,7 +54,11 @@
       ],
       "referencePresentation": "two-states-side-by-side",
       "designStatus": "reference-available",
-      "implementationStatus": "not-started",
+      "implementationStatus": "single-file-prototype",
+      "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
+      "sizeRationale": "共享 48 逻辑像素应用标题行、工具栏和 26 像素状态栏；系统原生外框另计，不复制平台窗口按钮。",
+      "implementedStates": ["light-reading", "light-editing", "opening", "open-error", "read-only", "save-error"],
+      "deferredStates": ["dark-theme", "workspace-transfer", "persistent-window-geometry"],
       "nativeValidation": "not-run"
     },
     {
@@ -91,7 +95,9 @@
         "ui-v2-15-unsaved-close"
       ],
       "designStatus": "reference-available",
-      "implementationStatus": "not-started",
+      "implementationStatus": "single-file-prototype",
+      "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
+      "implementedStates": ["save", "discard", "cancel", "wait-for-operation"],
       "nativeValidation": "not-run"
     },
     {
@@ -104,7 +110,9 @@
         "ui-v2-33-external-file-edges"
       ],
       "designStatus": "reference-available",
-      "implementationStatus": "not-started",
+      "implementationStatus": "single-file-prototype",
+      "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
+      "implementedStates": ["keep-editing", "reload-with-confirmation", "save-as"],
       "nativeValidation": "not-run"
     },
     {

@@ -178,7 +178,15 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
     send(SCI_STYLESETFORE, STYLE_DEFAULT, colorRef(colors.value(QStringLiteral("text")).toString()));
     send(SCI_STYLESETBACK, STYLE_DEFAULT, colorRef(colors.value(QStringLiteral("background")).toString()));
     send(SCI_STYLECLEARALL);
+    send(SCI_STYLESETFORE, STYLE_LINENUMBER, colorRef(colors.value(QStringLiteral("textSecondary")).toString()));
+    send(SCI_STYLESETBACK, STYLE_LINENUMBER, colorRef(colors.value(QStringLiteral("sidebar")).toString()));
+    send(SCI_SETMARGINLEFT, 0, 16);
+    const int extra = qMax(0, qRound(source.value("size").toDouble() * source.value("lineHeight").toDouble())
+        - int(send(SCI_TEXTHEIGHT, 0)));
+    send(SCI_SETEXTRAASCENT, extra / 2);
+    send(SCI_SETEXTRADESCENT, extra - extra / 2);
     connect(session, &DocumentSession::stateChanged, this, [this] {
+        send(SCI_SETREADONLY, !m_session || m_session->isReadOnly());
         QAccessible::State changed;
         changed.readOnly = true;
         changed.editable = true;
@@ -190,6 +198,7 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
         QAccessible::updateAccessibility(&event);
     }, Qt::QueuedConnection);
     connect(session, &QObject::destroyed, this, [this] { send(SCI_SETREADONLY, true); });
+    send(SCI_SETREADONLY, session->isReadOnly());
 }
 
 bool SourceEditor::compositionPending() const {

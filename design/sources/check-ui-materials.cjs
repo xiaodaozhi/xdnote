@@ -61,7 +61,12 @@ async function main() {
     for (const key of w.sizeToken.split('.')) size = size?.[key];
     assert(size, 'Unknown window token ' + w.id);
     const admission = w.id === 'desktop-admission' && w.kind === 'validation-window';
-    assert(w.implementationStatus === (admission ? 'component-admission' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    const filePrototype = ['standalone', 'unsaved-confirmation', 'external-conflict'].includes(w.id);
+    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    if (filePrototype) {
+      assert(w.implementationSource === 'apps/desktop/src/SingleFileWindow.cpp' && w.implementedStates?.length > 0, 'File prototype scope ' + w.id);
+      await fs.access(path.join(ROOT, w.implementationSource));
+    }
     if (admission) {
       assert(w.sizeToken === 'windows.main' && w.purpose && w.sizeRationale, 'Admission window scope');
       assert(w.implementationSource === 'apps/desktop/src/AdmissionWindow.cpp', 'Admission source identity');

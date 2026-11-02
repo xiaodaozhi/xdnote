@@ -35,7 +35,7 @@ file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/native-toolchain.json" CONTENT
     "{\"profile\":\"${XDNOTE_BUILD_PROFILE}\",\"qtVersion\":\"${XDNOTE_QT_VERSION}\",\"compiler\":\"${CMAKE_CXX_COMPILER_ID}\",\"compilerVersion\":\"${CMAKE_CXX_COMPILER_VERSION}\"}\n")
 string(JSON XDNOTE_RUST_VERSION GET "${XDNOTE_DEPENDENCIES}" rust toolchain)
 find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS
-    Core Gui Widgets Core5Compat Qml Quick QuickWidgets QuickControls2 WebEngineWidgets Concurrent)
+    Core Gui Widgets Core5Compat Qml Quick QuickWidgets QuickControls2 WebEngineWidgets Concurrent Network Svg)
 find_program(XDNOTE_RUSTUP rustup REQUIRED)
 execute_process(COMMAND "${XDNOTE_RUSTUP}" run "${XDNOTE_RUST_VERSION}" rustc -vV
     OUTPUT_VARIABLE XDNOTE_RUST_INFO RESULT_VARIABLE XDNOTE_RUST_STATUS OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -81,6 +81,10 @@ set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUS
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/FileManager.cpp apps/desktop/src/FileManager.h
+    apps/desktop/src/SingleFileWindow.cpp apps/desktop/src/SingleFileWindow.h
+    apps/desktop/src/FileApplication.cpp apps/desktop/src/FileApplication.h
+    apps/desktop/src/SingleInstance.cpp apps/desktop/src/SingleInstance.h
     apps/desktop/src/FileService.cpp apps/desktop/src/FileService.h
     apps/desktop/src/Utf8Text.h
     apps/desktop/src/SessionRegistry.cpp apps/desktop/src/SessionRegistry.h
@@ -93,7 +97,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/AdmissionWindow.cpp apps/desktop/src/AdmissionWindow.h)
 target_include_directories(xdnote_desktop PUBLIC apps/desktop/src)
 target_link_libraries(xdnote_desktop PUBLIC xdnote_scintilla xdnote_markdown
-    Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::QuickControls2 Qt6::WebEngineWidgets Qt6::Concurrent)
+    Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::QuickControls2 Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Network Qt6::Svg)
 if(WIN32)
     target_link_libraries(xdnote_desktop PUBLIC ws2_32 userenv bcrypt ntdll advapi32)
 else()
@@ -101,13 +105,16 @@ else()
     target_link_libraries(xdnote_desktop PUBLIC Threads::Threads ${CMAKE_DL_LIBS} m)
 endif()
 qt_add_resources(xdnote_desktop xdnote_assets PREFIX /xdnote BASE "${PROJECT_SOURCE_DIR}" FILES
-    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml)
+    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/app-icon.svg)
+
+qt_add_executable(xdnote WIN32 apps/desktop/main.cpp)
+target_link_libraries(xdnote PRIVATE xdnote_desktop)
 
 add_executable(xdnote_admission apps/desktop/admission_main.cpp)
 set_target_properties(xdnote_admission PROPERTIES OUTPUT_NAME xdnote-admission)
 target_link_libraries(xdnote_admission PRIVATE xdnote_desktop)
 if(MSVC)
-    foreach(target xdnote_scintilla xdnote_desktop xdnote_admission)
+    foreach(target xdnote_scintilla xdnote_desktop xdnote_admission xdnote)
         target_compile_options(${target} PRIVATE /utf-8 /EHsc)
     endforeach()
 endif()
@@ -122,4 +129,11 @@ if(BUILD_TESTING)
     add_test(NAME desktop_admission COMMAND xdnote_desktop_tests
         -o -,txt -o "${CMAKE_BINARY_DIR}/desktop-qtest.txt,txt")
     set_tests_properties(desktop_admission PROPERTIES TIMEOUT 180)
+    add_executable(xdnote_file_tests apps/desktop/tests/file_workflow_tests.cpp)
+    target_link_libraries(xdnote_file_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_file_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME file_workflow COMMAND xdnote_file_tests -o -,txt -o "${CMAKE_BINARY_DIR}/file-qtest.txt,txt")
+    set_tests_properties(file_workflow PROPERTIES TIMEOUT 180)
 endif()

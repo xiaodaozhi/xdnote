@@ -2,7 +2,7 @@
 
 一款面向 Windows、macOS 和 Linux 的 Markdown 阅读与编辑桌面应用，让打开、阅读和修改本地文档保持简单。
 
-**当前阶段：桌面基础工程与组件准入。** 仓库已整理需求、交互、视觉规范和高保真参考图，并开始实现会话、编辑适配、文件身份与读取、受限预览基础代码。文件 API 使用自建临时文件自动验证；当前运行目标仅处理内存样本，尚无可读写用户文件的产品或安装包。下文描述目标能力，不代表已经实现。
+**当前阶段：单文件功能原型与组件准入。** `xdnote` 已接入真实本地 Markdown 文件的打开、阅读／编辑切换、保存、另存为、外部冲突和未保存关闭确认；同一文件跨入口共用会话。首轮只接收不超过 2 MiB 的严格 UTF-8 普通文件；硬链接文件采用另存为保护。构建与运行见[开发构建](docs/engineering/developer-build.md)。工作区、设置、完整主题、系统文件关联安装和发行包尚未完成，下文产品方向不代表全部已经实现。
 
 ![xdnote 主要界面设计参考](design/hifi/v2/featured.png)
 
@@ -44,7 +44,7 @@
 xdnote/
 ├── README.md
 ├── AGENTS.md                  # 协作与材料维护约定
-├── apps/desktop/              # 桌面基础模块与内存样本准入窗口
+├── apps/desktop/              # 单文件功能原型与独立的组件准入窗口
 ├── crates/markdown/           # Rust 只读解析服务
 ├── cmake/                    # 桌面构建定义
 ├── scripts/                  # 准备、构建与检查入口
@@ -66,7 +66,7 @@ xdnote/
 └── experiments/              # 与产品实现明确区分的技术验证源码
 ```
 
-应用目录随真实实现建立，不预建空模块。C++ 会话持有唯一 Scintilla 原文与撤销，Rust 提供只读解析；当前采用 QWidget 容器与 QQuickWidget 共享操作区验证混合承载。依赖及实际构建入口见[开发构建](docs/engineering/developer-build.md)，完整编辑器、预览、文件服务和原生平台仍按[架构准入](docs/engineering/architecture.md)逐项验证。
+应用目录随真实实现建立，不预建空模块。C++ 会话持有唯一 Scintilla 原文与撤销，Rust 提供只读解析。单文件窗口使用 QWidget 与原生平台外框；独立的内存准入窗口继续验证 QQuickWidget 混合承载。依赖及实际构建入口见[开发构建](docs/engineering/developer-build.md)，文件保证和限制见[保存闭环](docs/engineering/file-save-workflow.md)，其他平台与组件继续按[架构准入](docs/engineering/architecture.md)逐项验证。
 
 技术验证入口：[Qt 文档与窗口试验](experiments/qt-document-spike/README.md) · [Scintilla 文本缓冲区试验](experiments/scintilla-buffer-spike/README.md) · [Markdown 解析候选试验](experiments/pulldown-markdown-spike/README.md)。这些均不是产品实现。
 

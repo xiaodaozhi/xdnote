@@ -1,6 +1,6 @@
 # 桌面工程与本地构建
 
-`apps/desktop` 和 `crates/markdown` 是进入正式工程目录的第一批基础代码。当前可运行目标为 `xdnote-admission`，只操作内存样本文档，用于验证同一窗口中的 QWidget、QML、Scintilla 和 Qt WebEngine。它不是主工作区或独立文件窗口的视觉交付，不接收文件参数、不读写用户文档，也不提供安装包。
+`apps/desktop` 和 `crates/markdown` 包含单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；默认浅色石墨灰，使用系统外框与共享逻辑尺寸。工作区、完整设置与主题、文件关联注册、安装和发行尚未完成。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和 Qt WebEngine 混合承载，不接收文件或读写用户文档。
 
 ## 工具与依赖
 
@@ -52,14 +52,18 @@ python scripts/desktop.py doctor
 python scripts/desktop.py build
 python scripts/desktop.py test
 python scripts/desktop.py run
+python scripts/desktop.py run --file "path/to/note.md"
+python scripts/desktop.py run --admission
 ```
 
 可用 `--qt-prefix` 指定完整的同版本 SDK，`--cmake`、`--ninja` 指定已安装工具，`--build-dir` 指定本仓库 `build/` 下的专用目录。入口拒绝逃逸路径和链接目录。构建记录源文件摘要、平台、架构与依赖清单，测试前拒绝使用内容已变化的旧构建；报告与窗口自身截图只进入忽略的构建目录或有期限的 CI 工件。测试日志中的 `QCRITICAL`、`QFATAL` 与断言失败即使未导致测试进程失败，也视为失败。
 
+`--file` 可重复传入；本机命令追加 `--profile msvc2019`。不传文件时显示选择文件入口，也支持应用内打开和拖入本地文件。后续启动经用户级 IPC 转交打开意图，失败时明确报错，不另建独立可写实例。`run` 只核对构建身份并启动已有产物，不要求在 PATH 中重新发现 CMake、Ninja 或 Rust；先完成对应配置的构建。`--admission` 与 `--file` 互斥。
+
 ## 当前模块边界
 
 - `DocumentSession` 在界面线程持有唯一 Scintilla 文档与撤销栈；隐藏的公开控件维持文档寿命，可见视图通过公开文档引用接口接管。快照按显式字节长度读取，保留原文中的中文、补充字符、空字符及不同换行字符。编辑命令校验 UTF-16 边界、预期版本、只读、组合输入、关闭与重入。
-- `FileService` 提供不依赖 GUI 的身份探测和严格读取基础 API；`SessionRegistry` 在界面线程管理带请求身份的打开登记，复用已有会话并拒绝过期回执。它们目前只通过自建真实临时文件验证，尚未接入运行器、保存或产品打开界面，具体边界见[文件读取与会话登记](file-read-baseline.md)。
+- `FileService` 提供不依赖 GUI 的身份探测、严格读取和原位替换保存；`SessionRegistry` 管理打开登记与替换后的身份重绑定。`FileManager` 串行协调后台 I/O、冻结保存快照与 GUI 回执，编辑保持可用；`FileApplication` 与 `SingleInstance` 统一窗口、退出和跨进程打开意图。具体保证见[文件读取](file-read-baseline.md)和[保存闭环](file-save-workflow.md)。
 - `SourceEditor` 提供控件输入与基础 Qt 辅助功能文本接口；辅助功能写入使用可撤销会话命令，拒绝原因对界面与辅助功能描述可见。Qt 的无返回值 setter 尚不能完成原生失败状态映射，原生 UIA／屏幕阅读器准入继续跟踪。
 - `MarkdownPreview` 只把不可变 UTF-8 快照交给 Rust，单个解析任务配合最新待处理快照，过期代次不能成为展示完成结果。FFI 输出由 Rust 分配并释放，不跨线程传递控件或文档指针。解析期间的强制取消、时间／内存预算与独立进程隔离尚未完成。
 - 本阶段预览转义原始 HTML，图片和链接只有惰性文字占位，不生成文档控制的资源或导航 URL；WebEngine 禁用脚本、文件访问和远端访问，页面策略与请求拦截再次限制资源。尚未准入图片授权、工作区链接和外部导航，不将占位行为当作完整产品语义。
@@ -67,4 +71,6 @@ python scripts/desktop.py run
 
 运行器与测试共用图形和交互初始化。Windows 选择 D3D11，CI 显式偏好系统 WARP 软件适配器；Linux／macOS 当前使用 OpenGL。图形初始化发生在应用对象建立前，同一顶层窗口共享图形 API。应用对象建立后设置本应用的 `TabFocusAllControls` 策略，使按钮也可参与 Tab 循环，不修改系统偏好。Linux CI 安装 Noto CJK 作为镜像的系统字体，应用仍使用系统字体及回退，不随此工程分发该字体；测试检查常规与等宽字体的中文成形不存在缺字。不得以跳过截图、隐藏图形错误或只检查 QML 加载状态代替渲染验证；硬件 GPU、远程会话和其他图形后端仍须分别验证。
 
-2 MiB 源文与 8 MiB HTML 是本阶段解析额度，页面传输另受 `setHtml` 的 2 MiB 编码后大小限制，超出时明确返回预览错误。这些不是产品长文承诺；控件原生输入可能暂时超过快照额度，此时拒绝生成快照，撤销仍可恢复。正式容量、延迟及拒绝交互必须在接入用户文件前确定。真实输入法、屏幕阅读器、混合 DPI 物理拖动、完整明暗主题与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。
+首轮真实文件只接受 2 MiB 以内的严格 UTF-8 正文，编码 BOM 另计三字节，含 NUL 或无效 UTF-8 的文件明确拒绝。保留混合换行与字符，不猜测编码。预览输出上限 8 MiB，以应用私有内存页面传输，不经过 `setHtml` 的编码后数据地址限制；每页使用独立临时 profile、不可预测地址与精确导航校验，不读取磁盘或开放网络。控件原生输入可能暂时超过快照额度，此时保存／预览明确拒绝，当前内容和撤销仍保留，须缩小后重试。这是当前原型的明确容量边界，不是任意长文承诺。
+
+`desktop_admission` 检查原有会话、辅助功能、混合承载和预览隔离；`file_workflow` 使用自身创建的真实临时文件，覆盖替换竞争、失败恢复、保存期间编辑、原生窗口按钮与关闭确认、IPC 和子进程应用路由。报告分别为 `desktop-qtest.txt` 与 `file-qtest.txt`，当前窗口截图在 `evidence/`。自动化窗口操作不等于人工原生文件选择器、文件管理器关联或真实输入法验收。屏幕阅读器、混合 DPI 物理拖动、完整明暗主题与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。

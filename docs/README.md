@@ -15,6 +15,7 @@
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
 | 文件基础 | [文件读取与会话登记](engineering/file-read-baseline.md) | 原生身份、严格字节基线、请求失效与当前限制 |
+| 文件闭环 | [真实文件保存与冲突](engineering/file-save-workflow.md) | 冻结快照、替换保存、硬链接保护、冲突和关闭 |
 | 窗口几何 | [跨显示器缩放与窗口几何](engineering/window-geometry.md) | 逻辑客户区、原生 DPI 约束、可用区、窗口状态与恢复 |
 | 协作 | [产研与 GitHub 流程](engineering/workflow.md) | Issue、分支、PR、CI、验收及清理规则 |
 | 许可 | [许可范围与依赖](engineering/licensing.md) | Apache-2.0、CC BY 4.0 的内容范围、署名与第三方依赖 |
