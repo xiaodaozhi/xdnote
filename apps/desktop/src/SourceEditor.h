@@ -20,6 +20,7 @@ public:
 protected:
     void inputMethodEvent(QInputMethodEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
 
 private:
     void applyAppearance();

@@ -27,6 +27,7 @@ public:
 signals:
     void previewReady(quint64 revision);
     void previewError(const QString &message);
+    void copyTextRequested(const QString &text);
 private:
     void startPending();
     QPointer<DocumentSession> m_session;

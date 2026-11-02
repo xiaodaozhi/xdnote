@@ -42,7 +42,13 @@ QString FileProblem::description() const {
     case FileError::InvalidUtf8: return QStringLiteral("文件不是有效的 UTF-8 文本，请先转换编码");
     case FileError::UnsupportedContent: return QStringLiteral("文件含空字符，当前文件入口不支持此内容");
     case FileError::Changed: return QStringLiteral("磁盘文件已变化，请重新载入或另存为");
-    case FileError::Io: return QStringLiteral("无法完成文件操作，请检查存储设备后重试");
+    case FileError::Io:
+#ifdef Q_OS_WIN
+        if (nativeCode == ERROR_DISK_FULL || nativeCode == ERROR_HANDLE_DISK_FULL) return QStringLiteral("存储空间不足，请释放空间后重试，或另存到其他存储位置");
+#else
+        if (nativeCode == ENOSPC || nativeCode == EDQUOT) return QStringLiteral("存储空间不足或配额已满，请释放空间后重试，或另存到其他存储位置");
+#endif
+        return QStringLiteral("无法完成文件操作，请检查存储设备后重试");
     case FileError::HardLinks: return QStringLiteral("此文件有多个硬链接，请另存为以保留原文件及其他链接");
     case FileError::AtomicUnsupported: return QStringLiteral("此存储位置不支持安全替换，请另存到普通本地目录");
     }

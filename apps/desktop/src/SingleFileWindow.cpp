@@ -6,6 +6,7 @@
 #include "VisualTokens.h"
 #include "InputModality.h"
 #include "Utf8Text.h"
+#include "UiFonts.h"
 #include <QActionGroup>
 #include <QApplication>
 #include <QButtonGroup>
@@ -28,11 +29,48 @@
 #include <QVBoxLayout>
 #include <QWebEngineView>
 #include <QWindow>
+#include <QShowEvent>
+#include <QProgressBar>
+#include <limits>
+#include <cmath>
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <windows.h>
+#include <windowsx.h>
+#include <dwmapi.h>
+#endif
 
 namespace xdnote {
 namespace {
 int token(const char *section, const char *key) { return visualTokens().value(section).toObject().value(key).toInt(); }
 QJsonObject geometryTokens() { return visualTokens().value("windows").toObject().value("standalone").toObject(); }
+#ifdef Q_OS_WIN
+bool nativeFrameSize(HWND hwnd, UINT dpi, qint64 clientWidth, qint64 clientHeight, SIZE *result) {
+    if (!dpi || clientWidth <= 0 || clientHeight <= 0) return false;
+    const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE), extra = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    if ((style & WS_CAPTION) != WS_CAPTION || !(style & WS_THICKFRAME)) return false;
+    RECT border{}; if (!AdjustWindowRectExForDpi(&border, DWORD(style), FALSE, DWORD(extra), dpi)) return false;
+    const qint64 width = clientWidth - border.left + border.right, height = clientHeight + 1 + border.bottom;
+    if (width <= 0 || height <= 0 || width > std::numeric_limits<LONG>::max() || height > std::numeric_limits<LONG>::max()) return false;
+    *result = SIZE{LONG(width), LONG(height)}; return true;
+}
+bool nativeScaling(HWND hwnd) {
+    DWORD process = 0;
+    if (GetWindowThreadProcessId(hwnd, &process) != GetCurrentThreadId() || process != GetCurrentProcessId()
+        || !AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(hwnd), DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+        || !AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(), DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+        || QGuiApplication::highDpiScaleFactorRoundingPolicy() != Qt::HighDpiScaleFactorRoundingPolicy::PassThrough) return false;
+    for (const auto *name : {"QT_SCALE_FACTOR", "QT_SCREEN_SCALE_FACTORS", "QT_USE_PHYSICAL_DPI", "QT_FONT_DPI", "QT_DEVICE_PIXEL_RATIO", "QT_AUTO_SCREEN_SCALE_FACTOR"}) if (qEnvironmentVariableIsSet(name)) return false;
+    if (qEnvironmentVariableIsSet("QT_ENABLE_HIGHDPI_SCALING") && qEnvironmentVariableIntValue("QT_ENABLE_HIGHDPI_SCALING") != 1) return false;
+    return true;
+}
+bool scaledExtent(qint64 value, UINT source, UINT target, qint64 *output) {
+    if (value <= 0 || value > std::numeric_limits<LONG>::max() || !source || !target) return false;
+    const quint64 scaled = (quint64(value) * target + source / 2) / source;
+    if (!scaled || scaled > quint64(std::numeric_limits<LONG>::max())) return false;
+    *output = qint64(scaled); return true;
+}
+#endif
 void separator(QBoxLayout *layout, Appearance *appearance, QWidget *owner) {
     auto *line = new QWidget(owner); line->setFixedWidth(1); line->setFixedHeight(20);
     const auto refresh = [line, appearance] { line->setStyleSheet("background:" + appearance->color("border").name()); };
@@ -42,14 +80,14 @@ int ask(SingleFileWindow *owner, const QString &name, const QString &title, cons
         const QList<QPair<QString, int>> &actions, const QString &widthToken = "unsavedConfirmation") {
     auto *appearance = owner->appearance();
     const QPointer<QWidget> caller(owner->focusWidget());
-    QDialog dialog(owner); dialog.setObjectName(name); dialog.setWindowTitle(title);
-    dialog.setFont(owner->font());
-    dialog.setWindowFlag(Qt::WindowContextHelpButtonHint, false);
     const auto size = visualTokens().value("windows").toObject().value(widthToken).toObject();
     const int width = qMin(size.value("preferredWidth").toInt(), qMax(200, owner->screen()->availableGeometry().width() - 32));
-    dialog.setFixedWidth(width);
-    auto *layout = new QVBoxLayout(&dialog); layout->setContentsMargins(24, 24, 24, 24); layout->setSpacing(16);
-    auto *symbol = new QLabel(&dialog); symbol->setPixmap(themedIcon("document", appearance->color("text")).pixmap(QSize(24, 24), dialog.devicePixelRatioF())); layout->addWidget(symbol);
+    SharedDialog dialog(appearance, owner, width); dialog.setObjectName(name); dialog.setWindowTitle(title);
+    auto *layout = new QVBoxLayout(dialog.surface()); layout->setContentsMargins(24, 20, 24, 24); layout->setSpacing(16);
+    auto *top = new QHBoxLayout;
+    if (name == "operationCloseConfirmation") { auto *spinner = new SharedSpinner(appearance, &dialog); spinner->setRunning(true); top->addWidget(spinner); }
+    else { auto *symbol = new QLabel(&dialog); symbol->setPixmap(themedIcon(name == "conflictDialog" || name == "reloadConfirmation" ? "warning" : "document", appearance->semantic("warning")).pixmap(QSize(24, 24), dialog.devicePixelRatioF())); top->addWidget(symbol); }
+    top->addStretch(); auto *close = new SharedButton({}, "dialogClose", appearance, &dialog); close->setFixedWidth(32); close->setSymbol("close"); close->setAccessibleName(QStringLiteral("关闭对话框")); top->addWidget(close); QObject::connect(close, &QPushButton::clicked, &dialog, &QDialog::reject); layout->addLayout(top);
     auto *heading = new QLabel(title, &dialog); heading->setTextFormat(Qt::PlainText); heading->setWordWrap(true);
     auto font = heading->font(); font.setBold(true); font.setPixelSize(visualTokens().value("typography").toObject().value("headings").toObject().value("dialog").toInt()); heading->setFont(font); layout->addWidget(heading);
     auto *body = new QLabel(text, &dialog); body->setTextFormat(Qt::PlainText); body->setWordWrap(true);
@@ -67,14 +105,17 @@ int ask(SingleFileWindow *owner, const QString &name, const QString &title, cons
         auto *details = new QVBoxLayout; details->setSpacing(4);
         auto *filename = new ElidedLabel(card); filename->setFullText(QFileInfo(owner->document()->path()).fileName()); details->addWidget(filename);
         auto *path = new ElidedLabel(card); auto pathFont = owner->font(); pathFont.setPixelSize(visualTokens().value("typography").toObject().value("secondary").toObject().value("size").toInt()); path->setFont(pathFont); path->setFullText(QFileInfo(owner->document()->path()).path()); path->setProperty("secondary", true); details->addWidget(path);
-        row->addLayout(details, 1); layout->addWidget(card);
+        row->addLayout(details, 1);
+        if (owner->document()->dirty()) { auto *dirty = new QLabel(card); dirty->setObjectName("dialogDirtyIndicator"); dirty->setAccessibleName(QStringLiteral("有未保存的修改")); dirty->setPixmap(themedIcon("status-dirty", appearance->semantic("warning")).pixmap(QSize(12, 12), dialog.devicePixelRatioF())); row->addWidget(dirty); }
+        layout->addWidget(card);
     }
     auto *buttons = new QHBoxLayout; buttons->setSpacing(8);
     auto add = [&](const QPair<QString, int> &entry) {
         auto *button = new SharedButton(entry.first, QStringLiteral("choice%1").arg(entry.second), appearance, &dialog);
         const bool destructive = entry.second == 2 && name == "reloadConfirmation";
-        button->setProperty("primary", entry.second == 1 || destructive); button->setProperty("danger", destructive);
-        button->setOutlined(entry.second == 0); buttons->addWidget(button);
+        const bool primary = name == "conflictDialog" ? entry.second == 0 : entry.second == 1 || destructive;
+        button->setProperty("primary", primary); button->setProperty("danger", destructive);
+        button->setOutlined(!primary); buttons->addWidget(button);
         if (entry.second == 0) { button->setDefault(true); button->setFocus(Qt::OtherFocusReason); }
         QObject::connect(button, &QPushButton::clicked, &dialog, [&dialog, value = entry.second] { dialog.done(value); });
     };
@@ -103,10 +144,20 @@ public:
         setFixedHeight(geometryTokens().value("titlebarHeight").toInt()); setObjectName("documentHeader");
         auto refresh = [this] { m_logo.load(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/logo-%1.svg").arg(m_appearance->scheme())); update(); };
         connect(appearance, &Appearance::changed, this, refresh); refresh();
+#ifdef Q_OS_WIN
+        auto *row = new QHBoxLayout(this); row->setContentsMargins(0, 8, 8, 8); row->setSpacing(4); row->addStretch();
+        auto add = [&](const QString &name, const QString &label, const QString &icon, auto callback) {
+            auto *button = new SharedButton({}, name, appearance, this); button->setFixedWidth(40); button->setSymbol(icon); button->setAccessibleName(label); button->setToolTip(label); row->addWidget(button); connect(button, &QPushButton::clicked, this, callback); return button;
+        };
+        add("captionMinimize", QStringLiteral("最小化"), "minimize", [this] { window()->showMinimized(); });
+        m_maximize = add("captionMaximize", QStringLiteral("最大化或还原"), "maximize", [this] { window()->isMaximized() ? window()->showNormal() : window()->showMaximized(); });
+        auto *close = add("captionClose", QStringLiteral("关闭窗口"), "close", [this] { window()->close(); }); close->setProperty("danger", true);
+#endif
     }
     void setTitle(const QString &title, bool dirty) {
         m_title = title; m_dirty = dirty; setToolTip(title); setAccessibleName("xdnote · " + title + (dirty ? QStringLiteral("，未保存") : QString())); update();
     }
+    void updateWindowState() { if (m_maximize) { m_maximize->setSymbol(window()->isMaximized() ? "restore-window" : "maximize"); m_maximize->setAccessibleName(window()->isMaximized() ? QStringLiteral("还原窗口") : QStringLiteral("最大化窗口")); } }
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this); painter.fillRect(rect(), m_appearance->color("sidebar"));
@@ -115,7 +166,7 @@ protected:
         m_logo.render(&painter, QRectF(16, (this->height() - height) / 2, width, height));
         painter.setPen(m_appearance->color("border")); painter.drawLine(QPointF(32 + width, 14), QPointF(32 + width, this->height() - 14));
         const qreal left = 48 + width; QFontMetricsF metrics(font());
-        const auto title = metrics.elidedText(m_title, Qt::ElideMiddle, qMax(0.0, this->width() - left - 32));
+        const auto title = metrics.elidedText(m_title, Qt::ElideMiddle, qMax(0.0, this->width() - left - 32 - captionWidth()));
         const auto ink = metrics.tightBoundingRect(title);
         painter.setFont(font()); painter.setPen(m_appearance->color("text"));
         painter.drawText(QPointF(left, this->height() / 2.0 - ink.center().y()), title);
@@ -124,19 +175,121 @@ protected:
     }
     void mousePressEvent(QMouseEvent *event) override { if (event->button() == Qt::LeftButton && window()->windowHandle()) window()->windowHandle()->startSystemMove(); }
     void mouseDoubleClickEvent(QMouseEvent *event) override { if (event->button() == Qt::LeftButton) window()->isMaximized() ? window()->showNormal() : window()->showMaximized(); }
+    void changeEvent(QEvent *event) override { QWidget::changeEvent(event); if (m_maximize) m_maximize->setSymbol(window()->isMaximized() ? "restore-window" : "maximize"); }
 private:
+    int captionWidth() const {
+#ifdef Q_OS_WIN
+        return 140;
+#else
+        return 0;
+#endif
+    }
+    SharedButton *m_maximize = nullptr;
     Appearance *m_appearance;
     QSvgRenderer m_logo;
     QString m_title;
     bool m_dirty = false;
 };
 
+void SingleFileWindow::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+#ifdef Q_OS_WIN
+    if (m_frameInitialized) return;
+    m_frameInitialized = true;
+    const auto hwnd = reinterpret_cast<HWND>(winId());
+    RECT before{}, outer{}; GetClientRect(hwnd, &before); GetWindowRect(hwnd, &outer);
+    const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    SetWindowLongPtrW(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+    const MARGINS margins{1, 1, 1, 1}; DwmExtendFrameIntoClientArea(hwnd, &margins);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    RECT after{}; GetClientRect(hwnd, &after);
+    // Compensate exactly once for the removed caption. Repeated theme/DPI
+    // events must never add this native-frame delta to normal client geometry.
+    SetWindowPos(hwnd, nullptr, 0, 0, outer.right - outer.left + before.right - after.right,
+                 outer.bottom - outer.top + before.bottom - after.bottom, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+#endif
+}
+bool SingleFileWindow::nativeEvent(const QByteArray &type, void *message, qintptr *result) {
+#ifdef Q_OS_WIN
+    auto *msg = static_cast<MSG *>(message); const auto hwnd = reinterpret_cast<HWND>(internalWinId());
+    if (msg->hwnd != hwnd) return QWidget::nativeEvent(type, message, result);
+    if (msg->message == WM_GETMINMAXINFO && msg->lParam && result && nativeScaling(hwnd)) {
+        const auto dpi = GetDpiForWindow(hwnd); SIZE unit{};
+        if (nativeFrameSize(hwnd, dpi, 1, 1, &unit)) {
+            auto adjusted = *reinterpret_cast<MINMAXINFO *>(msg->lParam);
+            qint64 minWidth = 0, minHeight = 0;
+            if (scaledExtent(minimumWidth(), 96, dpi, &minWidth) && scaledExtent(minimumHeight(), 96, dpi, &minHeight)
+                && minWidth + unit.cx - 1 <= std::numeric_limits<LONG>::max() && minHeight + unit.cy - 1 <= std::numeric_limits<LONG>::max()) {
+                adjusted.ptMinTrackSize = POINT{LONG(minWidth + unit.cx - 1), LONG(minHeight + unit.cy - 1)};
+                *reinterpret_cast<MINMAXINFO *>(msg->lParam) = adjusted; *result = 0; return true;
+            }
+        }
+    }
+    if (msg->message == WM_GETDPISCALEDSIZE && msg->lParam && result && nativeScaling(hwnd) && !isMaximized() && !isFullScreen() && msg->wParam <= std::numeric_limits<UINT>::max()) {
+        const auto incoming = *reinterpret_cast<SIZE *>(msg->lParam); RECT client{}, outer{};
+        if (incoming.cx > 0 && incoming.cy > 0 && GetClientRect(hwnd, &client) && GetWindowRect(hwnd, &outer)) {
+            const qint64 width = qint64(client.right) + incoming.cx - (qint64(outer.right) - outer.left);
+            const qint64 height = qint64(client.bottom) + incoming.cy - (qint64(outer.bottom) - outer.top);
+            qint64 targetWidth = 0, targetHeight = 0; SIZE response{}; const auto current = GetDpiForWindow(hwnd), target = UINT(msg->wParam);
+            if (scaledExtent(width, current, target, &targetWidth) && scaledExtent(height, current, target, &targetHeight) && nativeFrameSize(hwnd, target, targetWidth, targetHeight, &response)) {
+                *reinterpret_cast<SIZE *>(msg->lParam) = response; *result = TRUE; return true;
+            }
+        }
+    }
+    if (msg->message == WM_NCCALCSIZE && msg->wParam) {
+        auto *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(msg->lParam); const auto outer = params->rgrc[0];
+        DefWindowProcW(hwnd, msg->message, msg->wParam, msg->lParam);
+        const UINT dpi = GetDpiForWindow(hwnd);
+        const int border = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+        if ((GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CAPTION) == WS_CAPTION) params->rgrc[0].top = outer.top + (IsZoomed(hwnd) ? border : 1); *result = 0; return true;
+    }
+    if (msg->message == WM_NCHITTEST) {
+        RECT outer{}; GetWindowRect(hwnd, &outer); const int x = GET_X_LPARAM(msg->lParam), y = GET_Y_LPARAM(msg->lParam);
+        const UINT dpi = GetDpiForWindow(hwnd);
+        const int bx = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+        const int by = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+        if (!IsZoomed(hwnd)) {
+            const bool left = x < outer.left + bx, right = x >= outer.right - bx, top = y < outer.top + by, bottom = y >= outer.bottom - by;
+            if (top || bottom || left || right) { *result = top ? (left ? HTTOPLEFT : right ? HTTOPRIGHT : HTTOP) : bottom ? (left ? HTBOTTOMLEFT : right ? HTBOTTOMRIGHT : HTBOTTOM) : left ? HTLEFT : HTRIGHT; return true; }
+        }
+        POINT point{x, y}; ScreenToClient(hwnd, &point); const qreal scale = devicePixelRatioF();
+        const QPoint logical(qRound(point.x / scale), qRound(point.y / scale));
+        if (m_header && m_header->geometry().contains(logical)) {
+            auto *child = childAt(logical);
+            if (child && child->objectName() == "captionMaximize") { *result = HTMAXBUTTON; return true; }
+            if (!qobject_cast<QPushButton *>(child)) { *result = HTCAPTION; return true; }
+        }
+    }
+    if (msg->message == WM_NCMOUSEMOVE || msg->message == WM_NCMOUSELEAVE) {
+        if (auto *button = findChild<SharedButton *>("captionMaximize")) {
+            button->setAttribute(Qt::WA_UnderMouse, msg->message == WM_NCMOUSEMOVE && msg->wParam == HTMAXBUTTON); button->update();
+            if (msg->message == WM_NCMOUSEMOVE) { TRACKMOUSEEVENT tracking{sizeof(TRACKMOUSEEVENT), TME_LEAVE | TME_NONCLIENT, hwnd, 0}; TrackMouseEvent(&tracking); }
+        }
+    }
+    if (msg->message == WM_NCLBUTTONDOWN && msg->wParam == HTMAXBUTTON) {
+        m_nativeMaxPressed = true; if (auto *button = findChild<SharedButton *>("captionMaximize")) { button->setDown(true); button->update(); }
+        *result = 0; return true;
+    }
+    if ((msg->message == WM_NCLBUTTONUP || msg->message == WM_LBUTTONUP) && m_nativeMaxPressed) {
+        m_nativeMaxPressed = false; if (auto *button = findChild<SharedButton *>("captionMaximize")) { button->setDown(false); button->update(); }
+        if (msg->message == WM_NCLBUTTONUP && msg->wParam == HTMAXBUTTON) isMaximized() ? showNormal() : showMaximized();
+        *result = 0; return true;
+    }
+#endif
+    return QWidget::nativeEvent(type, message, result);
+}
+
 SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
     : m_manager(manager), m_appearance(appearance ? appearance : new Appearance(this)) {
     setObjectName("standaloneWindow"); setAttribute(Qt::WA_DeleteOnClose); setAcceptDrops(true);
+#ifdef Q_OS_WIN
+    // Qt must also know this window has no system caption. Otherwise QWidget's
+    // client-size constraints can add the removed caption height back at minimum.
+    setWindowFlag(Qt::FramelessWindowHint);
+#endif
     const auto size = geometryTokens(); resize(size.value("defaultWidth").toInt(), size.value("defaultHeight").toInt());
     setMinimumSize(size.value("minWidth").toInt(), size.value("minHeight").toInt());
-    QFont ui = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    QFont ui = uiFont();
     ui.setPixelSize(visualTokens().value("typography").toObject().value("ui").toObject().value("size").toInt()); setFont(ui);
     auto *layout = new QVBoxLayout(this); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
     m_header = new DocumentHeader(m_appearance, this); layout->addWidget(m_header);
@@ -185,27 +338,37 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
     for (const auto &name : {"graphite", "mist-blue", "cobalt", "mauve", "terracotta", "olive"}) {
         const auto entry = visualTokens().value("accents").toObject().value(name).toObject();
         auto *item = accents->addAction(entry.value("label").toString() + "  " + entry.value("base").toString()); item->setObjectName("accent-" + QString::fromLatin1(name)); item->setData(QString::fromLatin1(name)); item->setCheckable(true);
-        item->setIcon(themedIcon("palette", QColor(entry.value("base").toString()))); accentGroup->addAction(item); m_accentActions.append(item);
+        item->setIcon(colorSwatch(QColor(entry.value("base").toString()))); accentGroup->addAction(item); m_accentActions.append(item);
         connect(item, &QAction::triggered, this, [this, accent = QString::fromLatin1(name)] { m_appearance->setPreferences(m_appearance->theme(), accent); applyAppearance(); });
     }
     m_menu->addSeparator(); action(QStringLiteral("关闭文档"), "closeAction", QKeySequence::Close, [this] { close(); });
     action(QStringLiteral("退出 xdnote"), "quitAction", QKeySequence::Quit, [this] { emit quitRequested(); }); more->setMenu(m_menu);
     connect(modes, &QButtonGroup::idClicked, this, [this](int mode) { setEditing(mode == 1); }); connect(m_save, &QPushButton::clicked, m_saveAction, &QAction::trigger); layout->addWidget(toolbar);
     m_banner = new QWidget(this); m_banner->setObjectName("documentBanner"); auto *banner = new QHBoxLayout(m_banner); banner->setContentsMargins(16, 8, 16, 8); banner->setSpacing(8);
+    m_noticeSymbol = new QLabel(m_banner); m_noticeSymbol->setFixedSize(20, 20); banner->addWidget(m_noticeSymbol);
     m_notice = new QLabel(m_banner); m_notice->setObjectName("documentNotice"); m_notice->setTextFormat(Qt::PlainText); m_notice->setWordWrap(true); m_notice->setMinimumWidth(0); m_notice->setTextInteractionFlags(Qt::TextSelectableByMouse); banner->addWidget(m_notice, 1);
     m_resolve = new SharedButton(QStringLiteral("处理"), "resolveConflict", m_appearance, m_banner); m_retry = new SharedButton(QStringLiteral("重试"), "retrySave", m_appearance, m_banner); m_later = new SharedButton(QStringLiteral("稍后"), "dismissNotice", m_appearance, m_banner);
     banner->addWidget(m_retry); banner->addWidget(m_resolve); banner->addWidget(m_later);
+    m_noticeClose = new SharedButton({}, "closeNotice", m_appearance, m_banner); m_noticeClose->setSymbol("close"); m_noticeClose->setFixedWidth(32); m_noticeClose->setAccessibleName(QStringLiteral("关闭提示")); banner->addWidget(m_noticeClose);
+    connect(m_noticeClose, &QPushButton::clicked, this, [this] { m_dismissedNotice = m_notice->text(); m_banner->hide(); });
     connect(m_resolve, &QPushButton::clicked, this, [this] { if (m_document && m_document->conflict()) { if (m_document->dirty()) resolveConflict(); else reloadDisk(); } else if (!m_previewError.isEmpty() && m_document && !m_document->hasError()) m_preview->refresh(); else chooseSaveAs(); });
     connect(m_retry, &QPushButton::clicked, m_saveAction, &QAction::trigger);
     connect(m_later, &QPushButton::clicked, this, [this] { m_dismissedNotice = m_notice->text(); m_banner->hide(); }); layout->addWidget(m_banner);
     m_body = new QStackedWidget(this); auto *welcome = new QWidget(m_body); auto *welcomeLayout = new QVBoxLayout(welcome); welcomeLayout->setContentsMargins(40, 40, 40, 40);
-    welcomeLayout->addStretch(); m_empty = new QLabel(welcome); m_empty->setAlignment(Qt::AlignCenter); m_empty->setWordWrap(true); m_empty->setTextFormat(Qt::PlainText); welcomeLayout->addWidget(m_empty);
-    auto *welcomeOpen = new SharedButton(QStringLiteral("选择文件…"), "welcomeOpen", m_appearance, welcome); welcomeOpen->setSymbol("folder-open"); welcomeOpen->setOutlined(true); connect(welcomeOpen, &QPushButton::clicked, this, &SingleFileWindow::chooseOpen);
-    welcomeLayout->addWidget(welcomeOpen, 0, Qt::AlignHCenter); welcomeLayout->addStretch(); m_body->addWidget(welcome); layout->addWidget(m_body, 1);
+    welcomeLayout->setSpacing(16); welcomeLayout->addStretch();
+    m_openSpinner = new SharedSpinner(m_appearance, welcome); welcomeLayout->addWidget(m_openSpinner, 0, Qt::AlignHCenter);
+    m_emptySymbol = new QLabel(welcome); welcomeLayout->addWidget(m_emptySymbol, 0, Qt::AlignHCenter);
+    m_emptyTitle = new QLabel(welcome); m_emptyTitle->setObjectName("openStateTitle"); m_emptyTitle->setFont(uiFont(24)); m_emptyTitle->setAlignment(Qt::AlignCenter); welcomeLayout->addWidget(m_emptyTitle);
+    m_empty = new QLabel(welcome); m_empty->setObjectName("openStateDetails"); m_empty->setAlignment(Qt::AlignCenter); m_empty->setWordWrap(true); m_empty->setTextFormat(Qt::PlainText); welcomeLayout->addWidget(m_empty);
+    m_welcomeOpen = new SharedButton(QStringLiteral("选择文件…"), "welcomeOpen", m_appearance, welcome); m_welcomeOpen->setSymbol("folder-open"); m_welcomeOpen->setProperty("primary", true); connect(m_welcomeOpen, &QPushButton::clicked, this, &SingleFileWindow::chooseOpen);
+    m_cancelOpen = new SharedButton(QStringLiteral("取消打开"), "cancelOpen", m_appearance, welcome); m_cancelOpen->setOutlined(true); connect(m_cancelOpen, &QPushButton::clicked, this, [this] { if (!m_intent.isNull()) emit cancelOpenRequested(m_intent); m_intent = {}; m_openPath.clear(); updateState(); });
+    welcomeLayout->addWidget(m_welcomeOpen, 0, Qt::AlignHCenter); welcomeLayout->addWidget(m_cancelOpen, 0, Qt::AlignHCenter); welcomeLayout->addStretch(); m_body->addWidget(welcome); layout->addWidget(m_body, 1);
     auto *footer = new QWidget(this); footer->setObjectName("documentFooter"); footer->setFixedHeight(size.value("statusbarHeight").toInt());
     QFont secondary = ui; secondary.setPixelSize(visualTokens().value("typography").toObject().value("secondary").toObject().value("size").toInt()); footer->setFont(secondary);
     auto *foot = new QHBoxLayout(footer); foot->setContentsMargins(16, 0, 16, 0); foot->setSpacing(8);
     m_statusIcon = new QLabel(footer); m_statusIcon->setFixedSize(16, 16); foot->addWidget(m_statusIcon);
+    m_statusIcon->setObjectName("documentStatusIcon");
+    m_saveSpinner = new SharedSpinner(m_appearance, footer); m_saveSpinner->setFixedSize(16, 16); foot->addWidget(m_saveSpinner);
     m_status = new ElidedLabel(footer); m_status->setObjectName("documentStatus"); foot->addWidget(m_status, 1);
     m_cursor = new QLabel(footer); m_cursor->setObjectName("cursorPosition"); foot->addWidget(m_cursor); separator(foot, m_appearance, footer);
     m_encoding = new QLabel(footer); foot->addWidget(m_encoding); separator(foot, m_appearance, footer);
@@ -229,6 +392,12 @@ void SingleFileWindow::applyAppearance() {
         .arg(m_appearance->color("background").name(), m_appearance->color("text").name(), m_appearance->color("textSecondary").name(), m_appearance->color("border").name(), m_appearance->color("sidebar").name(), m_appearance->color("surface").name()) + themedScrollBars(m_appearance));
     for (auto *item : m_themeActions) item->setChecked(item->data().toString() == m_appearance->theme());
     for (auto *item : m_accentActions) item->setChecked(item->data().toString() == m_appearance->accent());
+    const QHash<QString, QString> symbols{{"copyPath","copy"},{"revealFolder","folder-open"},{"openAction","folder-open"},{"saveAction","save"},{"saveAsAction","save-as"},{"reloadAction","refresh"},{"undoAction","undo"},{"redoAction","redo"},{"closeAction","close"},{"quitAction","focus-exit"},{"theme-system","monitor"},{"theme-light","sun"},{"theme-dark","moon"}};
+    for (auto *item : findChildren<QAction *>()) if (symbols.contains(item->objectName())) item->setIcon(themedIcon(symbols.value(item->objectName()), m_appearance->color("text")));
+    for (auto *menu : findChildren<QMenu *>()) if (menu->objectName() == "appearanceMenu" || menu->objectName() == "accentMenu") menu->menuAction()->setIcon(themedIcon("palette", m_appearance->color("text")));
+#ifdef Q_OS_WIN
+    if (m_frameInitialized) { const BOOL dark = m_appearance->dark(); DwmSetWindowAttribute(reinterpret_cast<HWND>(winId()), 20, &dark, sizeof(dark)); }
+#endif
     update();
 }
 void SingleFileWindow::setLoading(const QString &path, const QUuid &intent) { m_intent = intent; m_openPath = path; m_openError.clear(); updateState(); }
@@ -237,6 +406,13 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     if (m_document) return;
     m_intent = {}; m_document = document;
     m_preview = new MarkdownPreview(document->session(), m_body, geometryTokens().value("readerPadding").toInt(), m_appearance); m_body->addWidget(m_preview);
+    connect(m_preview, &MarkdownPreview::copyTextRequested, this, &SingleFileWindow::copyTextRequested);
+    m_previewFailure = new QWidget(m_body); m_previewFailure->setObjectName("previewFailure"); auto *failure = new QVBoxLayout(m_previewFailure); failure->setContentsMargins(40, 40, 40, 40); failure->setSpacing(16); failure->addStretch();
+    auto *failureIcon = new QLabel(m_previewFailure); failureIcon->setPixmap(themedIcon("error", m_appearance->semantic("error")).pixmap(40, 40)); failure->addWidget(failureIcon, 0, Qt::AlignHCenter);
+    auto *failureTitle = new QLabel(QStringLiteral("无法显示预览"), m_previewFailure); failureTitle->setFont(uiFont(24)); failure->addWidget(failureTitle, 0, Qt::AlignHCenter);
+    m_previewFailureText = new QLabel(m_previewFailure); m_previewFailureText->setTextFormat(Qt::PlainText); m_previewFailureText->setWordWrap(true); m_previewFailureText->setAlignment(Qt::AlignCenter); failure->addWidget(m_previewFailureText);
+    auto *retryPreview = new SharedButton(QStringLiteral("重新生成预览"), "retryPreview", m_appearance, m_previewFailure); retryPreview->setSymbol("refresh"); retryPreview->setProperty("primary", true); failure->addWidget(retryPreview, 0, Qt::AlignHCenter); connect(retryPreview, &QPushButton::clicked, m_preview, &MarkdownPreview::refresh);
+    auto *viewSource = new SharedButton(QStringLiteral("查看源文"), "viewSource", m_appearance, m_previewFailure); viewSource->setSymbol("code"); viewSource->setOutlined(true); failure->addWidget(viewSource, 0, Qt::AlignHCenter); connect(viewSource, &QPushButton::clicked, this, [this] { m_editing = true; m_body->setCurrentWidget(m_editorPage); m_editor->setFocus(); updateState(); }); failure->addStretch(); m_body->addWidget(m_previewFailure);
     m_editorPage = new QWidget(m_body); auto *layout = new QVBoxLayout(m_editorPage); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
     auto *format = new QWidget(m_editorPage); format->setObjectName("formatToolbar"); format->setFixedHeight(visualTokens().value("windows").toObject().value("main").toObject().value("sourceToolbarHeight").toInt());
     auto *tools = new QHBoxLayout(format); tools->setContentsMargins(16, 0, 16, 0); tools->setSpacing(4); tools->addWidget(new QLabel("Markdown", format)); separator(tools, m_appearance, format);
@@ -246,7 +422,19 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     for (const auto &entry : formats) {
         auto *button = new SharedButton({}, QStringLiteral("format%1").arg(index), m_appearance, format); button->setSymbol(entry.first); button->setFixedWidth(token("controls", "iconButtonHit"));
         button->setAccessibleName(names[index]); button->setToolTip(names[index++]); m_formats.append(button);
-        connect(button, &QPushButton::clicked, this, [this, wrap = entry.second] { wrapSelection(wrap.first, wrap.second); }); tools->addWidget(button);
+        if (entry.first == "heading") {
+            button->setAccessibleName(QStringLiteral("标题级别")); button->setToolTip(QStringLiteral("选择一级至六级标题"));
+            auto *headings = new SharedMenu(m_appearance, button); headings->setObjectName("headingMenu");
+            for (int level = 1; level <= 6; ++level) { auto *item = headings->addAction(QStringLiteral("%1 级标题").arg(level)); item->setData(level); item->setIcon(themedIcon("heading", m_appearance->color("text"))); connect(item, &QAction::triggered, this, [this, level] {
+                if (!m_document || !m_editing || !m_editor) return;
+                const auto snapshot = m_document->session()->snapshot(); if (snapshot.result != EditResult::Applied) return;
+                const auto position = qsizetype(m_editor->send(SCI_GETCURRENTPOS)); const auto start = position > 0 ? snapshot.utf8.lastIndexOf('\n', position - 1) + 1 : 0;
+                auto line = snapshot.utf8.mid(start); line = line.left(line.indexOf('\n') < 0 ? line.size() : line.indexOf('\n')); int prefix = 0; while (prefix < qMin(6, int(line.size())) && line[prefix] == '#') ++prefix;
+                if (!prefix || prefix >= line.size() || line[prefix] != ' ') prefix = 0; else ++prefix;
+                const auto first = decodeUtf8Literal(snapshot.utf8.left(start)).size();
+                m_document->session()->replace(int(first), int(first + prefix), QString(level, '#') + ' ', snapshot.revision); m_editor->setFocus(Qt::OtherFocusReason);
+            }); } button->setMenu(headings);
+        } else connect(button, &QPushButton::clicked, this, [this, wrap = entry.second] { wrapSelection(wrap.first, wrap.second); }); tools->addWidget(button);
     }
     tools->addStretch(); layout->addWidget(format);
     m_editor = new SourceEditor(document->session(), m_editorPage, m_appearance); m_editor->setObjectName("sourceEditor");
@@ -256,7 +444,11 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     connect(m_editor, &ScintillaEditBase::updateUi, this, [this] { updateCaret(); });
     layout->addWidget(m_editor, 1); m_body->addWidget(m_editorPage);
     connect(document, &FileDocument::stateChanged, this, &SingleFileWindow::updateState); connect(document, &QObject::destroyed, this, &SingleFileWindow::updateState);
-    connect(document, &FileDocument::operationFinished, this, [this](bool success) { if (!m_closeAfterOperation) return; m_closeAfterOperation = false; if (success) QTimer::singleShot(0, this, [this] { close(); }); else emit closeCancelled(); });
+    connect(document, &FileDocument::operationFinished, this, [this](bool success) {
+        const bool saving = m_observedSave; m_observedSave = false;
+        if (saving && !success && m_document && m_document->hasError()) QTimer::singleShot(0, this, &SingleFileWindow::showSaveError);
+        if (!m_closeAfterOperation) return; m_closeAfterOperation = false; if (success) QTimer::singleShot(0, this, [this] { close(); }); else emit closeCancelled();
+    });
     connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) { m_previewError = message; updateState(); });
     connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); updateState(); }); setEditing(false); updateState();
 }
@@ -279,33 +471,45 @@ void SingleFileWindow::updateCaret() {
 }
 void SingleFileWindow::updateState() {
     const bool ready = m_document && !m_document->closed(); const bool busy = ready && (m_document->saving() || m_document->loading());
+    if (ready && m_document->saving()) m_observedSave = true;
     m_read->setEnabled(ready); m_edit->setEnabled(ready && !m_document->readOnly()); m_read->setChecked(!m_editing); m_edit->setChecked(m_editing);
-    m_pathButton->setEnabled(ready); m_zoomButton->setEnabled(ready); m_save->setEnabled(ready && !busy && (!m_document->readOnly() || m_document->conflict()));
+    m_pathButton->setEnabled(ready); m_zoomButton->setEnabled(ready); m_save->setEnabled(ready && !busy && (m_document->dirty() || m_document->conflict()) && (!m_document->readOnly() || m_document->conflict()));
+    m_save->setProperty("primary", m_editing && ready && m_document->dirty()); m_save->setText(busy ? QStringLiteral("处理中…") : QStringLiteral("保存")); m_save->update();
+    m_saveSpinner->setVisible(busy); m_saveSpinner->setRunning(busy); m_statusIcon->setVisible(!busy);
     m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy);
     m_undoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANUNDO)); m_redoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANREDO));
     for (auto *button : m_formats) button->setEnabled(ready && !m_document->readOnly()); updateCaret();
     if (!ready) {
         const bool loading = !m_intent.isNull(), error = !m_openError.isEmpty();
+        m_openSpinner->setVisible(loading); m_openSpinner->setRunning(loading); m_emptySymbol->setVisible(!loading);
+        m_emptySymbol->setPixmap(themedIcon(error ? "error" : "folder-open", error ? m_appearance->semantic("error") : m_appearance->color("textSecondary")).pixmap(QSize(40, 40), devicePixelRatioF()));
+        m_emptyTitle->setText(loading ? QStringLiteral("正在打开文档") : error ? QStringLiteral("无法打开文件") : QStringLiteral("打开 Markdown 文档"));
+        m_welcomeOpen->setVisible(!loading); m_cancelOpen->setVisible(loading);
         m_header->setTitle(m_openPath.isEmpty() ? QStringLiteral("打开 Markdown 文档") : QFileInfo(m_openPath).fileName(), false); m_path->setFullText(m_openPath.isEmpty() ? QString() : QFileInfo(m_openPath).path());
-        m_empty->setText(loading ? QStringLiteral("正在打开…\n") + QFileInfo(m_openPath).fileName() : error ? QStringLiteral("无法打开文件\n\n") + m_openError + "\n\n" + m_openPath : QStringLiteral("打开一个 Markdown 文件\n从阅读开始，随时切换编辑。"));
+        m_empty->setText(loading ? QFileInfo(m_openPath).fileName() : error ? m_openError + "\n\n" + m_openPath : QStringLiteral("从阅读开始，随时切换编辑。"));
         m_status->setFullText(loading ? QStringLiteral("正在打开…") : error ? QStringLiteral("打开失败") : QStringLiteral("请选择文档")); m_statusIcon->clear(); m_encoding->clear();
         m_notice->setText(m_appearanceError); m_banner->setVisible(!m_appearanceError.isEmpty()); m_resolve->hide(); m_retry->hide(); m_later->hide(); return;
     }
     m_header->setTitle(QFileInfo(m_document->path()).fileName(), m_document->dirty()); setWindowTitle(QFileInfo(m_document->path()).fileName() + QStringLiteral("[*] — xdnote")); setWindowModified(m_document->dirty());
     m_path->setFullText(QFileInfo(m_document->path()).path()); m_status->setFullText(m_document->statusText()); m_encoding->setText(m_document->bom() ? "UTF-8 BOM" : "UTF-8");
     const bool warning = m_document->dirty() || m_document->conflict(); const bool error = m_document->hasError();
-    const auto statusColor = busy ? m_appearance->color("textSecondary") : m_appearance->semantic(error ? "error" : warning ? "warning" : "success");
+    const auto statusColor = busy || (m_document->readOnly() && !error && !warning) ? m_appearance->color("textSecondary") : m_appearance->semantic(error ? "error" : warning ? "warning" : "success");
+    m_statusIcon->setProperty("semanticColor", statusColor.name());
     m_statusIcon->setPixmap(themedIcon(busy ? "clock" : error ? "warning" : warning ? "status-dirty" : m_document->readOnly() ? "lock" : "check-circle", statusColor).pixmap(QSize(16, 16), devicePixelRatioF()));
     auto message = m_document->message(); if (message.isEmpty()) message = m_document->session()->rejection();
-    if (message.isEmpty()) message = m_previewError;
     if (message.isEmpty()) message = m_appearanceError;
     if (message.isEmpty() && m_document->readOnly()) message = QStringLiteral("此文件为只读，阅读不受影响。");
     m_notice->setText(message); const bool previewOnly = !m_previewError.isEmpty() && message == m_previewError;
     const bool appearanceOnly = message == m_appearanceError && !message.isEmpty();
-    m_banner->setVisible(!message.isEmpty() && (m_document->dirty() || message != m_dismissedNotice));
+    m_banner->setVisible(!message.isEmpty() && message != m_dismissedNotice);
+    const auto semantic = m_appearance->semantic(error ? "error" : m_document->conflict() || m_document->readOnly() ? "warning" : "error");
+    auto tint = m_appearance->color("background"); tint.setRed((tint.red() * 9 + semantic.red()) / 10); tint.setGreen((tint.green() * 9 + semantic.green()) / 10); tint.setBlue((tint.blue() * 9 + semantic.blue()) / 10);
+    m_banner->setStyleSheet(QStringLiteral("QWidget#documentBanner{background:%1;border-bottom:1px solid %2}").arg(tint.name(), m_appearance->color("border").name()));
+    m_noticeSymbol->setPixmap(themedIcon(m_document->readOnly() ? "lock" : error ? "error" : "warning", semantic).pixmap(QSize(20, 20), devicePixelRatioF()));
+    m_previewFailureText->setText(m_previewError); if (!m_editing) m_body->setCurrentWidget(m_previewError.isEmpty() ? static_cast<QWidget *>(m_preview) : m_previewFailure);
     m_resolve->setText(m_document->conflict() ? (m_document->dirty() ? QStringLiteral("处理冲突") : QStringLiteral("重新载入")) : previewOnly ? QStringLiteral("重试预览") : QStringLiteral("另存为…"));
     m_resolve->setVisible(!appearanceOnly && (previewOnly || error || m_document->conflict() || m_document->readOnly())); m_resolve->setEnabled(!busy);
-    m_retry->setVisible(error && !m_document->conflict() && !m_document->readOnly() && m_document->lastSave().problem.code != FileError::HardLinks); m_retry->setEnabled(!busy);
+    m_retry->setVisible(error && !m_document->conflict() && !m_document->readOnly() && m_document->lastSave().problem.code != FileError::HardLinks && m_document->lastSave().status != SaveStatus::Uncertain); m_retry->setEnabled(!busy);
     m_later->setVisible(m_document->conflict() && !m_document->dirty());
     static_cast<SharedButton *>(m_edit)->setSymbol(m_document->readOnly() ? "lock" : QString()); m_edit->setToolTip(m_document->readOnly() ? QStringLiteral("文件只读，可另存为副本后编辑") : QStringLiteral("编辑 Markdown 源文"));
 }
@@ -317,6 +521,31 @@ void SingleFileWindow::chooseSaveAs() {
     if (!m_document || m_document->saving() || m_document->loading()) return;
     const auto path = QFileDialog::getSaveFileName(this, QStringLiteral("另存为"), m_document->path(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)"));
     InputModality::forApplication()->clear(); if (!path.isEmpty()) m_document->saveAs(path);
+}
+void SingleFileWindow::showSaveError() {
+    if (!m_document || m_document->closed() || !m_document->hasError() || m_saveErrorDialog) return;
+    const auto result = m_document->lastSave();
+    const bool uncertain = result.status == SaveStatus::Uncertain;
+    const bool diskFull = result.problem.description().contains(QStringLiteral("空间不足"));
+    const auto title = uncertain ? QStringLiteral("需要核对保存结果") : diskFull ? QStringLiteral("存储空间不足") : result.problem.code == FileError::Denied ? QStringLiteral("没有写入权限") : result.problem.code == FileError::InUse ? QStringLiteral("文件正在被占用") : result.problem.code == FileError::HardLinks ? QStringLiteral("请另存为独立文件") : QStringLiteral("未能保存文档");
+    auto *dialog = new SharedDialog(m_appearance, this, 480); m_saveErrorDialog = dialog; dialog->setObjectName("saveErrorDialog"); dialog->setWindowTitle(title); dialog->setAttribute(Qt::WA_DeleteOnClose);
+    auto *layout = new QVBoxLayout(dialog->surface()); layout->setContentsMargins(24, 20, 24, 24); layout->setSpacing(16);
+    auto *top = new QHBoxLayout; auto *symbol = new QLabel(dialog); symbol->setPixmap(themedIcon(uncertain ? "warning" : "error", m_appearance->semantic(uncertain ? "warning" : "error")).pixmap(24, 24)); top->addWidget(symbol); top->addStretch();
+    auto *close = new SharedButton({}, "dialogClose", m_appearance, dialog); close->setSymbol("close"); close->setAccessibleName(QStringLiteral("关闭对话框")); top->addWidget(close); connect(close, &QPushButton::clicked, dialog, &QDialog::reject); layout->addLayout(top);
+    auto *heading = new QLabel(title, dialog); heading->setFont(uiFont(18)); heading->setTextFormat(Qt::PlainText); layout->addWidget(heading);
+    auto *body = new QLabel(m_document->message(), dialog); body->setTextFormat(Qt::PlainText); body->setWordWrap(true); body->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    const int textHeight = QFontMetrics(body->font()).boundingRect(QRect(0, 0, 432, 100000), Qt::TextWordWrap, body->text()).height(), cap = qMax(80, screen()->availableGeometry().height() / 3);
+    if (textHeight > cap) { auto *scroll = new QScrollArea(dialog); scroll->setFrameShape(QFrame::NoFrame); scroll->setWidgetResizable(true); body->setMinimumHeight(textHeight + 8); scroll->setWidget(body); scroll->setFixedHeight(cap); layout->addWidget(scroll); } else layout->addWidget(body);
+    auto *file = new ElidedLabel(dialog); file->setObjectName("saveErrorFile"); file->setFullText(m_document->path()); layout->addWidget(file);
+    if (uncertain) { auto *note = new QLabel(QStringLiteral("编辑内容仍保留在当前窗口。请先核对磁盘文件和恢复副本，再决定后续操作。"), dialog); note->setWordWrap(true); layout->addWidget(note); }
+    auto *actions = new QHBoxLayout; actions->addStretch();
+    if (!uncertain && result.problem.code != FileError::HardLinks && result.problem.code != FileError::Denied) {
+        auto *retry = new SharedButton(QStringLiteral("重试"), "errorRetry", m_appearance, dialog); retry->setOutlined(true); actions->addWidget(retry);
+        connect(retry, &QPushButton::clicked, this, [this, dialog] { dialog->accept(); QTimer::singleShot(0, this, [this] { if (m_document) m_document->save(); }); });
+    }
+    auto *saveAs = new SharedButton(QStringLiteral("另存为…"), "errorSaveAs", m_appearance, dialog); saveAs->setOutlined(true); actions->addWidget(saveAs); connect(saveAs, &QPushButton::clicked, this, [this, dialog] { dialog->accept(); QTimer::singleShot(0, this, &SingleFileWindow::chooseSaveAs); });
+    auto *keep = new SharedButton(QStringLiteral("继续编辑"), "errorKeepEditing", m_appearance, dialog); keep->setProperty("primary", true); keep->setDefault(true); actions->addWidget(keep); connect(keep, &QPushButton::clicked, dialog, &QDialog::accept); layout->addLayout(actions);
+    dialog->adjustSize(); dialog->open(); keep->setFocus(Qt::OtherFocusReason);
 }
 void SingleFileWindow::reloadDisk() {
     if (!m_document || m_document->saving() || m_document->loading()) return;
@@ -370,6 +599,7 @@ bool SingleFileWindow::eventFilter(QObject *target, QEvent *event) {
         if (!urls.isEmpty() && urls.size() <= 16) { for (const auto &url : urls) if (url.isLocalFile()) emit openRequested(url.toLocalFile()); drop->acceptProposedAction(); return true; }
     }
     if (widget == this && event->type() == QEvent::WindowActivate && m_document) { m_dismissedNotice.clear(); m_document->checkExternal(); }
+    if (widget == this && event->type() == QEvent::WindowStateChange) m_header->updateWindowState();
     if (widget == this && (event->type() == QEvent::Resize || event->type() == QEvent::ScreenChangeInternal)) QTimer::singleShot(0, this, &SingleFileWindow::updateState);
     return QWidget::eventFilter(target, event);
 }

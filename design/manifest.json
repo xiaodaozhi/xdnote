@@ -1570,7 +1570,7 @@
     {
       "path": "docs/visual/tokens.json",
       "bytes": 7987,
-      "sha256": "712676e0622ece41dee22060cded0f9654604fbbbb8064ba6344a8f419f9cbf7"
+      "sha256": "34afb4c5ed2bb103cea7e8f03dfbd66533d5246b16d8e75637cf7d9a90a8a9a1"
     },
     {
       "path": "docs/visual/asset-geometry.json",
@@ -1579,8 +1579,8 @@
     },
     {
       "path": "docs/visual/window-registry.json",
-      "bytes": 7157,
-      "sha256": "73faae829a18d689ee31f5e22309bc976ede26ff2e0a78384c1b2d33e526dc18"
+      "bytes": 7210,
+      "sha256": "9ebfd9b5a28d72c2d1bbb4a1b90f3ae789848988de11036bef275ff3847ff3a3"
     },
     {
       "path": "docs/visual/surface-registry-v2.json",

@@ -4,10 +4,14 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QLabel>
+#include <QDialog>
+#include <QTimer>
 
 namespace xdnote {
 class Appearance;
 QIcon themedIcon(const QString &name, const QColor &color);
+QIcon colorSwatch(const QColor &color);
+void paintPopupShell(QPainter &painter, const QRectF &surface, const QColor &fill, const QColor &border, int radius, int shadow);
 QString themedScrollBars(Appearance *appearance);
 class SharedButton final : public QPushButton {
     Q_OBJECT
@@ -29,8 +33,45 @@ private:
     bool m_tab = false, m_outlined = false;
 };
 class SharedMenu final : public QMenu {
+    Q_OBJECT
 public:
     explicit SharedMenu(Appearance *appearance, QWidget *parent = nullptr);
+    QRect surfaceRect() const;
+protected:
+    void paintEvent(QPaintEvent *) override;
+    void showEvent(QShowEvent *) override;
+private:
+    QPointer<Appearance> m_appearance;
+};
+class SharedSpinner final : public QWidget {
+    Q_OBJECT
+public:
+    explicit SharedSpinner(Appearance *appearance, QWidget *parent = nullptr);
+    void setRunning(bool running);
+    bool running() const { return m_timer.isActive(); }
+protected:
+    void paintEvent(QPaintEvent *) override;
+    void hideEvent(QHideEvent *) override;
+    void showEvent(QShowEvent *) override;
+private:
+    QPointer<Appearance> m_appearance;
+    QTimer m_timer;
+    int m_angle = 0;
+    bool m_running = false;
+};
+class SharedDialog final : public QDialog {
+    Q_OBJECT
+public:
+    SharedDialog(Appearance *appearance, QWidget *owner, int surfaceWidth);
+    QWidget *surface() const { return m_surface; }
+protected:
+    void paintEvent(QPaintEvent *) override;
+    void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
+private:
+    QPointer<Appearance> m_appearance;
+    QWidget *m_surface;
+    QPointer<QWidget> m_overlay;
 };
 class ElidedLabel final : public QLabel {
     Q_OBJECT
