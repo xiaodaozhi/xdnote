@@ -80,8 +80,8 @@ int ask(QWidget *owner, const QString &name, const QString &title, const QString
     QDialog dialog(owner); dialog.setObjectName(name); dialog.setWindowTitle(title);
     dialog.setWindowFlag(Qt::WindowContextHelpButtonHint, false);
     const auto size = visualTokens().value("windows").toObject().value(widthToken).toObject();
-    dialog.setMinimumWidth(size.value("minWidth").toInt());
-    dialog.resize(size.value("preferredWidth").toInt(), 180);
+    const int dialogWidth = qMin(size.value("preferredWidth").toInt(), qMax(200, owner->screen()->availableGeometry().width() - 32));
+    dialog.setFixedWidth(dialogWidth);
     auto *layout = new QVBoxLayout(&dialog); layout->setContentsMargins(24, 24, 24, 24); layout->setSpacing(16);
     auto *heading = new QLabel(title, &dialog); heading->setTextFormat(Qt::PlainText);
     auto headingFont = heading->font(); headingFont.setBold(true); headingFont.setPixelSize(18); heading->setFont(headingFont);
@@ -89,13 +89,15 @@ int ask(QWidget *owner, const QString &name, const QString &title, const QString
     body->setTextInteractionFlags(Qt::TextSelectableByMouse); body->setMinimumWidth(0);
     layout->addWidget(heading);
     auto *scroll = new QScrollArea(&dialog); scroll->setFrameShape(QFrame::NoFrame); scroll->setWidgetResizable(true); scroll->setWidget(body);
-    const int width = size.value("preferredWidth").toInt() - 48;
+    scroll->setStyleSheet(QStringLiteral("QScrollArea,QScrollArea>QWidget>QWidget{background:%1}").arg(color("background")));
+    const int width = dialogWidth - 48;
     const int textHeight = QFontMetrics(body->font()).boundingRect(QRect(0, 0, width, 100000), Qt::TextWordWrap, text).height();
     const int cap = qMax(80, int(owner->screen()->availableGeometry().height() * 0.5));
     body->setMinimumHeight(textHeight + 4); scroll->setFixedHeight(qMin(cap, textHeight + 8)); layout->addWidget(scroll);
     auto *buttons = new QDialogButtonBox(&dialog);
     for (const auto &action : actions) {
         auto *button = new ActionButton(action.first, QStringLiteral("choice%1").arg(action.second), &dialog);
+        button->setProperty("primary", action.second == 1);
         buttons->addButton(button, action.second == 0 ? QDialogButtonBox::RejectRole
             : action.second == 2 ? QDialogButtonBox::DestructiveRole : QDialogButtonBox::AcceptRole);
         if (action.second == 0) { button->setDefault(true); button->setFocus(Qt::OtherFocusReason); }

@@ -503,6 +503,12 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(preview.displayedRevision(), latest, 30000);
         QCOMPARE(errors.count(), 0);
         QCOMPARE(staleReady, 0);
+        QSignalSpy navigation(preview.view()->page(), &QWebEnginePage::loadFinished);
+        for (const auto &url : {QUrl(QStringLiteral("xdnote-preview:/foreign-document")), QUrl(QStringLiteral("data:text/html,<h1>untrusted</h1>"))}) {
+            navigation.clear(); preview.view()->page()->load(url);
+            QTRY_VERIFY_WITH_TIMEOUT(!navigation.isEmpty(), 10000);
+            QVERIFY(!navigation.last().first().toBool());
+        }
         ready.clear();
         session.requestClose();
         QTRY_VERIFY(session.isClosing());
