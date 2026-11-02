@@ -172,6 +172,7 @@ SharedMenu::SharedMenu(Appearance *appearance, QWidget *parent) : QMenu(parent),
     auto refresh = [this, appearance] {
         setStyleSheet(QStringLiteral("QMenu{background:transparent;color:%1;border:0;margin:18px;padding:4px} QMenu::item{min-height:%6px;padding:4px 24px 4px 8px;border-radius:4px;background:transparent} QMenu::item:selected{background:%3;color:%4} QMenu::item:disabled{color:%5} QMenu::separator{height:1px;background:%2;margin:4px 8px} QMenu::indicator{width:16px;height:16px} QMenu::icon{padding:0 6px}")
             .arg(appearance->color("text").name(), appearance->color("border").name(), appearance->accentColor("soft").name(), appearance->accentColor("softForeground").name(), appearance->color("textSecondary").name()).arg(control("menuRowHeight") - 8));
+        setGraphicsEffect(nullptr);
     };
     connect(appearance, &Appearance::changed, this, refresh); refresh();
 }
@@ -180,12 +181,13 @@ void SharedMenu::paintEvent(QPaintEvent *event) {
     Q_UNUSED(event); QPainter painter(this); painter.setCompositionMode(QPainter::CompositionMode_Source); painter.fillRect(rect(), Qt::transparent); painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     paintPopupShell(painter, surfaceRect(), m_appearance->color("surface"), m_appearance->color("border"), 8, 12);
     QPainterPath clip; clip.addRoundedRect(surfaceRect(), 8, 8); painter.setClipPath(clip);
-    // Paint actions only. QMenu's native panel primitive can add a second hard
-    // shadow underneath an application-owned translucent popup.
     for (auto *action : actions()) if (action->isVisible()) { QStyleOptionMenuItem option; initStyleOption(&option, action); option.rect = actionGeometry(action); style()->drawControl(QStyle::CE_MenuItem, &option, &painter, this); }
 }
 void SharedMenu::showEvent(QShowEvent *event) {
     QMenu::showEvent(event);
+    // The Windows 11 Qt style attaches a QGraphicsDropShadowEffect at polish.
+    // Our translucent shell already owns its shadow, so remove that extra layer.
+    setGraphicsEffect(nullptr);
 #ifdef Q_OS_WIN
     const auto policy = DWMNCRP_DISABLED; DwmSetWindowAttribute(reinterpret_cast<HWND>(winId()), DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
 #endif
@@ -231,6 +233,7 @@ SharedDialog::SharedDialog(Appearance *appearance, QWidget *owner, int surfaceWi
 void SharedDialog::paintEvent(QPaintEvent *) { QPainter painter(this); painter.setCompositionMode(QPainter::CompositionMode_Source); painter.fillRect(rect(), Qt::transparent); painter.setCompositionMode(QPainter::CompositionMode_SourceOver); paintPopupShell(painter, m_surface->geometry(), m_appearance->color("surface"), m_appearance->color("border"), 12, 18); }
 void SharedDialog::showEvent(QShowEvent *event) {
     if (!m_overlay && parentWidget()) m_overlay = new DialogOverlay(parentWidget()); QDialog::showEvent(event);
+    setGraphicsEffect(nullptr);
 #ifdef Q_OS_WIN
     const auto policy = DWMNCRP_DISABLED; DwmSetWindowAttribute(reinterpret_cast<HWND>(winId()), DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
 #endif

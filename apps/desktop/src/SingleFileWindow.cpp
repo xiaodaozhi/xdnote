@@ -31,6 +31,9 @@
 #include <QWindow>
 #include <QShowEvent>
 #include <QProgressBar>
+#include <QTextLayout>
+#include <QGlyphRun>
+#include <QRawFont>
 #include <limits>
 #include <cmath>
 #ifdef Q_OS_WIN
@@ -169,9 +172,11 @@ protected:
         painter.setPen(m_appearance->color("border")); painter.drawLine(QPointF(32 + width, 14), QPointF(32 + width, this->height() - 14));
         const qreal left = 48 + width; QFontMetricsF metrics(font());
         const auto title = metrics.elidedText(m_title, Qt::ElideMiddle, qMax(0.0, this->width() - left - 32 - captionWidth()));
-        const auto ink = metrics.tightBoundingRect(title);
-        painter.setFont(font()); painter.setPen(m_appearance->color("text"));
-        painter.drawText(QPointF(left, this->height() / 2.0 - ink.center().y()), title);
+        QTextLayout text(title, font()); QTextOption option; option.setWrapMode(QTextOption::NoWrap); text.setTextOption(option);
+        text.beginLayout(); auto line = text.createLine(); if (line.isValid()) line.setLineWidth(qMax(0.0, this->width() - left - captionWidth())); text.endLayout();
+        QRectF ink;
+        for (const auto &run : text.glyphRuns()) { const auto indexes = run.glyphIndexes(); const auto positions = run.positions(); for (qsizetype i = 0; i < indexes.size(); ++i) { const auto bounds = run.rawFont().boundingRect(indexes[i]).translated(positions[i]); if (!bounds.isEmpty()) ink = ink.isNull() ? bounds : ink.united(bounds); } }
+        painter.setFont(font()); painter.setPen(m_appearance->color("text")); text.draw(&painter, QPointF(left, this->height() / 2.0 - ink.center().y()));
         if (m_dirty) { painter.setRenderHint(QPainter::Antialiasing); painter.setPen(Qt::NoPen); painter.setBrush(m_appearance->semantic("warning")); painter.drawEllipse(QPointF(left + metrics.horizontalAdvance(title) + 12, this->height() / 2.0), 3, 3); }
         painter.setPen(m_appearance->color("border")); painter.drawLine(0, this->height() - 1, this->width(), this->height() - 1);
     }

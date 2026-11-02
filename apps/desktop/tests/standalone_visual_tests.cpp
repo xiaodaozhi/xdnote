@@ -322,11 +322,15 @@ private slots:
         Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->show();
         auto inspect = [&](SharedMenu *menu, const QString &name) {
             QVERIFY(menu); QVERIFY(menu->isVisible()); QVERIFY(menu->testAttribute(Qt::WA_TranslucentBackground));
+            capture(menu, "menu-" + theme + '-' + name);
+            QVERIFY(!menu->graphicsEffect());
             const auto pixels = menu->grab().toImage(); const auto dpr = menu->devicePixelRatioF(); const auto surface = menu->surfaceRect();
             QVERIFY(pixels.hasAlphaChannel()); QCOMPARE(pixels.pixelColor(0, 0).alpha(), 0);
             QVERIFY(pixels.pixelColor(qRound(surface.left() * dpr), qRound(surface.top() * dpr)).alpha() < 255);
             const auto shadow = pixels.pixelColor(qRound((surface.left() - 3) * dpr), qRound(surface.center().y() * dpr));
             QVERIFY2(shadow.alpha() > 0 && shadow.alpha() < 255, qPrintable(QString("shadow alpha=%1").arg(shadow.alpha())));
+            const int leftEdge = qRound(surface.x() * dpr), rightEdge = qRound((surface.x() + surface.width()) * dpr);
+            for (int distance = qRound(2 * dpr); distance < qRound(12 * dpr); ++distance) { const auto left = pixels.pixelColor(leftEdge - distance, qRound(surface.center().y() * dpr)).alpha(), right = pixels.pixelColor(rightEdge + distance - 1, qRound(surface.center().y() * dpr)).alpha(); QVERIFY2(right < 65, qPrintable(QString("right shadow alpha=%1").arg(right))); QVERIFY(qAbs(left - right) <= 4); }
             QCOMPARE(pixels.pixelColor(qRound((surface.right() - 2) * dpr), qRound(surface.center().y() * dpr)).rgb(), appearance.color("surface").rgb());
             QVERIFY(menu->screen()->availableGeometry().contains(menu->geometry())); capture(menu, "menu-" + theme + '-' + name);
         };
@@ -395,7 +399,20 @@ private slots:
         window->showMaximized(); QTRY_VERIFY(window->isMaximized()); MONITORINFO monitor{sizeof(MONITORINFO)}; QVERIFY(GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor)); POINT maximizedOrigin{}; QVERIFY(ClientToScreen(hwnd, &maximizedOrigin)); RECT maximizedClient{}; QVERIFY(GetClientRect(hwnd, &maximizedClient));
         QVERIFY(qAbs(maximizedOrigin.x - monitor.rcWork.left) <= 2); QVERIFY(qAbs(maximizedOrigin.y - monitor.rcWork.top) <= 2); QVERIFY(qAbs(maximizedClient.right - (monitor.rcWork.right - monitor.rcWork.left)) <= 2); QVERIFY(qAbs(maximizedClient.bottom - (monitor.rcWork.bottom - monitor.rcWork.top)) <= 2);
         window->showNormal(); QTRY_VERIFY(!window->isMaximized()); QCOMPARE(window->size(), initial);
-        const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (!evidence.isEmpty()) { QVERIFY(QDir().mkpath(evidence + "/standalone")); window->screen()->grabWindow(window->winId()).save(evidence + "/standalone/native-full-window.png"); }
+        const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (!evidence.isEmpty()) {
+            QVERIFY(QDir().mkpath(evidence + "/standalone")); window->screen()->grabWindow(window->winId()).save(evidence + "/standalone/native-full-window.png");
+            // Capture the external frame only over an owned solid backdrop.
+            // The widget grab above cannot establish DWM border/shadow output.
+            window->resize(700, 540); const auto available = window->screen()->availableGeometry(); window->move(available.center() - window->rect().center());
+            QWidget backdrop(nullptr, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint); auto palette = backdrop.palette(); palette.setColor(QPalette::Window, QColor("#CFD8E5")); backdrop.setPalette(palette); backdrop.setAutoFillBackground(true); backdrop.setGeometry(available); backdrop.show();
+            struct RestoreOrder { HWND hwnd; ~RestoreOrder() { SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } } restoreOrder{hwnd};
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); window->raise(); QTest::qWait(200);
+            auto *screen = window->screen(); const auto crop = window->frameGeometry().adjusted(-24, -24, 24, 24).translated(-screen->geometry().topLeft());
+            RECT native{}; QVERIFY(GetWindowRect(hwnd, &native)); const int margin = qRound(22 * window->devicePixelRatioF()); bool owned = true;
+            for (const POINT point : {POINT{native.left - margin, native.top - margin}, POINT{native.right + margin, native.top - margin}, POINT{native.left - margin, native.bottom + margin}, POINT{native.right + margin, native.bottom + margin}}) owned = owned && WindowFromPoint(point) == reinterpret_cast<HWND>(backdrop.winId());
+            if (!owned) { qInfo() << "External DWM capture unavailable: owned backdrop is occluded"; return; }
+            const auto frame = screen->grabWindow(0, crop.x(), crop.y(), crop.width(), crop.height()); QVERIFY(!frame.isNull()); QVERIFY(frame.save(evidence + "/standalone/native-dwm-frame.png"));
+        }
 #else
         QSKIP("Windows custom caption is platform specific");
 #endif
