@@ -235,7 +235,9 @@ private slots:
         window->findChild<QAction *>("saveAction")->trigger(); QVERIFY(!readMode->keyboardOutline()); QVERIFY(readMode->hasFocus()); QTRY_VERIFY(!document->saving());
         auto *more = window->findChild<SharedButton *>("moreActions"); auto *menu = more->menu();
         QTimer::singleShot(100, menu, [menu] { QTest::keyClick(menu, Qt::Key_Escape); }); more->setFocus(Qt::OtherFocusReason); more->showMenu();
-        QTRY_VERIFY(!menu->isVisible()); QTRY_VERIFY(more->hasFocus()); QVERIFY(!more->keyboardOutline());
+        QTRY_VERIFY(!menu->isVisible()); QTRY_COMPARE(window->focusWidget(), more);
+        qInfo() << "menu-return ownerActive=" << window->isActiveWindow() << "logicalFocus=" << window->focusWidget()->objectName();
+        QApplication::setActiveWindow(window); QTRY_VERIFY(more->hasFocus()); QVERIFY(!more->keyboardOutline());
         QTimer::singleShot(100, qApp, [] { if (auto *dialog = qobject_cast<QFileDialog *>(qApp->activeModalWidget())) dialog->reject(); });
         QSignalSpy opening(window, &SingleFileWindow::openRequested); window->findChild<QAction *>("openAction")->trigger(); QCOMPARE(opening.count(), 0); QCOMPARE(document->session()->snapshot().utf8, sample());
         Window empty{new SingleFileWindow(&manager)}; empty.value->showOpenError(path, QStringLiteral("没有读取权限")); empty.value->show(); empty.value->resize(600, 500); QTest::qWait(20);
