@@ -53,6 +53,7 @@ RegisteredSession SessionRegistry::complete(const FileReadRequest &request, cons
     found->session = session;
     const QPointer<DocumentSession> guard(session);
     const auto requestId = request.requestId;
+    // A new request may already occupy this key when deferred destruction runs.
     connect(session, &DocumentSession::closed, this, [this, key, guard, requestId] {
         const auto found = m_sessions.find(key);
         if (found != m_sessions.end() && found->request.requestId == requestId && found->session == guard) {

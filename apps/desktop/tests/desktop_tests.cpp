@@ -280,12 +280,23 @@ private slots:
         const auto id = original.session->documentId();
         auto wrong = std::async(std::launch::async, [&] { return registry.complete(request, loaded.baseline).result; }).get();
         QCOMPARE(wrong, RegistryResult::WrongThread);
+        OpenRegistration pendingReopen;
+        bool oldAliveWhenReserved = false;
+        // This queued observer runs after registry removal but before the old
+        // session's deleteLater event. Its destroyed callback must not erase
+        // the new request which now occupies the same file identity.
+        connect(original.session, &DocumentSession::closed, &registry, [&] {
+            oldAliveWhenReserved = !original.session.isNull();
+            pendingReopen = registry.beginOpen(probe.file);
+        }, Qt::QueuedConnection);
         QCOMPARE(original.session->requestClose(), EditResult::Applied);
         QCOMPARE(registry.complete(request, loaded.baseline).result, RegistryResult::Closing);
+        QTRY_VERIFY(pendingReopen.startRead);
+        QVERIFY(oldAliveWhenReserved);
         QTRY_VERIFY(original.session.isNull());
-        QCOMPARE(registry.lookup(probe.file).result, RegistryResult::NotRegistered);
+        QCOMPARE(registry.lookup(probe.file).result, RegistryResult::Pending);
         QCOMPARE(registry.complete(request, loaded.baseline).result, RegistryResult::StaleRequest);
-        const auto nextRequest = registry.beginOpen(probe.file).read;
+        const auto nextRequest = pendingReopen.read;
         QCOMPARE(registry.complete(request, loaded.baseline).result, RegistryResult::StaleRequest);
         QCOMPARE(registry.complete(nextRequest, loaded.baseline).result, RegistryResult::InvalidBaseline);
         auto newRead = FileService::read(nextRequest);
