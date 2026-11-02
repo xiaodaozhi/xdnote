@@ -80,6 +80,8 @@ set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUS
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/Appearance.cpp apps/desktop/src/Appearance.h
+    apps/desktop/src/SharedWidgets.cpp apps/desktop/src/SharedWidgets.h
     apps/desktop/src/FileManager.cpp apps/desktop/src/FileManager.h
     apps/desktop/src/SingleFileWindow.cpp apps/desktop/src/SingleFileWindow.h
     apps/desktop/src/FileApplication.cpp apps/desktop/src/FileApplication.h
@@ -103,8 +105,9 @@ else()
     find_package(Threads REQUIRED)
     target_link_libraries(xdnote_desktop PUBLIC Threads::Threads ${CMAKE_DL_LIBS} m)
 endif()
+file(GLOB XDNOTE_UI_ICONS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/design/assets/ui-v2/icons/svg/*.svg")
 qt_add_resources(xdnote_desktop xdnote_assets PREFIX /xdnote BASE "${PROJECT_SOURCE_DIR}" FILES
-    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/app-icon.svg)
+    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/logo-dark.svg design/assets/ui-v2/brand/app-icon.svg ${XDNOTE_UI_ICONS})
 
 qt_add_executable(xdnote WIN32 apps/desktop/main.cpp)
 target_link_libraries(xdnote PRIVATE xdnote_desktop)
@@ -135,4 +138,11 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME file_workflow COMMAND xdnote_file_tests -o -,txt -o "${CMAKE_BINARY_DIR}/file-qtest.txt,txt")
     set_tests_properties(file_workflow PROPERTIES TIMEOUT 180)
+    add_executable(xdnote_visual_tests apps/desktop/tests/standalone_visual_tests.cpp)
+    target_link_libraries(xdnote_visual_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_visual_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME standalone_visual COMMAND xdnote_visual_tests -o -,txt -o "${CMAKE_BINARY_DIR}/visual-qtest.txt,txt")
+    set_tests_properties(standalone_visual PROPERTIES TIMEOUT 240)
 endif()

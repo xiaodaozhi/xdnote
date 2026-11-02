@@ -57,8 +57,8 @@
       "implementationStatus": "single-file-prototype",
       "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
       "sizeRationale": "共享 48 逻辑像素应用标题行、工具栏和 26 像素状态栏；系统原生外框另计，不复制平台窗口按钮。",
-      "implementedStates": ["light-reading", "light-editing", "opening", "open-error", "read-only", "save-error"],
-      "deferredStates": ["dark-theme", "workspace-transfer", "persistent-window-geometry"],
+      "implementedStates": ["light-reading", "light-editing", "dark-reading", "dark-editing", "six-accents", "opening", "open-error", "read-only", "save-error", "content-zoom"],
+      "deferredStates": ["workspace-transfer", "persistent-window-geometry"],
       "nativeValidation": "not-run"
     },
     {

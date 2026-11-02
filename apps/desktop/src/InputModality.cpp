@@ -19,6 +19,8 @@ bool InputModality::eventFilter(QObject *target, QEvent *event) {
     case QEvent::MouseButtonPress:
     case QEvent::TouchBegin:
     case QEvent::Wheel:
+    case QEvent::WindowDeactivate:
+    case QEvent::ApplicationDeactivate:
         next = false;
         break;
     case QEvent::KeyPress: {
@@ -32,4 +34,5 @@ bool InputModality::eventFilter(QObject *target, QEvent *event) {
     if (next != m_keyboardNavigation) { m_keyboardNavigation = next; emit changed(); }
     return QObject::eventFilter(target, event);
 }
+void InputModality::clear() { if (m_keyboardNavigation) { m_keyboardNavigation = false; emit changed(); } }
 }

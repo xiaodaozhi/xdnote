@@ -1,6 +1,7 @@
 #include "MarkdownPreview.h"
 #include "DocumentSession.h"
 #include "VisualTokens.h"
+#include "Appearance.h"
 
 #include <QJsonObject>
 #include <QBuffer>
@@ -8,6 +9,7 @@
 #include <QScopeGuard>
 #include <QVBoxLayout>
 #include <QWebEnginePage>
+#include <QWebEngineScript>
 #include <QWebEngineLoadingInfo>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
@@ -18,6 +20,7 @@
 #include <QtConcurrentRun>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <limits>
 
 extern "C" {
@@ -100,10 +103,10 @@ RenderResult renderSnapshot(QByteArray source, quint64 generation, quint64 revis
     return {QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), {}, generation, revision};
 }
 
-QString pageFor(const QByteArray &body, quint64 generation, int padding) {
+QString pageFor(const QByteArray &body, quint64 generation, int padding, Appearance *appearance) {
     const auto typography = visualTokens().value(QStringLiteral("typography")).toObject();
     const auto reader = typography.value(QStringLiteral("reader")).toObject();
-    const auto colors = visualTokens().value(QStringLiteral("themes")).toObject().value(QStringLiteral("light")).toObject();
+    const auto colors = visualTokens().value("themes").toObject().value(appearance->scheme()).toObject();
     // All markup and CSS around the body are application-owned. Raw source HTML
     // and URLs have already been converted to inert text by the Rust service.
     const QString head = QStringLiteral(
@@ -112,11 +115,14 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding) {
         "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'none'; "
         "style-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; object-src 'none'; "
         "frame-src 'none'; form-action 'none'; base-uri 'none'\">"
-        "<style>body{margin:%10px auto;padding:0 %10px;max-width:%2px;font:%3px/%4 system-ui,sans-serif;"
+        "<style>:root{color-scheme:%14}body{margin:%10px auto;padding:0 %10px;max-width:%2px;font:%3px/%4 system-ui,sans-serif;"
         "color:%5;background:%6;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:%7;padding:16px}"
         "code{font-family:monospace}table{border-collapse:collapse}td,th{border:1px solid %8;padding:6px 12px}"
         ".link-placeholder{color:%9;text-decoration:underline}.image-placeholder{color:%9}"
-        "h1{font-size:%11px}h2{font-size:%12px}h3{font-size:%13px}"
+        "h1{font-size:%11px}h2{font-size:%12px}h3{font-size:%13px}h1,h2,h3{line-height:1.4;margin:1.2em 0 .65em}"
+        "body>:first-child{margin-top:0}pre{border:1px solid %8;border-radius:6px}"
+        "input[type=checkbox]{accent-color:%15;pointer-events:none}::selection{background:%16;color:%17}"
+        "::-webkit-scrollbar{width:%18px;height:%18px}::-webkit-scrollbar-track{background:%6}::-webkit-scrollbar-thumb{background:%9;border:%19px solid %6;border-radius:%20px;min-height:%21px}"
         "blockquote{border-left:3px solid %8;margin-left:0;padding-left:16px}</style></head><body>")
         .arg(generation).arg(reader.value(QStringLiteral("maxContentWidth")).toInt())
         .arg(reader.value(QStringLiteral("size")).toInt()).arg(reader.value(QStringLiteral("lineHeight")).toDouble())
@@ -125,13 +131,18 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding) {
              colors.value(QStringLiteral("textSecondary")).toString())
         .arg(padding).arg(typography.value("headings").toObject().value("documentH1").toInt())
         .arg(typography.value("headings").toObject().value("documentH2").toInt())
-        .arg(typography.value("headings").toObject().value("documentH3").toInt());
+        .arg(typography.value("headings").toObject().value("documentH3").toInt())
+        .arg(appearance->scheme(), appearance->accentColor().name(), appearance->accentColor("soft").name(), appearance->accentColor("softForeground").name())
+        .arg(visualTokens().value("controls").toObject().value("scrollbarWidth").toInt())
+        .arg(visualTokens().value("controls").toObject().value("scrollbarInset").toInt())
+        .arg(visualTokens().value("controls").toObject().value("scrollbarWidth").toInt() / 2)
+        .arg(visualTokens().value("controls").toObject().value("scrollbarHandleMin").toInt());
     return head + QString::fromUtf8(body) + QStringLiteral("</body></html>");
 }
 }
 
-MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int padding)
-    : QWidget(parent), m_session(session), m_padding(padding) {
+MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int padding, Appearance *appearance)
+    : QWidget(parent), m_session(session), m_padding(padding), m_appearance(appearance ? appearance : new Appearance(this)) {
     m_view = new QWebEngineView(this);
     m_view->setObjectName(QStringLiteral("markdownPreview"));
     auto *profile = new QWebEngineProfile(this);
@@ -140,6 +151,9 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     profile->setUrlRequestInterceptor(new BlockResourceRequests(profile));
     auto *page = new RestrictedPage(profile, m_view);
     m_view->setPage(page);
+    page->setBackgroundColor(m_appearance->color("background"));
+    connect(m_appearance, &Appearance::changed, this, [this, page] { page->setBackgroundColor(m_appearance->color("background")); refresh(); });
+    connect(page, &QWebEnginePage::scrollPositionChanged, this, [this](const QPointF &position) { if (!m_restoring) m_scroll = position; });
     auto *settings = page->settings();
     for (auto option : {QWebEngineSettings::JavascriptEnabled, QWebEngineSettings::AutoLoadImages,
                        QWebEngineSettings::LocalStorageEnabled, QWebEngineSettings::PluginsEnabled,
@@ -163,7 +177,8 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
             else {
                 m_presentingGeneration = result.generation;
                 m_presentingRevision = result.revision;
-                page->present(pageFor(result.html, result.generation, m_padding), result.generation);
+                m_restoring = true;
+                page->present(pageFor(result.html, result.generation, m_padding, m_appearance), result.generation);
             }
         }
         startPending();
@@ -178,6 +193,7 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
             if (!guard || guard->m_closed || !guard->m_session || guard->m_session->isClosing()
                 || generation != guard->m_generation || !currentRevision(guard->m_session, revision) || !html.contains(marker)) return;
             guard->m_displayedRevision = revision;
+            guard->restoreReadingPosition(guard->m_scroll);
             emit guard->previewReady(revision);
         });
     });
@@ -190,6 +206,20 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
         if (!m_closed && m_session && !m_session->isClosing()) emit previewError(QStringLiteral("预览进程已停止，请重新生成预览"));
     });
     refresh();
+}
+
+void MarkdownPreview::restoreReadingPosition(const QPointF &position) {
+    if (m_closed || !std::isfinite(position.x()) || !std::isfinite(position.y())) return;
+    m_scroll = QPointF(qBound(0.0, position.x(), 10000000.0), qBound(0.0, position.y(), 10000000.0));
+    m_restoring = true;
+    // Fixed application-owned code in an isolated world; no document text or
+    // URL is interpolated. MainWorld scripts, resources and navigation stay off.
+    const auto script = QStringLiteral("window.scrollTo(%1,%2)").arg(qRound(m_scroll.x())).arg(qRound(m_scroll.y()));
+    const auto generation = m_generation;
+    const QPointer<MarkdownPreview> guard(this);
+    m_view->page()->runJavaScript(script, QWebEngineScript::ApplicationWorld, [guard, generation](const QVariant &) {
+        if (guard && !guard->m_closed && generation == guard->m_generation) guard->m_restoring = false;
+    });
 }
 
 MarkdownPreview::~MarkdownPreview() {

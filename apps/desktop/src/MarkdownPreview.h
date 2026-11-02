@@ -3,23 +3,27 @@
 #include <QByteArray>
 #include <QFutureWatcher>
 #include <QPointer>
+#include <QPointF>
 #include <QWidget>
 
 class QWebEngineView;
 
 namespace xdnote {
 class DocumentSession;
+class Appearance;
 struct RenderResult { QByteArray html; QString error; quint64 generation = 0; quint64 revision = 0; };
 
 class MarkdownPreview final : public QWidget {
     Q_OBJECT
 public:
-    explicit MarkdownPreview(DocumentSession *session, QWidget *parent = nullptr, int padding = 24);
+    explicit MarkdownPreview(DocumentSession *session, QWidget *parent = nullptr, int padding = 24, Appearance *appearance = nullptr);
     ~MarkdownPreview() override;
     QWebEngineView *view() const { return m_view; }
     quint64 requestedGeneration() const { return m_generation; }
     quint64 displayedRevision() const { return m_displayedRevision; }
     void refresh();
+    QPointF readingPosition() const { return m_scroll; }
+    void restoreReadingPosition(const QPointF &position);
 signals:
     void previewReady(quint64 revision);
     void previewError(const QString &message);
@@ -38,5 +42,8 @@ private:
     bool m_running = false;
     bool m_closed = false;
     int m_padding = 24;
+    QPointer<Appearance> m_appearance;
+    QPointF m_scroll;
+    bool m_restoring = false;
 };
 }

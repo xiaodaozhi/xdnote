@@ -2,6 +2,8 @@
 #include "Utf8Text.h"
 #include "DocumentSession.h"
 #include "VisualTokens.h"
+#include "Appearance.h"
+#include "SharedWidgets.h"
 
 #include <QAccessibleWidget>
 #include <QColor>
@@ -147,8 +149,8 @@ void SourceEditor::installAccessibility() {
     });
 }
 
-SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
-    : ScintillaEditBase(parent), m_session(session) {
+SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent, Appearance *appearance)
+    : ScintillaEditBase(parent), m_appearance(appearance ? appearance : new Appearance(this)), m_session(session) {
     Q_ASSERT(session);
     session->attach(this);
     setObjectName(QStringLiteral("sourceEditor"));
@@ -170,21 +172,10 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
     // Scintilla's public size API is in points; shared tokens are logical pixels.
     const qreal points = source.value(QStringLiteral("size")).toDouble() * 72.0 / logicalDpiY();
     send(SCI_STYLESETSIZEFRACTIONAL, STYLE_DEFAULT, qRound(points * 100));
-    const auto colors = visualTokens().value(QStringLiteral("themes")).toObject().value(QStringLiteral("light")).toObject();
-    const auto colorRef = [](const QString &value) {
-        const QColor color(value);
-        return color.red() | (color.green() << 8) | (color.blue() << 16);
-    };
-    send(SCI_STYLESETFORE, STYLE_DEFAULT, colorRef(colors.value(QStringLiteral("text")).toString()));
-    send(SCI_STYLESETBACK, STYLE_DEFAULT, colorRef(colors.value(QStringLiteral("background")).toString()));
-    send(SCI_STYLECLEARALL);
-    send(SCI_STYLESETFORE, STYLE_LINENUMBER, colorRef(colors.value(QStringLiteral("textSecondary")).toString()));
-    send(SCI_STYLESETBACK, STYLE_LINENUMBER, colorRef(colors.value(QStringLiteral("sidebar")).toString()));
+    connect(m_appearance, &Appearance::changed, this, &SourceEditor::applyAppearance);
+    applyAppearance();
     send(SCI_SETMARGINLEFT, 0, 16);
-    const int extra = qMax(0, qRound(source.value("size").toDouble() * source.value("lineHeight").toDouble())
-        - int(send(SCI_TEXTHEIGHT, 0)));
-    send(SCI_SETEXTRAASCENT, extra / 2);
-    send(SCI_SETEXTRADESCENT, extra - extra / 2);
+    setTextZoom(100);
     connect(session, &DocumentSession::stateChanged, this, [this] {
         send(SCI_SETREADONLY, !m_session || m_session->isReadOnly());
         QAccessible::State changed;
@@ -194,11 +185,65 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent)
         QAccessible::updateAccessibility(&event);
     });
     connect(session, &DocumentSession::changed, this, [this] {
+        restyle();
         QAccessibleValueChangeEvent event(this, contents(this));
         QAccessible::updateAccessibility(&event);
     }, Qt::QueuedConnection);
     connect(session, &QObject::destroyed, this, [this] { send(SCI_SETREADONLY, true); });
     send(SCI_SETREADONLY, session->isReadOnly());
+}
+
+void SourceEditor::setTextZoom(int percent) {
+    m_textZoom = qBound(50, percent, 200);
+    const auto source = visualTokens().value("typography").toObject().value("source").toObject();
+    const auto size = source.value("size").toDouble() * m_textZoom / 100.0;
+    const auto points = qRound(size * 72.0 / logicalDpiY() * 100);
+    for (const auto style : {STYLE_DEFAULT, STYLE_LINENUMBER, 0, 1, 2, 3}) send(SCI_STYLESETSIZEFRACTIONAL, uptr_t(style), points);
+    send(SCI_SETEXTRAASCENT, 0); send(SCI_SETEXTRADESCENT, 0);
+    const int extra = qMax(0, qRound(size * source.value("lineHeight").toDouble()) - int(send(SCI_TEXTHEIGHT, 0)));
+    send(SCI_SETEXTRAASCENT, extra / 2); send(SCI_SETEXTRADESCENT, extra - extra / 2);
+}
+
+void SourceEditor::applyAppearance() {
+    setStyleSheet(themedScrollBars(m_appearance));
+    const auto ref = [](const QColor &color) { return color.red() | (color.green() << 8) | (color.blue() << 16); };
+    send(SCI_STYLESETFORE, STYLE_DEFAULT, ref(m_appearance->color("text")));
+    send(SCI_STYLESETBACK, STYLE_DEFAULT, ref(m_appearance->color("background")));
+    send(SCI_STYLECLEARALL);
+    send(SCI_STYLESETFORE, STYLE_LINENUMBER, ref(m_appearance->color("textSecondary")));
+    send(SCI_STYLESETBACK, STYLE_LINENUMBER, ref(m_appearance->color("background")));
+    send(SCI_STYLESETFORE, 1, ref(m_appearance->color("syntaxHeading"))); send(SCI_STYLESETBOLD, 1, true);
+    send(SCI_STYLESETFORE, 2, ref(m_appearance->color("syntaxCode")));
+    send(SCI_STYLESETFORE, 3, ref(m_appearance->color("textSecondary")));
+    send(SCI_SETCARETFORE, ref(m_appearance->color("text")));
+    send(SCI_SETSELBACK, true, ref(m_appearance->accentColor("soft")));
+    send(SCI_SETSELFORE, true, ref(m_appearance->color("text")));
+    restyle();
+}
+void SourceEditor::restyle() {
+    if (!m_session || m_session->isClosing()) return;
+    const auto snapshot = m_session->snapshot();
+    if (snapshot.result != EditResult::Applied) return;
+    const auto style = [this](qsizetype first, qsizetype length, int number) {
+        send(SCI_STARTSTYLING, uptr_t(first)); send(SCI_SETSTYLING, uptr_t(length), number);
+    };
+    style(0, snapshot.utf8.size(), 0);
+    qsizetype offset = 0; bool fenced = false;
+    for (const auto &line : snapshot.utf8.split('\n')) {
+        const auto trimmed = line.trimmed();
+        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) { style(offset, line.size(), 2); fenced = !fenced; }
+        else if (fenced) style(offset, line.size(), 2);
+        else {
+            int hashes = 0; while (hashes < line.size() && hashes < 7 && line[hashes] == '#') ++hashes;
+            if (hashes > 0 && hashes <= 6 && line.size() > hashes && line[hashes] == ' ') style(offset, line.size(), 1);
+            else if (line.startsWith('>')) style(offset, 1, 3);
+            for (qsizetype start = line.indexOf('`'); start >= 0;) {
+                const auto end = line.indexOf('`', start + 1); if (end < 0) break;
+                style(offset + start, end - start + 1, 2); start = line.indexOf('`', end + 1);
+            }
+        }
+        offset += line.size() + 1;
+    }
 }
 
 bool SourceEditor::compositionPending() const {
