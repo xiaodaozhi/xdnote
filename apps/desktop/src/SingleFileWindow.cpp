@@ -147,9 +147,9 @@ public:
         auto refresh = [this] { m_logo.load(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/logo-%1.svg").arg(m_appearance->scheme())); update(); };
         connect(appearance, &Appearance::changed, this, refresh); refresh();
 #ifdef Q_OS_WIN
-        auto *row = new QHBoxLayout(this); row->setContentsMargins(0, 8, 8, 8); row->setSpacing(4); row->addStretch();
+        auto *row = new QHBoxLayout(this); row->setContentsMargins(0, 0, 0, 0); row->setSpacing(0); row->addStretch();
         auto add = [&](const QString &name, const QString &label, const QString &icon, auto callback) {
-            auto *button = new SharedButton({}, name, appearance, this); button->setFixedWidth(40); button->setSymbol(icon); button->setAccessibleName(label); button->setToolTip(label); row->addWidget(button); connect(button, &QPushButton::clicked, this, callback); return button;
+            auto *button = new SharedButton({}, name, appearance, this); button->setProperty("captionButton", true); button->setFixedSize(height(), height()); button->setSymbol(icon); button->setAccessibleName(label); button->setToolTip(label); row->addWidget(button); connect(button, &QPushButton::clicked, this, callback); return button;
         };
         add("captionMinimize", QStringLiteral("最小化"), "minimize", [this] { window()->showMinimized(); });
         m_maximize = add("captionMaximize", QStringLiteral("最大化或还原"), "maximize", [this] { window()->isMaximized() ? window()->showNormal() : window()->showMaximized(); });
@@ -162,7 +162,7 @@ public:
     void updateWindowState() { if (m_maximize) { m_maximize->setSymbol(window()->isMaximized() ? "restore-window" : "maximize"); m_maximize->setAccessibleName(window()->isMaximized() ? QStringLiteral("还原窗口") : QStringLiteral("最大化窗口")); } }
 protected:
     void paintEvent(QPaintEvent *) override {
-        QPainter painter(this); painter.fillRect(rect(), m_appearance->color("sidebar"));
+        QPainter painter(this); painter.setRenderHint(QPainter::Antialiasing); painter.fillRect(rect(), m_appearance->color("sidebar"));
         const qreal height = visualTokens().value("brand").toObject().value("displayHeight").toDouble();
         const qreal width = height * m_logo.viewBoxF().width() / m_logo.viewBoxF().height();
         m_logo.render(&painter, QRectF(16, (this->height() - height) / 2, width, height));
@@ -172,7 +172,7 @@ protected:
         const auto ink = metrics.tightBoundingRect(title);
         painter.setFont(font()); painter.setPen(m_appearance->color("text"));
         painter.drawText(QPointF(left, this->height() / 2.0 - ink.center().y()), title);
-        if (m_dirty) { painter.setPen(Qt::NoPen); painter.setBrush(m_appearance->semantic("warning")); painter.drawEllipse(QPointF(left + metrics.horizontalAdvance(title) + 12, this->height() / 2.0), 3, 3); }
+        if (m_dirty) { painter.setRenderHint(QPainter::Antialiasing); painter.setPen(Qt::NoPen); painter.setBrush(m_appearance->semantic("warning")); painter.drawEllipse(QPointF(left + metrics.horizontalAdvance(title) + 12, this->height() / 2.0), 3, 3); }
         painter.setPen(m_appearance->color("border")); painter.drawLine(0, this->height() - 1, this->width(), this->height() - 1);
     }
     void mousePressEvent(QMouseEvent *event) override { if (event->button() == Qt::LeftButton && window()->windowHandle()) window()->windowHandle()->startSystemMove(); }
@@ -181,7 +181,7 @@ protected:
 private:
     int captionWidth() const {
 #ifdef Q_OS_WIN
-        return 140;
+        return 3 * geometryTokens().value("titlebarHeight").toInt();
 #else
         return 0;
 #endif
@@ -196,12 +196,14 @@ private:
 void SingleFileWindow::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
 #ifdef Q_OS_WIN
-    if (m_frameInitialized) return;
-    m_frameInitialized = true;
+    if (QGuiApplication::platformName() != "windows") return;
+    if (m_frameInitialized) { QTimer::singleShot(0, this, &SingleFileWindow::applyNativeAppearance); return; }
     const auto hwnd = reinterpret_cast<HWND>(winId());
+    DWORD process = 0; if (GetWindowThreadProcessId(hwnd, &process) != GetCurrentThreadId() || process != GetCurrentProcessId()) return;
+    m_frameInitialized = true;
     RECT before{}, outer{}; GetClientRect(hwnd, &before); GetWindowRect(hwnd, &outer);
     const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE);
-    SetWindowLongPtrW(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+    SetWindowLongPtrW(hwnd, GWL_STYLE, (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW);
     const MARGINS margins{1, 1, 1, 1}; DwmExtendFrameIntoClientArea(hwnd, &margins);
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     RECT after{}; GetClientRect(hwnd, &after);
@@ -209,6 +211,24 @@ void SingleFileWindow::showEvent(QShowEvent *event) {
     // events must never add this native-frame delta to normal client geometry.
     SetWindowPos(hwnd, nullptr, 0, 0, outer.right - outer.left + before.right - after.right,
                  outer.bottom - outer.top + before.bottom - after.bottom, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    QTimer::singleShot(0, this, &SingleFileWindow::applyNativeAppearance);
+#endif
+}
+void SingleFileWindow::applyNativeAppearance() {
+#ifdef Q_OS_WIN
+    if (!m_frameInitialized || QGuiApplication::platformName() != "windows") return;
+    const auto hwnd = reinterpret_cast<HWND>(internalWinId()); DWORD process = 0;
+    if (GetWindowThreadProcessId(hwnd, &process) != GetCurrentThreadId() || process != GetCurrentProcessId()) return;
+    if (!isFullScreen()) {
+        const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE), desired = (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW;
+        if (style != desired) { SetWindowLongPtrW(hwnd, GWL_STYLE, desired); SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED); }
+    }
+    const auto policy = DWMNCRP_ENABLED; DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
+    const BOOL dark = m_appearance->dark(); DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
+    // Public Windows attributes; unsupported attributes safely fail on Windows 10.
+    const DWORD round = 2; DwmSetWindowAttribute(hwnd, 33, &round, sizeof(round));
+    const auto border = m_appearance->color("border"); const COLORREF color = RGB(border.red(), border.green(), border.blue()); DwmSetWindowAttribute(hwnd, 34, &color, sizeof(color));
+    const MARGINS margins{1, 1, 1, 1}; DwmExtendFrameIntoClientArea(hwnd, &margins);
 #endif
 }
 bool SingleFileWindow::nativeEvent(const QByteArray &type, void *message, qintptr *result) {
@@ -252,6 +272,9 @@ bool SingleFileWindow::nativeEvent(const QByteArray &type, void *message, qintpt
     }
     if (msg->message == WM_NCHITTEST) {
         RECT outer{}; GetWindowRect(hwnd, &outer); const int x = GET_X_LPARAM(msg->lParam), y = GET_Y_LPARAM(msg->lParam);
+        POINT point{x, y}; ScreenToClient(hwnd, &point); const qreal scale = devicePixelRatioF();
+        const QPoint logical(qRound(point.x / scale), qRound(point.y / scale)); auto *child = childAt(logical);
+        if (child && child->property("captionButton").toBool()) { *result = child->objectName() == "captionMaximize" ? HTMAXBUTTON : HTCLIENT; return true; }
         const UINT dpi = GetDpiForWindow(hwnd);
         const int bx = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
         const int by = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
@@ -259,21 +282,19 @@ bool SingleFileWindow::nativeEvent(const QByteArray &type, void *message, qintpt
             const bool left = x < outer.left + bx, right = x >= outer.right - bx, top = y < outer.top + by, bottom = y >= outer.bottom - by;
             if (top || bottom || left || right) { *result = top ? (left ? HTTOPLEFT : right ? HTTOPRIGHT : HTTOP) : bottom ? (left ? HTBOTTOMLEFT : right ? HTBOTTOMRIGHT : HTBOTTOM) : left ? HTLEFT : HTRIGHT; return true; }
         }
-        POINT point{x, y}; ScreenToClient(hwnd, &point); const qreal scale = devicePixelRatioF();
-        const QPoint logical(qRound(point.x / scale), qRound(point.y / scale));
         if (m_header && m_header->geometry().contains(logical)) {
-            auto *child = childAt(logical);
             if (child && child->objectName() == "captionMaximize") { *result = HTMAXBUTTON; return true; }
             if (!qobject_cast<QPushButton *>(child)) { *result = HTCAPTION; return true; }
         }
     }
     if (msg->message == WM_NCMOUSEMOVE || msg->message == WM_NCMOUSELEAVE) {
         if (auto *button = findChild<SharedButton *>("captionMaximize")) {
-            button->setAttribute(Qt::WA_UnderMouse, msg->message == WM_NCMOUSEMOVE && msg->wParam == HTMAXBUTTON); button->update();
+            button->setNativeHover(msg->message == WM_NCMOUSEMOVE && msg->wParam == HTMAXBUTTON);
             if (msg->message == WM_NCMOUSEMOVE) { TRACKMOUSEEVENT tracking{sizeof(TRACKMOUSEEVENT), TME_LEAVE | TME_NONCLIENT, hwnd, 0}; TrackMouseEvent(&tracking); }
         }
     }
     if (msg->message == WM_NCLBUTTONDOWN && msg->wParam == HTMAXBUTTON) {
+        InputModality::forApplication()->clear();
         m_nativeMaxPressed = true; if (auto *button = findChild<SharedButton *>("captionMaximize")) { button->setDown(true); button->update(); }
         *result = 0; return true;
     }
@@ -408,7 +429,7 @@ void SingleFileWindow::applyAppearance() {
     for (auto *item : findChildren<QAction *>()) if (symbols.contains(item->objectName())) item->setIcon(themedIcon(symbols.value(item->objectName()), m_appearance->color("text")));
     for (auto *menu : findChildren<QMenu *>()) if (menu->objectName() == "appearanceMenu" || menu->objectName() == "accentMenu") menu->menuAction()->setIcon(themedIcon("palette", m_appearance->color("text")));
 #ifdef Q_OS_WIN
-    if (m_frameInitialized) { const BOOL dark = m_appearance->dark(); DwmSetWindowAttribute(reinterpret_cast<HWND>(winId()), 20, &dark, sizeof(dark)); }
+    if (m_frameInitialized) applyNativeAppearance();
 #endif
     update();
 }
@@ -611,7 +632,7 @@ bool SingleFileWindow::eventFilter(QObject *target, QEvent *event) {
         if (!urls.isEmpty() && urls.size() <= 16) { for (const auto &url : urls) if (url.isLocalFile()) emit openRequested(url.toLocalFile()); drop->acceptProposedAction(); return true; }
     }
     if (widget == this && event->type() == QEvent::WindowActivate && m_document) { m_dismissedNotice.clear(); m_document->checkExternal(); }
-    if (widget == this && event->type() == QEvent::WindowStateChange) m_header->updateWindowState();
+    if (widget == this && event->type() == QEvent::WindowStateChange) { m_header->updateWindowState(); QTimer::singleShot(0, this, &SingleFileWindow::applyNativeAppearance); }
     if (widget == this && (event->type() == QEvent::Resize || event->type() == QEvent::ScreenChangeInternal)) QTimer::singleShot(0, this, &SingleFileWindow::updateState);
     return QWidget::eventFilter(target, event);
 }

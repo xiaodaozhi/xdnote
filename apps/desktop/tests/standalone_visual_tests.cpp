@@ -34,6 +34,10 @@
 #include <QGlyphRun>
 #include <QRawFont>
 #include <QFontInfo>
+#include <QPainter>
+#ifdef Q_OS_WIN
+#include <dwmapi.h>
+#endif
 #include <QWebEngineView>
 #include <memory>
 
@@ -100,6 +104,19 @@ double inkCenter(const QImage &image, qreal dpr, int firstX, int lastX, QColor b
 class StandaloneVisualTests final : public QObject {
     Q_OBJECT
 private slots:
+    void popupShadowIsSoftSymmetricAndUnclipped() {
+        for (const qreal dpr : {1.0, 1.5, 2.0, 3.0}) {
+            QImage image(QSize(248 * dpr, 188 * dpr), QImage::Format_ARGB32_Premultiplied); image.setDevicePixelRatio(dpr); image.fill(Qt::transparent);
+            { QPainter painter(&image); paintPopupShell(painter, QRectF(24, 24, 200, 140), Qt::white, QColor("#DDE2E8"), 12, 18); }
+            for (int x = 0; x < image.width(); ++x) { QVERIFY(image.pixelColor(x, 0).alpha() <= 1); QVERIFY(image.pixelColor(x, image.height() - 1).alpha() <= 1); }
+            for (int y = 0; y < image.height(); ++y) { QVERIFY(image.pixelColor(0, y).alpha() <= 1); QVERIFY(image.pixelColor(image.width() - 1, y).alpha() <= 1); }
+            int previous = 255;
+            for (int distance = 2; distance < 20; ++distance) {
+                const int left = qRound(24 * dpr) - qRound(distance * dpr), right = qRound(224 * dpr) + qRound(distance * dpr) - 1, y = qRound(96 * dpr);
+                const int alpha = image.pixelColor(left, y).alpha(); QVERIFY(alpha <= 60); QVERIFY(alpha <= previous); previous = alpha; QVERIFY(qAbs(alpha - image.pixelColor(right, y).alpha()) <= 2);
+            }
+        }
+    }
     void platformFontsResolveChineseSans() {
         FileManager manager(nullptr, {}, false); Window owned{new SingleFileWindow(&manager)};
         const QList<QFont> fonts{uiFont(), sourceFont(), owned.value->findChild<SharedButton *>("saveButton")->font(), owned.value->findChild<QLabel *>("documentNotice")->font()};
@@ -357,13 +374,23 @@ private slots:
     void windowsSingleCaptionAndNativeHitRegions() {
 #ifdef Q_OS_WIN
         if (QGuiApplication::platformName() != "windows") QSKIP("Requires the Windows platform plugin");
-        FileManager manager(nullptr, {}, false); Window owned{new SingleFileWindow(&manager)}; auto *window = owned.value.data(); window->show(); QTest::qWait(100);
+        FileManager manager(nullptr, {}, false); Window owned{new SingleFileWindow(&manager)}; auto *window = owned.value.data(); QCOMPARE(window->size(), QSize(800, 820)); window->show(); QTest::qWait(100);
         auto hwnd = reinterpret_cast<HWND>(window->winId()); RECT outer{}, client{}; QVERIFY(GetWindowRect(hwnd, &outer)); QVERIFY(GetClientRect(hwnd, &client)); POINT origin{}; QVERIFY(ClientToScreen(hwnd, &origin));
         QVERIFY2(origin.y - outer.top <= 2, "Native caption must not be added above the 48 logical pixel application titlebar");
-        QCOMPARE(window->findChild<QWidget *>("documentHeader")->height(), 48); QCOMPARE(window->size(), QSize(800, 820));
+        QCOMPARE(window->findChild<QWidget *>("documentHeader")->height(), 48); QVERIFY(window->width() <= 800 && window->width() >= 560); QVERIFY(window->height() <= 820 && window->height() >= 480);
+        const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE); QVERIFY((style & WS_CAPTION) == WS_CAPTION); QVERIFY(style & WS_THICKFRAME); QVERIFY(!(style & WS_POPUP));
+        BOOL composition = FALSE; if (SUCCEEDED(DwmIsCompositionEnabled(&composition)) && composition) { BOOL enabled = FALSE; QVERIFY(SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_NCRENDERING_ENABLED, &enabled, sizeof(enabled)))); QVERIFY(enabled); }
+        DWORD corner = 0; if (SUCCEEDED(DwmGetWindowAttribute(hwnd, 33, &corner, sizeof(corner)))) QCOMPARE(corner, DWORD(2));
         auto hit = [&](QPoint point) { const qreal dpr = window->devicePixelRatioF(); POINT native{qRound(point.x() * dpr), qRound(point.y() * dpr)}; ClientToScreen(hwnd, &native); return SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(native.x, native.y)); };
         QCOMPARE(hit(QPoint(180, 24)), LRESULT(HTCAPTION)); auto *maximize = window->findChild<SharedButton *>("captionMaximize"); QVERIFY(maximize); QCOMPARE(hit(maximize->mapTo(window, maximize->rect().center())), LRESULT(HTMAXBUTTON));
         auto *close = window->findChild<SharedButton *>("captionClose"); QVERIFY(close); QCOMPARE(hit(close->mapTo(window, close->rect().center())), LRESULT(HTCLIENT));
+        auto *header = window->findChild<QWidget *>("documentHeader"); auto *minimize = window->findChild<SharedButton *>("captionMinimize"); QVERIFY(minimize);
+        for (auto *button : {minimize, maximize, close}) { QCOMPARE(button->size(), QSize(48, 48)); QCOMPARE(button->mapTo(header, QPoint()).y(), 0); }
+        QCOMPARE(close->mapTo(header, QPoint(close->width(), 0)).x(), header->width()); QCOMPARE(minimize->x() + 48, maximize->x()); QCOMPARE(maximize->x() + 48, close->x());
+        for (auto *button : {minimize, maximize, close}) {
+            button->setNativeHover(false); const auto normal = button->grab().toImage(); button->setNativeHover(true); const auto hover = button->grab().toImage(); QVERIFY(normal != hover); QCOMPARE(hover.pixelColor(2, 2).rgb(), hover.pixelColor(2, hover.height() / 2).rgb()); button->setNativeHover(false);
+        }
+        POINT hoverPoint{0, 0}; ClientToScreen(hwnd, &hoverPoint); SendMessageW(hwnd, WM_NCMOUSEMOVE, HTMAXBUTTON, MAKELPARAM(hoverPoint.x, hoverPoint.y)); const auto hover = maximize->grab().toImage(); SendMessageW(hwnd, WM_NCMOUSELEAVE, 0, 0); QVERIFY(hover != maximize->grab().toImage());
         const auto initial = window->size(); const qreal dpr = window->devicePixelRatioF(); QCOMPARE(client.right, qRound(initial.width() * dpr)); QCOMPARE(client.bottom, qRound(initial.height() * dpr));
         window->showMaximized(); QTRY_VERIFY(window->isMaximized()); MONITORINFO monitor{sizeof(MONITORINFO)}; QVERIFY(GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor)); POINT maximizedOrigin{}; QVERIFY(ClientToScreen(hwnd, &maximizedOrigin)); RECT maximizedClient{}; QVERIFY(GetClientRect(hwnd, &maximizedClient));
         QVERIFY(qAbs(maximizedOrigin.x - monitor.rcWork.left) <= 2); QVERIFY(qAbs(maximizedOrigin.y - monitor.rcWork.top) <= 2); QVERIFY(qAbs(maximizedClient.right - (monitor.rcWork.right - monitor.rcWork.left)) <= 2); QVERIFY(qAbs(maximizedClient.bottom - (monitor.rcWork.bottom - monitor.rcWork.top)) <= 2);

@@ -56,6 +56,7 @@ private:
     void applyAppearance();
     void updateCaret();
     void showSaveError();
+    void applyNativeAppearance();
     FileManager *m_manager;
     Appearance *m_appearance;
     QPointer<FileDocument> m_document;
