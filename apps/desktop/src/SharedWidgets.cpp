@@ -20,6 +20,7 @@ public:
     SvgIcon(QByteArray svg) : m_svg(std::move(svg)) {}
     QIconEngine *clone() const override { return new SvgIcon(m_svg); }
     void paint(QPainter *painter, const QRect &rect, QIcon::Mode, QIcon::State) override { QSvgRenderer renderer(m_svg); renderer.render(painter, QRectF(rect)); }
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override { return scaledPixmap(size, mode, state, 1.0); }
     QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override {
         QPixmap result(size * scale); result.setDevicePixelRatio(scale); result.fill(Qt::transparent);
         QPainter painter(&result); paint(&painter, QRect(QPoint(), size), mode, state); return result;

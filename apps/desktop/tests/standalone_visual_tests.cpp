@@ -77,6 +77,17 @@ double inkCenter(const QImage &image, qreal dpr, int firstX, int lastX, QColor b
 class StandaloneVisualTests final : public QObject {
     Q_OBJECT
 private slots:
+    void vectorIconPixmapTransparency() {
+        for (const auto &name : {"document", "clock", "warning", "check-circle", "lock", "status-dirty"}) for (const qreal dpr : {1.0, 1.5, 2.0}) {
+            const auto pixmap = themedIcon(name, QColor("#374151")).pixmap(QSize(16, 16), dpr);
+            QVERIFY2(!pixmap.isNull(), name); QCOMPARE(pixmap.devicePixelRatioF(), dpr);
+            const auto pixels = pixmap.toImage(); QCOMPARE(pixels.size(), QSize(qRound(16 * dpr), qRound(16 * dpr)));
+            for (const auto &corner : {QPoint(0, 0), QPoint(pixels.width() - 1, 0), QPoint(0, pixels.height() - 1), QPoint(pixels.width() - 1, pixels.height() - 1)})
+                QCOMPARE(pixels.pixelColor(corner).alpha(), 0);
+            int opaque = 0; for (int y = 0; y < pixels.height(); ++y) for (int x = 0; x < pixels.width(); ++x) if (pixels.pixelColor(x, y).alpha() > 200) ++opaque;
+            QVERIFY2(opaque > 10, name);
+        }
+    }
     void appearanceStoragePreservesUnknownFieldsAndFailure() {
         QTemporaryDir temporary; const auto path = temporary.filePath("settings.json");
         QVERIFY(fileFixtures::write(path, R"({"schemaVersion":1,"other":{"keep":42},"appearance":{"theme":"light","accent":"cobalt","future":true}})"));
