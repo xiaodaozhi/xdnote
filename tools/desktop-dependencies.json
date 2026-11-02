@@ -8,6 +8,14 @@
     "py7zr": "1.0.0"
   },
   "rust": {"toolchain": "1.99.0"},
+  "compatibilityProfiles": {
+    "msvc2019": {
+      "host": "windows",
+      "qtVersion": "6.8.3",
+      "minimumMsvc": 1929,
+      "distributionInput": false
+    }
+  },
   "scintilla": {
     "version": "5.6.7",
     "url": "https://www.scintilla.org/scite567.tgz",

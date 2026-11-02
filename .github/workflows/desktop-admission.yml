@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   desktop:
-    name: Desktop (${{ matrix.os }})
+    name: Desktop (${{ matrix.label || matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     strategy:
@@ -34,6 +34,11 @@ jobs:
           - os: macos-15
             host: mac
             qt-arch: clang_64
+          - os: windows-2022
+            host: windows
+            qt-arch: win64_msvc2022_64
+            profile: msvc2019
+            label: windows-2022-msvc2019
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,9 +58,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 libnss3 libasound2 libxdamage1 libxcomposite1 libxrandr2 libxtst6 libdrm2 libgbm1 fonts-noto-cjk xvfb
       - name: Prepare pinned Qt SDK with checksums
-        run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }}
+        run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }} --profile ${{ matrix.profile || 'default' }}
       - name: Prepare pinned source dependencies
-        run: python scripts/desktop.py prepare --download
+        run: python scripts/desktop.py prepare --download --profile ${{ matrix.profile || 'default' }}
       - name: Check build entry point guards
         run: python -m unittest discover -s scripts/tests -v
       - name: Build desktop admission (Windows)
@@ -64,7 +69,7 @@ jobs:
         run: |
           $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
-          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat" --profile ${{ matrix.profile || 'default' }}
       - name: Build desktop admission (Unix)
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
@@ -76,18 +81,19 @@ jobs:
         env:
           QSG_RHI_PREFER_SOFTWARE_RENDERER: ${{ runner.os == 'Windows' && '1' || '' }}
           QSG_INFO: '1'
-        run: python scripts/desktop.py test
+        run: python scripts/desktop.py test --profile ${{ matrix.profile || 'default' }}
       - name: Preserve diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: desktop-admission-${{ matrix.os }}
+          name: desktop-admission-${{ matrix.label || matrix.os }}
           path: |
-            build/desktop-admission/*.log
-            build/desktop-admission/desktop-qtest.txt
-            build/desktop-admission/Testing/Temporary/LastTest.log
-            build/desktop-admission/build-identity.json
-            build/desktop-admission/evidence/
+            build/desktop-*/*.log
+            build/desktop-*/desktop-qtest.txt
+            build/desktop-*/Testing/Temporary/LastTest.log
+            build/desktop-*/build-identity.json
+            build/desktop-*/native-toolchain.json
+            build/desktop-*/evidence/
           if-no-files-found: ignore
           retention-days: 7
 

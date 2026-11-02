@@ -13,6 +13,27 @@ python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 ```
 
+## Windows 本机 MSVC 2019 配置
+
+本机使用现有 MSVC 2019 v142／14.29 x64 工具，不要求另装 Visual Studio 2022。显式选择 `--profile msvc2019`，该配置固定 Qt 6.8.3，沿用同一源码、Rust 版本及全部回归；默认配置继续使用 Qt 6.11.3。两个配置的 SDK、CMake 目录和 Rust 测试产物分开，不修改 Qt 头文件或伪装编译器版本。
+
+```text
+python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64 --profile msvc2019
+python scripts/desktop.py prepare --download --profile msvc2019
+python scripts/desktop.py doctor --profile msvc2019
+python scripts/desktop.py build --profile msvc2019
+python scripts/desktop.py test --profile msvc2019
+python scripts/desktop.py run --profile msvc2019
+```
+
+入口优先发现已有的 2019 Build Tools，也可使用已安装 v142 工具集的 2022 宿主；两者都显式调用 `vcvars64.bat -vcvars_ver=14.29`，CMake 必须实际识别到 MSVC 19.29。可用 `--vcvars` 指定安装位置；`--vcvars-version` 只选择已经安装的工具，不负责安装。默认输出为 `build/desktop-msvc2019/`，SDK 为 `build/Qt/6.8.3/msvc2022_64/`，目录名中的 `msvc2022_64` 是上游预编译 SDK 标识，不是本机应用编译器的证明。
+
+Qt 6.8.3 的[编译器检查](https://github.com/qt/qtbase/blob/v6.8.3/src/corelib/global/qcompilerdetection.h)允许此编译器，而[官方支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)仍列 MSVC 2022；[微软二进制兼容说明](https://learn.microsoft.com/en-us/cpp/porting/binary-compat-2015-2017)也对链接器、输入工具链及运行库设有限制。因此本配置只记录实际验证的本地兼容结果，不将头文件可编译等同于上游支持或任意 ABI 兼容。不得用于发行；默认工具链的四平台检查继续执行。Windows CI 另用实际 v142／14.29 执行兼容回归，失败同样阻止桌面汇总通过。
+
+构建身份记录配置、SDK 前缀、Qt 版本及 CMake 实际编译器版本。测试和运行同时核对配置、SDK 和源码摘要，不能切换参数后直接启动另一个目录中的旧产物；变更入口或源码后先重新构建。
+
+入口合并 Windows 工具链环境时统一变量名，避免 `Path` 与 `PATH` 并存而使子进程找不到 Qt DLL。有控制台时，入口在命令期间把输入／输出代码页共同设为 UTF-8，结束后恢复，确保 CMake 对中文 `/showIncludes` 前缀的解码与 Ninja 收到的字节一致。已有配置若记录了乱码前缀，使用 `build --fresh --profile msvc2019` 重新探测；不会改变系统或应用语言。
+
 ## 分阶段入口
 
 先准备 Qt，按当前系统选择一行。SDK 进入忽略的 `build/Qt/`；安装脚本保留 aqt 的元数据及二进制摘要校验。Windows 6.11.3 按编译器分目录的适配限定在该固定版本，不使用忽略摘要选项。
