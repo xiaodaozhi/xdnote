@@ -38,6 +38,9 @@ QIcon themedIcon(const QString &name, const QColor &color) {
 SharedButton::SharedButton(const QString &text, const QString &name, Appearance *appearance, QWidget *parent)
     : QPushButton(text, parent), m_appearance(appearance) {
     setObjectName(name); setFocusPolicy(Qt::StrongFocus); setAutoDefault(false);
+    // Native styles can supply a class-specific button font instead of the
+    // parent's explicit logical UI size (notably on macOS).
+    if (parent) setFont(parent->font());
     setFixedHeight(control("height")); setMinimumWidth(control("iconButtonHit"));
     connect(appearance, &Appearance::changed, this, [this] { update(); });
     connect(InputModality::forApplication(), &InputModality::changed, this, [this] { update(); });

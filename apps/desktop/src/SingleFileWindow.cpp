@@ -90,6 +90,9 @@ int ask(SingleFileWindow *owner, const QString &name, const QString &title, cons
     layout->addSpacing(4); layout->addLayout(buttons); dialog.adjustSize();
     const int result = dialog.exec(); InputModality::forApplication()->clear();
     if (caller && caller->isVisible() && caller->isEnabled()) caller->setFocus(Qt::PopupFocusReason);
+    // Dialog teardown can perform another focus transition. Restore the target
+    // after teardown too, without forcing activation over another application.
+    QTimer::singleShot(0, owner, [caller] { if (caller && caller->isVisible() && caller->isEnabled()) caller->setFocus(Qt::PopupFocusReason); });
     return result;
 }
 }
@@ -159,7 +162,8 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
     m_menu = new SharedMenu(m_appearance, more); m_menu->setObjectName("documentMenu"); m_menu->setTitle(QStringLiteral("文档操作"));
     auto action = [this](const QString &text, const QString &name, QKeySequence shortcut, auto callback) {
         auto *item = m_menu->addAction(text); item->setObjectName(name); if (!shortcut.isEmpty()) item->setShortcut(shortcut);
-        addAction(item); connect(item, &QAction::triggered, this, callback); return item;
+        addAction(item); connect(item, &QAction::triggered, InputModality::forApplication(), &InputModality::clear);
+        connect(item, &QAction::triggered, this, callback); return item;
     };
     action(QStringLiteral("打开…"), "openAction", QKeySequence::Open, [this] { chooseOpen(); });
     m_saveAction = action(QStringLiteral("保存"), "saveAction", QKeySequence::Save, [this] { if (m_document && !m_document->save() && m_document->conflict()) resolveConflict(); });

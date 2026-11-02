@@ -215,7 +215,12 @@ private slots:
         });
         timer.start(); QTimer::singleShot(10000, &timer, [] { if (auto *dialog = qobject_cast<QDialog *>(qApp->activeModalWidget())) dialog->reject(); });
         QVERIFY(!owned.value->close()); QVERIFY(inspected); QVERIFY(owned.value->isVisible());
-        QCOMPARE(document->session()->snapshot().utf8, edited.utf8); QVERIFY(document->dirty()); QTRY_VERIFY(editor->hasFocus());
+        QCOMPARE(document->session()->snapshot().utf8, edited.utf8); QVERIFY(document->dirty());
+        QTRY_COMPARE(owned.value->focusWidget(), editor);
+        qInfo() << "dialog-return ownerActive=" << owned.value->isActiveWindow() << "logicalFocus=" << owned.value->focusWidget()->objectName();
+        // Xvfb has no window manager. Verify the stored target first, then
+        // synthesize Qt activation as in the other focus tests; no OS claim.
+        QApplication::setActiveWindow(owned.value); QTRY_VERIFY(editor->hasFocus());
         QCOMPARE(read(path), sample());
     }
     void menusModesLongPathsAndOpenFailure() {
@@ -225,6 +230,9 @@ private slots:
         QSignalSpy copied(window, &SingleFileWindow::copyPathRequested); window->findChild<QAction *>("copyPath")->trigger(); QCOMPARE(copied.count(), 1); QCOMPARE(copied.first().first().toString(), path);
         auto *readMode = window->findChild<SharedButton *>("readMode"), *editMode = window->findChild<SharedButton *>("editMode"); readMode->setFocus(Qt::OtherFocusReason); QTest::keyClick(readMode, Qt::Key_Right); QVERIFY(window->editing()); QVERIFY(editMode->isChecked()); QVERIFY(!editMode->keyboardOutline());
         QTest::mouseClick(readMode, Qt::LeftButton); QVERIFY(!window->editing());
+        window->findChild<SharedButton *>("fileLocation")->setFocus(Qt::OtherFocusReason); QTest::keyClick(window->findChild<SharedButton *>("fileLocation"), Qt::Key_Tab);
+        QTRY_VERIFY(readMode->hasFocus()); QVERIFY(readMode->keyboardOutline());
+        window->findChild<QAction *>("saveAction")->trigger(); QVERIFY(!readMode->keyboardOutline()); QVERIFY(readMode->hasFocus()); QTRY_VERIFY(!document->saving());
         auto *more = window->findChild<SharedButton *>("moreActions"); auto *menu = more->menu();
         QTimer::singleShot(100, menu, [menu] { QTest::keyClick(menu, Qt::Key_Escape); }); more->setFocus(Qt::OtherFocusReason); more->showMenu();
         QTRY_VERIFY(!menu->isVisible()); QTRY_VERIFY(more->hasFocus()); QVERIFY(!more->keyboardOutline());
