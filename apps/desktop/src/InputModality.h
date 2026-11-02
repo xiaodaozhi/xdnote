@@ -9,6 +9,7 @@ class InputModality final : public QObject {
 public:
     static InputModality *forApplication();
     bool keyboardNavigation() const { return m_keyboardNavigation; }
+    void clear();
 signals:
     void changed();
 protected:

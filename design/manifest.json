@@ -1569,8 +1569,8 @@
   "authoritySnapshots": [
     {
       "path": "docs/visual/tokens.json",
-      "bytes": 7756,
-      "sha256": "e4fb02923cd1c9ce674156a735c0a1e7e12c922f7a5added584212bc3cec1ba6"
+      "bytes": 7906,
+      "sha256": "9905a568eead2bcac2d63b3256750932fe48126d303a9410b7b2b3a83d9c4ae7"
     },
     {
       "path": "docs/visual/asset-geometry.json",
@@ -1579,8 +1579,8 @@
     },
     {
       "path": "docs/visual/window-registry.json",
-      "bytes": 7108,
-      "sha256": "39df5b62aaeff431604d484b404bada3fad00b280480744af4888492d716fcb1"
+      "bytes": 7157,
+      "sha256": "73faae829a18d689ee31f5e22309bc976ede26ff2e0a78384c1b2d33e526dc18"
     },
     {
       "path": "docs/visual/surface-registry-v2.json",

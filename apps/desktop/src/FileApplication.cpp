@@ -2,9 +2,11 @@
 #include "SingleFileWindow.h"
 #include <QApplication>
 #include <QFileOpenEvent>
+#include <QClipboard>
+#include <QDesktopServices>
 
 namespace xdnote {
-FileApplication::FileApplication(QObject *parent) : QObject(parent), m_manager(this) {
+FileApplication::FileApplication(QObject *parent, QString settingsPath) : QObject(parent), m_appearance(this, std::move(settingsPath)), m_manager(this) {
     qApp->installEventFilter(this);
     connect(&m_manager, &FileManager::opened, this, [this](QUuid intent, FileDocument *document, bool reused) {
         auto placeholder = m_requests.take(intent);
@@ -25,7 +27,9 @@ FileApplication::~FileApplication() {
     for (auto *window : windows) delete window;
 }
 SingleFileWindow *FileApplication::createWindow() {
-    auto *window = new SingleFileWindow(&m_manager); m_windows.insert(window);
+    auto *window = new SingleFileWindow(&m_manager, &m_appearance); m_windows.insert(window);
+    connect(window, &SingleFileWindow::copyPathRequested, this, [](const QString &path) { QGuiApplication::clipboard()->setText(path); });
+    connect(window, &SingleFileWindow::revealRequested, this, [](const QString &path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
     connect(window, &SingleFileWindow::openRequested, this, [this, window](const QString &path) { open(path, window->document() ? nullptr : window); });
     connect(window, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_manager.cancelOpen(intent); });
     connect(window, &SingleFileWindow::quitRequested, this, &FileApplication::requestQuit);
