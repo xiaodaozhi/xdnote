@@ -137,6 +137,8 @@ private slots:
         controller.rememberUserGeometry(QRect(window.geometry().topLeft(), QSize(350, 250))); controller.fitToScreen();
         QTRY_COMPARE(window.size(), QSize(350, 250));
         QCOMPARE(controller.preferredClientSize(), QSize(350, 250)); QVERIFY(!controller.temporarilyConstrained());
+        QTRY_VERIFY(window.windowState() == Qt::WindowNoState);
+        QVERIFY(controller.flush()); QVERIFY(!store.placement("fixture")->maximized);
         window.showMaximized();
 #ifdef Q_OS_MACOS
         QTRY_VERIFY_WITH_TIMEOUT(macWindowIsZoomed(&window), 5000);

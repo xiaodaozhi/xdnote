@@ -207,8 +207,20 @@ void WindowGeometry::scheduleFit() {
 }
 void WindowGeometry::fitToScreen() {
     if (!m_window || !m_initialized || m_nativeMove) return;
+    // AppKit can classify an ordinary work-area-sized fit as zoomed. An
+    // explicit normal-size intent must leave that state before it is applied;
+    // merely ignoring all non-normal states loses the request indefinitely.
+    if (m_explicitSizePending && m_window->isMaximized() && !m_window->isFullScreen() && !m_window->isMinimized()) {
+        if (!m_returningToNormal) {
+            m_returningToNormal = true; m_transition = true;
+            QScopedValueRollback<bool> applying(m_applying, true);
+            m_window->showNormal(); m_fit.start(0);
+        }
+        return;
+    }
     m_transition = false;
     if (m_window->windowState() != Qt::WindowNoState || !m_window->windowHandle()) { m_pendingUserResize = false; return; }
+    m_returningToNormal = false;
     // A later screen notification may invalidate the queued end-of-resize
     // callback. Keep its intent until the final fitting pass consumes it.
     if (m_pendingUserResize) { rememberUserGeometry(m_window->geometry()); m_pendingUserResize = false; }
@@ -216,7 +228,7 @@ void WindowGeometry::fitToScreen() {
     watchScreen(screen);
     const auto available = screen->availableGeometry();
     const auto frame = m_window->windowHandle()->frameMargins();
-    if (m_fittedOnce && !m_restoreNormal && !m_constrained && resemblesWindowTile(m_window->frameGeometry(), available)) return;
+    if (m_fittedOnce && !m_restoreNormal && !m_constrained && !m_explicitSizePending && resemblesWindowTile(m_window->frameGeometry(), available)) return;
     const auto position = m_restorePosition ? m_placement.normal.topLeft() : m_window->geometry().topLeft();
     const auto fit = fitWindowClient(QRect(position, m_placement.normal.size()), available, frame, m_minimum, m_maximum);
     if (!fit.client.isValid()) return;
@@ -225,6 +237,8 @@ void WindowGeometry::fitToScreen() {
     m_window->resize(fit.client.size());
     if (!wayland()) m_window->move(fit.client.topLeft() - QPoint(frame.left(), frame.top()));
     m_restorePosition = false; m_restoreNormal = false; m_fittedOnce = true;
+    if (m_explicitSizePending) m_placement.maximized = false;
+    m_explicitSizePending = false;
     m_placement.available = available;
     if (!wayland()) m_placement.normal.moveTopLeft(m_window->geometry().topLeft());
     m_layoutWarning = fit.fitsMinimum ? QString() : QStringLiteral("当前屏幕可用区域小于窗口最小布局，部分内容可能无法完整显示。");
@@ -236,7 +250,8 @@ void WindowGeometry::rememberUserGeometry(const QRect &normal) {
     m_placement.normal = normal;
     // A new explicit size must take precedence even if the previous temporary
     // fit happens to resemble a snapped window. Do not mark it applied early.
-    m_constrained = m_window && m_window->size() != normal.size(); m_save.start();
+    m_constrained = m_window && m_window->size() != normal.size();
+    m_explicitSizePending = m_constrained; m_save.start();
 }
 void WindowGeometry::rememberPosition() {
     if (!m_window || !m_initialized || m_applying || m_transition || m_nativeMove || m_window->windowState() != Qt::WindowNoState || wayland()) return;
@@ -261,7 +276,7 @@ bool WindowGeometry::eventFilter(QObject *target, QEvent *event) {
         && m_window->windowState() == Qt::WindowNoState && m_window->screen()
         && !resemblesWindowTile(m_window->frameGeometry(), m_window->screen()->availableGeometry())) rememberUserGeometry(m_window->geometry());
     if (event->type() == QEvent::WindowStateChange && !m_window->isMinimized() && !m_window->isFullScreen()) {
-        m_placement.maximized = m_window->isMaximized(); m_save.start();
+        if (!m_applying && !m_returningToNormal) { m_placement.maximized = m_window->isMaximized(); m_save.start(); }
         if (m_window->windowState() == Qt::WindowNoState) { m_restoreNormal = true; scheduleFit(); }
     }
     if (event->type() == QEvent::Hide && !m_window->isMinimized()) flush();

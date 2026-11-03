@@ -80,6 +80,7 @@ private:
     bool m_restoreMaximized = false;
     bool m_hasSaved = false;
     bool m_restorePosition = false, m_fittedOnce = false, m_restoreNormal = false;
+    bool m_explicitSizePending = false, m_returningToNormal = false;
     quint64 m_generation = 0;
 };
 }
