@@ -229,7 +229,7 @@ def main():
         env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
         ctest = str(Path(args.cmake).with_name("ctest" + (".exe" if platform.system() == "Windows" else ""))) if Path(args.cmake).is_absolute() else "ctest"
         # Verbose output retains Qt diagnostics even when QtTest itself passes.
-        native_reports = [build / name for name in ("desktop-qtest.txt", "file-qtest.txt", "visual-qtest.txt")]
+        native_reports = [build / name for name in ("desktop-qtest.txt", "file-qtest.txt", "visual-qtest.txt", "geometry-qtest.txt")]
         for report in native_reports:
             report.unlink(missing_ok=True)
         try:

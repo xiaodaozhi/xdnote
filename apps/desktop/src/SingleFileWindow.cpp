@@ -6,6 +6,7 @@
 #include "VisualTokens.h"
 #include "InputModality.h"
 #include "Utf8Text.h"
+#include "WindowGeometry.h"
 #include <QActionGroup>
 #include <QApplication>
 #include <QButtonGroup>
@@ -131,7 +132,7 @@ private:
     bool m_dirty = false;
 };
 
-SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
+SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance, WindowGeometryStore *geometryStore)
     : m_manager(manager), m_appearance(appearance ? appearance : new Appearance(this)) {
     setObjectName("standaloneWindow"); setAttribute(Qt::WA_DeleteOnClose); setAcceptDrops(true);
     const auto size = geometryTokens(); resize(size.value("defaultWidth").toInt(), size.value("defaultHeight").toInt());
@@ -219,6 +220,8 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
     connect(m_appearance, &Appearance::changed, this, [this] { m_appearanceError.clear(); applyAppearance(); updateState(); });
     connect(m_appearance, &Appearance::preferenceFailed, this, [this](const QString &message) { m_appearanceError = message; updateState(); });
     m_appearanceError = m_appearance->error(); setWindowTitle(QStringLiteral("xdnote")); qApp->installEventFilter(this); applyAppearance(); updateState();
+    m_geometry = new WindowGeometry(this, geometryStore, QStringLiteral("standalone"));
+    connect(m_geometry, &WindowGeometry::geometryWarning, this, [this](const QString &message) { m_geometryError = message; updateState(); });
 }
 
 void SingleFileWindow::applyAppearance() {
@@ -289,7 +292,8 @@ void SingleFileWindow::updateState() {
         m_header->setTitle(m_openPath.isEmpty() ? QStringLiteral("打开 Markdown 文档") : QFileInfo(m_openPath).fileName(), false); m_path->setFullText(m_openPath.isEmpty() ? QString() : QFileInfo(m_openPath).path());
         m_empty->setText(loading ? QStringLiteral("正在打开…\n") + QFileInfo(m_openPath).fileName() : error ? QStringLiteral("无法打开文件\n\n") + m_openError + "\n\n" + m_openPath : QStringLiteral("打开一个 Markdown 文件\n从阅读开始，随时切换编辑。"));
         m_status->setFullText(loading ? QStringLiteral("正在打开…") : error ? QStringLiteral("打开失败") : QStringLiteral("请选择文档")); m_statusIcon->clear(); m_encoding->clear();
-        m_notice->setText(m_appearanceError); m_banner->setVisible(!m_appearanceError.isEmpty()); m_resolve->hide(); m_retry->hide(); m_later->hide(); return;
+        const auto notice = m_appearanceError.isEmpty() ? m_geometryError : m_appearanceError;
+        m_notice->setText(notice); m_banner->setVisible(!notice.isEmpty()); m_resolve->hide(); m_retry->hide(); m_later->hide(); return;
     }
     m_header->setTitle(QFileInfo(m_document->path()).fileName(), m_document->dirty()); setWindowTitle(QFileInfo(m_document->path()).fileName() + QStringLiteral("[*] — xdnote")); setWindowModified(m_document->dirty());
     m_path->setFullText(QFileInfo(m_document->path()).path()); m_status->setFullText(m_document->statusText()); m_encoding->setText(m_document->bom() ? "UTF-8 BOM" : "UTF-8");
@@ -299,9 +303,10 @@ void SingleFileWindow::updateState() {
     auto message = m_document->message(); if (message.isEmpty()) message = m_document->session()->rejection();
     if (message.isEmpty()) message = m_previewError;
     if (message.isEmpty()) message = m_appearanceError;
+    if (message.isEmpty()) message = m_geometryError;
     if (message.isEmpty() && m_document->readOnly()) message = QStringLiteral("此文件为只读，阅读不受影响。");
     m_notice->setText(message); const bool previewOnly = !m_previewError.isEmpty() && message == m_previewError;
-    const bool appearanceOnly = message == m_appearanceError && !message.isEmpty();
+    const bool appearanceOnly = !message.isEmpty() && (message == m_appearanceError || message == m_geometryError);
     m_banner->setVisible(!message.isEmpty() && (m_document->dirty() || message != m_dismissedNotice));
     m_resolve->setText(m_document->conflict() ? (m_document->dirty() ? QStringLiteral("处理冲突") : QStringLiteral("重新载入")) : previewOnly ? QStringLiteral("重试预览") : QStringLiteral("另存为…"));
     m_resolve->setVisible(!appearanceOnly && (previewOnly || error || m_document->conflict() || m_document->readOnly())); m_resolve->setEnabled(!busy);

@@ -1,6 +1,7 @@
 #pragma once
 #include "FileManager.h"
 #include "Appearance.h"
+#include "WindowGeometry.h"
 #include <QSet>
 namespace xdnote {
 class SingleFileWindow;
@@ -19,6 +20,7 @@ private:
     SingleFileWindow *createWindow();
     void advanceQuit();
     Appearance m_appearance;
+    WindowGeometryStore m_geometryStore;
     FileManager m_manager;
     QSet<SingleFileWindow *> m_windows;
     QHash<QUuid, QPointer<SingleFileWindow>> m_requests;

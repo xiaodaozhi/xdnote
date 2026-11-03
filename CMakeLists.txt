@@ -80,6 +80,7 @@ set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUS
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/WindowGeometry.cpp apps/desktop/src/WindowGeometry.h
     apps/desktop/src/Appearance.cpp apps/desktop/src/Appearance.h
     apps/desktop/src/SharedWidgets.cpp apps/desktop/src/SharedWidgets.h
     apps/desktop/src/FileManager.cpp apps/desktop/src/FileManager.h
@@ -145,4 +146,11 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME standalone_visual COMMAND xdnote_visual_tests -o -,txt -o "${CMAKE_BINARY_DIR}/visual-qtest.txt,txt")
     set_tests_properties(standalone_visual PROPERTIES TIMEOUT 240)
+    add_executable(xdnote_geometry_tests apps/desktop/tests/window_geometry_tests.cpp)
+    target_link_libraries(xdnote_geometry_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_geometry_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME window_geometry COMMAND xdnote_geometry_tests -o -,txt -o "${CMAKE_BINARY_DIR}/geometry-qtest.txt,txt")
+    set_tests_properties(window_geometry PROPERTIES TIMEOUT 60)
 endif()
