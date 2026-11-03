@@ -96,6 +96,10 @@ private slots:
         workspace->activatePane(pane->paneId()); pane->setViewMode(SingleFileWindow::ViewMode::Source); QTest::mouseClick(pane->findChild<SharedButton *>("fileLocation"), Qt::LeftButton); QVERIFY(!sidebar->isVisible()); QTest::keyClick(pane->editor(), Qt::Key_K, Qt::ControlModifier); QTRY_VERIFY(sidebar->isVisible()); QTRY_VERIFY(search->hasFocus()); QEvent activation(QEvent::WindowActivate); QCoreApplication::sendEvent(workspace, &activation); QVERIFY(search->hasFocus()); QTest::keyClick(search, Qt::Key_Escape); QVERIFY(pane->isVisible());
         QCOMPARE(session->undo(), EditResult::Applied);
     }
+    void selectedFileRecoversFromStaleDirectorySnapshot() {
+        QTemporaryDir dir; QVERIFY(QDir().mkpath(dir.filePath("notes"))); const auto path = dir.filePath("notes/current.md"); QVERIFY(fileFixtures::write(path, "retained")); FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); auto *tree = workspace->tree(); tree->selectPath(path); QTRY_COMPARE(tree->currentIndex().data().toString(), QString("current.md")); auto *model = qobject_cast<QStandardItemModel *>(tree->model()); QVERIFY(model); const auto index = tree->currentIndex(); QVERIFY(model->removeRow(index.row(), index.parent())); QVERIFY(QFileInfo::exists(path)); tree->selectPath(path); QTRY_COMPARE(tree->currentIndex().data().toString(), QString("current.md"));
+        tree->refresh(); QTRY_COMPARE(tree->currentIndex().data().toString(), QString("current.md")); QCOMPARE(disk(path), QByteArray("retained"));
+    }
     void filenameSearchCancelsStaleRootsAndSkipsLinks() {
         QTemporaryDir dir, outside; QVERIFY(fileFixtures::write(dir.filePath("first.md"), "first")); QVERIFY(fileFixtures::write(outside.filePath("second.md"), "second"));
 #ifdef Q_OS_WIN

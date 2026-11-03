@@ -2,6 +2,8 @@
 #include <QTreeView>
 #include <QFileSystemWatcher>
 #include <QStandardItemModel>
+#include <QTimer>
+#include <QSet>
 #include <atomic>
 #include <memory>
 
@@ -39,6 +41,8 @@ private:
     Appearance *m_appearance;
     QStandardItemModel m_model;
     QFileSystemWatcher m_watch;
+    QTimer m_refreshDelay;
+    QSet<QString> m_pendingDirectories, m_selectionRetries;
     QString m_root, m_message;
     State m_state = State::Unselected;
     quint64 m_generation = 0;

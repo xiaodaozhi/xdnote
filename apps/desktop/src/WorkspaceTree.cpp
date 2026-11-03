@@ -52,10 +52,11 @@ WorkspaceTree::WorkspaceTree(Appearance *appearance, QWidget *parent) : QTreeVie
     auto open = [this](const QModelIndex &index) { const auto path = index.data(pathRole).toString(); if (acceptsFile(path)) emit openRequested(path); };
     connect(this, &QTreeView::activated, this, open);
     connect(this, &QTreeView::clicked, this, open);
-    connect(&m_watch, &QFileSystemWatcher::directoryChanged, this, [this] { QTimer::singleShot(0, this, &WorkspaceTree::refresh); });
+    m_refreshDelay.setSingleShot(true); m_refreshDelay.setInterval(40); connect(&m_refreshDelay, &QTimer::timeout, this, &WorkspaceTree::refresh);
+    connect(&m_watch, &QFileSystemWatcher::directoryChanged, this, [this] { m_refreshDelay.start(); });
     connect(appearance, &Appearance::changed, this, &WorkspaceTree::applyAppearance); connect(InputModality::forApplication(), &InputModality::changed, viewport(), qOverload<>(&QWidget::update)); applyAppearance();
 }
-WorkspaceTree::~WorkspaceTree() { cancelSearch(); }
+WorkspaceTree::~WorkspaceTree() { m_refreshDelay.stop(); cancelSearch(); }
 void WorkspaceTree::drawRow(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const {
     const bool selected = selectionModel()->isSelected(index); const auto cell = visualRect(index);
     painter->save(); painter->fillRect(option.rect, m_appearance->color("sidebar")); painter->setRenderHint(QPainter::Antialiasing); const auto rect = option.rect.adjusted(8, 1, -8, -1);
@@ -78,17 +79,17 @@ void WorkspaceTree::applyAppearance() {
     updateItems(updateItems, m_model.invisibleRootItem());
 }
 void WorkspaceTree::setState(State state, const QString &message) { m_state = state; m_message = message; emit stateChanged(); }
-void WorkspaceTree::setRootPath(const QString &path) { cancelSearch(); m_expanded.clear(); m_selectedPath.clear(); m_root = path.isEmpty() ? QString() : QDir::cleanPath(QFileInfo(path).absoluteFilePath()); refresh(); }
-void WorkspaceTree::selectPath(const QString &path) { if (path == m_selectedPath && currentIndex().data(pathRole).toString() == path) return; m_selectedPath = path; restoreSelection(); }
+void WorkspaceTree::setRootPath(const QString &path) { cancelSearch(); if (!m_watch.directories().isEmpty()) m_watch.removePaths(m_watch.directories()); m_expanded.clear(); m_selectedPath.clear(); m_root = path.isEmpty() ? QString() : QDir::cleanPath(QFileInfo(path).absoluteFilePath()); refresh(); }
+void WorkspaceTree::selectPath(const QString &path) { if (path == m_selectedPath && currentIndex().data(pathRole).toString() == path) return; if (path != m_selectedPath) m_selectionRetries.clear(); m_selectedPath = path; restoreSelection(); }
 void WorkspaceTree::restoreSelection() {
     if (!acceptsFile(m_selectedPath)) { clearSelection(); setCurrentIndex({}); return; }
-    const auto parts = QDir(m_root).relativeFilePath(m_selectedPath).split('/'); auto *parent = m_model.invisibleRootItem();
+    const auto parts = QDir(m_root).relativeFilePath(m_selectedPath).split('/'); auto *parent = m_model.invisibleRootItem(); auto parentPath = m_root;
     for (int part = 0; part < parts.size(); ++part) {
         QStandardItem *match = nullptr;
         for (int row = 0; row < parent->rowCount(); ++row) if (parent->child(row)->text() == parts[part]) { match = parent->child(row); break; }
-        if (!match) return;
+        if (!match) { if (!m_pendingDirectories.contains(parentPath) && !m_selectionRetries.contains(parentPath)) { m_selectionRetries.insert(parentPath); fetchDirectory(parentPath, parent == m_model.invisibleRootItem() ? nullptr : parent, m_generation); } return; }
         if (part == parts.size() - 1) { setCurrentIndex(match->index()); scrollTo(match->index()); return; }
-        expand(match->index()); parent = match;
+        expand(match->index()); parent = match; parentPath = match->data(pathRole).toString();
     }
 }
 void WorkspaceTree::cancelSearch() { if (m_searchCancel) m_searchCancel->store(true); m_searchCancel.reset(); }
@@ -119,7 +120,10 @@ void WorkspaceTree::searchFiles(const QString &query) {
     }));
 }
 void WorkspaceTree::refresh() {
-    ++m_generation; m_model.clear(); if (!m_watch.directories().isEmpty()) m_watch.removePaths(m_watch.directories());
+    m_refreshDelay.stop(); ++m_generation; m_pendingDirectories.clear(); m_selectionRetries.clear(); m_model.clear();
+    // Keep subscriptions across an asynchronous reread: atomic replacement can
+    // otherwise finish while this tree has temporarily stopped watching.
+    for (const auto &path : m_watch.directories()) if (!QFileInfo(path).isDir() || !ordinaryPath(path, m_root)) m_watch.removePath(path);
     if (m_root.isEmpty()) { setState(State::Unselected, QStringLiteral("选择目录以浏览 Markdown 文档")); return; }
     const QFileInfo root(m_root);
     if (!root.exists() || !root.isDir()) { setState(State::Missing, QStringLiteral("工作区目录已不存在")); return; }
@@ -135,18 +139,19 @@ bool WorkspaceTree::acceptsFile(const QString &path) const {
     const QFileInfo file(path); const auto suffix = file.suffix().toLower(); return file.isFile() && (suffix == "md" || suffix == "markdown");
 }
 void WorkspaceTree::fetchDirectory(const QString &path, QStandardItem *parent, quint64 generation) {
+    m_pendingDirectories.insert(path);
     const QPersistentModelIndex parentIndex = parent ? parent->index() : QModelIndex();
     if (parent) { parent->removeRows(0, parent->rowCount()); auto *loading = new QStandardItem(QStringLiteral("正在读取…")); loading->setEnabled(false); parent->appendRow(loading); }
     auto *watcher = new QFutureWatcher<Listing>(this);
     connect(watcher, &QFutureWatcher<Listing>::finished, this, [this, watcher, path, parentIndex, generation, isRoot = !parent] {
-        const auto listing = watcher->result(); watcher->deleteLater(); if (generation != m_generation || (!isRoot && !parentIndex.isValid())) return;
+        const auto listing = watcher->result(); watcher->deleteLater(); if (generation != m_generation || (!isRoot && !parentIndex.isValid())) return; m_pendingDirectories.remove(path);
         auto *target = isRoot ? m_model.invisibleRootItem() : m_model.itemFromIndex(parentIndex); target->removeRows(0, target->rowCount());
         if (listing.error.isEmpty()) {
             for (const auto &entry : listing.entries) {
                 auto *item = new QStandardItem(themedIcon(entry.directory ? "folder" : "document", m_appearance->color("textSecondary")), entry.name); item->setData(entry.path, pathRole); item->setToolTip(entry.path); item->setEditable(false); target->appendRow(item);
                 if (entry.directory) { auto *placeholder = new QStandardItem(QStringLiteral("展开以读取")); placeholder->setEnabled(false); item->appendRow(placeholder); }
             }
-            if (m_watch.directories().size() < 256) m_watch.addPath(path);
+            if (!m_watch.directories().contains(path) && m_watch.directories().size() < 256) m_watch.addPath(path);
         }
         if (isRoot) setState(!listing.error.isEmpty() ? (listing.missing ? State::Missing : State::Unreadable) : listing.entries.isEmpty() ? State::Empty : State::Ready, !listing.error.isEmpty() ? listing.error : listing.limited ? QStringLiteral("目录条目过多，仅显示本次读取的前 10000 项，请进入子目录") : listing.entries.isEmpty() ? QStringLiteral("此目录没有 Markdown 文档或子目录") : QString());
         else if (!listing.error.isEmpty() || listing.entries.isEmpty() || listing.limited) { auto *note = new QStandardItem(!listing.error.isEmpty() ? listing.error : listing.limited ? QStringLiteral("目录条目过多，结果未完整读取") : QStringLiteral("没有 Markdown 文档")); note->setEnabled(false); target->appendRow(note); }
