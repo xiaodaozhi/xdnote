@@ -21,6 +21,7 @@ class ElidedLabel;
 class WindowGeometry;
 class WindowGeometryStore;
 class SharedSpinner;
+class DocumentBreadcrumb;
 class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -32,6 +33,7 @@ public:
     bool embedded() const { return m_embedded; }
     bool canTransfer() const;
     bool embedIn(QWidget *parent);
+    void setWorkspaceRoot(const QString &root);
     QWidget *footer() const { return m_footer; }
     void activateDocument();
     void reportHostMessage(const QString &message);
@@ -83,6 +85,8 @@ private:
     QUuid m_intent;
     WindowTitleBar *m_header;
     ElidedLabel *m_path;
+    DocumentBreadcrumb *m_breadcrumb;
+    QString m_workspaceRoot;
     QLabel *m_notice;
     ElidedLabel *m_status;
     QLabel *m_statusIcon;
@@ -118,7 +122,6 @@ private:
     QAction *m_undoAction;
     QAction *m_redoAction;
     QAction *m_reloadAction;
-    QList<QAction *> m_themeActions, m_accentActions;
     SourceEditor *m_editor = nullptr;
     MarkdownPreview *m_preview = nullptr;
     bool m_editing = false, m_prompting = false, m_closeAfterOperation = false;

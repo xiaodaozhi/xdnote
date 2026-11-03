@@ -22,16 +22,17 @@ QString rootKey(const QString &path) { const QFileInfo info(path); auto key = in
 }
 }
 FileApplication::FileApplication(QObject *parent, QString settingsPath)
-    : QObject(parent), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_manager(this) {
+    : QObject(parent), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
     qApp->installEventFilter(this);
     connect(&m_manager, &FileManager::opened, this, [this](QUuid intent, FileDocument *document, bool reused) {
         auto placeholder = m_requests.take(intent);
         if (!placeholder) { if (!reused) m_manager.closeDocument(document); return; }
+        m_navigation.recordOpen(document->path());
         const auto id = document->session()->documentId(); auto pane = m_documents.value(id);
         if (pane) { placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); return; }
         m_documents.insert(id, placeholder); placeholder->setDocument(document);
         connect(placeholder, &QObject::destroyed, this, [this, id] { m_documents.remove(id); });
-        connect(document, &FileDocument::stateChanged, this, [this] { QTimer::singleShot(0, this, &FileApplication::retryTransfers); });
+        connect(document, &FileDocument::stateChanged, this, [this, document, path = document->path()]() mutable { if (path != document->path()) { path = document->path(); m_navigation.recordOpen(path); } QTimer::singleShot(0, this, &FileApplication::retryTransfers); });
         connect(document->session(), &DocumentSession::stateChanged, this, [this] { QTimer::singleShot(0, this, &FileApplication::retryTransfers); }); activatePane(placeholder);
     });
     connect(&m_manager, &FileManager::openFailed, this, [this](QUuid intent, const QString &path, const QString &message) { auto pane = m_requests.take(intent); if (pane) pane->showOpenError(path, message); });
@@ -56,7 +57,7 @@ SingleFileWindow *FileApplication::createWindow() {
     connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
 }
 WorkspaceWindow *FileApplication::createWorkspace() {
-    auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore); m_workspaces.insert(workspace);
+    auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_navigation); m_workspaces.insert(workspace);
     connect(workspace, &WorkspaceWindow::openRequested, this, [this, workspace](const QString &path) { openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseFileRequested, this, [this, workspace] { const auto path = QFileDialog::getOpenFileName(workspace, QStringLiteral("打开 Markdown 文件"), workspace->rootPath(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)")); InputModality::forApplication()->clear(); if (!path.isEmpty()) openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseDirectoryRequested, this, [this, workspace] { chooseDirectory(workspace); });

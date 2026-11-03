@@ -9,6 +9,9 @@
 #include "GuiRuntime.h"
 #include "InputModality.h"
 #include "WindowGeometry.h"
+#include "DocumentBreadcrumb.h"
+#include "NavigationStore.h"
+#include "WorkspaceNavigation.h"
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QTest>
@@ -24,6 +27,10 @@
 #include <QWebEngineScript>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QSplitterHandle>
+#include <QAction>
 #ifdef Q_OS_WIN
 #include <sddl.h>
 #endif
@@ -44,6 +51,55 @@ class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() { qApp->setQuitOnLastWindowClosed(false); SourceEditor::installAccessibility(); }
+    void breadcrumbUsesWorkspaceHierarchyAndUpdatesAfterSaveAs() {
+        QTemporaryDir dir, outside; QVERIFY(QDir().mkpath(dir.filePath(QStringLiteral("个人笔记/写作")))); const auto path = dir.filePath(QStringLiteral("个人笔记/写作/开始.md")); QVERIFY(fileFixtures::write(path, "# writing"));
+        FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); QCOMPARE(pane->findChild<ElidedLabel *>("documentPath")->fullText(), QFileInfo(path).path()); QVERIFY(!pane->findChild<DocumentBreadcrumb *>("workspaceBreadcrumb")->isVisible());
+        auto *workspace = desktop.workspaceWindow(dir.path()); QVERIFY(desktop.transferToWorkspace(pane, workspace)); auto *breadcrumb = pane->findChild<DocumentBreadcrumb *>("workspaceBreadcrumb"); QVERIFY(breadcrumb->isVisible()); QVERIFY(!pane->findChild<ElidedLabel *>("documentPath")->isVisible());
+        QCOMPARE(breadcrumb->fullText(), QStringLiteral("文档 / 个人笔记 / 写作 / 开始.md")); QCOMPARE(breadcrumb->accessibleName(), breadcrumb->fullText()); QCOMPARE(breadcrumb->toolTip(), QDir::toNativeSeparators(path));
+        QTRY_COMPARE(workspace->tree()->currentIndex().data().toString(), QStringLiteral("开始.md"));
+        const auto renamed = dir.filePath(QStringLiteral("根目录.md")); QVERIFY(pane->document()->saveAs(renamed)); QTRY_VERIFY(!pane->document()->saving()); QTRY_COMPARE(breadcrumb->fullText(), QStringLiteral("文档 / 根目录.md"));
+        const auto external = outside.filePath(QStringLiteral("外部.md")); QVERIFY(pane->document()->saveAs(external)); QTRY_VERIFY(!pane->document()->saving()); QTRY_COMPARE(breadcrumb->fullText(), QStringLiteral("工作区外 / 外部.md"));
+        workspace->setRootPath({}); QCOMPARE(breadcrumb->fullText(), QStringLiteral("文档 / 外部.md")); QVERIFY(!workspace->tree()->currentIndex().isValid());
+    }
+    void navigationStoragePreservesUnknownFieldsAndRollsBackErrors() {
+        QTemporaryDir dir; const auto path = dir.filePath("navigation.json"), first = dir.filePath("one.md"), second = dir.filePath("two.markdown");
+        QVERIFY(fileFixtures::write(path, "{\"schemaVersion\":1,\"future\":{\"retained\":true}}")); NavigationStore store(nullptr, path); QVERIFY(store.recordOpen(first)); QVERIFY(store.recordOpen(second)); QVERIFY(store.recordOpen(first)); QCOMPARE(store.recent().size(), 2); QCOMPARE(store.recent().first().path, first);
+        QVERIFY(store.setFavorite(first, true)); QVERIFY(store.setFavorite(first, true)); QCOMPARE(store.favorites().size(), 1); NavigationStore restored(nullptr, path); QCOMPARE(restored.favorites(), QStringList{first}); QCOMPARE(restored.recent().first().path, first); QVERIFY(QJsonDocument::fromJson(disk(path)).object().value("future").toObject().value("retained").toBool());
+        for (int i = 0; i < 55; ++i) QVERIFY(store.recordOpen(dir.filePath(QStringLiteral("recent%1.md").arg(i)))); QCOMPARE(store.recent().size(), 50);
+        const auto broken = dir.filePath("broken.json"); QVERIFY(fileFixtures::write(broken, "invalid-original")); NavigationStore invalid(nullptr, broken); QSignalSpy failed(&invalid, &NavigationStore::storageFailed); QVERIFY(!invalid.setFavorite(first, true)); QCOMPARE(failed.size(), 1); QVERIFY(invalid.favorites().isEmpty()); QCOMPARE(disk(broken), QByteArray("invalid-original"));
+        QVERIFY(QDir().mkdir(dir.filePath("blocked"))); NavigationStore blocked(nullptr, dir.filePath("blocked")); QVERIFY(!blocked.recordOpen(first)); QVERIFY(blocked.recent().isEmpty()); QVERIFY(!blocked.error().isEmpty());
+        const auto livePath = dir.filePath("live.json"); NavigationStore live(nullptr, livePath); QVERIFY(live.recordOpen(first)); QVERIFY(QFile::remove(livePath)); QVERIFY(QDir().mkdir(livePath)); QSignalSpy rejected(&live, &NavigationStore::storageFailed); QVERIFY(!live.setFavorite(first, true)); QCOMPARE(rejected.size(), 1); QVERIFY(!live.favorite(first)); QCOMPARE(live.recent().size(), 1);
+        QVERIFY(store.setFavorite(first, false)); QVERIFY(!store.favorite(first));
+    }
+    void sidebarSearchRecentFavoritesAndTabsKeepTheSameBuffer() {
+        QTemporaryDir dir; QVERIFY(QDir().mkpath(dir.filePath(QStringLiteral("笔记/子目录")))); const auto path = dir.filePath(QStringLiteral("笔记/子目录/中文会议.md")); QVERIFY(fileFixtures::write(path, "# unchanged")); QVERIFY(fileFixtures::write(dir.filePath("other.md"), "中文会议 appears only in content"));
+        FileApplication desktop(nullptr, dir.filePath("user-preferences.json")); auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace); auto *pane = waitPane(workspace, path); QVERIFY(pane); auto *session = pane->document()->session(); QCOMPARE(session->replace(0, 0, "dirty\n", session->revision()), EditResult::Applied);
+        auto *search = workspace->findChild<QLineEdit *>("workspaceSearch"); auto *results = workspace->findChild<QListWidget *>("navigationResults"); QVERIFY(search); QVERIFY(results);
+        QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceRecent"), Qt::LeftButton); QTRY_COMPARE(results->count(), 1); QCOMPARE(results->item(0)->text(), QStringLiteral("中文会议.md")); QVERIFY(!pane->isVisible());
+        QTest::mouseClick(results->viewport(), Qt::LeftButton, {}, QPoint(results->visualItemRect(results->item(0)).right() - 24, results->visualItemRect(results->item(0)).center().y()));
+        QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceFavorites"), Qt::LeftButton); QCOMPARE(results->count(), 1); QCOMPARE(results->item(0)->text(), QStringLiteral("中文会议.md")); capture(workspace, "favorites");
+        search->setText(QStringLiteral("中文会议")); QTRY_COMPARE(results->count(), 1); QCOMPARE(results->item(0)->text(), QStringLiteral("中文会议.md")); QVERIFY(!workspace->findChild<QLabel *>("navigationSummary")->text().contains(QStringLiteral("不完整")));
+        search->setText(QStringLiteral("无匹配文件名")); QTRY_VERIFY(workspace->findChild<QLabel *>("navigationEmpty")->isVisible()); QTRY_COMPARE(workspace->findChild<QLabel *>("navigationEmpty")->text(), QStringLiteral("没有找到匹配的文档")); QCOMPARE(results->count(), 0); capture(workspace, "search-empty");
+        QTest::mouseClick(workspace->findChild<SharedButton *>("clearWorkspaceSearch"), Qt::LeftButton); QVERIFY(pane->isVisible()); QCOMPARE(pane->document()->session(), session); QCOMPARE(session->snapshot().utf8, QByteArray("dirty\n# unchanged"));
+        QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceRecent"), Qt::LeftButton); auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); QTest::mouseClick(tabs, Qt::LeftButton, {}, tabs->tabRect(0).center()); QVERIFY(pane->isVisible());
+        QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceRecent"), Qt::LeftButton); QTest::mouseClick(results->viewport(), Qt::LeftButton, {}, QPoint(90, results->visualItemRect(results->item(0)).center().y())); QTRY_VERIFY(pane->isVisible()); QTRY_COMPARE(workspace->panes().size(), 1); QCOMPARE(pane->document()->session(), session);
+        auto *settings = workspace->findChild<SharedButton *>("workspaceSettings"); QVERIFY(settings && settings->menu()); QCOMPARE(settings->menu()->findChild<QMenu *>("accentMenu")->actions().size(), 6); settings->menu()->findChild<QAction *>("theme-dark")->trigger(); QVERIFY(pane->appearance()->dark()); QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceTheme"), Qt::LeftButton); QVERIFY(!pane->appearance()->dark());
+        NavigationStore persisted(nullptr, dir.filePath("user-preferences.json.navigation")); QVERIFY(persisted.favorite(path)); QCOMPARE(persisted.recent().size(), 1); QCOMPARE(disk(path), QByteArray("# unchanged")); QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+        workspace->findChild<SharedButton *>("workspaceSelector")->setFocus(Qt::OtherFocusReason); QTest::keyClick(workspace->findChild<SharedButton *>("workspaceSelector"), Qt::Key_Tab); QTRY_VERIFY(search->hasFocus()); QVERIFY(workspace->findChild<QWidget *>("workspaceSearchBox")->property("keyboardOutline").toBool()); QTest::mouseClick(search, Qt::LeftButton); QVERIFY(!workspace->findChild<QWidget *>("workspaceSearchBox")->property("keyboardOutline").toBool());
+        workspace->activatePane(pane->paneId()); pane->setViewMode(SingleFileWindow::ViewMode::Source); QTest::keyClick(pane->editor(), Qt::Key_K, Qt::ControlModifier); QTRY_VERIFY(search->hasFocus()); QTest::keyClick(search, Qt::Key_Escape); QVERIFY(pane->isVisible());
+        QCOMPARE(session->undo(), EditResult::Applied);
+    }
+    void filenameSearchCancelsStaleRootsAndSkipsLinks() {
+        QTemporaryDir dir, outside; QVERIFY(fileFixtures::write(dir.filePath("first.md"), "first")); QVERIFY(fileFixtures::write(outside.filePath("second.md"), "second"));
+#ifdef Q_OS_WIN
+        fileFixtures::Junction link; QVERIFY(link.create(dir.filePath("link"), outside.path()));
+#else
+        QVERIFY(::symlink(outside.path().toUtf8().constData(), dir.filePath("link").toUtf8().constData()) == 0);
+#endif
+        Appearance appearance; WorkspaceTree tree(&appearance, nullptr); tree.setRootPath(dir.path()); QSignalSpy results(&tree, &WorkspaceTree::searchFinished); tree.searchFiles("second"); QTRY_COMPARE(results.size(), 1); QVERIFY(results.takeFirst().at(1).toStringList().isEmpty());
+        tree.searchFiles("first"); tree.setRootPath(outside.path()); tree.searchFiles("SECOND"); QTRY_COMPARE(results.size(), 1); QCOMPARE(results.first().at(1).toStringList(), QStringList{outside.filePath("second.md")});
+        results.clear(); tree.setRootPath({}); tree.searchFiles("first"); QTRY_COMPARE(results.size(), 1); QVERIFY(!results.first().at(2).toString().isEmpty());
+    }
     void directoryLoadingEmptyMissingAndNoFilesystemWrites() {
         QTemporaryDir dir; QVERIFY(dir.isValid()); FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path());
         QTRY_COMPARE(workspace->tree()->state(), WorkspaceTree::State::Empty); QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
@@ -158,13 +214,22 @@ private slots:
     }
     void splitThemeGeometryAndSaveUseTheSameSession_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
     void splitThemeGeometryAndSaveUseTheSameSession() {
-        QFETCH(QString, theme); QTemporaryDir dir; const auto path = dir.filePath(QStringLiteral("长文档标题用于核对标签省略与位置.md")); QVERIFY(fileFixtures::write(path, "# Heading\n\nbody\n")); FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace); auto *pane = waitPane(workspace, path); QVERIFY(pane); QVERIFY(pane->appearance()->setPreferences(theme, "graphite"));
+        QFETCH(QString, theme); QTemporaryDir dir; const auto root = dir.filePath(QStringLiteral("我的文档")); QVERIFY(QDir().mkpath(root + QStringLiteral("/个人笔记"))); QVERIFY(QDir().mkpath(root + QStringLiteral("/项目文档"))); QVERIFY(QDir().mkpath(root + QStringLiteral("/技术笔记")));
+        const auto path = root + QStringLiteral("/个人笔记/写作，从这里开始.md"), other = root + QStringLiteral("/项目文档/产品设计思考.md");
+        const auto content = QStringLiteral("# 写作，从这里开始\n\n把想法写下来，让思考慢慢清晰。\n\n> 少一点干扰，多一点专注。\n\n## 一个安静的写作空间\n\n- [x] 记录一个新的想法\n- [ ] 留一点时间，自由写作\n- [ ] 把灵感整理成一篇文档\n\n## 用熟悉的 Markdown 表达\n\n**清楚的文字**，加上一点 *恰到好处的强调*。\n\n```javascript\nconst title = \"写作，从这里开始\";\nconsole.log(title);\n```\n\n| 功能 | 说明 |\n| :--- | :--- |\n| 编辑 | 在左侧专注写作 |\n| 阅读 | 在右侧查看结果 |\n").toUtf8();
+        QVERIFY(fileFixtures::write(path, content)); QVERIFY(fileFixtures::write(other, QStringLiteral("# 产品设计思考\n\n让写作保持简单。\n").toUtf8())); QVERIFY(fileFixtures::write(root + QStringLiteral("/个人笔记/灵感随笔.md"), "# Notes")); QVERIFY(fileFixtures::write(root + QStringLiteral("/个人笔记/阅读清单.md"), "# Reading"));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(root); desktop.openInWorkspace(other, workspace); QVERIFY(waitPane(workspace, other)); desktop.openInWorkspace(path, workspace); auto *pane = waitPane(workspace, path); QVERIFY(pane); QVERIFY(pane->appearance()->setPreferences(theme, "graphite"));
         auto *session = pane->document()->session(); const auto id = session->documentId(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(pane->editor()->isVisible()); QTRY_VERIFY(pane->preview()->isVisible());
-        QCOMPARE(session->replace(0, 0, "edit\n", session->revision()), EditResult::Applied); QTRY_VERIFY(pane->document()->dirty()); QVERIFY(pane->document()->save()); QTRY_VERIFY(!pane->document()->saving()); QVERIFY(!pane->document()->dirty()); QCOMPARE(disk(path), QByteArray("edit\n# Heading\n\nbody\n"));
+        const auto length = QString::fromUtf8(content).size(); const auto addition = QStringLiteral("\n写下此刻的想法。\n"); QCOMPARE(session->replace(int(length), int(length), addition, session->revision()), EditResult::Applied); QTRY_VERIFY(pane->document()->dirty()); QVERIFY(pane->document()->save()); QTRY_VERIFY(!pane->document()->saving()); QVERIFY(!pane->document()->dirty()); QCOMPARE(disk(path), content + addition.toUtf8());
         pane->setViewMode(SingleFileWindow::ViewMode::Reading); pane->setViewMode(SingleFileWindow::ViewMode::Source); pane->setViewMode(SingleFileWindow::ViewMode::Split); QCOMPARE(pane->document()->session()->documentId(), id); QCOMPARE(pane->document()->session(), session);
         QCOMPARE(workspace->findChild<QWidget *>("documentHeader")->height(), 48); QCOMPARE(workspace->findChild<QWidget *>("workspaceFooters")->height(), 26); QCOMPARE(pane->footer()->width(), workspace->width()); QVERIFY(!pane->windowGeometry()); QVERIFY(workspace->windowGeometry());
         QCOMPARE(pane->footer()->geometry(), workspace->findChild<QWidget *>("workspaceFooters")->rect());
-        QTest::qWait(250); capture(workspace, theme + "-split");
+        auto *splitter = pane->findChild<QSplitter *>("documentSplit"); auto *handle = splitter->handle(1); QVERIFY(handle->isVisible());
+        QTRY_COMPARE(workspace->tree()->currentIndex().data().toString(), QStringLiteral("写作，从这里开始.md")); QTRY_VERIFY(pane->preview()->view()->page()->contentsSize().height() > 100); QTest::qWait(250);
+        const auto treeImage = workspace->tree()->viewport()->grab().toImage(); const auto treeRatio = treeImage.devicePixelRatio(); const auto selectedRow = workspace->tree()->visualRect(workspace->tree()->currentIndex()); QCOMPARE(treeImage.pixelColor(qRound((workspace->tree()->viewport()->width() - 16) * treeRatio), qRound(selectedRow.center().y() * treeRatio)), pane->appearance()->accentColor("soft"));
+        const auto divider = handle->grab().toImage(); const auto ratio = divider.devicePixelRatio(); QCOMPARE(divider.pixelColor(qRound((handle->width() / 2.0) * ratio), qRound(60 * ratio)), pane->appearance()->color("border")); QCOMPARE(divider.pixelColor(0, qRound(60 * ratio)), pane->appearance()->color("background"));
+        const auto original = splitter->sizes(); QTest::mousePress(handle, Qt::LeftButton); QTest::mouseMove(handle, handle->rect().center() + QPoint(40, 0), 30); QTest::mouseRelease(handle, Qt::LeftButton); QVERIFY(splitter->sizes().first() != original.first()); splitter->setSizes(original);
+        capture(workspace, theme + "-split");
     }
     void tabCloseCancelAndWorkspaceCloseSaveProtectOtherBuffers() {
         QTemporaryDir dir; const auto first = dir.filePath("first.md"), second = dir.filePath("second.md"); QVERIFY(fileFixtures::write(first, "one")); QVERIFY(fileFixtures::write(second, "two")); FileApplication desktop; QPointer<WorkspaceWindow> workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(first, workspace); auto *one = waitPane(workspace, first); QVERIFY(one); desktop.openInWorkspace(second, workspace); auto *two = waitPane(workspace, second); QVERIFY(two);

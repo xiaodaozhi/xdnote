@@ -4,6 +4,8 @@
 #include "VisualTokens.h"
 #include "UiFonts.h"
 #include <QButtonGroup>
+#include <QActionGroup>
+#include <QSplitterHandle>
 #include <QFile>
 #include <QFocusEvent>
 #include <QIconEngine>
@@ -53,6 +55,45 @@ QIcon themedIcon(const QString &name, const QColor &color) {
 }
 QIcon colorSwatch(const QColor &color) {
     return QIcon(new SvgIcon(QByteArray("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect x=\"1\" y=\"1\" width=\"14\" height=\"14\" rx=\"4\" fill=\"") + color.name().toUtf8() + "\"/></svg>"));
+}
+SharedMenu *createAppearanceMenu(Appearance *appearance, QWidget *parent) {
+    auto *menu = new SharedMenu(appearance, parent); menu->setTitle(QStringLiteral("外观")); menu->setObjectName("appearanceMenu");
+    auto *themes = new QActionGroup(menu);
+    const QList<QPair<QString, QString>> names{{"system", QStringLiteral("跟随系统")}, {"light", QStringLiteral("浅色")}, {"dark", QStringLiteral("深色")}};
+    for (const auto &entry : names) {
+        auto *action = menu->addAction(entry.second); action->setObjectName("theme-" + entry.first); action->setData(entry.first); action->setCheckable(true); themes->addAction(action);
+        QObject::connect(action, &QAction::triggered, appearance, [appearance, theme = entry.first] { appearance->setPreferences(theme, appearance->accent()); });
+    }
+    auto *accents = new SharedMenu(appearance, menu); accents->setTitle(QStringLiteral("强调色")); accents->setObjectName("accentMenu"); menu->addMenu(accents); auto *group = new QActionGroup(menu);
+    for (const auto &name : {"graphite", "mist-blue", "cobalt", "mauve", "terracotta", "olive"}) {
+        const auto entry = visualTokens().value("accents").toObject().value(name).toObject(); auto *action = accents->addAction(entry.value("label").toString() + "  " + entry.value("base").toString());
+        action->setObjectName("accent-" + QString::fromLatin1(name)); action->setData(QString::fromLatin1(name)); action->setCheckable(true); action->setIcon(colorSwatch(QColor(entry.value("base").toString()))); group->addAction(action);
+        QObject::connect(action, &QAction::triggered, appearance, [appearance, name = QString::fromLatin1(name)] { appearance->setPreferences(appearance->theme(), name); });
+    }
+    const auto update = [menu, themes, accents, group, appearance] {
+        for (auto *action : themes->actions()) { action->setChecked(action->data().toString() == appearance->theme()); action->setIcon(themedIcon(action->data() == "system" ? "monitor" : action->data() == "light" ? "sun" : "moon", appearance->color("text"))); }
+        for (auto *action : group->actions()) action->setChecked(action->data().toString() == appearance->accent());
+        menu->menuAction()->setIcon(themedIcon("palette", appearance->color("text"))); accents->menuAction()->setIcon(themedIcon("palette", appearance->color("text")));
+    };
+    QObject::connect(appearance, &Appearance::changed, menu, update); QObject::connect(appearance, &Appearance::preferenceFailed, menu, update); QObject::connect(menu, &QMenu::aboutToShow, menu, update); update(); return menu;
+}
+DocumentSplitter::DocumentSplitter(Appearance *appearance, QWidget *parent) : QSplitter(Qt::Horizontal, parent), m_appearance(appearance) {
+    setChildrenCollapsible(false); setHandleWidth(control("splitterHitWidth"));
+}
+QSplitterHandle *DocumentSplitter::createHandle() {
+    class Handle final : public QSplitterHandle {
+    public:
+        Handle(Appearance *appearance, QSplitter *parent) : QSplitterHandle(Qt::Horizontal, parent), appearance(appearance) {
+            setObjectName("documentDivider"); setAccessibleName(QStringLiteral("调整编辑与预览宽度"));
+            connect(appearance, &Appearance::changed, this, qOverload<>(&QWidget::update));
+        }
+        void paintEvent(QPaintEvent *) override {
+            QPainter painter(this); painter.fillRect(rect(), appearance->color("background"));
+            painter.fillRect(QRect((width() - control("borderWidth")) / 2, 0, control("borderWidth"), height()), appearance->color("border"));
+        }
+        Appearance *appearance;
+    };
+    return new Handle(m_appearance, this);
 }
 void paintPopupShell(QPainter &painter, const QRectF &surface, const QColor &fill, const QColor &border, int radius, int shadow) {
     painter.setRenderHint(QPainter::Antialiasing); painter.setPen(Qt::NoPen);
@@ -144,6 +185,8 @@ void SharedButton::paintEvent(QPaintEvent *) {
         background = solid ? appearance->semantic("error") : underMouse() ? appearance->color("codeSurface") : QColor(Qt::transparent);
     }
     const bool caption = property("captionButton").toBool(), hovered = underMouse() || m_nativeHover;
+    const bool navigation = property("navigationRow").toBool(), selected = property("navigationSelected").toBool();
+    if (navigation && selected) { background = appearance->accentColor("soft"); foreground = appearance->color("text"); }
     if (caption && isEnabled()) {
         const bool close = objectName() == "captionClose";
         background = isDown() ? (close ? QColor("#A12317") : appearance->color("border")) : hovered ? (close ? QColor("#C42B1C") : appearance->color("border")) : QColor(Qt::transparent);
@@ -153,11 +196,14 @@ void SharedButton::paintEvent(QPaintEvent *) {
     painter.setBrush(background); painter.setPen(m_outlined ? QPen(appearance->color("border"), control("borderWidth")) : QPen(Qt::NoPen));
     const int radius = visualTokens().value("radius").toObject().value("control").toInt();
     if (caption) painter.fillRect(rect(), background); else painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
-    const int icon = m_symbol.isEmpty() ? 0 : control("iconSize"); const int label = fontMetrics().horizontalAdvance(text());
+    if (navigation && selected) { painter.setPen(Qt::NoPen); painter.setBrush(appearance->accentColor()); painter.drawRoundedRect(QRectF(0, 5, 3, height() - 10), 1.5, 1.5); }
+    const int icon = m_symbol.isEmpty() ? 0 : control("iconSize");
+    const auto labelText = fontMetrics().elidedText(text(), Qt::ElideMiddle, qMax(0, width() - (icon ? icon + 8 : 0) - (menu() ? 16 : 0) - 24));
+    const int label = fontMetrics().horizontalAdvance(labelText);
     const int dropdown = menu() && label ? 16 : 0;
-    const int total = label + icon + (label && icon ? 8 : 0) + dropdown; int left = (width() - total) / 2;
+    const int total = label + icon + (label && icon ? 8 : 0) + dropdown; int left = navigation ? 12 : (width() - total) / 2;
     if (icon) { themedIcon(m_symbol, foreground).paint(&painter, QRect(left, (height() - icon) / 2, icon, icon)); left += icon + (label ? 8 : 0); }
-    painter.setPen(foreground); painter.setFont(font()); painter.drawText(QRect(left, 0, label, height()), Qt::AlignCenter, text());
+    painter.setPen(foreground); painter.setFont(font()); painter.drawText(QRect(left, 0, label, height()), Qt::AlignCenter, labelText);
     if (dropdown) themedIcon("chevron-down", foreground).paint(&painter, QRect(left + label + 4, (height() - 12) / 2, 12, 12));
     if (keyboardOutline()) {
         painter.setBrush(Qt::NoBrush); painter.setPen(QPen(appearance->accentColor(), control("focusRingWidth")));

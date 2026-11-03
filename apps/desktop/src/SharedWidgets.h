@@ -6,9 +6,20 @@
 #include <QLabel>
 #include <QDialog>
 #include <QTimer>
+#include <QSplitter>
 
 namespace xdnote {
 class Appearance;
+class SharedMenu;
+SharedMenu *createAppearanceMenu(Appearance *appearance, QWidget *parent);
+class DocumentSplitter final : public QSplitter {
+public:
+    DocumentSplitter(Appearance *appearance, QWidget *parent);
+protected:
+    QSplitterHandle *createHandle() override;
+private:
+    Appearance *m_appearance;
+};
 QIcon themedIcon(const QString &name, const QColor &color);
 QIcon colorSwatch(const QColor &color);
 void paintPopupShell(QPainter &painter, const QRectF &surface, const QColor &fill, const QColor &border, int radius, int shadow);
