@@ -1,6 +1,7 @@
 #include "WindowGeometry.h"
 #include "GuiRuntime.h"
 #include <QApplication>
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QScreen>
@@ -14,6 +15,9 @@
 #include <windows.h>
 #endif
 using namespace xdnote;
+#ifdef Q_OS_MACOS
+bool macWindowIsZoomed(QWidget *window);
+#endif
 namespace {
 void write(const QString &path, const QByteArray &bytes) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); QCOMPARE(file.write(bytes), bytes.size()); }
 QByteArray read(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); }
@@ -79,6 +83,9 @@ private slots:
         QVERIFY(resemblesWindowTile({-1920, 0, 960, 1040}, work));
         QVERIFY(resemblesWindowTile({-960, 0, 960, 1040}, work));
         QVERIFY(resemblesWindowTile({-1920, 0, 1920, 520}, work));
+        QVERIFY(resemblesWindowTile({-1920, 0, 960, 520}, work));
+        QVERIFY(resemblesWindowTile({-960, 520, 960, 520}, work));
+        QVERIFY(!resemblesWindowTile({-1920, 0, 2400, 1040}, work));
         QVERIFY(!resemblesWindowTile({-1800, 100, 800, 820}, work));
     }
     void storeRoundTripAndMalformedPreservation() {
@@ -109,8 +116,15 @@ private slots:
         QCOMPARE(store.placement("fixture")->normal.size(), preferred);
         controller.rememberUserGeometry(QRect(window.geometry().topLeft(), QSize(350, 250))); controller.fitToScreen();
         QCOMPARE(controller.preferredClientSize(), QSize(350, 250)); QVERIFY(!controller.temporarilyConstrained());
-        window.showMaximized(); QTest::qWait(30); controller.fitToScreen();
+        window.showMaximized();
+#ifdef Q_OS_MACOS
+        QTRY_VERIFY_WITH_TIMEOUT(macWindowIsZoomed(&window), 5000);
+#else
+        QTRY_VERIFY(window.isMaximized());
+#endif
+        controller.fitToScreen();
         QCOMPARE(controller.preferredClientSize(), QSize(350, 250));
+        qInfo() << "restore-from-maximized" << window.windowState() << window.size() << "preferred" << controller.preferredClientSize();
         window.showNormal(); QTRY_COMPARE(window.size(), QSize(350, 250));
         for (int i = 0; i < 10; ++i) controller.fitToScreen();
         QCOMPARE(window.size(), QSize(350, 250));
@@ -134,7 +148,11 @@ private slots:
     void fullscreenAndMinimizationPreserveNormalAndMaximizedPreference() {
         WindowGeometryStore store; QWidget window; window.setMinimumSize(100, 100); window.resize(411, 311);
         WindowGeometry controller(&window, &store, "fixture"); window.show(); QTest::qWait(30);
-        window.showMaximized(); QTRY_VERIFY(window.isMaximized()); QVERIFY(controller.flush());
+        window.showMaximized(); QTRY_VERIFY(window.isMaximized());
+#ifdef Q_OS_MACOS
+        QTRY_VERIFY_WITH_TIMEOUT(macWindowIsZoomed(&window), 5000);
+#endif
+        QVERIFY(controller.flush());
         QVERIFY(store.placement("fixture")->maximized);
         window.showFullScreen(); QTRY_VERIFY(window.isFullScreen()); QVERIFY(controller.flush());
         QVERIFY(store.placement("fixture")->maximized); QCOMPARE(controller.preferredClientSize(), QSize(411, 311));
@@ -155,6 +173,18 @@ private slots:
         QWidget window; window.setMinimumSize(201, 151); window.setMaximumSize(1001, 701); window.resize(401, 301);
         WindowGeometry controller(&window); window.show(); QTest::qWait(30);
         const auto hwnd = reinterpret_cast<HWND>(window.winId()); const auto dpi = GetDpiForWindow(hwnd);
+        const auto evidenceRoot = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
+        if (!evidenceRoot.isEmpty()) {
+            const auto work = window.screen()->availableGeometry(); RECT nativeClient{}, nativeOuter{};
+            QVERIFY(GetClientRect(hwnd, &nativeClient)); QVERIFY(GetWindowRect(hwnd, &nativeOuter));
+            const QJsonObject evidence{{"scope", "owned-native-window-not-physical-drag"}, {"qtVersion", qVersion()},
+                {"hwndDpi", int(dpi)}, {"windowDpr", window.windowHandle()->devicePixelRatio()}, {"screenDpr", window.screen()->devicePixelRatio()},
+                {"screenCount", int(QGuiApplication::screens().size())}, {"logicalWidth", window.width()}, {"logicalHeight", window.height()},
+                {"nativeClientWidth", int(nativeClient.right - nativeClient.left)}, {"nativeClientHeight", int(nativeClient.bottom - nativeClient.top)},
+                {"nativeOuterWidth", int(nativeOuter.right - nativeOuter.left)}, {"nativeOuterHeight", int(nativeOuter.bottom - nativeOuter.top)},
+                {"availableWidth", work.width()}, {"availableHeight", work.height()}};
+            QVERIFY(QDir().mkpath(evidenceRoot + "/geometry")); write(evidenceRoot + "/geometry/native-window.json", QJsonDocument(evidence).toJson());
+        }
         RECT frame{}; QVERIFY(AdjustWindowRectExForDpi(&frame, DWORD(GetWindowLongPtrW(hwnd, GWL_STYLE)), FALSE, DWORD(GetWindowLongPtrW(hwnd, GWL_EXSTYLE)), dpi));
         MINMAXINFO info{}; info.ptMaxPosition = {71, 73}; info.ptMaxSize = {900, 800}; info.ptReserved = {41, 43};
         SendMessageW(hwnd, WM_GETMINMAXINFO, 0, reinterpret_cast<LPARAM>(&info));

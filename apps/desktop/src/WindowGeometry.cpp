@@ -96,11 +96,15 @@ GeometryFit fitWindowClient(const QRect &requested, const QRect &available, cons
 bool resemblesWindowTile(const QRect &outer, const QRect &available) {
     if (!validRect(outer) || !validRect(available)) return false;
     const auto closeEnough = [](int a, int b) { return qAbs(a - b) <= 4; };
+    if (!available.adjusted(-4, -4, 4, 4).contains(outer)) return false;
     // Native snap/tiling has no portable Qt state flag. Preserve compositor
     // arrangements touching work-area edges rather than forcing a normal size.
     return (closeEnough(outer.top(), available.top()) && closeEnough(outer.bottom(), available.bottom())
             && (closeEnough(outer.left(), available.left()) || closeEnough(outer.right(), available.right())))
         || (closeEnough(outer.left(), available.left()) && closeEnough(outer.right(), available.right())
+            && (closeEnough(outer.top(), available.top()) || closeEnough(outer.bottom(), available.bottom())))
+        || (closeEnough(outer.width() * 2, available.width()) && closeEnough(outer.height() * 2, available.height())
+            && (closeEnough(outer.left(), available.left()) || closeEnough(outer.right(), available.right()))
             && (closeEnough(outer.top(), available.top()) || closeEnough(outer.bottom(), available.bottom())));
 }
 bool nativeTrackSizes(const QSize &minimum, const QSize &maximum, quint32 dpi, const QSize &frame,
@@ -212,7 +216,7 @@ void WindowGeometry::fitToScreen() {
     watchScreen(screen);
     const auto available = screen->availableGeometry();
     const auto frame = m_window->windowHandle()->frameMargins();
-    if (m_fittedOnce && !m_restoreNormal && resemblesWindowTile(m_window->frameGeometry(), available)) return;
+    if (m_fittedOnce && !m_restoreNormal && !m_constrained && resemblesWindowTile(m_window->frameGeometry(), available)) return;
     const auto position = m_restorePosition ? m_placement.normal.topLeft() : m_window->geometry().topLeft();
     const auto fit = fitWindowClient(QRect(position, m_placement.normal.size()), available, frame, m_minimum, m_maximum);
     if (!fit.client.isValid()) return;
