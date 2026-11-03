@@ -56,7 +56,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 libnss3 libasound2 libxdamage1 libxcomposite1 libxrandr2 libxtst6 libdrm2 libgbm1 fonts-noto-cjk xvfb
+          sudo apt-get install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 libnss3 libasound2 libxdamage1 libxcomposite1 libxrandr2 libxtst6 libdrm2 libgbm1 fonts-noto-cjk xvfb gdb
       - name: Prepare pinned Qt SDK with checksums
         run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }} --profile ${{ matrix.profile || 'default' }}
       - name: Prepare pinned source dependencies
@@ -82,6 +82,15 @@ jobs:
           QSG_RHI_PREFER_SOFTWARE_RENDERER: ${{ runner.os == 'Windows' && '1' || '' }}
           QSG_INFO: '1'
         run: python scripts/desktop.py test --profile ${{ matrix.profile || 'default' }}
+      - name: Diagnose workspace crash on Linux
+        if: failure() && runner.os == 'Linux'
+        run: |
+          if [ -f build/desktop-admission/xdnote_workspace_tests ]; then
+            xdnote_qt_version=$(python -c "import json; print(json.load(open('tools/desktop-dependencies.json'))['qt']['version'])")
+            xdnote_qt_root="$PWD/build/Qt/$xdnote_qt_version/gcc_64"
+            LD_LIBRARY_PATH="$xdnote_qt_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" QT_PLUGIN_PATH="$xdnote_qt_root/plugins" timeout 60s xvfb-run -a gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex run -ex 'bt 40' --args "$PWD/build/desktop-admission/xdnote_workspace_tests" -o -,txt > build/desktop-admission/workspace-crash.log 2>&1
+            cat build/desktop-admission/workspace-crash.log
+          fi
       - name: Preserve diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

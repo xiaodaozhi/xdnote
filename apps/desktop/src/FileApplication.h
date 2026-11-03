@@ -5,6 +5,7 @@
 #include <QSet>
 namespace xdnote {
 class SingleFileWindow;
+class WorkspaceWindow;
 class FileApplication final : public QObject {
     Q_OBJECT
 public:
@@ -12,19 +13,30 @@ public:
     ~FileApplication() override;
     void open(const QString &path, SingleFileWindow *empty = nullptr);
     SingleFileWindow *emptyWindow();
+    WorkspaceWindow *workspaceWindow(const QString &root = {});
+    void openInWorkspace(const QString &path, WorkspaceWindow *workspace);
+    bool transferToWorkspace(SingleFileWindow *pane, WorkspaceWindow *target = nullptr);
     void activate();
     void requestQuit();
 protected:
     bool eventFilter(QObject *target, QEvent *event) override;
 private:
     SingleFileWindow *createWindow();
+    WorkspaceWindow *createWorkspace();
+    void activatePane(SingleFileWindow *pane);
+    void chooseDirectory(WorkspaceWindow *owner);
+    void retryTransfers();
     void advanceQuit();
     Appearance m_appearance;
     WindowGeometryStore m_geometryStore;
     FileManager m_manager;
     QSet<SingleFileWindow *> m_windows;
+    QSet<WorkspaceWindow *> m_workspaces;
+    struct Transfer { QPointer<SingleFileWindow> pane; QPointer<WorkspaceWindow> target; bool explicitTarget; };
+    QHash<QUuid, Transfer> m_transfers;
     QHash<QUuid, QPointer<SingleFileWindow>> m_requests;
     QHash<QUuid, QPointer<SingleFileWindow>> m_documents;
     bool m_quitting = false;
+    bool m_destroying = false;
 };
 }

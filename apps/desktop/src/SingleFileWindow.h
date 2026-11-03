@@ -1,6 +1,6 @@
 #pragma once
 #include "FileManager.h"
-#include <QWidget>
+#include "WindowChrome.h"
 
 class QLabel;
 class QStackedWidget;
@@ -9,20 +9,34 @@ class QAction;
 class QPushButton;
 class QCloseEvent;
 class QDialog;
+class QSplitter;
+class QHBoxLayout;
 namespace xdnote {
 class SourceEditor;
 class MarkdownPreview;
-class DocumentHeader;
+class WindowTitleBar;
 class Appearance;
 class SharedButton;
 class ElidedLabel;
 class WindowGeometry;
 class WindowGeometryStore;
 class SharedSpinner;
-class SingleFileWindow final : public QWidget {
+class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
     explicit SingleFileWindow(FileManager *manager, Appearance *appearance = nullptr, WindowGeometryStore *geometryStore = nullptr);
+    ~SingleFileWindow() override;
+    enum class ViewMode { Reading, Source, Split };
+    QUuid paneId() const { return m_paneId; }
+    QString displayPath() const;
+    bool embedded() const { return m_embedded; }
+    bool canTransfer() const;
+    bool embedIn(QWidget *parent);
+    QWidget *footer() const { return m_footer; }
+    void activateDocument();
+    void reportHostMessage(const QString &message);
+    ViewMode viewMode() const { return m_mode; }
+    void setViewMode(ViewMode mode);
     WindowGeometry *windowGeometry() const { return m_geometry; }
     FileDocument *document() const { return m_document; }
     SourceEditor *editor() const { return m_editor; }
@@ -46,10 +60,12 @@ signals:
     void copyPathRequested(QString path);
     void copyTextRequested(QString text);
     void revealRequested(QString directory);
+    void workspaceRequested();
+    void openDirectoryRequested();
+    void sidebarRequested();
+    void viewStateChanged();
 protected:
     void closeEvent(QCloseEvent *event) override;
-    void showEvent(QShowEvent *event) override;
-    bool nativeEvent(const QByteArray &type, void *message, qintptr *result) override;
     bool eventFilter(QObject *target, QEvent *event) override;
 private:
     void updateState();
@@ -59,13 +75,13 @@ private:
     void applyAppearance();
     void updateCaret();
     void showSaveError();
-    void applyNativeAppearance();
     FileManager *m_manager;
+    const QUuid m_paneId = QUuid::createUuid();
     Appearance *m_appearance;
     WindowGeometry *m_geometry = nullptr;
     QPointer<FileDocument> m_document;
     QUuid m_intent;
-    DocumentHeader *m_header;
+    WindowTitleBar *m_header;
     ElidedLabel *m_path;
     QLabel *m_notice;
     ElidedLabel *m_status;
@@ -82,8 +98,13 @@ private:
     QWidget *m_banner;
     QWidget *m_editorPage = nullptr;
     QStackedWidget *m_body;
+    QStackedWidget *m_previewStack = nullptr;
+    QSplitter *m_splitter = nullptr;
+    QWidget *m_previewPane = nullptr, *m_previewHeading = nullptr, *m_footer = nullptr;
+    QHBoxLayout *m_modeLayout;
     QPushButton *m_read;
     QPushButton *m_edit;
+    QPushButton *m_split;
     QPushButton *m_save;
     QPushButton *m_resolve;
     QPushButton *m_retry;
@@ -102,10 +123,11 @@ private:
     MarkdownPreview *m_preview = nullptr;
     bool m_editing = false, m_prompting = false, m_closeAfterOperation = false;
     QString m_previewError;
+    QString m_hostMessage;
     QString m_appearanceError, m_geometryError, m_dismissedNotice, m_openPath, m_openError;
     int m_zoom = 100;
-    bool m_frameInitialized = false;
-    bool m_nativeMaxPressed = false;
     bool m_observedSave = false;
+    bool m_embedded = false;
+    ViewMode m_mode = ViewMode::Reading;
 };
 }

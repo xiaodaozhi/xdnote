@@ -1,6 +1,6 @@
 # 技术架构与实施基线
 
-**状态：架构方向已确认，单文件功能原型已接入真实文件，具体能力按准入条件验证。** 用户已确认本页的职责分工与实施路线。Qt 桌面框架、单会话原文与撤销所有权、独立保存服务和统一构建入口作为研发基线；Scintilla、Qt Quick 的具体承载和受限 Web 预览仍须满足下文准入条件。默认 `xdnote` 提供打开、编辑、保存、冲突及关闭确认，内存准入窗口独立保留；源码、依赖与入口见[开发构建](developer-build.md)，保存保证和范围见[保存闭环](file-save-workflow.md)，尚无安装或发行包。产品约束见[需求](../product/requirements.md)，行为见[交互规格](../product/interaction-spec.md)，工作区资源见[图片与文档链接](../product/workspace-resources.md)。
+**状态：架构方向已确认，单文件功能原型已接入真实文件，具体能力按准入条件验证。** 用户已确认本页的职责分工与实施路线。Qt 桌面框架、单会话原文与撤销所有权、独立保存服务和统一构建入口作为研发基线；Scintilla、Qt Quick 的具体承载和受限 Web 预览仍须满足下文准入条件。默认 `xdnote` 提供工作区基础及独立文件的打开、编辑、保存、冲突与关闭确认，基础工作区支持原会话接管，边界见[工作区基础](workspace-foundation.md)；内存准入窗口独立保留；源码、依赖与入口见[开发构建](developer-build.md)，保存保证和范围见[保存闭环](file-save-workflow.md)，尚无安装或发行包。产品约束见[需求](../product/requirements.md)，行为见[交互规格](../product/interaction-spec.md)，工作区资源见[图片与文档链接](../product/workspace-resources.md)。
 
 ## 已确认的架构取舍
 

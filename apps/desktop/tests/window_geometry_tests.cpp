@@ -168,6 +168,15 @@ private slots:
         QTRY_COMPARE(window.size(), QSize(421, 321));
         QTest::qWait(20); QCOMPARE(controller.preferredClientSize(), QSize(421, 321));
     }
+    void initiallyMaximizedWindowRetainsValidRestoreContext() {
+        WindowGeometryStore store; QWidget window; window.setMinimumSize(200, 150); window.resize(411, 311); WindowGeometry controller(&window, &store, "fixture"); window.showMaximized();
+        QTRY_VERIFY(controller.initialized()); QTRY_VERIFY(window.isMaximized());
+#ifdef Q_OS_MACOS
+        QTRY_VERIFY_WITH_TIMEOUT(macWindowIsZoomed(&window), 5000);
+#endif
+        QVERIFY(controller.flush()); const auto saved = store.placement("fixture"); QVERIFY(saved); QCOMPARE(saved->available, window.screen()->availableGeometry()); QCOMPARE(saved->normal.size(), QSize(411, 311)); QVERIFY(saved->maximized);
+        window.showNormal(); QTRY_COMPARE(window.size(), QSize(411, 311));
+    }
     void fullscreenAndMinimizationPreserveNormalAndMaximizedPreference() {
         WindowGeometryStore store; QWidget window; window.setMinimumSize(100, 100); window.resize(411, 311);
         WindowGeometry controller(&window, &store, "fixture"); window.show(); QTest::qWait(30);

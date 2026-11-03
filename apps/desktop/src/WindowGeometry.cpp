@@ -194,6 +194,9 @@ void WindowGeometry::initialize() {
     watchScreen(screen);
     bindHandle();
     if (!wayland() && screen) m_window->windowHandle()->setScreen(screen);
+    // A window can already be maximized/zoomed on its first native Show. The
+    // work-area context is still required even when normal fitting is skipped.
+    if (screen) m_placement.available = screen->availableGeometry();
     // Validate saved coordinates against an actual work area before moving;
     // never briefly place a restored window on a disconnected screen.
     m_restorePosition = m_hasSaved && !wayland();

@@ -1,6 +1,6 @@
 # 桌面工程与本地构建
 
-`apps/desktop` 和 `crates/markdown` 包含单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；使用系统外框与共享逻辑尺寸。独立窗口支持系统／浅色／深色主题、六种强调色和正文缩放；外观菜单选择通过用户级设置持久化并同步已打开窗口。工作区、完整设置窗口、文件关联注册、安装和发行尚未完成。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和 Qt WebEngine 混合承载，不接收文件或读写用户文档。
+`apps/desktop` 和 `crates/markdown` 包含工作区／单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；使用系统外框与共享逻辑尺寸。独立窗口支持系统／浅色／深色主题、六种强调色和正文缩放；外观菜单选择通过用户级设置持久化并同步已打开窗口。无文件启动显示工作区欢迎页，可显式打开目录、使用多标签和三种视图，并接管独立窗口原会话，详见[工作区基础](workspace-foundation.md)。完整设置、资源与链接、文件关联注册、安装和发行尚未完成。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和 Qt WebEngine 混合承载，不接收文件或读写用户文档。
 
 ## 工具与依赖
 
@@ -73,4 +73,4 @@ python scripts/desktop.py run --admission
 
 首轮真实文件只接受 2 MiB 以内的严格 UTF-8 正文，编码 BOM 另计三字节，含 NUL 或无效 UTF-8 的文件明确拒绝。保留混合换行与字符，不猜测编码。预览输出上限 8 MiB，以应用私有内存页面传输，不经过 `setHtml` 的编码后数据地址限制；每页使用独立临时 profile、不可预测地址与精确导航校验，不读取磁盘或开放网络。控件原生输入可能暂时超过快照额度，此时保存／预览明确拒绝，当前内容和撤销仍保留，须缩小后重试。这是当前原型的明确容量边界，不是任意长文承诺。
 
-`desktop_admission` 检查原有会话、辅助功能、混合承载和预览隔离；`file_workflow` 使用自身创建的真实临时文件，覆盖替换竞争、失败恢复、保存期间编辑、原生窗口按钮与关闭确认、IPC 和子进程应用路由；`standalone_visual` 检查独立窗口的十二种主题／配色组合、字形对齐、控件密度、焦点、菜单／确认框、只读反馈、阅读位置和多倍率几何；`window_geometry` 检查 DPI 算术、待处理缩放量、跟踪约束、可用区、正常偏好与临时收敛、持久化及自身窗口的 Windows 消息。四份 QtTest 报告缺一即失败，专项范围见[独立窗口](standalone-window.md)和[窗口几何](window-geometry.md)。当前窗口截图和测量只进入构建目录中的 `evidence/`。自动化窗口操作不等于人工原生文件选择器、文件管理器关联或真实输入法验收。屏幕阅读器、混合 DPI 物理拖动与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。
+`desktop_admission` 检查原有会话、辅助功能、混合承载和预览隔离；`file_workflow` 使用自身创建的真实临时文件，覆盖替换竞争、失败恢复、保存期间编辑、原生窗口按钮与关闭确认、IPC 和子进程应用路由；`standalone_visual` 检查独立窗口的十二种主题／配色组合、字形对齐、控件密度、焦点、菜单／确认框、只读反馈、阅读位置和多倍率几何；`window_geometry` 检查 DPI 算术、待处理缩放量、跟踪约束、可用区、正常偏好与临时收敛、持久化及自身窗口的 Windows 消息。`workspace_workflow` 另覆盖目录、标签、接管、组合输入延后、双栏与批量关闭；五份 QtTest 报告缺一即失败，专项范围见[独立窗口](standalone-window.md)和[窗口几何](window-geometry.md)。当前窗口截图和测量只进入构建目录中的 `evidence/`。自动化窗口操作不等于人工原生文件选择器、文件管理器关联或真实输入法验收。屏幕阅读器、混合 DPI 物理拖动与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。

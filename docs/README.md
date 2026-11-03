@@ -17,6 +17,7 @@
 | 文件基础 | [文件读取与会话登记](engineering/file-read-baseline.md) | 原生身份、严格字节基线、请求失效与当前限制 |
 | 文件闭环 | [真实文件保存与冲突](engineering/file-save-workflow.md) | 冻结快照、替换保存、硬链接保护、冲突和关闭 |
 | 独立窗口 | [视觉、交互与自动验证](engineering/standalone-window.md) | 共享控件、主题、阅读位置、反馈与验证边界 |
+| 工作区基础 | [导航、标签与会话接管](engineering/workspace-foundation.md) | 显式目录、唯一会话、视图、关闭和自动化边界 |
 | 窗口几何 | [跨显示器缩放与窗口几何](engineering/window-geometry.md) | 逻辑客户区、原生 DPI 约束、可用区、窗口状态与恢复 |
 | 协作 | [产研与 GitHub 流程](engineering/workflow.md) | Issue、分支、PR、CI、验收及清理规则 |
 | 许可 | [许可范围与依赖](engineering/licensing.md) | Apache-2.0、CC BY 4.0 的内容范围、署名与第三方依赖 |

@@ -31,6 +31,6 @@ int main(int argc, char **argv) {
     if (result == xdnote::SingleInstance::Result::Forwarded) return 0;
     if (result == xdnote::SingleInstance::Result::Error) { std::fprintf(stderr, "%s\n", instance.error().toUtf8().constData()); QMessageBox::critical(nullptr, QStringLiteral("xdnote"), instance.error()); return 1; }
     xdnote::FileApplication desktop(&application, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/settings.json"); windows = &desktop;
-    if (paths.isEmpty()) desktop.emptyWindow(); else for (const auto &path : paths) desktop.open(path);
+    if (paths.isEmpty()) desktop.workspaceWindow(); else for (const auto &path : paths) desktop.open(path);
     const int code = application.exec(); windows = nullptr; instance.stop(); return code;
 }
