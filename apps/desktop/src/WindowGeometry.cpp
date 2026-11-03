@@ -233,7 +233,10 @@ void WindowGeometry::fitToScreen() {
 }
 void WindowGeometry::rememberUserGeometry(const QRect &normal) {
     if (!validRect(normal)) return;
-    m_placement.normal = normal; m_constrained = false; m_save.start();
+    m_placement.normal = normal;
+    // A new explicit size must take precedence even if the previous temporary
+    // fit happens to resemble a snapped window. Do not mark it applied early.
+    m_constrained = m_window && m_window->size() != normal.size(); m_save.start();
 }
 void WindowGeometry::rememberPosition() {
     if (!m_window || !m_initialized || m_applying || m_transition || m_nativeMove || m_window->windowState() != Qt::WindowNoState || wayland()) return;

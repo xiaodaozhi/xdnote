@@ -4,7 +4,9 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QScreen>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -21,6 +23,24 @@ bool macWindowIsZoomed(QWidget *window);
 namespace {
 void write(const QString &path, const QByteArray &bytes) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); QCOMPARE(file.write(bytes), bytes.size()); }
 QByteArray read(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); }
+#ifdef Q_OS_WIN
+struct NativeMonitor { HMONITOR handle; RECT work; UINT dpi; };
+BOOL CALLBACK collectMonitor(HMONITOR handle, HDC, LPRECT, LPARAM context) {
+    MONITORINFO info{sizeof(MONITORINFO)};
+    if (!GetMonitorInfoW(handle, &info)) return TRUE;
+    // Qt's Windows screen origins stay in native desktop coordinates, while
+    // extents are logical. Match both without names or hardware identifiers.
+    for (auto *screen : QGuiApplication::screens()) {
+        const auto geometry = screen->geometry(); const qreal dpr = screen->devicePixelRatio();
+        if (geometry.topLeft() == QPoint(info.rcMonitor.left, info.rcMonitor.top)
+            && qAbs(qRound(geometry.width() * dpr) - (info.rcMonitor.right - info.rcMonitor.left)) <= 1
+            && qAbs(qRound(geometry.height() * dpr) - (info.rcMonitor.bottom - info.rcMonitor.top)) <= 1) {
+            reinterpret_cast<QList<NativeMonitor> *>(context)->append({handle, info.rcWork, UINT(qRound(dpr * 96))}); break;
+        }
+    }
+    return TRUE;
+}
+#endif
 class GeometryTests final : public QObject {
     Q_OBJECT
 private slots:
@@ -115,6 +135,7 @@ private slots:
         QCOMPARE(controller.preferredClientSize(), preferred); QVERIFY(controller.temporarilyConstrained()); QVERIFY(controller.flush());
         QCOMPARE(store.placement("fixture")->normal.size(), preferred);
         controller.rememberUserGeometry(QRect(window.geometry().topLeft(), QSize(350, 250))); controller.fitToScreen();
+        QTRY_COMPARE(window.size(), QSize(350, 250));
         QCOMPARE(controller.preferredClientSize(), QSize(350, 250)); QVERIFY(!controller.temporarilyConstrained());
         window.showMaximized();
 #ifdef Q_OS_MACOS
@@ -217,6 +238,53 @@ private slots:
         sequence.message = WM_EXITSIZEMOVE; filter->nativeEventFilter("windows_generic_MSG", &sequence, &callbackResult);
         sequence.message = WM_DPICHANGED; filter->nativeEventFilter("windows_generic_MSG", &sequence, &callbackResult);
         QTRY_COMPARE(controller.preferredClientSize(), QSize(501, 351));
+    }
+    void mixedDpiNativeRoundTripsWhenDesktopProvidesThem() {
+        QList<NativeMonitor> monitors;
+        QVERIFY(EnumDisplayMonitors(nullptr, nullptr, collectMonitor, reinterpret_cast<LPARAM>(&monitors)));
+        QSet<UINT> dpis; for (const auto &monitor : monitors) dpis.insert(monitor.dpi);
+        QSet<int> qtDpis; QJsonArray qtDpiEvidence;
+        for (auto *screen : QGuiApplication::screens()) { const int dpi = qRound(screen->devicePixelRatio() * 96); qtDpis.insert(dpi); qtDpiEvidence.append(dpi); }
+        const auto evidenceRoot = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
+        auto saveEvidence = [&](QJsonObject value) {
+            value.insert("qtScreenDpis", qtDpiEvidence); value.insert("matchedNativeScreens", int(monitors.size()));
+            if (!evidenceRoot.isEmpty()) { QVERIFY(QDir().mkpath(evidenceRoot + "/geometry")); write(evidenceRoot + "/geometry/native-roundtrip.json", QJsonDocument(value).toJson()); }
+        };
+        if (qtDpis.size() >= 2 && dpis.size() < 2 && !qEnvironmentVariableIsSet("QT_SCALE_FACTOR") && !qEnvironmentVariableIsSet("QT_SCREEN_SCALE_FACTORS")) {
+            saveEvidence({{"scope", "native-programmatic-not-mouse-drag"}, {"executed", false}, {"reason", "qt-native-screen-mapping-incomplete"}});
+            QFAIL("Qt reports mixed DPI but native screen mapping is incomplete");
+        }
+        if (dpis.size() < 2 || qEnvironmentVariableIsSet("QT_SCALE_FACTOR") || qEnvironmentVariableIsSet("QT_SCREEN_SCALE_FACTORS")) {
+            saveEvidence({{"scope", "native-programmatic-not-mouse-drag"}, {"executed", false}, {"reason", "mixed-dpi-desktop-unavailable-or-overridden"}});
+            QSKIP("Real mixed-DPI desktop is unavailable or scaling is overridden; no native migration executed");
+        }
+        const auto first = monitors.first(); auto second = first;
+        for (const auto &monitor : monitors) if (monitor.dpi != first.dpi) { second = monitor; break; }
+        QWidget window; window.setMinimumSize(201, 151); window.resize(401, 301);
+        WindowGeometry controller(&window); window.show(); QTest::qWait(30);
+        const auto hwnd = reinterpret_cast<HWND>(window.winId()); QJsonArray samples;
+        int step = 0;
+        for (int round = 0; round < 3; ++round) for (const auto &target : {first, second, first}) {
+            RECT outer{}; QVERIFY(GetWindowRect(hwnd, &outer));
+            const int workWidth = target.work.right - target.work.left, workHeight = target.work.bottom - target.work.top;
+            const int outerWidth = int(outer.right - outer.left), outerHeight = int(outer.bottom - outer.top);
+            const int x = target.work.left + qMax(0, (workWidth - outerWidth) / 2);
+            const int y = target.work.top + qMax(0, (workHeight - outerHeight) / 2);
+            QVERIFY(SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE));
+            QTRY_VERIFY_WITH_TIMEOUT(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) == target.handle, 5000);
+            QTRY_COMPARE_WITH_TIMEOUT(GetDpiForWindow(hwnd), target.dpi, 5000);
+            QTRY_COMPARE_WITH_TIMEOUT(window.devicePixelRatioF(), qreal(target.dpi) / 96, 5000);
+            QTRY_COMPARE_WITH_TIMEOUT(window.size(), QSize(401, 301), 5000);
+            for (int sample = 0; sample < 5; ++sample) {
+                QTest::qWait(20); QCOMPARE(window.size(), QSize(401, 301)); QCOMPARE(controller.preferredClientSize(), QSize(401, 301));
+            }
+            RECT client{}; QVERIFY(GetClientRect(hwnd, &client)); QVERIFY(GetWindowRect(hwnd, &outer));
+            QVERIFY(qAbs(client.right - client.left - MulDiv(401, target.dpi, 96)) <= 1);
+            QVERIFY(qAbs(client.bottom - client.top - MulDiv(301, target.dpi, 96)) <= 1);
+            samples.append(QJsonObject{{"step", step++}, {"dpi", int(GetDpiForWindow(hwnd))}, {"windowDpr", window.devicePixelRatioF()},
+                {"logicalWidth", window.width()}, {"logicalHeight", window.height()}, {"nativeClientWidth", int(client.right - client.left)}, {"nativeClientHeight", int(client.bottom - client.top)}});
+        }
+        saveEvidence({{"scope", "native-programmatic-not-mouse-drag"}, {"executed", true}, {"samples", samples}});
     }
 #endif
 };
