@@ -114,11 +114,15 @@ private slots:
         workspace->activatePane(two->paneId()); auto *zoom = two->footer()->findChild<SharedButton *>("contentZoom"); zoom->setFocus(Qt::OtherFocusReason); QTRY_VERIFY(zoom->hasFocus()); QTest::keySequence(zoom, QKeySequence::Save); QTRY_VERIFY(!two->document()->dirty()); QCOMPARE(disk(second), QByteArray("two-keep"));
     }
     void compositionDefersTransferAndClosedDestinationPreservesStandalone() {
+        qInfo() << "transfer-fixture: starting";
         QTemporaryDir dir; const auto path = dir.filePath("composition.md"); QVERIFY(fileFixtures::write(path, "base")); FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); pane->setEditing(true);
         auto *target = desktop.workspaceWindow(); QInputMethodEvent preedit(QStringLiteral("pin"), {}); QApplication::sendEvent(pane->editor(), &preedit); QVERIFY(pane->document()->session()->isComposing()); QVERIFY(!desktop.transferToWorkspace(pane, target)); QVERIFY(pane->isWindow()); QVERIFY(target->panes().isEmpty());
+        qInfo() << "transfer-fixture: preedit deferred";
         QInputMethodEvent commit; commit.setCommitString(QStringLiteral("中")); QApplication::sendEvent(pane->editor(), &commit); QTRY_VERIFY(pane->embedded()); QCOMPARE(pane->window(), static_cast<QWidget *>(target)); QVERIFY(pane->document()->session()->snapshot().utf8.contains(QStringLiteral("中").toUtf8()));
+        qInfo() << "transfer-fixture: transferred";
         const auto otherPath = dir.filePath("preserve.md"); QVERIFY(fileFixtures::write(otherPath, "preserved")); desktop.open(otherPath); auto *other = waitStandalone(otherPath); QVERIFY(other);
-        auto *closing = desktop.workspaceWindow(dir.path()); closing->close(); QVERIFY(closing->closingWorkspace()); QVERIFY(!desktop.transferToWorkspace(other, closing)); QVERIFY(other->isWindow()); QCOMPARE(other->document()->session()->snapshot().utf8, QByteArray("preserved"));
+        auto *closing = desktop.workspaceWindow(dir.path()); qInfo() << "transfer-fixture: closing destination"; closing->close(); qInfo() << "transfer-fixture: destination closed"; QVERIFY(closing->closingWorkspace()); QVERIFY(!desktop.transferToWorkspace(other, closing)); QVERIFY(other->isWindow()); QCOMPARE(other->document()->session()->snapshot().utf8, QByteArray("preserved"));
+        qInfo() << "transfer-fixture: leaving scope";
     }
     void readingPositionSurvivesNativeHostTransfer() {
         QTemporaryDir dir; const auto path = dir.filePath("reader.md"); QByteArray text; for (int i = 0; i < 180; ++i) text += "paragraph\n\n"; QVERIFY(fileFixtures::write(path, text)); FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
