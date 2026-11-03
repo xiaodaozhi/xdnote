@@ -23,6 +23,8 @@
       "id": "main",
       "label": "主工作区",
       "kind": "application-window",
+      "purpose": "显式目录导航、多标签、原会话接管及编辑／阅读／双栏的基础原型。",
+      "sizeRationale": "读取 windows.main；复用 48 像素标题行与窗口按钮，标签内嵌标题行，26 像素状态栏跨全窗口。",
       "sizeToken": "windows.main",
       "designAssetIds": [
         "ui-v2-01-workspace-light",
@@ -39,7 +41,10 @@
         "ui-v2-31-content-interactions"
       ],
       "designStatus": "reference-available",
-      "implementationStatus": "not-started",
+      "implementationStatus": "workspace-prototype",
+      "implementationSource": "apps/desktop/src/WorkspaceWindow.cpp",
+      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection"],
+      "deferredStates": ["resources-and-links", "search", "favorites", "mapped-scroll-sync"],
       "nativeValidation": "not-run"
     },
     {
@@ -58,7 +63,7 @@
       "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
       "sizeRationale": "共享 48 逻辑像素应用标题行、工具栏和 26 像素状态栏；Windows 标题行包含应用窗口按钮，不叠加系统文字标题栏，其他平台保留系统装饰。",
       "implementedStates": ["light-reading", "light-editing", "dark-reading", "dark-editing", "six-accents", "opening", "open-error", "read-only", "save-error", "content-zoom"],
-      "deferredStates": ["workspace-transfer", "persistent-window-geometry"],
+      "deferredStates": ["native-platform-acceptance"],
       "nativeValidation": "not-run"
     },
     {

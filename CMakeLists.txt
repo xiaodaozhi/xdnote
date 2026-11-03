@@ -85,6 +85,9 @@ set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUS
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/WorkspaceTree.cpp apps/desktop/src/WorkspaceTree.h
+    apps/desktop/src/WorkspaceWindow.cpp apps/desktop/src/WorkspaceWindow.h
+    apps/desktop/src/WindowChrome.cpp apps/desktop/src/WindowChrome.h
     apps/desktop/src/WindowGeometry.cpp apps/desktop/src/WindowGeometry.h
     apps/desktop/src/UiFonts.cpp apps/desktop/src/UiFonts.h
     apps/desktop/src/Appearance.cpp apps/desktop/src/Appearance.h
@@ -164,4 +167,11 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME window_geometry COMMAND xdnote_geometry_tests -o -,txt -o "${CMAKE_BINARY_DIR}/geometry-qtest.txt,txt")
     set_tests_properties(window_geometry PROPERTIES TIMEOUT 60)
+    add_executable(xdnote_workspace_tests apps/desktop/tests/workspace_tests.cpp)
+    target_link_libraries(xdnote_workspace_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_workspace_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME workspace_workflow COMMAND xdnote_workspace_tests -o -,txt -o "${CMAKE_BINARY_DIR}/workspace-qtest.txt,txt")
+    set_tests_properties(workspace_workflow PROPERTIES TIMEOUT 180)
 endif()

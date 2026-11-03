@@ -20,6 +20,7 @@
 #include <QStyleOptionMenuItem>
 #include <QtMath>
 #include <cmath>
+#include <algorithm>
 #ifdef Q_OS_WIN
 #define NOMINMAX
 #include <windows.h>
@@ -120,7 +121,10 @@ void SharedButton::keyPressEvent(QKeyEvent *event) {
     }
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) { if (menu()) showMenu(); else click(); event->accept(); return; }
     if (isCheckable() && group() && (event->key() == Qt::Key_Left || event->key() == Qt::Key_Right)) {
-        const auto buttons = group()->buttons(); const int direction = event->key() == Qt::Key_Left ? -1 : 1;
+        auto buttons = group()->buttons();
+        buttons.erase(std::remove_if(buttons.begin(), buttons.end(), [](QAbstractButton *button) { return !button->isVisible() || !button->isEnabled(); }), buttons.end());
+        if (buttons.isEmpty()) { event->accept(); return; }
+        const int direction = event->key() == Qt::Key_Left ? -1 : 1;
         const int next = (buttons.indexOf(this) + buttons.size() + direction) % buttons.size();
         if (buttons[next]->isEnabled()) { buttons[next]->setFocus(Qt::OtherFocusReason); buttons[next]->click(); }
         event->accept(); return;

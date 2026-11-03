@@ -62,7 +62,13 @@ async function main() {
     assert(size, 'Unknown window token ' + w.id);
     const admission = w.id === 'desktop-admission' && w.kind === 'validation-window';
     const filePrototype = ['standalone', 'unsaved-confirmation', 'external-conflict'].includes(w.id);
-    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    const workspacePrototype = w.id === 'main' && w.kind === 'application-window';
+    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : workspacePrototype ? 'workspace-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    if (workspacePrototype) {
+      assert(w.implementationSource === 'apps/desktop/src/WorkspaceWindow.cpp' && w.implementedStates?.includes('session-transfer') && w.deferredStates?.includes('resources-and-links'), 'Workspace prototype scope');
+      assert(w.sizeToken === 'windows.main' && w.purpose && w.sizeRationale, 'Workspace window geometry');
+      await fs.access(path.join(ROOT, w.implementationSource));
+    }
     if (filePrototype) {
       assert(w.implementationSource === 'apps/desktop/src/SingleFileWindow.cpp' && w.implementedStates?.length > 0, 'File prototype scope ' + w.id);
       await fs.access(path.join(ROOT, w.implementationSource));
@@ -75,6 +81,7 @@ async function main() {
     for (const ref of w.designAssetIds) assert(material.assets.some(a => a.id === ref && ['baseline', 'current'].includes(a.status)), 'Window reference ' + w.id + '/' + ref);
   }
   assert(Object.keys(tokens.accents).length === 6 && geometry.unit === 'logical-pixel', 'Shared parameter contract');
+  assert(tokens.tabs.minWidth <= tokens.tabs.maxWidth && tokens.tabs.closeHit === tokens.controls.iconButtonHit, 'Shared tab parameter contract');
   const frames = catalog.boards.flatMap(b => b.frames);
   assert(frames.length === catalog.surfaceCount && frames.length === surfaces.surfaces.length, 'Surface coverage count');
   assert(new Set(frames.map(f => f.id)).size === frames.length, 'Duplicate surface IDs');

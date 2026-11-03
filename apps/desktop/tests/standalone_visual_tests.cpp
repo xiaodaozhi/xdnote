@@ -341,7 +341,7 @@ private slots:
         auto *accents = static_cast<SharedMenu *>(owned.value->findChild<QMenu *>("accentMenu")); appearanceMenu->setActiveAction(accents->menuAction()); QTest::keyClick(appearanceMenu, Qt::Key_Right); QTRY_VERIFY(accents->isVisible()); inspect(accents, "accent");
         QCOMPARE(accents->actions().size(), 6); int checked = 0; for (auto *item : accents->actions()) { QVERIFY(!item->icon().isNull()); checked += item->isChecked(); } QCOMPARE(checked, 1);
         QTest::keyClick(accents, Qt::Key_Escape); QTRY_VERIFY(!accents->isVisible()); if (appearanceMenu->isVisible()) QTest::keyClick(appearanceMenu, Qt::Key_Escape); QTRY_VERIFY(!appearanceMenu->isVisible()); if (root->isVisible()) QTest::keyClick(root, Qt::Key_Escape); QTRY_VERIFY(!root->isVisible());
-        for (const auto &name : {"fileLocation", "contentZoom"}) { auto *menu = static_cast<SharedMenu *>(owned.value->findChild<SharedButton *>(name)->menu()); menu->popup(owned.value->screen()->availableGeometry().bottomRight()); QTRY_VERIFY(menu->isVisible()); inspect(menu, name); QTest::keyClick(menu, Qt::Key_Escape); }
+        for (const auto &name : {"pathMenu", "contentZoom"}) { auto *menu = QString::fromLatin1(name) == "pathMenu" ? owned.value->findChild<SharedMenu *>(name) : static_cast<SharedMenu *>(owned.value->findChild<SharedButton *>(name)->menu()); QVERIFY(menu); menu->popup(owned.value->screen()->availableGeometry().bottomRight()); QTRY_VERIFY(menu->isVisible()); inspect(menu, name); QTest::keyClick(menu, Qt::Key_Escape); }
     }
     void readerComponentsCopyAndHorizontalScroll() {
         QTemporaryDir temporary; const auto path = temporary.filePath("components.md");
