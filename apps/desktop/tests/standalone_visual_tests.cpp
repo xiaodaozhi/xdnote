@@ -8,6 +8,7 @@
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "VisualTokens.h"
+#include "UiFonts.h"
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QDialog>
@@ -27,6 +28,16 @@
 #include <QTimer>
 #include <QWebEnginePage>
 #include <QWebEngineSettings>
+#include <QWebEngineScript>
+#include <QScreen>
+#include <QTextLayout>
+#include <QGlyphRun>
+#include <QRawFont>
+#include <QFontInfo>
+#include <QPainter>
+#ifdef Q_OS_WIN
+#include <dwmapi.h>
+#endif
 #include <QWebEngineView>
 #include <memory>
 
@@ -64,6 +75,11 @@ QString html(MarkdownPreview *preview) {
     QElapsedTimer timer; timer.start(); while (!result->finished && timer.elapsed() < 10000) QTest::qWait(10);
     return result->text;
 }
+QVariant evaluate(QWebEnginePage *page, const QString &script) {
+    struct Result { QVariant value; bool ready = false; }; auto result = std::make_shared<Result>();
+    page->runJavaScript(script, QWebEngineScript::ApplicationWorld, [result](const QVariant &value) { result->value = value; result->ready = true; });
+    QElapsedTimer timer; timer.start(); while (!result->ready && timer.elapsed() < 10000) QTest::qWait(10); return result->value;
+}
 bool contained(SingleFileWindow *window, QWidget *child) { return child && window->rect().contains(QRect(child->mapTo(window, QPoint()), child->size())); }
 bool noOuterRing(QWidget *owner, QWidget *button, QColor background) {
     const auto pixels = owner->grab().toImage(); const auto dpr = owner->devicePixelRatioF();
@@ -88,6 +104,34 @@ double inkCenter(const QImage &image, qreal dpr, int firstX, int lastX, QColor b
 class StandaloneVisualTests final : public QObject {
     Q_OBJECT
 private slots:
+    void popupShadowIsSoftSymmetricAndUnclipped() {
+        for (const qreal dpr : {1.0, 1.5, 2.0, 3.0}) {
+            QImage image(QSize(248 * dpr, 188 * dpr), QImage::Format_ARGB32_Premultiplied); image.setDevicePixelRatio(dpr); image.fill(Qt::transparent);
+            { QPainter painter(&image); paintPopupShell(painter, QRectF(24, 24, 200, 140), Qt::white, QColor("#DDE2E8"), 12, 18); }
+            for (int x = 0; x < image.width(); ++x) { QVERIFY(image.pixelColor(x, 0).alpha() <= 1); QVERIFY(image.pixelColor(x, image.height() - 1).alpha() <= 1); }
+            for (int y = 0; y < image.height(); ++y) { QVERIFY(image.pixelColor(0, y).alpha() <= 1); QVERIFY(image.pixelColor(image.width() - 1, y).alpha() <= 1); }
+            int previous = 255;
+            for (int distance = 2; distance < 20; ++distance) {
+                const int left = qRound(24 * dpr) - qRound(distance * dpr), right = qRound(224 * dpr) + qRound(distance * dpr) - 1, y = qRound(96 * dpr);
+                const int alpha = image.pixelColor(left, y).alpha(); QVERIFY(alpha <= 60); QVERIFY(alpha <= previous); previous = alpha; QVERIFY(qAbs(alpha - image.pixelColor(right, y).alpha()) <= 2);
+            }
+        }
+    }
+    void platformFontsResolveChineseSans() {
+        FileManager manager(nullptr, {}, false); Window owned{new SingleFileWindow(&manager)};
+        const QList<QFont> fonts{uiFont(), sourceFont(), owned.value->findChild<SharedButton *>("saveButton")->font(), owned.value->findChild<QLabel *>("documentNotice")->font()};
+        for (const auto &font : fonts) {
+            QTextLayout layout(QStringLiteral("中文界面"), font); layout.beginLayout(); auto line = layout.createLine(); line.setLineWidth(300); layout.endLayout();
+            QVERIFY(!layout.glyphRuns().isEmpty());
+            for (const auto &run : layout.glyphRuns()) {
+                qInfo() << "font-request=" << font.families() << "resolved=" << QFontInfo(font).family() << "han=" << run.rawFont().familyName();
+                QVERIFY(!run.rawFont().familyName().contains("SimSun", Qt::CaseInsensitive));
+#ifdef Q_OS_WIN
+                QVERIFY(run.rawFont().familyName().contains("YaHei", Qt::CaseInsensitive) || run.rawFont().familyName().contains(QStringLiteral("微软雅黑")));
+#endif
+            }
+        }
+    }
     void vectorIconPixmapTransparency() {
         for (const auto &name : {"document", "clock", "warning", "check-circle", "lock", "status-dirty"}) for (const qreal dpr : {1.0, 1.5, 2.0}) {
             const auto pixmap = themedIcon(name, QColor("#374151")).pixmap(QSize(16, 16), dpr);
@@ -128,8 +172,8 @@ private slots:
         Window owned{new SingleFileWindow(&manager, &appearance)}; auto *window = owned.value.data(); window->setDocument(document); window->show();
         QTRY_VERIFY_WITH_TIMEOUT(painted(window->preview(), &appearance), 20000);
         auto *header = window->findChild<QWidget *>("documentHeader"); const auto pixels = header->grab().toImage();
-        const auto logoCenter = inkCenter(pixels, header->devicePixelRatioF(), 43, 128, appearance.color("sidebar"));
-        const auto titleCenter = inkCenter(pixels, header->devicePixelRatioF(), 160, 780, appearance.color("sidebar"));
+        const auto logoCenter = inkCenter(pixels, header->devicePixelRatioF(), 40, 103, appearance.color("sidebar"));
+        const auto titleCenter = inkCenter(pixels, header->devicePixelRatioF(), 136, 440, appearance.color("sidebar"));
         QVERIFY(logoCenter > 0 && titleCenter > 0); QVERIFY(qAbs(logoCenter - titleCenter) <= 1.25);
         QCOMPARE(window->findChild<QWidget *>("documentHeader")->height(), 48); QCOMPARE(window->findChild<QWidget *>("documentToolbar")->height(), 48);
         QCOMPARE(window->findChild<QWidget *>("documentFooter")->height(), 26); QCOMPARE(window->findChild<QWidget *>("modeSwitch")->height(), 32);
@@ -149,6 +193,7 @@ private slots:
         QCOMPARE(document->session()->snapshot().utf8, edited.utf8); QCOMPARE(document->session()->revision(), edited.revision); window->setContentZoom(100);
         capture(window, "editing-" + theme + '-' + accent);
         window->resize(560, 480); QTest::qWait(30);
+        QCOMPARE(window->size(), QSize(560, 480));
         for (const auto &name : {"readMode", "editMode", "saveButton", "moreActions", "contentZoom", "fileLocation"}) QVERIFY2(contained(window, window->findChild<QWidget *>(name)), name);
         QCOMPARE(window->findChild<SharedButton *>("saveButton")->font().pixelSize(), 14);
         auto *scrollbar = window->editor()->verticalScrollBar(); QTRY_VERIFY(scrollbar->isVisible()); QCOMPARE(scrollbar->width(), 12);
@@ -218,8 +263,9 @@ private slots:
         QVERIFY(!owned.value->findChild<SharedButton *>("editMode")->isEnabled()); QVERIFY(owned.value->findChild<QAction *>("saveAsAction")->isEnabled());
         QVERIFY(owned.value->findChild<QLabel *>("documentNotice")->text().contains(QStringLiteral("只读"))); QCOMPARE(owned.value->findChild<ElidedLabel *>("documentStatus")->fullText(), QStringLiteral("只读")); capture(owned.value, "read-only-" + theme);
         emit owned.value->preview()->previewError(QStringLiteral("预览进程已停止"));
-        QCOMPARE(owned.value->findChild<QLabel *>("documentNotice")->text(), QStringLiteral("预览进程已停止"));
-        QCOMPARE(owned.value->findChild<SharedButton *>("resolveConflict")->text(), QStringLiteral("重试预览"));
+        QVERIFY(owned.value->findChild<QWidget *>("previewFailure")->isVisible());
+        QVERIFY(owned.value->findChild<SharedButton *>("retryPreview")->isVisible());
+        QCOMPARE(owned.value->findChild<QLabel *>("documentStatusIcon")->property("semanticColor").toString(), appearance.color("textSecondary").name());
     }
     void unsavedDialogAppearanceAndCancel_data() { readOnlyFeedback_data(); }
     void unsavedDialogAppearanceAndCancel() {
@@ -232,7 +278,9 @@ private slots:
         connect(&timer, &QTimer::timeout, this, [&] {
             auto *dialog = qobject_cast<QDialog *>(qApp->activeModalWidget()); if (!dialog) return; timer.stop();
             inspected = true;
-            QCOMPARE(dialog->objectName(), QString("unsavedConfirmation")); QCOMPARE(dialog->width(), 480);
+            QCOMPARE(dialog->objectName(), QString("unsavedConfirmation")); QCOMPARE(dialog->findChild<QWidget *>("dialogSurface")->width(), 480);
+            QVERIFY(dialog->windowFlags().testFlag(Qt::FramelessWindowHint)); QVERIFY(dialog->findChild<SharedButton *>("dialogClose"));
+            QVERIFY(owned.value->findChild<QWidget *>("dialogDimOverlay")->isVisible()); QVERIFY(dialog->findChild<QLabel *>("dialogDirtyIndicator"));
             QVERIFY(dialog->findChild<QWidget *>("dialogFile")); QVERIFY(dialog->findChildren<QScrollArea *>().isEmpty());
             auto *cancel = dialog->findChild<SharedButton *>("choice0"); auto *save = dialog->findChild<SharedButton *>("choice1"); auto *discard = dialog->findChild<SharedButton *>("choice2");
             QVERIFY(cancel && save && discard); QVERIFY(discard->x() < cancel->x() && cancel->x() < save->x());
@@ -257,7 +305,7 @@ private slots:
         QTest::mouseClick(readMode, Qt::LeftButton); QVERIFY(!window->editing());
         window->findChild<SharedButton *>("fileLocation")->setFocus(Qt::OtherFocusReason); QTest::keyClick(window->findChild<SharedButton *>("fileLocation"), Qt::Key_Tab);
         QTRY_VERIFY(readMode->hasFocus()); QVERIFY(readMode->keyboardOutline());
-        window->findChild<QAction *>("saveAction")->trigger(); QVERIFY(!readMode->keyboardOutline()); QVERIFY(readMode->hasFocus()); QTRY_VERIFY(!document->saving());
+        QVERIFY(!window->findChild<QAction *>("saveAction")->isEnabled()); readMode->click(); QVERIFY(!readMode->keyboardOutline()); QVERIFY(readMode->hasFocus()); QVERIFY(!document->saving());
         auto *more = window->findChild<SharedButton *>("moreActions"); auto *menu = more->menu();
         QTimer::singleShot(100, menu, [menu] { QTest::keyClick(menu, Qt::Key_Escape); }); more->setFocus(Qt::OtherFocusReason); more->showMenu();
         QTRY_VERIFY(!menu->isVisible()); QTRY_COMPARE(window->focusWidget(), more);
@@ -267,6 +315,107 @@ private slots:
         QSignalSpy opening(window, &SingleFileWindow::openRequested); window->findChild<QAction *>("openAction")->trigger(); QCOMPARE(opening.count(), 0); QCOMPARE(document->session()->snapshot().utf8, sample());
         Window empty{new SingleFileWindow(&manager)}; empty.value->showOpenError(path, QStringLiteral("没有读取权限")); empty.value->show(); empty.value->resize(600, 500); QTest::qWait(20);
         QCOMPARE(empty.value->findChild<ElidedLabel *>("documentStatus")->fullText(), QStringLiteral("打开失败")); QVERIFY(!empty.value->findChild<QAction *>("reloadAction")->isEnabled()); capture(empty.value, "open-error");
+    }
+    void menuShellsAndNestedNavigation_data() { readOnlyFeedback_data(); }
+    void menuShellsAndNestedNavigation() {
+        QFETCH(QString, theme); Appearance appearance; QVERIFY(appearance.setPreferences(theme, "cobalt")); FileManager manager(nullptr, {}, false);
+        Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->show();
+        auto inspect = [&](SharedMenu *menu, const QString &name) {
+            QVERIFY(menu); QVERIFY(menu->isVisible()); QVERIFY(menu->testAttribute(Qt::WA_TranslucentBackground));
+            capture(menu, "menu-" + theme + '-' + name);
+            QVERIFY(!menu->graphicsEffect());
+            const auto pixels = menu->grab().toImage(); const auto dpr = menu->devicePixelRatioF(); const auto surface = menu->surfaceRect();
+            QVERIFY(pixels.hasAlphaChannel()); QCOMPARE(pixels.pixelColor(0, 0).alpha(), 0);
+            QVERIFY(pixels.pixelColor(qRound(surface.left() * dpr), qRound(surface.top() * dpr)).alpha() < 255);
+            const auto shadow = pixels.pixelColor(qRound((surface.left() - 3) * dpr), qRound(surface.center().y() * dpr));
+            QVERIFY2(shadow.alpha() > 0 && shadow.alpha() < 255, qPrintable(QString("shadow alpha=%1").arg(shadow.alpha())));
+            const int leftEdge = qRound(surface.x() * dpr), rightEdge = qRound((surface.x() + surface.width()) * dpr);
+            for (int distance = qRound(2 * dpr); distance < qRound(12 * dpr); ++distance) { const auto left = pixels.pixelColor(leftEdge - distance, qRound(surface.center().y() * dpr)).alpha(), right = pixels.pixelColor(rightEdge + distance - 1, qRound(surface.center().y() * dpr)).alpha(); QVERIFY2(right < 65, qPrintable(QString("right shadow alpha=%1").arg(right))); QVERIFY(qAbs(left - right) <= 4); }
+            QCOMPARE(pixels.pixelColor(qRound((surface.right() - 2) * dpr), qRound(surface.center().y() * dpr)).rgb(), appearance.color("surface").rgb());
+            QVERIFY(menu->screen()->availableGeometry().contains(menu->geometry())); capture(menu, "menu-" + theme + '-' + name);
+        };
+        auto *root = static_cast<SharedMenu *>(owned.value->findChild<SharedButton *>("moreActions")->menu());
+        root->popup(owned.value->mapToGlobal(QPoint(400, 90))); QTRY_VERIFY(root->isVisible()); inspect(root, "document");
+        auto *appearanceMenu = static_cast<SharedMenu *>(owned.value->findChild<QMenu *>("appearanceMenu"));
+        root->setActiveAction(appearanceMenu->menuAction()); QTest::keyClick(root, Qt::Key_Right); QTRY_VERIFY(appearanceMenu->isVisible()); inspect(appearanceMenu, "appearance");
+        auto *accents = static_cast<SharedMenu *>(owned.value->findChild<QMenu *>("accentMenu")); appearanceMenu->setActiveAction(accents->menuAction()); QTest::keyClick(appearanceMenu, Qt::Key_Right); QTRY_VERIFY(accents->isVisible()); inspect(accents, "accent");
+        QCOMPARE(accents->actions().size(), 6); int checked = 0; for (auto *item : accents->actions()) { QVERIFY(!item->icon().isNull()); checked += item->isChecked(); } QCOMPARE(checked, 1);
+        QTest::keyClick(accents, Qt::Key_Escape); QTRY_VERIFY(!accents->isVisible()); if (appearanceMenu->isVisible()) QTest::keyClick(appearanceMenu, Qt::Key_Escape); QTRY_VERIFY(!appearanceMenu->isVisible()); if (root->isVisible()) QTest::keyClick(root, Qt::Key_Escape); QTRY_VERIFY(!root->isVisible());
+        for (const auto &name : {"fileLocation", "contentZoom"}) { auto *menu = static_cast<SharedMenu *>(owned.value->findChild<SharedButton *>(name)->menu()); menu->popup(owned.value->screen()->availableGeometry().bottomRight()); QTRY_VERIFY(menu->isVisible()); inspect(menu, name); QTest::keyClick(menu, Qt::Key_Escape); }
+    }
+    void readerComponentsCopyAndHorizontalScroll() {
+        QTemporaryDir temporary; const auto path = temporary.filePath("components.md");
+        const auto code = QStringLiteral("const text = '<script>中文😀</script>';\n") + QString(240, 'x') + '\n';
+        const auto text = "# Components\n\n- [x] 完成\n- [ ] 待办\n\n```js\n" + code.toUtf8() + "```\n\n|列|" + QByteArray(180, 'y') + "|\n|--|--|\n|一|二|\n";
+        QVERIFY(fileFixtures::write(path, text)); Appearance appearance; FileManager manager(nullptr, {}, false); auto *document = open(manager, path); QVERIFY(document);
+        Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->setDocument(document); owned.value->show(); auto *preview = owned.value->preview(); QSignalSpy ready(preview, &MarkdownPreview::previewReady); QSignalSpy copied(preview, &MarkdownPreview::copyTextRequested);
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 20000); auto *page = preview->view()->page();
+        qInfo() << "reader-font=" << evaluate(page, "getComputedStyle(document.body).fontFamily").toString();
+        QVERIFY(evaluate(page, "(()=>{let e=document.querySelector('pre');return e.scrollWidth>e.clientWidth&&getComputedStyle(e).whiteSpace==='pre'})()").toBool());
+        QVERIFY(evaluate(page, "(()=>{let e=document.querySelector('.table-scroll');return e.scrollWidth>e.clientWidth})()").toBool());
+        QVERIFY(evaluate(page, "(()=>{let e=document.querySelector('input[type=checkbox]');return getComputedStyle(e.parentElement).listStyleType==='none'&&getComputedStyle(e).width==='16px'})()").toBool());
+        QCOMPARE(evaluate(page, "document.querySelector('pre code').textContent").toString(), code);
+        QVERIFY(evaluate(page, "document.querySelectorAll('.syntax-keyword').length>0").toBool());
+        const auto point = evaluate(page, "(()=>{const r=document.querySelector('button[data-xdnote-code]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").toMap();
+        QVERIFY(!point.isEmpty()); QTest::mouseClick(preview->view()->focusProxy() ? preview->view()->focusProxy() : preview->view(), Qt::LeftButton, Qt::NoModifier, QPoint(qRound(point["x"].toDouble()), qRound(point["y"].toDouble())));
+        QTRY_COMPARE_WITH_TIMEOUT(copied.count(), 1, 10000); QCOMPARE(copied.first().first().toString(), code); QCOMPARE(document->session()->snapshot().utf8, text); QVERIFY(!document->dirty());
+        QVERIFY(!page->settings()->testAttribute(QWebEngineSettings::JavascriptEnabled)); QVERIFY(!page->settings()->testAttribute(QWebEngineSettings::JavascriptCanAccessClipboard));
+        capture(owned.value, "reader-code-tasks-table");
+        QTimer timer; timer.setInterval(50); bool inspected = false; connect(&timer, &QTimer::timeout, this, [&] { auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget()); if (!menu) return; timer.stop(); inspected = true; QCOMPARE(menu->objectName(), QString("readingContextMenu")); QCOMPARE(menu->actions().size(), 2); QCOMPARE(menu->actions()[0]->text(), QStringLiteral("复制")); QCOMPARE(menu->actions()[1]->text(), QStringLiteral("全选")); capture(menu, "reading-context-menu"); menu->close(); }); timer.start();
+        emit preview->view()->customContextMenuRequested(QPoint(80, 80)); QVERIFY(inspected);
+    }
+    void headingsLoadingErrorsAndSaveState() {
+        FileManager manager(nullptr, {}, false); Appearance appearance; Window empty{new SingleFileWindow(&manager, &appearance)}; empty.value->show();
+        const auto intent = QUuid::createUuid(); QSignalSpy cancelled(empty.value, &SingleFileWindow::cancelOpenRequested); empty.value->setLoading("/sample.md", intent);
+        QTRY_VERIFY(empty.value->findChild<SharedSpinner *>("busySpinner")->running());
+        QVERIFY(empty.value->findChild<SharedButton *>("cancelOpen")->isVisible()); capture(empty.value, "opening"); empty.value->findChild<SharedButton *>("cancelOpen")->click(); QCOMPARE(cancelled.count(), 1); QCOMPARE(cancelled.first().first().toUuid(), intent);
+        empty.value->showOpenError("/sample.md", QStringLiteral("没有读取权限")); QCOMPARE(empty.value->findChild<QLabel *>("openStateTitle")->text(), QStringLiteral("无法打开文件")); QVERIFY(empty.value->findChild<SharedButton *>("welcomeOpen")->isVisible()); QVERIFY(!empty.value->findChild<SharedButton *>("cancelOpen")->isVisible());
+        QTemporaryDir temporary; const auto path = temporary.filePath("headings.md"); QVERIFY(fileFixtures::write(path, "## original\n")); auto *document = open(manager, path); QVERIFY(document);
+        Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->setDocument(document); owned.value->show(); QVERIFY(!owned.value->findChild<SharedButton *>("saveButton")->isEnabled()); owned.value->setEditing(true);
+        auto *headings = owned.value->findChild<QMenu *>("headingMenu"); QVERIFY(headings); QCOMPARE(headings->actions().size(), 6); headings->actions()[3]->trigger(); QCOMPARE(document->session()->snapshot().utf8, QByteArray("#### original\n")); QVERIFY(owned.value->findChild<SharedButton *>("saveButton")->isEnabled()); QCOMPARE(document->session()->undo(), EditResult::Applied); QVERIFY(!owned.value->findChild<SharedButton *>("saveButton")->isEnabled());
+        emit owned.value->preview()->previewError(QStringLiteral("预览进程已停止")); owned.value->setEditing(false); QVERIFY(owned.value->findChild<QWidget *>("previewFailure")->isVisible()); capture(owned.value, "preview-error"); owned.value->findChild<SharedButton *>("viewSource")->click(); QVERIFY(owned.value->editing()); QVERIFY(owned.value->editor()->isVisible()); QCOMPARE(document->session()->snapshot().utf8, QByteArray("## original\n"));
+    }
+    void windowsSingleCaptionAndNativeHitRegions() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != "windows") QSKIP("Requires the Windows platform plugin");
+        FileManager manager(nullptr, {}, false); Window owned{new SingleFileWindow(&manager)}; auto *window = owned.value.data(); QCOMPARE(window->size(), QSize(800, 820)); window->show(); QTest::qWait(100);
+        auto hwnd = reinterpret_cast<HWND>(window->winId()); RECT outer{}, client{}; QVERIFY(GetWindowRect(hwnd, &outer)); QVERIFY(GetClientRect(hwnd, &client)); POINT origin{}; QVERIFY(ClientToScreen(hwnd, &origin));
+        QVERIFY2(origin.y - outer.top <= 2, "Native caption must not be added above the 48 logical pixel application titlebar");
+        QCOMPARE(window->findChild<QWidget *>("documentHeader")->height(), 48); QVERIFY(window->width() <= 800 && window->width() >= 560); QVERIFY(window->height() <= 820 && window->height() >= 480);
+        const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE); QVERIFY((style & WS_CAPTION) == WS_CAPTION); QVERIFY(style & WS_THICKFRAME); QVERIFY(!(style & WS_POPUP));
+        BOOL composition = FALSE; if (SUCCEEDED(DwmIsCompositionEnabled(&composition)) && composition) { BOOL enabled = FALSE; QVERIFY(SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_NCRENDERING_ENABLED, &enabled, sizeof(enabled)))); QVERIFY(enabled); }
+        DWORD corner = 0; if (SUCCEEDED(DwmGetWindowAttribute(hwnd, 33, &corner, sizeof(corner)))) QCOMPARE(corner, DWORD(2));
+        auto hit = [&](QPoint point) { const qreal dpr = window->devicePixelRatioF(); POINT native{qRound(point.x() * dpr), qRound(point.y() * dpr)}; ClientToScreen(hwnd, &native); return SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(native.x, native.y)); };
+        QCOMPARE(hit(QPoint(180, 24)), LRESULT(HTCAPTION)); auto *maximize = window->findChild<SharedButton *>("captionMaximize"); QVERIFY(maximize); QCOMPARE(hit(maximize->mapTo(window, maximize->rect().center())), LRESULT(HTMAXBUTTON));
+        auto *close = window->findChild<SharedButton *>("captionClose"); QVERIFY(close); QCOMPARE(hit(close->mapTo(window, close->rect().center())), LRESULT(HTCLIENT));
+        auto *header = window->findChild<QWidget *>("documentHeader"); auto *minimize = window->findChild<SharedButton *>("captionMinimize"); QVERIFY(minimize);
+        for (auto *button : {minimize, maximize, close}) { QCOMPARE(button->size(), QSize(48, 48)); QCOMPARE(button->mapTo(header, QPoint()).y(), 0); }
+        QCOMPARE(close->mapTo(header, QPoint(close->width(), 0)).x(), header->width()); QCOMPARE(minimize->x() + 48, maximize->x()); QCOMPARE(maximize->x() + 48, close->x());
+        for (auto *button : {minimize, maximize, close}) {
+            button->setNativeHover(false); const auto normal = button->grab().toImage(); button->setNativeHover(true); const auto hover = button->grab().toImage(); QVERIFY(normal != hover); QCOMPARE(hover.pixelColor(2, 2).rgb(), hover.pixelColor(2, hover.height() / 2).rgb()); button->setNativeHover(false);
+        }
+        POINT hoverPoint{0, 0}; ClientToScreen(hwnd, &hoverPoint); SendMessageW(hwnd, WM_NCMOUSEMOVE, HTMAXBUTTON, MAKELPARAM(hoverPoint.x, hoverPoint.y)); const auto hover = maximize->grab().toImage(); SendMessageW(hwnd, WM_NCMOUSELEAVE, 0, 0); QVERIFY(hover != maximize->grab().toImage());
+        const auto initial = window->size(); const qreal dpr = window->devicePixelRatioF(); QCOMPARE(client.right, qRound(initial.width() * dpr)); QCOMPARE(client.bottom, qRound(initial.height() * dpr));
+        window->showMaximized(); QTRY_VERIFY(window->isMaximized()); MONITORINFO monitor{sizeof(MONITORINFO)}; QVERIFY(GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor)); POINT maximizedOrigin{}; QVERIFY(ClientToScreen(hwnd, &maximizedOrigin)); RECT maximizedClient{}; QVERIFY(GetClientRect(hwnd, &maximizedClient));
+        QVERIFY(qAbs(maximizedOrigin.x - monitor.rcWork.left) <= 2); QVERIFY(qAbs(maximizedOrigin.y - monitor.rcWork.top) <= 2); QVERIFY(qAbs(maximizedClient.right - (monitor.rcWork.right - monitor.rcWork.left)) <= 2); QVERIFY(qAbs(maximizedClient.bottom - (monitor.rcWork.bottom - monitor.rcWork.top)) <= 2);
+        window->showNormal(); QTRY_VERIFY(!window->isMaximized()); QCOMPARE(window->size(), initial);
+        const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (!evidence.isEmpty()) {
+            QVERIFY(QDir().mkpath(evidence + "/standalone")); window->screen()->grabWindow(window->winId()).save(evidence + "/standalone/native-full-window.png");
+            // Capture the external frame only over an owned solid backdrop.
+            // The widget grab above cannot establish DWM border/shadow output.
+            window->resize(700, 540); const auto available = window->screen()->availableGeometry(); window->move(available.center() - window->rect().center());
+            QWidget backdrop(nullptr, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint); auto palette = backdrop.palette(); palette.setColor(QPalette::Window, QColor("#CFD8E5")); backdrop.setPalette(palette); backdrop.setAutoFillBackground(true); backdrop.setGeometry(available); backdrop.show();
+            struct RestoreOrder { HWND hwnd; ~RestoreOrder() { SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } } restoreOrder{hwnd};
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); window->raise(); QTest::qWait(200);
+            auto *screen = window->screen(); const auto crop = window->frameGeometry().adjusted(-24, -24, 24, 24).translated(-screen->geometry().topLeft());
+            RECT native{}; QVERIFY(GetWindowRect(hwnd, &native)); const int margin = qRound(22 * window->devicePixelRatioF()); bool owned = true;
+            for (const POINT point : {POINT{native.left - margin, native.top - margin}, POINT{native.right + margin, native.top - margin}, POINT{native.left - margin, native.bottom + margin}, POINT{native.right + margin, native.bottom + margin}}) owned = owned && WindowFromPoint(point) == reinterpret_cast<HWND>(backdrop.winId());
+            if (!owned) { qInfo() << "External DWM capture unavailable: owned backdrop is occluded"; return; }
+            const auto frame = screen->grabWindow(0, crop.x(), crop.y(), crop.width(), crop.height()); QVERIFY(!frame.isNull()); QVERIFY(frame.save(evidence + "/standalone/native-dwm-frame.png"));
+        }
+#else
+        QSKIP("Windows custom caption is platform specific");
+#endif
     }
     void samplingDoesNotMultiplyLogicalGeometry() {
         QTemporaryDir temporary; double baseDpr = 0;

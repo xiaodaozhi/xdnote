@@ -29,6 +29,7 @@ FileApplication::~FileApplication() {
 SingleFileWindow *FileApplication::createWindow() {
     auto *window = new SingleFileWindow(&m_manager, &m_appearance); m_windows.insert(window);
     connect(window, &SingleFileWindow::copyPathRequested, this, [](const QString &path) { QGuiApplication::clipboard()->setText(path); });
+    connect(window, &SingleFileWindow::copyTextRequested, this, [](const QString &text) { QGuiApplication::clipboard()->setText(text); });
     connect(window, &SingleFileWindow::revealRequested, this, [](const QString &path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
     connect(window, &SingleFileWindow::openRequested, this, [this, window](const QString &path) { open(path, window->document() ? nullptr : window); });
     connect(window, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_manager.cancelOpen(intent); });

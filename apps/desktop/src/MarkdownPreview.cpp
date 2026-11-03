@@ -2,6 +2,8 @@
 #include "DocumentSession.h"
 #include "VisualTokens.h"
 #include "Appearance.h"
+#include "SharedWidgets.h"
+#include "UiFonts.h"
 
 #include <QJsonObject>
 #include <QBuffer>
@@ -10,6 +12,7 @@
 #include <QVBoxLayout>
 #include <QWebEnginePage>
 #include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
 #include <QWebEngineLoadingInfo>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
@@ -17,6 +20,7 @@
 #include <QWebEngineUrlSchemeHandler>
 #include <QWebEngineUrlRequestJob>
 #include <QWebEngineView>
+#include <QRegularExpression>
 #include <QtConcurrentRun>
 #include <cstddef>
 #include <cstdint>
@@ -74,7 +78,17 @@ public:
     RestrictedPage(QWebEngineProfile *profile, QObject *parent) : QWebEnginePage(profile, parent) {
         m_memory = new MemoryPage(profile);
         profile->installUrlSchemeHandler("xdnote-preview", m_memory);
+        QWebEngineScript controls;
+        controls.setName("xdnote-code-copy"); controls.setWorldId(QWebEngineScript::ApplicationWorld); controls.setInjectionPoint(QWebEngineScript::DocumentReady);
+        controls.setSourceCode(QStringLiteral(
+            "(()=>{let tab=false;const clear=()=>document.querySelectorAll('.xdnote-keyboard-focus').forEach(e=>e.classList.remove('xdnote-keyboard-focus'));"
+            "document.addEventListener('keydown',e=>{if(e.key==='Tab')tab=true;else if(['Enter',' ','Escape'].includes(e.key)){tab=false;clear();}},true);"
+            "document.addEventListener('focusin',e=>{clear();if(tab)e.target.classList.add('xdnote-keyboard-focus');tab=false;},true);"
+            "document.addEventListener('pointerdown',()=>{tab=false;clear();},true);window.addEventListener('blur',clear);"
+            "document.addEventListener('click',function(e){const b=e.target.closest('button[data-xdnote-code]');if(!b||!e.isTrusted)return;clear();const g=document.querySelector('meta[name=xdnote-generation]');if(g)console.info('%1'+g.content+':'+b.dataset.xdnoteCode);},true);})();").arg(m_copyPrefix));
+        scripts().insert(controls);
     }
+    std::function<void(quint64, int)> copyRequested;
     void present(const QString &html, quint64 generation) {
         m_expectedBase = QUrl(QStringLiteral("xdnote-preview:/%1/%2").arg(m_id).arg(generation));
         m_memory->setPage(m_expectedBase, html.toUtf8());
@@ -88,9 +102,16 @@ protected:
         return mainFrame && !m_expectedBase.isEmpty() && url == m_expectedBase;
     }
     QWebEnginePage *createWindow(WebWindowType) override { return nullptr; }
+    void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel, const QString &message, int, const QString &) override {
+        if (!message.startsWith(m_copyPrefix)) return;
+        const auto match = QRegularExpression("^([0-9]{1,20}):([0-9]{1,7})$").match(message.mid(m_copyPrefix.size()));
+        if (!match.hasMatch()) return; bool valid = false; const auto generation = match.captured(1).toULongLong(&valid); const int index = match.captured(2).toInt();
+        if (valid && index < 2 * 1024 * 1024 && copyRequested) copyRequested(generation, index);
+    }
 private:
     MemoryPage *m_memory = nullptr;
     QString m_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QString m_copyPrefix = "xdnote-copy:" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ':';
     QUrl m_expectedBase;
 };
 
@@ -109,7 +130,7 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
     const auto colors = visualTokens().value("themes").toObject().value(appearance->scheme()).toObject();
     // All markup and CSS around the body are application-owned. Raw source HTML
     // and URLs have already been converted to inert text by the Rust service.
-    const QString head = QStringLiteral(
+    QString head = QStringLiteral(
         "<!doctype html><html><head><meta charset=\"utf-8\">"
         "<meta name=\"xdnote-generation\" content=\"%1\">"
         "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'none'; "
@@ -137,6 +158,21 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
         .arg(visualTokens().value("controls").toObject().value("scrollbarInset").toInt())
         .arg(visualTokens().value("controls").toObject().value("scrollbarWidth").toInt() / 2)
         .arg(visualTokens().value("controls").toObject().value("scrollbarHandleMin").toInt());
+    head.replace("system-ui,sans-serif", readerFontCss()); head.replace("font-family:monospace", "font-family:" + sourceFontCss());
+    const QString components = QStringLiteral("<style>"
+        "figure.code-block{margin:1em 0;border:1px solid %1;border-radius:8px;overflow:hidden;background:%2}"
+        ".code-block figcaption{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 12px;border-bottom:1px solid %1;font:12px/24px %3;color:%4}"
+        ".code-block button{border:0;border-radius:4px;background:transparent;color:%4;font:14px/24px %3;padding:2px 8px;cursor:pointer}"
+        ".code-block button:hover{background:%5;color:%6}button:focus,pre:focus,.table-scroll:focus{outline:none}.xdnote-keyboard-focus:focus{outline:2px solid %7;outline-offset:-2px}"
+        ".code-block pre{margin:0;max-width:100%;overflow-x:auto;white-space:pre;overflow-wrap:normal;border:0;border-radius:0;padding:12px 16px}"
+        "code{font-size:14px;line-height:1.8}.table-scroll{max-width:100%;overflow-x:auto;margin:1em 0}.table-scroll table{width:max-content;min-width:100%}.table-scroll td,.table-scroll th{white-space:nowrap;overflow-wrap:normal}"
+        "li:has(>input[type=checkbox]){list-style:none}ul:has(>li>input[type=checkbox]){padding-left:4px}"
+        "input[type=checkbox]{appearance:none;display:inline-block;width:16px;height:16px;margin:0 8px 0 0;vertical-align:-2px;border:1.5px solid %4;border-radius:4px;background:transparent;opacity:1}"
+        "input[type=checkbox]:checked{background:%7;border-color:%7}input[type=checkbox]:checked:after{content:'';display:block;width:7px;height:4px;border-left:2px solid %8;border-bottom:2px solid %8;transform:translate(3px,3px) rotate(-45deg)}"
+        ".syntax-keyword{color:%9}.syntax-string,.syntax-number{color:%10}.syntax-comment{color:%4}"
+        "</style>")
+        .arg(appearance->color("border").name(), appearance->color("codeSurface").name(), readerFontCss(), appearance->color("textSecondary").name(), appearance->accentColor("soft").name(), appearance->color("text").name(), appearance->accentColor().name(), appearance->accentColor("foreground").name(), appearance->color("syntaxHeading").name(), appearance->color("syntaxCode").name());
+    head.replace("</head>", components + "</head>");
     return head + QString::fromUtf8(body) + QStringLiteral("</body></html>");
 }
 }
@@ -151,6 +187,19 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     profile->setUrlRequestInterceptor(new BlockResourceRequests(profile));
     auto *page = new RestrictedPage(profile, m_view);
     m_view->setPage(page);
+    m_view->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_view, &QWidget::customContextMenuRequested, this, [this, page](const QPoint &position) {
+        SharedMenu menu(m_appearance, m_view); menu.setObjectName("readingContextMenu");
+        auto *copy = menu.addAction(themedIcon("copy", m_appearance->color("text")), QStringLiteral("复制")); copy->setEnabled(page->hasSelection()); connect(copy, &QAction::triggered, page, [page] { page->triggerAction(QWebEnginePage::Copy); });
+        auto *select = menu.addAction(themedIcon("select-all", m_appearance->color("text")), QStringLiteral("全选")); connect(select, &QAction::triggered, page, [page] { page->triggerAction(QWebEnginePage::SelectAll); });
+        menu.exec(m_view->mapToGlobal(position));
+    });
+    page->copyRequested = [this, page](quint64 generation, int index) {
+        if (m_closed || generation != m_generation || generation != m_presentingGeneration || !currentRevision(m_session, m_displayedRevision)) return;
+        const QPointer<MarkdownPreview> guard(this);
+        page->runJavaScript(QStringLiteral("(()=>{const c=document.querySelectorAll('figure.code-block pre code')[%1];return c?c.textContent:null})()").arg(index), QWebEngineScript::ApplicationWorld,
+            [guard, generation](const QVariant &value) { if (guard && !guard->m_closed && generation == guard->m_generation && value.isValid() && currentRevision(guard->m_session, guard->m_displayedRevision)) { const auto text = value.toString(); if (text.toUtf8().size() <= 2 * 1024 * 1024) emit guard->copyTextRequested(text); } });
+    };
     page->setBackgroundColor(m_appearance->color("background"));
     connect(m_appearance, &Appearance::changed, this, [this, page] { page->setBackgroundColor(m_appearance->color("background")); refresh(); });
     connect(page, &QWebEnginePage::scrollPositionChanged, this, [this](const QPointF &position) { if (!m_restoring) m_scroll = position; });
