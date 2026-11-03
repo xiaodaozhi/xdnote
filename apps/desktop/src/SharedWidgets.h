@@ -42,6 +42,7 @@ public:
     void setNativeHover(bool value) { m_nativeHover = value; update(); }
     bool keyboardOutline() const;
     QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 protected:
     void paintEvent(QPaintEvent *) override;
     void focusInEvent(QFocusEvent *) override;

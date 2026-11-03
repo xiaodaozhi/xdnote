@@ -158,6 +158,7 @@ QSize SharedButton::sizeHint() const {
     const int iconWidth = m_symbol.isEmpty() ? 0 : control("iconSize") + (textWidth ? 8 : 0);
     return {qMax(control("iconButtonHit"), textWidth + iconWidth + (textWidth ? 24 : 0) + (menu() && textWidth ? 16 : 0)), control("height")};
 }
+QSize SharedButton::minimumSizeHint() const { return property("navigationRow").toBool() ? QSize(control("iconButtonHit"), control("height")) : sizeHint(); }
 void SharedButton::focusInEvent(QFocusEvent *event) { m_tab = event->reason() == Qt::TabFocusReason || event->reason() == Qt::BacktabFocusReason; QPushButton::focusInEvent(event); update(); }
 void SharedButton::focusOutEvent(QFocusEvent *event) { m_tab = false; QPushButton::focusOutEvent(event); update(); }
 void SharedButton::enterEvent(QEnterEvent *event) { QPushButton::enterEvent(event); update(); }

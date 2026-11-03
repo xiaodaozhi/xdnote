@@ -68,7 +68,7 @@ void WorkspaceTree::drawRow(QPainter *painter, const QStyleOptionViewItem &optio
     drawBranches(painter, QRect(0, cell.top(), cell.left(), cell.height()), index); painter->restore();
 }
 void WorkspaceTree::mouseMoveEvent(QMouseEvent *event) { const auto previous = m_hover; m_hover = indexAt(event->position().toPoint()); if (previous != m_hover) viewport()->update(); QTreeView::mouseMoveEvent(event); }
-void WorkspaceTree::leaveEvent(QEvent *event) { m_hover = {}; viewport()->update(); QTreeView::leaveEvent(event); }
+void WorkspaceTree::leaveEvent(QEvent *event) { m_hover = QPersistentModelIndex(); viewport()->update(); QTreeView::leaveEvent(event); }
 void WorkspaceTree::drawBranches(QPainter *painter, const QRect &rect, const QModelIndex &index) const {
     if (model()->hasChildren(index)) themedIcon(isExpanded(index) ? "chevron-down" : "chevron-right", m_appearance->color("textSecondary")).paint(painter, QRect(rect.right() - indentation() + 2, rect.center().y() - 6, 12, 12));
 }

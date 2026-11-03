@@ -43,6 +43,8 @@ public:
         auto refresh = [this] { auto palette = this->palette(); palette.setColor(QPalette::ButtonText, m_appearance->color("text")); palette.setColor(QPalette::WindowText, m_appearance->color("text")); setPalette(palette); setStyleSheet(QStringLiteral("QTabBar#workspaceTabs QToolButton{background:%1;color:%2;border:0;border-bottom:1px solid %4} QTabBar#workspaceTabs QToolButton:hover{background:%3}").arg(m_appearance->color("sidebar").name(), m_appearance->color("text").name(), m_appearance->color("codeSurface").name(), m_appearance->color("border").name())); update(); }; connect(appearance, &Appearance::changed, this, refresh); refresh(); connect(InputModality::forApplication(), &InputModality::changed, this, qOverload<>(&QWidget::update));
     }
     std::function<void(QUuid)> closeRequested;
+    std::function<void()> layoutChanged;
+    int preferredWidth() const { int width = 0; for (int i = 0; i < count(); ++i) width += tabSizeHint(i).width(); return width; }
 protected:
     QSize tabSizeHint(int index) const override { return {qBound(tabToken("minWidth"), fontMetrics().horizontalAdvance(tabData(index).toMap().value("title").toString()) + 2 * tabToken("padding") + 16 + tabToken("closeHit"), tabToken("maxWidth")), height()}; }
     QSize minimumTabSizeHint(int) const override { return {tabToken("minWidth"), height()}; }
@@ -70,15 +72,34 @@ protected:
     void keyPressEvent(QKeyEvent *event) override { if (event->key() == Qt::Key_Delete && currentIndex() >= 0) { InputModality::forApplication()->clear(); if (closeRequested) closeRequested(tabId(this, currentIndex())); event->accept(); } else QTabBar::keyPressEvent(event); }
     void mouseMoveEvent(QMouseEvent *event) override { const auto previous = m_hover; m_hover = tabAt(event->position().toPoint()); if (previous != m_hover) update(); QTabBar::mouseMoveEvent(event); }
     void leaveEvent(QEvent *event) override { m_hover = -1; update(); QTabBar::leaveEvent(event); }
+    void tabLayoutChange() override { QTabBar::tabLayoutChange(); if (layoutChanged) layoutChanged(); }
 private:
     Appearance *m_appearance;
     int m_hover = -1;
+};
+class WorkspaceTabStrip final : public QWidget {
+public:
+    WorkspaceTabStrip(Appearance *appearance, QWidget *parent) : QWidget(parent) {
+        setObjectName("workspaceTabStrip"); setMinimumWidth(0); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        tabs = new WorkspaceTabs(appearance, this); add = new SharedButton({}, "workspaceAddTab", appearance, this); add->setSymbol("plus"); add->setFixedSize(32, 32); add->setAccessibleName(QStringLiteral("打开文档标签")); add->setToolTip(QStringLiteral("打开 Markdown 文档…")); tabs->layoutChanged = [this] { arrange(); };
+    }
+    WorkspaceTabs *tabs;
+    SharedButton *add;
+    ~WorkspaceTabStrip() override { tabs->layoutChanged = {}; }
+protected:
+    void resizeEvent(QResizeEvent *event) override { QWidget::resizeEvent(event); arrange(); }
+private:
+    void arrange() {
+        if (m_arranging) return; m_arranging = true;
+        const int tabWidth = qMin(tabs->preferredWidth(), qMax(0, width() - add->width() - 12)); tabs->setGeometry(0, 0, tabWidth, height()); add->move(tabWidth + 4, (height() - add->height()) / 2); m_arranging = false;
+    }
+    bool m_arranging = false;
 };
 }
 WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *store, NavigationStore *navigation) : ApplicationWindow(appearance), m_navigation(navigation ? navigation : new NavigationStore(this)) {
     setObjectName("workspaceWindow"); setAttribute(Qt::WA_DeleteOnClose); const auto tokens = mainTokens(); resize(tokens.value("defaultWidth").toInt(), tokens.value("defaultHeight").toInt()); setMinimumSize(tokens.value("minWidth").toInt(), tokens.value("minHeight").toInt()); setFont(uiFont(visualTokens().value("typography").toObject().value("ui").toObject().value("size").toInt()));
     auto *layout = new QVBoxLayout(this); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
-    m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabStrip = new QWidget(m_header); tabStrip->setObjectName("workspaceTabStrip"); auto *tabRow = new QHBoxLayout(tabStrip); tabRow->setContentsMargins(0, 0, 8, 0); tabRow->setSpacing(4); auto *tabs = new WorkspaceTabs(windowAppearance(), tabStrip); m_tabs = tabs; tabs->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred); tabRow->addWidget(tabs); auto *addTab = new SharedButton({}, "workspaceAddTab", windowAppearance(), tabStrip); addTab->setSymbol("plus"); addTab->setFixedWidth(32); addTab->setAccessibleName(QStringLiteral("打开文档标签")); addTab->setToolTip(QStringLiteral("打开 Markdown 文档…")); tabRow->addWidget(addTab, 0, Qt::AlignVCenter); tabRow->addStretch(); connect(addTab, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested); m_header->setCenter(tabStrip, tokens.value("sidebarWidth").toInt()); layout->addWidget(m_header);
+    m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabStrip = new WorkspaceTabStrip(windowAppearance(), m_header); auto *tabs = tabStrip->tabs; m_tabs = tabs; connect(tabStrip->add, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested); m_header->setCenter(tabStrip, tokens.value("sidebarWidth").toInt()); layout->addWidget(m_header);
     tabs->closeRequested = [this](QUuid id) { closePane(id); }; connect(tabs, &QTabBar::currentChanged, this, [this] { m_navigationVisible = false; if (m_search) { const QSignalBlocker block(m_search); m_search->clear(); m_searchDelay.stop(); m_tree->cancelSearch(); } selectCurrent(); }); connect(tabs, &QTabBar::tabBarClicked, this, [this](int index) { if (index >= 0) activatePane(tabId(m_tabs, index)); });
     m_warning = new QLabel(this); m_warning->setObjectName("workspaceNotice"); m_warning->setWordWrap(true); m_warning->setTextFormat(Qt::PlainText); m_warning->setContentsMargins(16, 8, 16, 8); m_warning->hide(); layout->addWidget(m_warning);
     auto *content = new QWidget(this); auto *row = new QHBoxLayout(content); row->setContentsMargins(0, 0, 0, 0); row->setSpacing(0); layout->addWidget(content, 1);
@@ -105,6 +126,7 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     auto *settings = new SharedButton(QStringLiteral("设置"), "workspaceSettings", windowAppearance(), bottom); settings->setProperty("navigationRow", true); settings->setSymbol("settings"); settings->setToolTip(QStringLiteral("外观设置：主题和强调色")); settings->setMenu(createAppearanceMenu(windowAppearance(), settings)); bottomLayout->addWidget(settings, 1);
     auto *divider = new QWidget(bottom); divider->setObjectName("sidebarSettingsDivider"); divider->setFixedSize(1, 20); bottomLayout->addWidget(divider); m_theme = new SharedButton({}, "workspaceTheme", windowAppearance(), bottom); m_theme->setFixedWidth(32); bottomLayout->addWidget(m_theme); sidebar->addWidget(bottom);
     connect(m_theme, &QPushButton::clicked, this, [this] { windowAppearance()->setPreferences(windowAppearance()->dark() ? "light" : "dark", windowAppearance()->accent()); });
+    setTabOrder(m_rootLabel, m_search); setTabOrder(m_search, m_recent); setTabOrder(m_recent, m_favorites); setTabOrder(m_favorites, m_tree); setTabOrder(m_tree, settings); setTabOrder(settings, m_theme);
     m_welcome = new QWidget(m_pages); auto *welcome = new QVBoxLayout(m_welcome); welcome->setSpacing(16); welcome->addStretch(); auto *heading = new QLabel(QStringLiteral("开始你的写作"), m_welcome); heading->setFont(uiFont(24)); welcome->addWidget(heading, 0, Qt::AlignHCenter);
     auto *description = new QLabel(QStringLiteral("打开一篇文档，或选择一个工作区目录。"), m_welcome); welcome->addWidget(description, 0, Qt::AlignHCenter);
     auto *openFile = new SharedButton(QStringLiteral("打开文件…"), "workspaceOpenFile", windowAppearance(), m_welcome); openFile->setSymbol("document"); openFile->setProperty("primary", true); welcome->addWidget(openFile, 0, Qt::AlignHCenter); connect(openFile, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested);
@@ -178,6 +200,6 @@ void WorkspaceWindow::closeEvent(QCloseEvent *event) { if (m_panes.isEmpty()) { 
 void WorkspaceWindow::advanceClose() { if (!m_closingAll) return; if (m_panes.isEmpty()) { close(); return; } const auto list = panes(); if (!list.isEmpty()) { auto *pane = list.first(); activatePane(pane->paneId()); pane->close(); } }
 void WorkspaceWindow::resizeEvent(QResizeEvent *event) { ApplicationWindow::resizeEvent(event); updateSidebar(); }
 void WorkspaceWindow::updateSidebar() { if (m_sidebar) m_sidebar->setVisible(m_sidebarWanted && (m_sidebarExplicit || width() >= mainTokens().value("compactBelowWidth").toInt())); }
-bool WorkspaceWindow::event(QEvent *event) { const bool result = ApplicationWindow::event(event); if (!m_tearingDown && !m_navigationVisible && event->type() == QEvent::WindowActivate && m_pages) if (auto *pane = activePane()) pane->activateDocument(); return result; }
+bool WorkspaceWindow::event(QEvent *event) { const bool result = ApplicationWindow::event(event); if (!m_tearingDown && !m_navigationVisible && event->type() == QEvent::WindowActivate && m_pages) if (auto *pane = activePane()) if (pane->document()) pane->document()->checkExternal(); return result; }
 bool WorkspaceWindow::eventFilter(QObject *target, QEvent *event) { if (target == m_search) { if (event->type() == QEvent::FocusIn) { const auto reason = static_cast<QFocusEvent *>(event)->reason(); m_searchTab = reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason; applyAppearance(); } else if (event->type() == QEvent::FocusOut || event->type() == QEvent::MouseButtonPress) { m_searchTab = false; applyAppearance(); } else if (event->type() == QEvent::KeyPress) { const auto key = static_cast<QKeyEvent *>(event)->key(); if (key == Qt::Key_Escape) { m_search->clear(); m_searchTab = false; applyAppearance(); return true; } if (key == Qt::Key_Return || key == Qt::Key_Enter) { m_searchTab = false; applyAppearance(); } } } return ApplicationWindow::eventFilter(target, event); }
 }
