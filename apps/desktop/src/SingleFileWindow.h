@@ -8,6 +8,7 @@ class QMenu;
 class QAction;
 class QPushButton;
 class QCloseEvent;
+class QDialog;
 namespace xdnote {
 class SourceEditor;
 class MarkdownPreview;
@@ -17,6 +18,7 @@ class SharedButton;
 class ElidedLabel;
 class WindowGeometry;
 class WindowGeometryStore;
+class SharedSpinner;
 class SingleFileWindow final : public QWidget {
     Q_OBJECT
 public:
@@ -42,9 +44,12 @@ signals:
     void quitRequested();
     void closeCancelled();
     void copyPathRequested(QString path);
+    void copyTextRequested(QString text);
     void revealRequested(QString directory);
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    bool nativeEvent(const QByteArray &type, void *message, qintptr *result) override;
     bool eventFilter(QObject *target, QEvent *event) override;
 private:
     void updateState();
@@ -53,6 +58,8 @@ private:
     void wrapSelection(const QString &before, const QString &after);
     void applyAppearance();
     void updateCaret();
+    void showSaveError();
+    void applyNativeAppearance();
     FileManager *m_manager;
     Appearance *m_appearance;
     WindowGeometry *m_geometry = nullptr;
@@ -66,6 +73,12 @@ private:
     QLabel *m_cursor;
     QLabel *m_encoding;
     QLabel *m_empty;
+    QLabel *m_emptyTitle, *m_emptySymbol, *m_noticeSymbol;
+    SharedSpinner *m_openSpinner, *m_saveSpinner;
+    SharedButton *m_cancelOpen, *m_welcomeOpen, *m_noticeClose;
+    QWidget *m_previewFailure = nullptr;
+    QLabel *m_previewFailureText = nullptr;
+    QPointer<QDialog> m_saveErrorDialog;
     QWidget *m_banner;
     QWidget *m_editorPage = nullptr;
     QStackedWidget *m_body;
@@ -91,5 +104,8 @@ private:
     QString m_previewError;
     QString m_appearanceError, m_geometryError, m_dismissedNotice, m_openPath, m_openError;
     int m_zoom = 100;
+    bool m_frameInitialized = false;
+    bool m_nativeMaxPressed = false;
+    bool m_observedSave = false;
 };
 }

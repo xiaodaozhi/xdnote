@@ -86,6 +86,7 @@ add_dependencies(xdnote_markdown xdnote_rust_build)
 
 add_library(xdnote_desktop STATIC
     apps/desktop/src/WindowGeometry.cpp apps/desktop/src/WindowGeometry.h
+    apps/desktop/src/UiFonts.cpp apps/desktop/src/UiFonts.h
     apps/desktop/src/Appearance.cpp apps/desktop/src/Appearance.h
     apps/desktop/src/SharedWidgets.cpp apps/desktop/src/SharedWidgets.h
     apps/desktop/src/FileManager.cpp apps/desktop/src/FileManager.h
@@ -106,7 +107,7 @@ target_include_directories(xdnote_desktop PUBLIC apps/desktop/src)
 target_link_libraries(xdnote_desktop PUBLIC xdnote_scintilla xdnote_markdown
     Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::QuickControls2 Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Network Qt6::Svg)
 if(WIN32)
-    target_link_libraries(xdnote_desktop PUBLIC ws2_32 userenv bcrypt ntdll advapi32)
+    target_link_libraries(xdnote_desktop PUBLIC ws2_32 userenv bcrypt ntdll advapi32 dwmapi)
 else()
     find_package(Threads REQUIRED)
     target_link_libraries(xdnote_desktop PUBLIC Threads::Threads ${CMAKE_DL_LIBS} m)

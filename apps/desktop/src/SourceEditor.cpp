@@ -4,6 +4,7 @@
 #include "VisualTokens.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
+#include "UiFonts.h"
 
 #include <QAccessibleWidget>
 #include <QColor>
@@ -12,6 +13,9 @@
 #include <QKeyEvent>
 #include <QScopedValueRollback>
 #include <QThread>
+#include <QApplication>
+#include <QClipboard>
+#include <QContextMenuEvent>
 
 namespace xdnote {
 namespace {
@@ -164,7 +168,7 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent, Appearance
     send(SCI_USEPOPUP, SC_POPUP_NEVER);
     setAcceptDrops(false);
     viewport()->setAcceptDrops(false);
-    auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    auto font = sourceFont();
     setFont(font);
     const QByteArray family = font.family().toUtf8();
     send(SCI_STYLESETFONT, STYLE_DEFAULT, reinterpret_cast<sptr_t>(family.constData()));
@@ -250,6 +254,27 @@ bool SourceEditor::compositionPending() const {
     return m_inIme || m_preedit || send(SCI_GETUNDOTENTATIVE) >= 0;
 }
 DocumentSession *SourceEditor::session() const { return m_session; }
+void SourceEditor::contextMenuEvent(QContextMenuEvent *event) {
+    if (!m_session || m_session->isClosing()) return;
+    SharedMenu menu(m_appearance, this); menu.setObjectName("sourceContextMenu");
+    auto add = [&](const QString &text, const QString &symbol, bool enabled, auto callback) { auto *item = menu.addAction(themedIcon(symbol, m_appearance->color("text")), text); item->setEnabled(enabled); connect(item, &QAction::triggered, this, callback); return item; };
+    const bool writable = !m_session->isReadOnly() && !m_session->isBusy() && !m_session->isComposing();
+    add(QStringLiteral("撤销"), "undo", writable && send(SCI_CANUNDO), [this] { if (m_session) m_session->undo(); });
+    add(QStringLiteral("重做"), "redo", writable && send(SCI_CANREDO), [this] { if (m_session) m_session->redo(); }); menu.addSeparator();
+    const bool selected = !send(SCI_GETSELECTIONEMPTY);
+    auto selectionCommand = [this](bool cut, bool paste) {
+        if (!m_session) return; const auto snapshot = m_session->snapshot(); if (snapshot.result != EditResult::Applied) return;
+        const auto start = qsizetype(send(SCI_GETSELECTIONSTART)), end = qsizetype(send(SCI_GETSELECTIONEND));
+        const auto first = decodeUtf8Literal(snapshot.utf8.left(start)).size(); const auto text = decodeUtf8Literal(snapshot.utf8.mid(start, end - start));
+        if (!paste) QApplication::clipboard()->setText(text);
+        if (cut || paste) m_session->replace(int(first), int(first + text.size()), paste ? QApplication::clipboard()->text() : QString(), snapshot.revision);
+    };
+    add(QStringLiteral("剪切"), "cut", writable && selected, [selectionCommand] { selectionCommand(true, false); });
+    add(QStringLiteral("复制"), "copy", selected, [selectionCommand] { selectionCommand(false, false); });
+    add(QStringLiteral("粘贴"), "paste", writable, [selectionCommand] { selectionCommand(false, true); }); menu.addSeparator();
+    add(QStringLiteral("全选"), "select-all", true, [this] { send(SCI_SELECTALL); });
+    menu.exec(event->reason() == QContextMenuEvent::Keyboard ? mapToGlobal(rect().center()) : event->globalPos()); event->accept();
+}
 
 void SourceEditor::inputMethodEvent(QInputMethodEvent *event) {
     if (!m_session || m_session->isClosing() || m_session->isBusy() || m_session->isReadOnly()) {

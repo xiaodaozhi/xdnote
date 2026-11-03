@@ -5,6 +5,7 @@
 #include "SourceEditor.h"
 #include "MarkdownPreview.h"
 #include "GuiRuntime.h"
+#include "SharedWidgets.h"
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QDialog>
@@ -20,6 +21,8 @@
 #include <QWebEnginePage>
 #include <QWebEngineView>
 #include <cstdio>
+#include <QSemaphore>
+#include <atomic>
 
 using namespace xdnote;
 namespace {
@@ -81,6 +84,7 @@ void chooseDialog(const QString &name, int choice, const QString &screenshot = {
     QObject::connect(timer, &QTimer::timeout, timer, [timer, elapsed, name, choice, screenshot] {
         auto *dialog = qobject_cast<QDialog *>(qApp->activeModalWidget());
         if (dialog && dialog->objectName() == name) {
+            if (name == "conflictDialog") { QVERIFY(dialog->findChild<QPushButton *>("choice0")->property("primary").toBool()); QVERIFY(!dialog->findChild<QPushButton *>("choice1")->property("primary").toBool()); }
             if (!screenshot.isEmpty()) capture(dialog, screenshot);
             auto *button = dialog->findChild<QPushButton *>(QStringLiteral("choice%1").arg(choice));
             if (button) button->click(); else dialog->reject(); timer->stop(); timer->deleteLater();
@@ -225,7 +229,7 @@ private slots:
         QTemporaryDir directory; const auto path = directory.filePath("application.md"); QVERIFY(fileFixtures::write(path, "application"));
         QProcess process; process.start(QCoreApplication::applicationFilePath(), {"--window-smoke", path});
         QTRY_VERIFY_WITH_TIMEOUT(process.state() == QProcess::NotRunning, 20000);
-        QVERIFY2(process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0, process.readAll().constData());
+        QVERIFY2(process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0, qPrintable(QString("exit=%1: %2").arg(process.exitCode()).arg(QString::fromUtf8(process.readAll()))));
         QCOMPARE(disk(path), QByteArray("application[child]"));
     }
     void failedSaveFromCloseRetainsWindowAndCanSaveAs() {
@@ -236,8 +240,22 @@ private slots:
         readOnly(path, true); RestoreWritable restore{path}; chooseDialog("unsavedConfirmation", 1); QVERIFY(!window->close());
         QTRY_VERIFY_WITH_TIMEOUT(!document->saving(), 8000); QVERIFY(owned.value && owned.value->isVisible()); QVERIFY(document->dirty()); QVERIFY(document->hasError());
         QCOMPARE(disk(path), QByteArray("original")); capture(window, "save-error");
+        QTRY_VERIFY(qApp->activeModalWidget()); auto *error = qobject_cast<QDialog *>(qApp->activeModalWidget()); QVERIFY(error); QCOMPARE(error->objectName(), QString("saveErrorDialog"));
+        auto *keep = error->findChild<QPushButton *>("errorKeepEditing"); QVERIFY(keep); QVERIFY(keep->property("primary").toBool()); capture(error, "save-error-dialog"); keep->click(); QTRY_VERIFY(!qApp->activeModalWidget());
         QVERIFY(document->saveAs(copy)); QTRY_VERIFY(!document->saving()); QCOMPARE(document->lastSave().status, SaveStatus::Committed);
         QCOMPARE(disk(copy), QByteArray("unsaved original")); QVERIFY(!document->dirty()); QVERIFY(window->close()); QTRY_VERIFY(owned.value.isNull());
+    }
+    void savingAnimationAndWaitForCloseRetainDocument() {
+        QTemporaryDir directory; const auto path = directory.filePath("busy.md"); QVERIFY(fileFixtures::write(path, "before"));
+        QSemaphore gate; std::atomic_bool entered{false};
+        FileManager manager(nullptr, [&](SaveStage stage) { if (stage == SaveStage::StageWrite) { entered = true; gate.acquire(); } }, false);
+        struct Release { QSemaphore &gate; ~Release() { gate.release(); } } release{gate};
+        auto *document = open(manager, path); QVERIFY(document); OwnedWindow owned{new SingleFileWindow(&manager)}; auto *window = owned.value.data(); window->setDocument(document); window->setEditing(true); window->show();
+        QCOMPARE(document->session()->replace(0, 0, "changed ", document->session()->revision()), EditResult::Applied); QVERIFY(document->save()); QTRY_VERIFY(entered.load());
+        auto *spinner = window->findChild<QWidget *>("documentFooter")->findChild<SharedSpinner *>(); QVERIFY(spinner); QVERIFY(spinner->running()); QVERIFY(spinner->isVisible());
+        const auto first = spinner->grab().toImage(); QTRY_VERIFY_WITH_TIMEOUT(first != spinner->grab().toImage(), 2000); QVERIFY(!window->findChild<QPushButton *>("saveButton")->isEnabled()); capture(window, "saving-animation");
+        bool inspected = false; QTimer timer; timer.setInterval(20); connect(&timer, &QTimer::timeout, this, [&] { auto *dialog = qobject_cast<QDialog *>(qApp->activeModalWidget()); if (!dialog || dialog->objectName() != "operationCloseConfirmation") return; timer.stop(); inspected = true; auto *busy = dialog->findChild<SharedSpinner *>(); QVERIFY(busy && busy->running()); capture(dialog, "waiting-close"); dialog->findChild<QPushButton *>("choice0")->click(); }); timer.start();
+        QVERIFY(!window->close()); QVERIFY(inspected); QVERIFY(window->isVisible()); gate.release(); QTRY_VERIFY(!document->saving()); QVERIFY(!document->dirty()); QVERIFY(!spinner->isVisible()); QCOMPARE(disk(path), QByteArray("changed before"));
     }
     void anotherProcessForwardsLiteralOpenIntent() {
         QTemporaryDir directory; QVERIFY(directory.isValid()); SingleInstance primary; QStringList received;
@@ -268,7 +286,12 @@ int main(int argc, char **argv) {
             if (phase == 1) {
                 if (document->session()->documentId() != id) { app.exit(4); return; }
                 window->setEditing(true); auto *editor = window->editor(); editor->send(SCI_GOTOPOS, editor->send(SCI_GETLENGTH)); QTest::keyClicks(editor, "[child]");
-                auto *save = window->findChild<QPushButton *>("saveButton"); save->click(); phase = 2; return;
+                phase = 3; return;
+            }
+            if (phase == 3) {
+                auto *save = window->findChild<QPushButton *>("saveButton");
+                if (!document->dirty() || !save->isEnabled()) return;
+                save->click(); phase = 2; return;
             }
             if (phase == 2 && !document->saving()) {
                 if (document->dirty() || document->hasError() || disk(path) != "application[child]") { app.exit(5); return; }
