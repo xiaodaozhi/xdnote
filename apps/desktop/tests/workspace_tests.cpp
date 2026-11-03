@@ -8,6 +8,7 @@
 #include "SharedWidgets.h"
 #include "GuiRuntime.h"
 #include "InputModality.h"
+#include "WindowGeometry.h"
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QTest>
@@ -59,6 +60,11 @@ private slots:
         QTest::keyClick(read, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Source); QTest::keyClick(edit, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Reading);
         QVERIFY(desktop.transferToWorkspace(pane)); QTest::keyClick(edit, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Split); QTest::keyClick(split, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Reading);
         QCOMPARE(pane->findChild<QWidget *>("modeSwitch")->font().pixelSize(), 14);
+    }
+    void directVisibleWindowDestructionFlushesControllersBeforeBaseTeardown() {
+        FileManager manager; Appearance appearance; WindowGeometryStore store;
+        auto *standalone = new SingleFileWindow(&manager, &appearance, &store); standalone->show(); QTest::qWait(30); QPointer<WindowGeometry> first = standalone->windowGeometry(); QVERIFY(first); delete standalone; QVERIFY(first.isNull()); QVERIFY(store.placement("standalone"));
+        auto *workspace = new WorkspaceWindow(&appearance, &store); auto *pane = new SingleFileWindow(&manager, &appearance, &store); QVERIFY(workspace->addPane(pane)); workspace->show(); QTest::qWait(30); QPointer<WindowGeometry> second = workspace->windowGeometry(); QPointer<SingleFileWindow> child = pane; delete workspace; QVERIFY(second.isNull()); QVERIFY(child.isNull()); QVERIFY(store.placement("main"));
     }
     void unreadableDirectoryRecoversAfterPermissionRestored() {
         QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "retained"));

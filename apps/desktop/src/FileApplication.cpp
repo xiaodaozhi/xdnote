@@ -36,7 +36,13 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
     });
     connect(&m_manager, &FileManager::openFailed, this, [this](QUuid intent, const QString &path, const QString &message) { auto pane = m_requests.take(intent); if (pane) pane->showOpenError(path, message); });
 }
-FileApplication::~FileApplication() { m_destroying = true; const auto workspaces = m_workspaces; for (auto *workspace : workspaces) delete workspace; const auto windows = m_windows; for (auto *pane : windows) delete pane; }
+FileApplication::~FileApplication() {
+    m_destroying = true; qApp->removeEventFilter(this);
+    QList<QPointer<WorkspaceWindow>> workspaces; for (auto *workspace : m_workspaces) workspaces.append(workspace);
+    QList<QPointer<SingleFileWindow>> panes; for (auto *pane : m_windows) panes.append(pane);
+    for (auto workspace : workspaces) if (workspace) delete workspace;
+    for (auto pane : panes) if (pane) delete pane;
+}
 SingleFileWindow *FileApplication::createWindow() {
     auto *pane = new SingleFileWindow(&m_manager, &m_appearance, &m_geometryStore); m_windows.insert(pane);
     connect(pane, &SingleFileWindow::copyPathRequested, this, [](const QString &path) { QGuiApplication::clipboard()->setText(path); });

@@ -60,5 +60,6 @@ private:
     QAction *m_emptyOpen, *m_emptyQuit;
     bool m_closingAll = false, m_sidebarWanted = true;
     bool m_sidebarExplicit = false;
+    bool m_tearingDown = false;
 };
 }

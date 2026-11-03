@@ -84,7 +84,13 @@ void WorkspaceWindow::applyAppearance() {
     auto *appearance = windowAppearance(); auto palette = this->palette(); palette.setColor(QPalette::Window, appearance->color("background")); palette.setColor(QPalette::WindowText, appearance->color("text")); setPalette(palette);
     setStyleSheet(QStringLiteral("QWidget#workspaceWindow{background:%1;color:%2} QWidget#workspaceSidebar{background:%3;border-right:1px solid %4} QLabel{color:%2;background:transparent} QLabel#workspaceTreeState{color:%5} QStackedWidget#workspaceFooters{border-top:1px solid %4;background:%1} QLabel#workspaceNotice{background:%3;border-bottom:1px solid %4}").arg(appearance->color("background").name(), appearance->color("text").name(), appearance->color("sidebar").name(), appearance->color("border").name(), appearance->color("textSecondary").name())); applyNativeAppearance();
 }
-WorkspaceWindow::~WorkspaceWindow() { const auto list = panes(); for (auto *pane : list) { disconnect(pane, nullptr, this, nullptr); delete pane; } m_panes.clear(); }
+WorkspaceWindow::~WorkspaceWindow() {
+    m_tearingDown = true;
+    if (m_geometry) { m_geometry->flush(); delete m_geometry; m_geometry = nullptr; }
+    disconnect(m_tabs, nullptr, this, nullptr); disconnect(windowAppearance(), nullptr, this, nullptr);
+    const auto list = panes(); m_panes.clear();
+    for (auto *pane : list) { disconnect(pane, nullptr, this, nullptr); delete pane; }
+}
 QString WorkspaceWindow::rootPath() const { return m_tree->rootPath(); }
 void WorkspaceWindow::setRootPath(const QString &path) { m_tree->setRootPath(path); m_rootLabel->setFullText(path.isEmpty() ? QStringLiteral("文件") : QFileInfo(path).fileName()); m_rootLabel->setToolTip(path); setWindowTitle(path.isEmpty() ? QStringLiteral("xdnote") : QFileInfo(path).fileName() + QStringLiteral(" — xdnote")); }
 void WorkspaceWindow::showNotice(const QString &message) { m_warning->setText(message); m_warning->setVisible(!message.isEmpty()); }
@@ -114,5 +120,5 @@ void WorkspaceWindow::closeEvent(QCloseEvent *event) { if (m_panes.isEmpty()) { 
 void WorkspaceWindow::advanceClose() { if (!m_closingAll) return; if (m_panes.isEmpty()) { close(); return; } const auto list = panes(); if (!list.isEmpty()) { auto *pane = list.first(); activatePane(pane->paneId()); pane->close(); } }
 void WorkspaceWindow::resizeEvent(QResizeEvent *event) { ApplicationWindow::resizeEvent(event); updateSidebar(); }
 void WorkspaceWindow::updateSidebar() { if (m_sidebar) m_sidebar->setVisible(m_sidebarWanted && (m_sidebarExplicit || width() >= mainTokens().value("compactBelowWidth").toInt())); }
-bool WorkspaceWindow::event(QEvent *event) { const bool result = ApplicationWindow::event(event); if (event->type() == QEvent::WindowActivate && m_pages) if (auto *pane = activePane()) pane->activateDocument(); return result; }
+bool WorkspaceWindow::event(QEvent *event) { const bool result = ApplicationWindow::event(event); if (!m_tearingDown && event->type() == QEvent::WindowActivate && m_pages) if (auto *pane = activePane()) pane->activateDocument(); return result; }
 }

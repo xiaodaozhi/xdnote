@@ -305,7 +305,18 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) { m_previewError = message; updateState(); });
     connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); updateState(); }); setEditing(false); updateState();
 }
-SingleFileWindow::~SingleFileWindow() { if (m_footer && m_footer->parentWidget() != this) delete m_footer; }
+SingleFileWindow::~SingleFileWindow() {
+    // QWidget's native close can deliver Hide from its base destructor. Stop
+    // the controller while our UI members are still alive, before it can emit
+    // geometryWarning back into an already destroyed derived object.
+    if (m_geometry) { m_geometry->flush(); delete m_geometry; m_geometry = nullptr; }
+    qApp->removeEventFilter(this);
+    disconnect(m_appearance, nullptr, this, nullptr);
+    if (m_document) disconnect(m_document, nullptr, this, nullptr);
+    if (m_editor) disconnect(m_editor, nullptr, this, nullptr);
+    if (m_preview) disconnect(m_preview, nullptr, this, nullptr);
+    if (m_footer && m_footer->parentWidget() != this) delete m_footer;
+}
 QString SingleFileWindow::displayPath() const { return m_document ? m_document->path() : m_openPath; }
 bool SingleFileWindow::canTransfer() const { return !m_prompting && !m_saveErrorDialog && m_document && !m_document->closed() && !m_document->saving() && !m_document->loading() && !m_document->session()->isBusy() && !m_document->session()->isComposing() && (!m_editor || !m_editor->dispatching()); }
 bool SingleFileWindow::embedIn(QWidget *parent) {

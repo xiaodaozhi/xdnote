@@ -88,7 +88,7 @@ jobs:
           if [ -f build/desktop-admission/xdnote_workspace_tests ]; then
             xdnote_qt_version=$(python -c "import json; print(json.load(open('tools/desktop-dependencies.json'))['qt']['version'])")
             xdnote_qt_root="$PWD/build/Qt/$xdnote_qt_version/gcc_64"
-            LD_LIBRARY_PATH="$xdnote_qt_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" QT_PLUGIN_PATH="$xdnote_qt_root/plugins" timeout 60s xvfb-run -a gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex run -ex 'bt 40' --args "$PWD/build/desktop-admission/xdnote_workspace_tests" compositionDefersTransferAndClosedDestinationPreservesStandalone -o -,txt > build/desktop-admission/workspace-crash.log 2>&1
+            LD_LIBRARY_PATH="$xdnote_qt_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" QT_PLUGIN_PATH="$xdnote_qt_root/plugins" timeout 60s xvfb-run -a gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex run -ex 'bt 40' --args "$PWD/build/desktop-admission/xdnote_workspace_tests" -o -,txt > build/desktop-admission/workspace-crash.log 2>&1
             cat build/desktop-admission/workspace-crash.log
           fi
       - name: Preserve diagnostics
