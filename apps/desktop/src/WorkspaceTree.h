@@ -29,6 +29,8 @@ signals:
 protected:
     void drawRow(QPainter *, const QStyleOptionViewItem &, const QModelIndex &) const override;
     void drawBranches(QPainter *, const QRect &, const QModelIndex &) const override;
+    void mouseMoveEvent(QMouseEvent *) override;
+    void leaveEvent(QEvent *) override;
 private:
     void fetchDirectory(const QString &path, QStandardItem *parent, quint64 generation);
     void setState(State state, const QString &message);
@@ -42,6 +44,7 @@ private:
     quint64 m_generation = 0;
     QString m_selectedPath;
     QStringList m_expanded;
+    QPersistentModelIndex m_hover;
     std::shared_ptr<std::atomic_bool> m_searchCancel;
 };
 }

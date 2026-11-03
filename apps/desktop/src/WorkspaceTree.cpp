@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QtConcurrentRun>
 #include <QPainter>
+#include <QMouseEvent>
 #include <filesystem>
 #include <algorithm>
 
@@ -41,19 +42,11 @@ Listing listDirectory(const QString &path, const QString &root) {
     std::sort(result.entries.begin(), result.entries.end(), [](const Entry &a, const Entry &b) { return a.directory != b.directory ? a.directory : QString::localeAwareCompare(a.name, b.name) < 0; });
     return result;
 }
-class TreeDelegate final : public QStyledItemDelegate {
-public:
-    using QStyledItemDelegate::QStyledItemDelegate;
-    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
-        auto adjusted = option; adjusted.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver | QStyle::State_HasFocus);
-        QStyledItemDelegate::paint(painter, adjusted, index);
-    }
-};
 }
 WorkspaceTree::WorkspaceTree(Appearance *appearance, QWidget *parent) : QTreeView(parent), m_appearance(appearance) {
     setFont(parent ? parent->font() : uiFont()); setAttribute(Qt::WA_MacShowFocusRect, false);
     setObjectName("workspaceTree"); setAccessibleName(QStringLiteral("工作区 Markdown 文件")); setModel(&m_model); setHeaderHidden(true); setIndentation(16); setUniformRowHeights(true); setTextElideMode(Qt::ElideMiddle); setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); setMouseTracking(true);
-    setEditTriggers(QAbstractItemView::NoEditTriggers); setDragDropMode(QAbstractItemView::NoDragDrop); setSelectionMode(QAbstractItemView::SingleSelection); setItemDelegate(new TreeDelegate(this));
+    setEditTriggers(QAbstractItemView::NoEditTriggers); setDragDropMode(QAbstractItemView::NoDragDrop); setSelectionMode(QAbstractItemView::SingleSelection);
     connect(this, &QTreeView::expanded, this, [this](const QModelIndex &index) { auto *item = m_model.itemFromIndex(index); const auto path = index.data(pathRole).toString(); if (!m_expanded.contains(path)) m_expanded.append(path); if (item && !item->data(loadedRole).toBool()) { item->setData(true, loadedRole); fetchDirectory(path, item, m_generation); } });
     connect(this, &QTreeView::collapsed, this, [this](const QModelIndex &index) { m_expanded.removeAll(index.data(pathRole).toString()); });
     auto open = [this](const QModelIndex &index) { const auto path = index.data(pathRole).toString(); if (acceptsFile(path)) emit openRequested(path); };
@@ -64,13 +57,18 @@ WorkspaceTree::WorkspaceTree(Appearance *appearance, QWidget *parent) : QTreeVie
 }
 WorkspaceTree::~WorkspaceTree() { cancelSearch(); }
 void WorkspaceTree::drawRow(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const {
-    auto adjusted = option; const bool selected = selectionModel()->isSelected(index);
-    painter->save(); painter->setRenderHint(QPainter::Antialiasing); const auto rect = option.rect.adjusted(8, 1, -8, -1);
-    if (selected || option.state & QStyle::State_MouseOver) { painter->setPen(Qt::NoPen); painter->setBrush(m_appearance->accentColor("soft")); painter->drawRoundedRect(rect, 5, 5); }
+    const bool selected = selectionModel()->isSelected(index); const auto cell = visualRect(index);
+    painter->save(); painter->fillRect(option.rect, m_appearance->color("sidebar")); painter->setRenderHint(QPainter::Antialiasing); const auto rect = option.rect.adjusted(8, 1, -8, -1);
+    if (selected || index == m_hover) { painter->setPen(Qt::NoPen); painter->setBrush(m_appearance->accentColor("soft")); painter->drawRoundedRect(rect, 5, 5); }
     if (selected) { painter->setBrush(m_appearance->accentColor()); painter->drawRoundedRect(QRectF(rect.left(), rect.top() + 5, 3, rect.height() - 10), 1.5, 1.5); }
-    if (selected && option.state & QStyle::State_HasFocus && InputModality::forApplication()->keyboardNavigation()) { painter->setBrush(Qt::NoBrush); painter->setPen(QPen(m_appearance->accentColor(), 2)); painter->drawRoundedRect(rect.adjusted(2, 2, -2, -2), 4, 4); }
-    painter->restore(); adjusted.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver | QStyle::State_HasFocus); adjusted.palette.setColor(QPalette::Highlight, Qt::transparent); adjusted.palette.setColor(QPalette::HighlightedText, m_appearance->color("text")); QTreeView::drawRow(painter, adjusted, index);
+    if (selected && hasFocus() && currentIndex() == index && InputModality::forApplication()->keyboardNavigation()) { painter->setBrush(Qt::NoBrush); painter->setPen(QPen(m_appearance->accentColor(), 2)); painter->drawRoundedRect(rect.adjusted(2, 2, -2, -2), 4, 4); }
+    const auto icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole)); int left = cell.left() + 4;
+    if (!icon.isNull()) { icon.paint(painter, QRect(left, cell.center().y() - 8, 16, 16)); left += 24; }
+    painter->setFont(font()); painter->setPen(m_appearance->color(index.flags() & Qt::ItemIsEnabled ? "text" : "textSecondary")); const auto textRect = QRect(left, cell.top(), qMax(0, viewport()->width() - left - 12), cell.height()); painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, fontMetrics().elidedText(index.data().toString(), Qt::ElideMiddle, textRect.width()));
+    drawBranches(painter, QRect(0, cell.top(), cell.left(), cell.height()), index); painter->restore();
 }
+void WorkspaceTree::mouseMoveEvent(QMouseEvent *event) { const auto previous = m_hover; m_hover = indexAt(event->position().toPoint()); if (previous != m_hover) viewport()->update(); QTreeView::mouseMoveEvent(event); }
+void WorkspaceTree::leaveEvent(QEvent *event) { m_hover = {}; viewport()->update(); QTreeView::leaveEvent(event); }
 void WorkspaceTree::drawBranches(QPainter *painter, const QRect &rect, const QModelIndex &index) const {
     if (model()->hasChildren(index)) themedIcon(isExpanded(index) ? "chevron-down" : "chevron-right", m_appearance->color("textSecondary")).paint(painter, QRect(rect.right() - indentation() + 2, rect.center().y() - 6, 12, 12));
 }

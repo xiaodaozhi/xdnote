@@ -12,6 +12,14 @@ namespace xdnote {
 class Appearance;
 class SharedMenu;
 SharedMenu *createAppearanceMenu(Appearance *appearance, QWidget *parent);
+class SharedSeparator final : public QWidget {
+public:
+    SharedSeparator(Qt::Orientation orientation, Appearance *appearance, QWidget *parent);
+protected:
+    void paintEvent(QPaintEvent *) override;
+private:
+    Appearance *m_appearance;
+};
 class DocumentSplitter final : public QSplitter {
 public:
     DocumentSplitter(Appearance *appearance, QWidget *parent);

@@ -5,6 +5,7 @@ class QListWidget;
 namespace xdnote {
 class Appearance;
 class NavigationStore;
+class SharedSpinner;
 class WorkspaceNavigation final : public QWidget {
     Q_OBJECT
 public:
@@ -27,7 +28,9 @@ private:
     QString m_root, m_query, m_searchWarning;
     QStringList m_searchPaths;
     bool m_loading = false;
-    QLabel *m_heading, *m_summary, *m_empty;
+    QLabel *m_heading, *m_summary, *m_empty, *m_emptyDetails, *m_emptyIcon;
+    QWidget *m_emptyPane;
+    SharedSpinner *m_spinner;
     QListWidget *m_list;
     QWidget *m_clear;
 };

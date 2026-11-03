@@ -80,6 +80,12 @@ SharedMenu *createAppearanceMenu(Appearance *appearance, QWidget *parent) {
 DocumentSplitter::DocumentSplitter(Appearance *appearance, QWidget *parent) : QSplitter(Qt::Horizontal, parent), m_appearance(appearance) {
     setChildrenCollapsible(false); setHandleWidth(control("splitterHitWidth"));
 }
+SharedSeparator::SharedSeparator(Qt::Orientation orientation, Appearance *appearance, QWidget *parent) : QWidget(parent), m_appearance(appearance) {
+    if (orientation == Qt::Vertical) setFixedWidth(control("borderWidth")); else setFixedHeight(control("borderWidth"));
+    setSizePolicy(orientation == Qt::Vertical ? QSizePolicy::Fixed : QSizePolicy::Expanding, orientation == Qt::Vertical ? QSizePolicy::Expanding : QSizePolicy::Fixed);
+    connect(appearance, &Appearance::changed, this, qOverload<>(&QWidget::update));
+}
+void SharedSeparator::paintEvent(QPaintEvent *) { QPainter painter(this); painter.fillRect(rect(), m_appearance->color("border")); }
 QSplitterHandle *DocumentSplitter::createHandle() {
     class Handle final : public QSplitterHandle {
     public:

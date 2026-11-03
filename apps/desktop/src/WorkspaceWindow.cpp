@@ -26,6 +26,8 @@
 #include <QFocusEvent>
 #include <QSignalBlocker>
 #include <QListWidget>
+#include <QPainterPath>
+#include <QMouseEvent>
 
 namespace xdnote {
 namespace {
@@ -36,9 +38,9 @@ QUuid tabId(QTabBar *tabs, int index) { return tabs->tabData(index).toMap().valu
 class WorkspaceTabs final : public QTabBar {
 public:
     WorkspaceTabs(Appearance *appearance, QWidget *parent) : QTabBar(parent), m_appearance(appearance) {
-        setFont(parent->font()); setAttribute(Qt::WA_MacShowFocusRect, false);
+        setFont(parent->font()); setAttribute(Qt::WA_MacShowFocusRect, false); setMouseTracking(true);
         setObjectName("workspaceTabs"); setAccessibleName(QStringLiteral("文档标签")); setExpanding(false); setMovable(true); setUsesScrollButtons(true); setElideMode(Qt::ElideMiddle); setDrawBase(false); setFixedHeight(mainTokens().value("titlebarHeight").toInt()); setFocusPolicy(Qt::StrongFocus);
-        connect(appearance, &Appearance::changed, this, [this] { update(); }); connect(InputModality::forApplication(), &InputModality::changed, this, qOverload<>(&QWidget::update));
+        auto refresh = [this] { auto palette = this->palette(); palette.setColor(QPalette::ButtonText, m_appearance->color("text")); palette.setColor(QPalette::WindowText, m_appearance->color("text")); setPalette(palette); setStyleSheet(QStringLiteral("QTabBar#workspaceTabs QToolButton{background:%1;color:%2;border:0;border-bottom:1px solid %4} QTabBar#workspaceTabs QToolButton:hover{background:%3}").arg(m_appearance->color("sidebar").name(), m_appearance->color("text").name(), m_appearance->color("codeSurface").name(), m_appearance->color("border").name())); update(); }; connect(appearance, &Appearance::changed, this, refresh); refresh(); connect(InputModality::forApplication(), &InputModality::changed, this, qOverload<>(&QWidget::update));
     }
     std::function<void(QUuid)> closeRequested;
 protected:
@@ -46,10 +48,18 @@ protected:
     QSize minimumTabSizeHint(int) const override { return {tabToken("minWidth"), height()}; }
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this); painter.setFont(font()); painter.setRenderHint(QPainter::Antialiasing); painter.fillRect(rect(), m_appearance->color("sidebar"));
+        const int border = visualTokens().value("controls").toObject().value("borderWidth").toInt(); painter.fillRect(QRect(0, height() - border, width(), border), m_appearance->color("border"));
         for (int i = 0; i < count(); ++i) {
             const auto rect = tabRect(i); if (!rect.intersects(this->rect())) continue;
             const auto data = tabData(i).toMap(); const bool active = i == currentIndex();
-            if (active) { painter.setPen(Qt::NoPen); painter.setBrush(m_appearance->color("background")); painter.drawRoundedRect(rect.adjusted(2, 6, -2, 0), 6, 6); }
+            const auto surface = QRectF(rect).adjusted(2 + border / 2.0, tabToken("topInset") + border / 2.0, -2 - border / 2.0, 0); const qreal radius = tabToken("cornerRadius");
+            if (active || i == m_hover) {
+                QPainterPath outline; outline.moveTo(surface.left(), height()); outline.lineTo(surface.left(), surface.top() + radius); outline.quadTo(surface.left(), surface.top(), surface.left() + radius, surface.top()); outline.lineTo(surface.right() - radius, surface.top()); outline.quadTo(surface.right(), surface.top(), surface.right(), surface.top() + radius); outline.lineTo(surface.right(), height());
+                painter.fillPath(outline, m_appearance->color(active ? "background" : "codeSurface"));
+                if (active) { painter.setPen(QPen(m_appearance->color("border"), border)); painter.setBrush(Qt::NoBrush); painter.drawPath(outline); }
+                else painter.fillRect(QRect(rect.left(), height() - border, rect.width(), border), m_appearance->color("border"));
+            }
+            if (!active && i + 1 != currentIndex()) { painter.setPen(QPen(m_appearance->color("border"), border)); painter.drawLine(QPointF(rect.right() + .5, tabToken("separatorInset")), QPointF(rect.right() + .5, height() - tabToken("separatorInset"))); }
             const int left = rect.x() + tabToken("padding"); const QRect icon(left, (height() - 16) / 2, 16, 16);
             themedIcon(data.value("dirty").toBool() ? "status-dirty" : "document", data.value("dirty").toBool() ? m_appearance->semantic("warning") : m_appearance->color("textSecondary")).paint(&painter, icon);
             painter.setPen(m_appearance->color(active ? "text" : "textSecondary")); const QRect textRect = rect.adjusted(tabToken("padding") + 24, 0, -tabToken("closeHit") - 8, 0);
@@ -58,18 +68,21 @@ protected:
         }
     }
     void keyPressEvent(QKeyEvent *event) override { if (event->key() == Qt::Key_Delete && currentIndex() >= 0) { InputModality::forApplication()->clear(); if (closeRequested) closeRequested(tabId(this, currentIndex())); event->accept(); } else QTabBar::keyPressEvent(event); }
+    void mouseMoveEvent(QMouseEvent *event) override { const auto previous = m_hover; m_hover = tabAt(event->position().toPoint()); if (previous != m_hover) update(); QTabBar::mouseMoveEvent(event); }
+    void leaveEvent(QEvent *event) override { m_hover = -1; update(); QTabBar::leaveEvent(event); }
 private:
     Appearance *m_appearance;
+    int m_hover = -1;
 };
 }
 WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *store, NavigationStore *navigation) : ApplicationWindow(appearance), m_navigation(navigation ? navigation : new NavigationStore(this)) {
     setObjectName("workspaceWindow"); setAttribute(Qt::WA_DeleteOnClose); const auto tokens = mainTokens(); resize(tokens.value("defaultWidth").toInt(), tokens.value("defaultHeight").toInt()); setMinimumSize(tokens.value("minWidth").toInt(), tokens.value("minHeight").toInt()); setFont(uiFont(visualTokens().value("typography").toObject().value("ui").toObject().value("size").toInt()));
     auto *layout = new QVBoxLayout(this); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
-    m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabs = new WorkspaceTabs(windowAppearance(), m_header); m_tabs = tabs; m_header->setCenter(tabs, tokens.value("sidebarWidth").toInt()); layout->addWidget(m_header);
+    m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabStrip = new QWidget(m_header); tabStrip->setObjectName("workspaceTabStrip"); auto *tabRow = new QHBoxLayout(tabStrip); tabRow->setContentsMargins(0, 0, 8, 0); tabRow->setSpacing(4); auto *tabs = new WorkspaceTabs(windowAppearance(), tabStrip); m_tabs = tabs; tabs->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred); tabRow->addWidget(tabs); auto *addTab = new SharedButton({}, "workspaceAddTab", windowAppearance(), tabStrip); addTab->setSymbol("plus"); addTab->setFixedWidth(32); addTab->setAccessibleName(QStringLiteral("打开文档标签")); addTab->setToolTip(QStringLiteral("打开 Markdown 文档…")); tabRow->addWidget(addTab, 0, Qt::AlignVCenter); tabRow->addStretch(); connect(addTab, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested); m_header->setCenter(tabStrip, tokens.value("sidebarWidth").toInt()); layout->addWidget(m_header);
     tabs->closeRequested = [this](QUuid id) { closePane(id); }; connect(tabs, &QTabBar::currentChanged, this, [this] { m_navigationVisible = false; if (m_search) { const QSignalBlocker block(m_search); m_search->clear(); m_searchDelay.stop(); m_tree->cancelSearch(); } selectCurrent(); }); connect(tabs, &QTabBar::tabBarClicked, this, [this](int index) { if (index >= 0) activatePane(tabId(m_tabs, index)); });
     m_warning = new QLabel(this); m_warning->setObjectName("workspaceNotice"); m_warning->setWordWrap(true); m_warning->setTextFormat(Qt::PlainText); m_warning->setContentsMargins(16, 8, 16, 8); m_warning->hide(); layout->addWidget(m_warning);
     auto *content = new QWidget(this); auto *row = new QHBoxLayout(content); row->setContentsMargins(0, 0, 0, 0); row->setSpacing(0); layout->addWidget(content, 1);
-    m_sidebar = new QWidget(content); m_sidebar->setObjectName("workspaceSidebar"); m_sidebar->setFixedWidth(tokens.value("sidebarWidth").toInt()); auto *sidebar = new QVBoxLayout(m_sidebar); sidebar->setContentsMargins(0, 0, 1, 0); sidebar->setSpacing(0); row->addWidget(m_sidebar);
+    m_sidebar = new QWidget(content); m_sidebar->setObjectName("workspaceSidebar"); m_sidebar->setFixedWidth(tokens.value("sidebarWidth").toInt()); auto *sidebarRow = new QHBoxLayout(m_sidebar); sidebarRow->setContentsMargins(0, 0, 0, 0); sidebarRow->setSpacing(0); auto *navigationColumn = new QWidget(m_sidebar); sidebarRow->addWidget(navigationColumn, 1); auto *sidebarBorder = new SharedSeparator(Qt::Vertical, windowAppearance(), m_sidebar); sidebarBorder->setObjectName("workspaceSidebarBorder"); sidebarRow->addWidget(sidebarBorder); auto *sidebar = new QVBoxLayout(navigationColumn); sidebar->setContentsMargins(0, 0, 0, 0); sidebar->setSpacing(0); row->addWidget(m_sidebar);
     auto *selector = new QWidget(m_sidebar); selector->setFixedHeight(tokens.value("toolbarHeight").toInt()); auto *tools = new QHBoxLayout(selector); tools->setContentsMargins(navToken("sidebarInset"), 0, navToken("sidebarInset"), 0);
     m_rootLabel = new SharedButton(QStringLiteral("我的文档"), "workspaceSelector", windowAppearance(), selector); m_rootLabel->setProperty("navigationRow", true); auto titleFont = font(); titleFont.setWeight(QFont::DemiBold); m_rootLabel->setFont(titleFont); tools->addWidget(m_rootLabel);
     auto *workspaceMenu = new SharedMenu(windowAppearance(), m_rootLabel); auto *choose = workspaceMenu->addAction(QStringLiteral("打开工作区目录…")); choose->setObjectName("chooseWorkspace"); connect(choose, &QAction::triggered, this, &WorkspaceWindow::chooseDirectoryRequested);
@@ -114,13 +127,18 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
 }
 void WorkspaceWindow::applyAppearance() {
     auto *appearance = windowAppearance(); auto palette = this->palette(); palette.setColor(QPalette::Window, appearance->color("background")); palette.setColor(QPalette::WindowText, appearance->color("text")); setPalette(palette);
-    setStyleSheet(QStringLiteral("QWidget#workspaceWindow{background:%1;color:%2} QWidget#workspaceSidebar{background:%3;border-right:1px solid %4} QLabel{color:%2;background:transparent} QLabel#workspaceTreeState,QLabel[secondary=\"true\"],QLabel#workspaceSearchHint{color:%5} QStackedWidget#workspaceFooters{border:0;background:%1} QWidget#emptyWorkspaceFooter{border-top:1px solid %4} QLabel#workspaceNotice{background:%3;border-bottom:1px solid %4} QWidget#sidebarSettingsDivider{background:%4} QLineEdit#workspaceSearch{background:transparent;color:%2;border:0;outline:0;padding:0}").arg(appearance->color("background").name(), appearance->color("text").name(), appearance->color("sidebar").name(), appearance->color("border").name(), appearance->color("textSecondary").name()));
+    setStyleSheet(QStringLiteral("QWidget#workspaceWindow{background:%1;color:%2} QWidget#workspaceSidebar{background:%3} QLabel{color:%2;background:transparent} QLabel#workspaceTreeState,QLabel[secondary=\"true\"],QLabel#workspaceSearchHint{color:%5} QStackedWidget#workspaceFooters{border:0;background:%1} QWidget#emptyWorkspaceFooter{border-top:1px solid %4} QLabel#workspaceNotice{background:%3;border-bottom:1px solid %4} QWidget#sidebarSettingsDivider{background:%4} QLineEdit#workspaceSearch{background:transparent;color:%2;border:0;outline:0;padding:0}").arg(appearance->color("background").name(), appearance->color("text").name(), appearance->color("sidebar").name(), appearance->color("border").name(), appearance->color("textSecondary").name()));
     const bool outline = m_searchTab && m_search->hasFocus() && InputModality::forApplication()->keyboardNavigation(); m_searchBox->setProperty("keyboardOutline", outline); m_searchBox->setStyleSheet(QStringLiteral("QWidget#workspaceSearchBox{background:%1;border:%3px solid %2;border-radius:6px}").arg(appearance->color("surface").name(), outline ? appearance->accentColor().name() : appearance->color("border").name()).arg(visualTokens().value("controls").toObject().value(outline ? "focusRingWidth" : "borderWidth").toInt()));
     auto searchPalette = m_search->palette(); searchPalette.setColor(QPalette::PlaceholderText, appearance->color("textSecondary")); m_search->setPalette(searchPalette); m_search->setAttribute(Qt::WA_MacShowFocusRect, false); findChild<QLabel *>("workspaceSearchIcon")->setPixmap(themedIcon("search", appearance->color("textSecondary")).pixmap(16, 16));
     m_theme->setSymbol(appearance->dark() ? "moon" : "sun"); m_theme->setAccessibleName(appearance->dark() ? QStringLiteral("切换到浅色模式") : QStringLiteral("切换到深色模式")); m_theme->setToolTip(m_theme->accessibleName()); applyNativeAppearance();
 }
 WorkspaceWindow::~WorkspaceWindow() {
     m_tearingDown = true;
+    m_searchDelay.stop(); m_tree->cancelSearch(); m_search->removeEventFilter(this);
+    // Native hide/focus notifications and child-model teardown can still emit
+    // while QWidget's base destructor runs. Disconnect while our members live.
+    disconnect(InputModality::forApplication(), nullptr, this, nullptr); disconnect(m_navigation, nullptr, this, nullptr);
+    for (auto *child : findChildren<QObject *>()) disconnect(child, nullptr, this, nullptr);
     if (m_geometry) { m_geometry->flush(); delete m_geometry; m_geometry = nullptr; }
     disconnect(m_tabs, nullptr, this, nullptr); disconnect(windowAppearance(), nullptr, this, nullptr);
     const auto list = panes(); m_panes.clear();
