@@ -63,8 +63,8 @@ private slots:
     }
     void directVisibleWindowDestructionFlushesControllersBeforeBaseTeardown() {
         FileManager manager; Appearance appearance; WindowGeometryStore store;
-        auto *standalone = new SingleFileWindow(&manager, &appearance, &store); standalone->show(); QTest::qWait(30); QPointer<WindowGeometry> first = standalone->windowGeometry(); QVERIFY(first); delete standalone; QVERIFY(first.isNull()); QVERIFY(store.placement("standalone"));
-        auto *workspace = new WorkspaceWindow(&appearance, &store); auto *pane = new SingleFileWindow(&manager, &appearance, &store); QVERIFY(workspace->addPane(pane)); workspace->show(); QTest::qWait(30); QPointer<WindowGeometry> second = workspace->windowGeometry(); QPointer<SingleFileWindow> child = pane; delete workspace; QVERIFY(second.isNull()); QVERIFY(child.isNull()); QVERIFY(store.placement("main"));
+        auto *standalone = new SingleFileWindow(&manager, &appearance, &store); standalone->show(); QTRY_VERIFY(standalone->windowGeometry()->initialized()); QPointer<WindowGeometry> first = standalone->windowGeometry(); QVERIFY(first); delete standalone; QVERIFY(first.isNull()); QVERIFY(store.placement("standalone"));
+        auto *workspace = new WorkspaceWindow(&appearance, &store); auto *pane = new SingleFileWindow(&manager, &appearance, &store); QVERIFY(workspace->addPane(pane)); workspace->show(); QTRY_VERIFY(workspace->windowGeometry()->initialized()); QPointer<WindowGeometry> second = workspace->windowGeometry(); QPointer<SingleFileWindow> child = pane; delete workspace; QVERIFY(second.isNull()); QVERIFY(child.isNull()); QVERIFY(store.placement("main"));
     }
     void unreadableDirectoryRecoversAfterPermissionRestored() {
         QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "retained"));
@@ -142,7 +142,7 @@ private slots:
         auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); QTRY_COMPARE(tabs->count(), 12); QVERIFY(tabs->usesScrollButtons());
         auto *pane = workspace->activePane(); QVERIFY(pane); QPointer<SingleFileWindow> guard = pane; QTest::keyClick(tabs, Qt::Key_Delete); QTRY_VERIFY(guard.isNull()); QCOMPARE(tabs->count(), 11);
         const auto path = dir.filePath("valid.md"); QVERIFY(fileFixtures::write(path, "valid")); desktop.openInWorkspace(path, workspace); pane = waitPane(workspace, path); QVERIFY(pane);
-        workspace->resize(960, 640); QTest::qWait(30); auto *sidebar = workspace->findChild<QWidget *>("workspaceSidebar"); QVERIFY(!sidebar->isVisible());
+        workspace->windowGeometry()->rememberUserGeometry(QRect(workspace->geometry().topLeft(), QSize(960, 640))); workspace->windowGeometry()->fitToScreen(); QTRY_COMPARE(workspace->size(), QSize(960, 640)); auto *sidebar = workspace->findChild<QWidget *>("workspaceSidebar"); QTRY_VERIFY(!sidebar->isVisible());
         QTest::mouseClick(pane->findChild<SharedButton *>("fileLocation"), Qt::LeftButton); QVERIFY(sidebar->isVisible()); QTest::mouseClick(pane->findChild<SharedButton *>("fileLocation"), Qt::LeftButton); QVERIFY(!sidebar->isVisible());
     }
     void windowsTabsAreClientControlsInsideSharedCaption() {
@@ -163,6 +163,7 @@ private slots:
         QCOMPARE(session->replace(0, 0, "edit\n", session->revision()), EditResult::Applied); QTRY_VERIFY(pane->document()->dirty()); QVERIFY(pane->document()->save()); QTRY_VERIFY(!pane->document()->saving()); QVERIFY(!pane->document()->dirty()); QCOMPARE(disk(path), QByteArray("edit\n# Heading\n\nbody\n"));
         pane->setViewMode(SingleFileWindow::ViewMode::Reading); pane->setViewMode(SingleFileWindow::ViewMode::Source); pane->setViewMode(SingleFileWindow::ViewMode::Split); QCOMPARE(pane->document()->session()->documentId(), id); QCOMPARE(pane->document()->session(), session);
         QCOMPARE(workspace->findChild<QWidget *>("documentHeader")->height(), 48); QCOMPARE(workspace->findChild<QWidget *>("workspaceFooters")->height(), 26); QCOMPARE(pane->footer()->width(), workspace->width()); QVERIFY(!pane->windowGeometry()); QVERIFY(workspace->windowGeometry());
+        QCOMPARE(pane->footer()->geometry(), workspace->findChild<QWidget *>("workspaceFooters")->rect());
         QTest::qWait(250); capture(workspace, theme + "-split");
     }
     void tabCloseCancelAndWorkspaceCloseSaveProtectOtherBuffers() {

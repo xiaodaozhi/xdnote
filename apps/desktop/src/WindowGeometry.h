@@ -50,6 +50,7 @@ public:
     WindowGeometry(QWidget *window, WindowGeometryStore *store = nullptr, QString kind = {});
     ~WindowGeometry() override;
     QSize preferredClientSize() const { return m_placement.normal.size(); }
+    bool initialized() const { return m_initialized; }
     bool temporarilyConstrained() const { return m_constrained; }
     // Use for an explicit application/user resize intent, not a DPI notification.
     void rememberUserGeometry(const QRect &normal);
