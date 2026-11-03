@@ -16,11 +16,14 @@ class DocumentHeader;
 class Appearance;
 class SharedButton;
 class ElidedLabel;
+class WindowGeometry;
+class WindowGeometryStore;
 class SharedSpinner;
 class SingleFileWindow final : public QWidget {
     Q_OBJECT
 public:
-    explicit SingleFileWindow(FileManager *manager, Appearance *appearance = nullptr);
+    explicit SingleFileWindow(FileManager *manager, Appearance *appearance = nullptr, WindowGeometryStore *geometryStore = nullptr);
+    WindowGeometry *windowGeometry() const { return m_geometry; }
     FileDocument *document() const { return m_document; }
     SourceEditor *editor() const { return m_editor; }
     MarkdownPreview *preview() const { return m_preview; }
@@ -59,6 +62,7 @@ private:
     void applyNativeAppearance();
     FileManager *m_manager;
     Appearance *m_appearance;
+    WindowGeometry *m_geometry = nullptr;
     QPointer<FileDocument> m_document;
     QUuid m_intent;
     DocumentHeader *m_header;
@@ -98,7 +102,7 @@ private:
     MarkdownPreview *m_preview = nullptr;
     bool m_editing = false, m_prompting = false, m_closeAfterOperation = false;
     QString m_previewError;
-    QString m_appearanceError, m_dismissedNotice, m_openPath, m_openError;
+    QString m_appearanceError, m_geometryError, m_dismissedNotice, m_openPath, m_openError;
     int m_zoom = 100;
     bool m_frameInitialized = false;
     bool m_nativeMaxPressed = false;

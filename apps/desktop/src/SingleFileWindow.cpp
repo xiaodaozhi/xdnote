@@ -6,6 +6,7 @@
 #include "VisualTokens.h"
 #include "InputModality.h"
 #include "Utf8Text.h"
+#include "WindowGeometry.h"
 #include "UiFonts.h"
 #include <QActionGroup>
 #include <QApplication>
@@ -34,7 +35,6 @@
 #include <QTextLayout>
 #include <QGlyphRun>
 #include <QRawFont>
-#include <limits>
 #include <cmath>
 #ifdef Q_OS_WIN
 #define NOMINMAX
@@ -47,35 +47,6 @@ namespace xdnote {
 namespace {
 int token(const char *section, const char *key) { return visualTokens().value(section).toObject().value(key).toInt(); }
 QJsonObject geometryTokens() { return visualTokens().value("windows").toObject().value("standalone").toObject(); }
-#ifdef Q_OS_WIN
-bool nativeFrameSize(HWND hwnd, UINT dpi, qint64 clientWidth, qint64 clientHeight, SIZE *result) {
-    if (!dpi || clientWidth <= 0 || clientHeight <= 0) return false;
-    const auto style = GetWindowLongPtrW(hwnd, GWL_STYLE), extra = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-    if ((style & WS_CAPTION) != WS_CAPTION || !(style & WS_THICKFRAME)) return false;
-    Q_UNUSED(extra);
-    // A frameless QWidget treats the complete normal HWND as its client area.
-    // Native styles are retained for system commands, not extra client insets.
-    const qint64 width = clientWidth, height = clientHeight;
-    if (width <= 0 || height <= 0 || width > std::numeric_limits<LONG>::max() || height > std::numeric_limits<LONG>::max()) return false;
-    *result = SIZE{LONG(width), LONG(height)}; return true;
-}
-bool nativeScaling(HWND hwnd) {
-    DWORD process = 0;
-    if (GetWindowThreadProcessId(hwnd, &process) != GetCurrentThreadId() || process != GetCurrentProcessId()
-        || !AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(hwnd), DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
-        || !AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(), DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
-        || QGuiApplication::highDpiScaleFactorRoundingPolicy() != Qt::HighDpiScaleFactorRoundingPolicy::PassThrough) return false;
-    for (const auto *name : {"QT_SCALE_FACTOR", "QT_SCREEN_SCALE_FACTORS", "QT_USE_PHYSICAL_DPI", "QT_FONT_DPI", "QT_DEVICE_PIXEL_RATIO", "QT_AUTO_SCREEN_SCALE_FACTOR"}) if (qEnvironmentVariableIsSet(name)) return false;
-    if (qEnvironmentVariableIsSet("QT_ENABLE_HIGHDPI_SCALING") && qEnvironmentVariableIntValue("QT_ENABLE_HIGHDPI_SCALING") != 1) return false;
-    return true;
-}
-bool scaledExtent(qint64 value, UINT source, UINT target, qint64 *output) {
-    if (value <= 0 || value > std::numeric_limits<LONG>::max() || !source || !target) return false;
-    const quint64 scaled = (quint64(value) * target + source / 2) / source;
-    if (!scaled || scaled > quint64(std::numeric_limits<LONG>::max())) return false;
-    *output = qint64(scaled); return true;
-}
-#endif
 void separator(QBoxLayout *layout, Appearance *appearance, QWidget *owner) {
     auto *line = new QWidget(owner); line->setFixedWidth(1); line->setFixedHeight(20);
     const auto refresh = [line, appearance] { line->setStyleSheet("background:" + appearance->color("border").name()); };
@@ -240,29 +211,6 @@ bool SingleFileWindow::nativeEvent(const QByteArray &type, void *message, qintpt
 #ifdef Q_OS_WIN
     auto *msg = static_cast<MSG *>(message); const auto hwnd = reinterpret_cast<HWND>(internalWinId());
     if (msg->hwnd != hwnd) return QWidget::nativeEvent(type, message, result);
-    if (msg->message == WM_GETMINMAXINFO && msg->lParam && result && nativeScaling(hwnd)) {
-        const auto dpi = GetDpiForWindow(hwnd); SIZE unit{};
-        if (nativeFrameSize(hwnd, dpi, 1, 1, &unit)) {
-            auto adjusted = *reinterpret_cast<MINMAXINFO *>(msg->lParam);
-            qint64 minWidth = 0, minHeight = 0;
-            if (scaledExtent(minimumWidth(), 96, dpi, &minWidth) && scaledExtent(minimumHeight(), 96, dpi, &minHeight)
-                && minWidth + unit.cx - 1 <= std::numeric_limits<LONG>::max() && minHeight + unit.cy - 1 <= std::numeric_limits<LONG>::max()) {
-                adjusted.ptMinTrackSize = POINT{LONG(minWidth + unit.cx - 1), LONG(minHeight + unit.cy - 1)};
-                *reinterpret_cast<MINMAXINFO *>(msg->lParam) = adjusted; *result = 0; return true;
-            }
-        }
-    }
-    if (msg->message == WM_GETDPISCALEDSIZE && msg->lParam && result && nativeScaling(hwnd) && !isMaximized() && !isFullScreen() && msg->wParam <= std::numeric_limits<UINT>::max()) {
-        const auto incoming = *reinterpret_cast<SIZE *>(msg->lParam); RECT client{}, outer{};
-        if (incoming.cx > 0 && incoming.cy > 0 && GetClientRect(hwnd, &client) && GetWindowRect(hwnd, &outer)) {
-            const qint64 width = qint64(client.right) + incoming.cx - (qint64(outer.right) - outer.left);
-            const qint64 height = qint64(client.bottom) + incoming.cy - (qint64(outer.bottom) - outer.top);
-            qint64 targetWidth = 0, targetHeight = 0; SIZE response{}; const auto current = GetDpiForWindow(hwnd), target = UINT(msg->wParam);
-            if (scaledExtent(width, current, target, &targetWidth) && scaledExtent(height, current, target, &targetHeight) && nativeFrameSize(hwnd, target, targetWidth, targetHeight, &response)) {
-                *reinterpret_cast<SIZE *>(msg->lParam) = response; *result = TRUE; return true;
-            }
-        }
-    }
     if (msg->message == WM_NCCALCSIZE && msg->wParam) {
         auto *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(msg->lParam);
         if (IsZoomed(hwnd)) {
@@ -312,7 +260,7 @@ bool SingleFileWindow::nativeEvent(const QByteArray &type, void *message, qintpt
     return QWidget::nativeEvent(type, message, result);
 }
 
-SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
+SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance, WindowGeometryStore *geometryStore)
     : m_manager(manager), m_appearance(appearance ? appearance : new Appearance(this)) {
     setObjectName("standaloneWindow"); setAttribute(Qt::WA_DeleteOnClose); setAcceptDrops(true);
 #ifdef Q_OS_WIN
@@ -420,6 +368,8 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance)
     connect(m_appearance, &Appearance::changed, this, [this] { m_appearanceError.clear(); applyAppearance(); updateState(); });
     connect(m_appearance, &Appearance::preferenceFailed, this, [this](const QString &message) { m_appearanceError = message; updateState(); });
     m_appearanceError = m_appearance->error(); setWindowTitle(QStringLiteral("xdnote")); qApp->installEventFilter(this); applyAppearance(); updateState();
+    m_geometry = new WindowGeometry(this, geometryStore, QStringLiteral("standalone"));
+    connect(m_geometry, &WindowGeometry::geometryWarning, this, [this](const QString &message) { m_geometryError = message; updateState(); });
 }
 
 void SingleFileWindow::applyAppearance() {
@@ -526,7 +476,8 @@ void SingleFileWindow::updateState() {
         m_header->setTitle(m_openPath.isEmpty() ? QStringLiteral("打开 Markdown 文档") : QFileInfo(m_openPath).fileName(), false); m_path->setFullText(m_openPath.isEmpty() ? QString() : QFileInfo(m_openPath).path());
         m_empty->setText(loading ? QFileInfo(m_openPath).fileName() : error ? m_openError + "\n\n" + m_openPath : QStringLiteral("从阅读开始，随时切换编辑。"));
         m_status->setFullText(loading ? QStringLiteral("正在打开…") : error ? QStringLiteral("打开失败") : QStringLiteral("请选择文档")); m_statusIcon->clear(); m_encoding->clear();
-        m_notice->setText(m_appearanceError); m_banner->setVisible(!m_appearanceError.isEmpty()); m_resolve->hide(); m_retry->hide(); m_later->hide(); return;
+        const auto notice = m_appearanceError.isEmpty() ? m_geometryError : m_appearanceError;
+        m_notice->setText(notice); m_banner->setVisible(!notice.isEmpty()); m_resolve->hide(); m_retry->hide(); m_later->hide(); return;
     }
     m_header->setTitle(QFileInfo(m_document->path()).fileName(), m_document->dirty()); setWindowTitle(QFileInfo(m_document->path()).fileName() + QStringLiteral("[*] — xdnote")); setWindowModified(m_document->dirty());
     m_path->setFullText(QFileInfo(m_document->path()).path()); m_status->setFullText(m_document->statusText()); m_encoding->setText(m_document->bom() ? "UTF-8 BOM" : "UTF-8");
@@ -536,9 +487,10 @@ void SingleFileWindow::updateState() {
     m_statusIcon->setPixmap(themedIcon(busy ? "clock" : error ? "warning" : warning ? "status-dirty" : m_document->readOnly() ? "lock" : "check-circle", statusColor).pixmap(QSize(16, 16), devicePixelRatioF()));
     auto message = m_document->message(); if (message.isEmpty()) message = m_document->session()->rejection();
     if (message.isEmpty()) message = m_appearanceError;
+    if (message.isEmpty()) message = m_geometryError;
     if (message.isEmpty() && m_document->readOnly()) message = QStringLiteral("此文件为只读，阅读不受影响。");
     m_notice->setText(message); const bool previewOnly = !m_previewError.isEmpty() && message == m_previewError;
-    const bool appearanceOnly = message == m_appearanceError && !message.isEmpty();
+    const bool appearanceOnly = !message.isEmpty() && (message == m_appearanceError || message == m_geometryError);
     m_banner->setVisible(!message.isEmpty() && message != m_dismissedNotice);
     const auto semantic = m_appearance->semantic(error ? "error" : m_document->conflict() || m_document->readOnly() ? "warning" : "error");
     auto tint = m_appearance->color("background"); tint.setRed((tint.red() * 9 + semantic.red()) / 10); tint.setGreen((tint.green() * 9 + semantic.green()) / 10); tint.setBlue((tint.blue() * 9 + semantic.blue()) / 10);
