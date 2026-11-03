@@ -154,7 +154,7 @@ bool SharedButton::keyboardOutline() const {
     return m_tab && hasFocus() && isEnabled() && InputModality::forApplication()->keyboardNavigation() && window()->isActiveWindow();
 }
 QSize SharedButton::sizeHint() const {
-    const int textWidth = text().isEmpty() ? 0 : fontMetrics().horizontalAdvance(text());
+    const int textWidth = text().isEmpty() ? 0 : qCeil(QFontMetricsF(font(), this).horizontalAdvance(text()));
     const int iconWidth = m_symbol.isEmpty() ? 0 : control("iconSize") + (textWidth ? 8 : 0);
     return {qMax(control("iconButtonHit"), textWidth + iconWidth + (textWidth ? 24 : 0) + (menu() && textWidth ? 16 : 0)), control("height")};
 }
@@ -206,7 +206,7 @@ void SharedButton::paintEvent(QPaintEvent *) {
     if (navigation && selected) { painter.setPen(Qt::NoPen); painter.setBrush(appearance->accentColor()); painter.drawRoundedRect(QRectF(0, 5, 3, height() - 10), 1.5, 1.5); }
     const int icon = m_symbol.isEmpty() ? 0 : control("iconSize");
     const auto labelText = fontMetrics().elidedText(text(), Qt::ElideMiddle, qMax(0, width() - (icon ? icon + 8 : 0) - (menu() ? 16 : 0) - 24));
-    const int label = fontMetrics().horizontalAdvance(labelText);
+    const int label = qCeil(QFontMetricsF(font(), this).horizontalAdvance(labelText));
     const int dropdown = menu() && label ? 16 : 0;
     const int total = label + icon + (label && icon ? 8 : 0) + dropdown; int left = navigation ? 12 : (width() - total) / 2;
     if (icon) { themedIcon(m_symbol, foreground).paint(&painter, QRect(left, (height() - icon) / 2, icon, icon)); left += icon + (label ? 8 : 0); }
