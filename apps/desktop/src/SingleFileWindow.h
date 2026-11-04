@@ -22,6 +22,7 @@ class WindowGeometry;
 class WindowGeometryStore;
 class SharedSpinner;
 class DocumentBreadcrumb;
+class DocumentBody;
 class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -101,7 +102,7 @@ private:
     QPointer<QDialog> m_saveErrorDialog;
     QWidget *m_banner;
     QWidget *m_editorPage = nullptr;
-    QStackedWidget *m_body;
+    DocumentBody *m_body;
     QStackedWidget *m_previewStack = nullptr;
     QSplitter *m_splitter = nullptr;
     QWidget *m_previewPane = nullptr, *m_previewHeading = nullptr, *m_footer = nullptr;

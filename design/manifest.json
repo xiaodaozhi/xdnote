@@ -1569,8 +1569,8 @@
   "authoritySnapshots": [
     {
       "path": "docs/visual/tokens.json",
-      "bytes": 8394,
-      "sha256": "fd8aaf0742cf20960b46fd4318ead58feefc354d793eb284e90fc81f695ae536"
+      "bytes": 8458,
+      "sha256": "d957fad8603349a06c86bbf276b9d50f46d3fade8705ffae498e4083fe7b8d7d"
     },
     {
       "path": "docs/visual/asset-geometry.json",

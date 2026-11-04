@@ -31,6 +31,7 @@
 #include <QListWidget>
 #include <QSplitterHandle>
 #include <QAction>
+#include <QtMath>
 #ifdef Q_OS_WIN
 #include <sddl.h>
 #endif
@@ -46,12 +47,42 @@ SingleFileWindow *waitStandalone(const QString &path) {
 QByteArray disk(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); }
 void capture(QWidget *window, const QString &name) { const auto directory = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (!directory.isEmpty()) { QDir().mkpath(directory + "/workspace"); window->grab().save(directory + "/workspace/" + name + ".png"); } }
 bool hasColorNear(const QImage &image, QPointF logical, const QColor &color) { const auto point = logical * image.devicePixelRatio(); for (int y = qMax(0, qRound(point.y()) - 2); y <= qMin(image.height() - 1, qRound(point.y()) + 2); ++y) for (int x = qMax(0, qRound(point.x()) - 2); x <= qMin(image.width() - 1, qRound(point.x()) + 2); ++x) if (image.pixelColor(x, y) == color) return true; return false; }
+bool hasRuleAt(const QImage &image, QPoint logical, const QColor &color) {
+    const qreal ratio = image.devicePixelRatio();
+    const int x = qFloor((logical.x() + 0.5) * ratio), y = qFloor((logical.y() + 0.5) * ratio);
+    if (x < 0 || x >= image.width()) return false;
+    for (int row = qMax(0, y - 1); row <= qMin(image.height() - 1, y + 1); ++row) if (image.pixelColor(x, row) == color) return true;
+    return false;
+}
 void chooseClose(int choice) { QTimer::singleShot(30, qApp, [choice] { for (auto *widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") { if (auto *button = widget->findChild<SharedButton *>(QStringLiteral("choice%1").arg(choice))) button->click(); } }); }
 }
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() { qApp->setQuitOnLastWindowClosed(false); SourceEditor::installAccessibility(); }
+    void toolbarBordersAndHeadingDropdown_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
+    void toolbarBordersAndHeadingDropdown() {
+        QFETCH(QString, theme); QTemporaryDir dir; const auto path = dir.filePath("toolbar.md"); QVERIFY(fileFixtures::write(path, "original\n"));
+        FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); QVERIFY(pane->appearance()->setPreferences(theme, "graphite"));
+        auto *format = pane->findChild<QWidget *>("formatToolbar"); auto *preview = pane->findChild<QWidget *>("previewToolbar"); auto *body = pane->findChild<QStackedWidget *>("documentBody");
+        auto *heading = pane->findChild<SharedButton *>("format2"); auto *label = pane->findChild<QLabel *>("formatLabel"); auto *divider = pane->findChild<QWidget *>("formatDivider");
+        QVERIFY(format && preview && body && heading && label && divider); pane->setViewMode(SingleFileWindow::ViewMode::Source); QTRY_VERIFY(format->isVisible()); QVERIFY(!preview->isVisible());
+        QTRY_COMPARE(divider->mapTo(format, QPoint()).x() - label->mapTo(format, QPoint(label->width(), 0)).x(), 16); QCOMPARE(heading->width(), 48);
+        auto *menu = heading->menu(); QVERIFY(menu); QCOMPARE(menu->actions().size(), 6); for (int i = 0; i < 6; ++i) QCOMPARE(menu->actions()[i]->data().toInt(), i + 1);
+        capture(pane, theme + "-toolbar"); const auto indicator = pane->grab().toImage(); const qreal ratio = indicator.devicePixelRatio(); const auto origin = heading->mapTo(pane, QPoint());
+        const auto background = indicator.pixelColor(qFloor((origin.x() + 2) * ratio), qFloor((origin.y() + 2) * ratio)); int contrast = 0;
+        for (int y = qFloor((origin.y() + 8) * ratio); y < qFloor((origin.y() + 24) * ratio); ++y) for (int x = qFloor((origin.x() + 28) * ratio); x < qFloor((origin.x() + 40) * ratio); ++x) { const auto pixel = indicator.pixelColor(x, y); if (qAbs(pixel.red() - background.red()) + qAbs(pixel.green() - background.green()) + qAbs(pixel.blue() - background.blue()) > 150) ++contrast; }
+        QVERIFY(contrast >= 2);
+        bool opened = false; connect(menu, &QMenu::aboutToShow, menu, [menu, &opened] { opened = true; QTimer::singleShot(0, menu, [menu] { menu->actions()[3]->trigger(); menu->close(); }); });
+        QTimer::singleShot(1000, menu, &QMenu::close); QTest::mouseClick(heading, Qt::LeftButton); QTRY_VERIFY_WITH_TIMEOUT(opened, 2000); auto *session = pane->document()->session(); QTRY_COMPARE_WITH_TIMEOUT(session->snapshot().utf8, QByteArray("#### original\n"), 2000); QCOMPARE(session->undo(), EditResult::Applied);
+        auto checkRightRule = [&] { const auto image = body->grab().toImage(); return hasRuleAt(image, QPoint(body->width() - qMax(1, body->contentsMargins().right() / 2), format->height() - 1), pane->appearance()->color("border")); };
+        QTRY_VERIFY(checkRightRule()); pane->setViewMode(SingleFileWindow::ViewMode::Reading); QVERIFY(!format->isVisible()); QVERIFY(!preview->isVisible());
+        auto *workspace = desktop.workspaceWindow(dir.path()); QVERIFY(desktop.transferToWorkspace(pane, workspace)); pane->setViewMode(SingleFileWindow::ViewMode::Source); QTRY_VERIFY(format->isVisible()); QVERIFY(!preview->isVisible()); QTRY_VERIFY(checkRightRule());
+        pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(format->isVisible()); QTRY_VERIFY(preview->isVisible()); QCOMPARE(format->height(), preview->height());
+        auto *splitter = pane->findChild<QSplitter *>("documentSplit"); QVERIFY(splitter); auto *handle = splitter->handle(1); QTRY_VERIFY(handle->isVisible()); const auto bridge = handle->grab().toImage();
+        QVERIFY(hasRuleAt(bridge, QPoint(1, format->height() - 1), pane->appearance()->color("border"))); QVERIFY(hasRuleAt(bridge, QPoint(handle->width() - 2, format->height() - 1), pane->appearance()->color("border"))); QTRY_VERIFY(checkRightRule());
+        pane->setViewMode(SingleFileWindow::ViewMode::Reading); QVERIFY(!format->isVisible()); QVERIFY(!preview->isVisible());
+    }
     void breadcrumbUsesWorkspaceHierarchyAndUpdatesAfterSaveAs() {
         QTemporaryDir dir, outside; QVERIFY(QDir().mkpath(dir.filePath(QStringLiteral("个人笔记/写作")))); const auto path = dir.filePath(QStringLiteral("个人笔记/写作/开始.md")); QVERIFY(fileFixtures::write(path, "# writing"));
         FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); QCOMPARE(pane->findChild<ElidedLabel *>("documentPath")->fullText(), QFileInfo(path).path()); QVERIFY(!pane->findChild<DocumentBreadcrumb *>("workspaceBreadcrumb")->isVisible());

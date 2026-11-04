@@ -96,6 +96,10 @@ QSplitterHandle *DocumentSplitter::createHandle() {
         void paintEvent(QPaintEvent *) override {
             QPainter painter(this); painter.fillRect(rect(), appearance->color("background"));
             painter.fillRect(QRect((width() - control("borderWidth")) / 2, 0, control("borderWidth"), height()), appearance->color("border"));
+            if (splitter()->count() == 2 && splitter()->widget(0)->isVisible() && splitter()->widget(1)->isVisible()) {
+                const int toolbarHeight = visualTokens().value("windows").toObject().value("main").toObject().value("sourceToolbarHeight").toInt();
+                painter.fillRect(QRect(0, toolbarHeight - control("borderWidth"), width(), control("borderWidth")), appearance->color("border"));
+            }
         }
         Appearance *appearance;
     };
@@ -207,7 +211,7 @@ void SharedButton::paintEvent(QPaintEvent *) {
     const int icon = m_symbol.isEmpty() ? 0 : control("iconSize");
     const auto labelText = fontMetrics().elidedText(text(), Qt::ElideMiddle, qMax(0, width() - (icon ? icon + 8 : 0) - (menu() ? 16 : 0) - 24));
     const int label = qCeil(QFontMetricsF(font(), this).horizontalAdvance(labelText));
-    const int dropdown = menu() && label ? 16 : 0;
+    const int dropdown = menu() && (label || property("showMenuIndicator").toBool()) ? 16 : 0;
     const int total = label + icon + (label && icon ? 8 : 0) + dropdown; int left = navigation ? 12 : (width() - total) / 2;
     if (icon) { themedIcon(m_symbol, foreground).paint(&painter, QRect(left, (height() - icon) / 2, icon, icon)); left += icon + (label ? 8 : 0); }
     painter.setPen(foreground); painter.setFont(font()); painter.drawText(QRect(left, 0, label, height()), Qt::AlignCenter, labelText);
