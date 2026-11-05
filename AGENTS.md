@@ -16,7 +16,7 @@
 - 技术方向与模块契约遵循 `docs/engineering/architecture.md`：Qt 桌面、会话持有唯一原文与撤销、Rust 独立服务；Scintilla、具体界面承载和受限 Web 预览仍须准入验证。依赖版本、字体、许可与发布要求按本项目实际内容核验。
 - 本机、桌面 CI 与 Qt 试验统一使用 `tools/desktop-dependencies.json` 锁定的 Qt 6.8.2。本机 Windows 使用已安装的 MSVC 2019 v142／14.29，通过 `python scripts/desktop.py build --profile msvc2019` 选择编译器兼容配置，不要求安装 VS 2022；默认 CI 与发行编译器边界独立，见 `docs/engineering/developer-build.md`。
 - 工作区图片默认集中在 `assets/images/`，正文使用相对当前文档的标准 Markdown 链接；导入、引用索引、移动与重命名遵循 `docs/product/workspace-resources.md`，不自动删除图片或绕过会话改写正文。
-- 文档变更检查本地链接、JSON、图片引用及材料摘要；产品实现按受影响路径验证，功能、视觉、平台集成分别记录实际结果。
+- 提交及推送前按改动风险完成本地验证；文档变更检查链接、JSON、图片引用及材料摘要，产品实现验证受影响路径。源码或配置变化影响结论时重新验证；功能、视觉、平台集成及未执行项分别记录，见 `docs/engineering/workflow.md`。
 - 需求、Bug、设计和研究使用 GitHub Issue 跟踪；从最新 main 创建带 Issue 编号的短期分支，PR 关联 Issue。当前 head 的适用 CI、必要审查和验收完成后合并 main；仅完整满足 Issue 验收时关闭，部分交付保持开放。安全清理本次已合并的临时分支和临时数据，详见 `docs/engineering/workflow.md`。
 - 已授权的实施任务默认推进至提交、推送、PR 和满足门槛后的合并；用户指定暂不合并、仅设计或验收未通过时遵守该边界。不要删除无关改动、他人工作或未合并分支。
 - 设计输入纳入版本管理；设计导出 ZIP、`build/`、`target/`、各层级 `dist/`、缓存和运行证据不进入源码。保留已有用户改动，不输出凭据和私人文件内容。

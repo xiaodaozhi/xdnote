@@ -1,17 +1,6 @@
 name: Markdown parser experiment
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'experiments/pulldown-markdown-spike/**'
-      - 'experiments/qt-document-spike/tests/fixtures/markdown-core.md'
-      - '.github/workflows/pulldown-markdown-spike.yml'
-  pull_request:
-    paths:
-      - 'experiments/pulldown-markdown-spike/**'
-      - 'experiments/qt-document-spike/tests/fixtures/markdown-core.md'
-      - '.github/workflows/pulldown-markdown-spike.yml'
   workflow_dispatch:
 
 permissions:
