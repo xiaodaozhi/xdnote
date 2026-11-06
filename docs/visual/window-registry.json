@@ -43,8 +43,8 @@
       "designStatus": "reference-available",
       "implementationStatus": "workspace-prototype",
       "implementationSource": "apps/desktop/src/WorkspaceWindow.cpp",
-      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection"],
-      "deferredStates": ["resources-and-links", "search", "favorites", "mapped-scroll-sync"],
+      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection", "filename-search", "recent-documents", "favorites", "relative-breadcrumb", "appearance-menu"],
+      "deferredStates": ["resources-and-links", "full-text-search", "full-settings-window", "mapped-scroll-sync"],
       "nativeValidation": "not-run"
     },
     {

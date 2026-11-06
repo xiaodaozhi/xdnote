@@ -68,7 +68,7 @@ void WindowTitleBar::paintEvent(QPaintEvent *) {
         painter.setPen(m_appearance->color("text")); text.draw(&painter, QPointF(left, this->height() / 2.0 - ink.center().y()));
         if (m_dirty) { painter.setPen(Qt::NoPen); painter.setBrush(m_appearance->semantic("warning")); painter.drawEllipse(QPointF(left + metrics.horizontalAdvance(title) + 12, this->height() / 2.0), 3, 3); }
     }
-    painter.setPen(m_appearance->color("border")); painter.drawLine(0, this->height() - 1, this->width(), this->height() - 1);
+    const int border = visualTokens().value("controls").toObject().value("borderWidth").toInt(); painter.fillRect(QRect(0, this->height() - border, this->width(), border), m_appearance->color("border"));
 }
 void WindowTitleBar::mousePressEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton && window()->windowHandle()) window()->windowHandle()->startSystemMove(); }
 void WindowTitleBar::mouseDoubleClickEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton) window()->isMaximized() ? window()->showNormal() : window()->showMaximized(); }

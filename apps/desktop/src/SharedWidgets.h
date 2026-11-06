@@ -6,9 +6,28 @@
 #include <QLabel>
 #include <QDialog>
 #include <QTimer>
+#include <QSplitter>
 
 namespace xdnote {
 class Appearance;
+class SharedMenu;
+SharedMenu *createAppearanceMenu(Appearance *appearance, QWidget *parent);
+class SharedSeparator final : public QWidget {
+public:
+    SharedSeparator(Qt::Orientation orientation, Appearance *appearance, QWidget *parent);
+protected:
+    void paintEvent(QPaintEvent *) override;
+private:
+    Appearance *m_appearance;
+};
+class DocumentSplitter final : public QSplitter {
+public:
+    DocumentSplitter(Appearance *appearance, QWidget *parent);
+protected:
+    QSplitterHandle *createHandle() override;
+private:
+    Appearance *m_appearance;
+};
 QIcon themedIcon(const QString &name, const QColor &color);
 QIcon colorSwatch(const QColor &color);
 void paintPopupShell(QPainter &painter, const QRectF &surface, const QColor &fill, const QColor &border, int radius, int shadow);
@@ -23,6 +42,7 @@ public:
     void setNativeHover(bool value) { m_nativeHover = value; update(); }
     bool keyboardOutline() const;
     QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 protected:
     void paintEvent(QPaintEvent *) override;
     void focusInEvent(QFocusEvent *) override;

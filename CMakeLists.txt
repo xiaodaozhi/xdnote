@@ -85,6 +85,9 @@ set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUS
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/DocumentBreadcrumb.cpp apps/desktop/src/DocumentBreadcrumb.h
+    apps/desktop/src/NavigationStore.cpp apps/desktop/src/NavigationStore.h
+    apps/desktop/src/WorkspaceNavigation.cpp apps/desktop/src/WorkspaceNavigation.h
     apps/desktop/src/WorkspaceTree.cpp apps/desktop/src/WorkspaceTree.h
     apps/desktop/src/WorkspaceWindow.cpp apps/desktop/src/WorkspaceWindow.h
     apps/desktop/src/WindowChrome.cpp apps/desktop/src/WindowChrome.h
