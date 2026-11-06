@@ -13,6 +13,14 @@ python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 ```
 
+本机优先复用 `build/Qt/6.8.2/<平台子目录>/` 下现有 SDK，Windows 的 `qmllint.exe` 和 `qmake.exe` 位于 `msvc2022_64/bin/`；macOS 和 Linux 使用对应 SDK 的 `bin/`。工具可放在项目内固定虚拟环境 `build/toolchain/desktop-tools/`，创建及安装由开发者显式执行；不要为每个研发周期重复安装。已有环境先核对版本与实际可执行文件，CI 仍使用独立 runner。系统 Rust、MSVC 和其他宿主编译器沿用本机安装；目录约定不改变锁定版本或构建入口。
+
+```text
+python -m venv build/toolchain/desktop-tools
+```
+
+使用该虚拟环境的 Python 执行上面的 pip 安装命令；Windows 可调用 `build/toolchain/desktop-tools/Scripts/python.exe`，Unix 可调用 `build/toolchain/desktop-tools/bin/python`。研发周期临时产物的安全清理见[产研流程](workflow.md#工具诊断与周期收尾)。
+
 ## Windows 本机 MSVC 2019 配置
 
 本机使用现有 MSVC 2019 v142／14.29 x64 工具，不要求另装 Visual Studio 2022。显式选择 `--profile msvc2019`，它只选择本机编译器兼容方式，Qt 与默认配置统一为 6.8.2，沿用同一源码、Rust 版本及全部回归。两个 Windows 配置共用同一 SDK；CMake 目录和 Rust 测试产物仍分开，不修改 Qt 头文件或伪装编译器版本。
