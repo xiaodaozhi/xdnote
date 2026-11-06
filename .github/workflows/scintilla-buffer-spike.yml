@@ -1,17 +1,6 @@
 name: Scintilla buffer experiment
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'experiments/scintilla-buffer-spike/**'
-      - 'tools/desktop-dependencies.json'
-      - '.github/workflows/scintilla-buffer-spike.yml'
-  pull_request:
-    paths:
-      - 'experiments/scintilla-buffer-spike/**'
-      - 'tools/desktop-dependencies.json'
-      - '.github/workflows/scintilla-buffer-spike.yml'
   workflow_dispatch:
 
 permissions:

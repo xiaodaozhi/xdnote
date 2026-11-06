@@ -4,7 +4,7 @@
 
 ## 工具与依赖
 
-[依赖清单](../../tools/desktop-dependencies.json)、[Cargo.lock](../../Cargo.lock)和 [rust-toolchain.toml](../../rust-toolchain.toml)锁定本阶段输入。Qt 6.8.2、Scintilla 5.6.7、pulldown-cmark 0.13.6 与 Rust 1.99.0 构成本阶段组合；本机、默认桌面 CI、MSVC 2019 兼容配置和 Qt／Scintilla 试验 CI 都读取同一个 `qt.version`，不在配置中另设 Qt 版本。试验仍使用独立构建目录，不混用产物。Qt 采用动态库，Scintilla 从公开 Qt 端口源码构建，Rust 服务为静态库。默认编译器以 Qt 6.8 的[支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)为准：Windows CI 使用 MSVC 2022，macOS 按主机分别构建 x86_64／arm64，Linux 最低参考构建主机使用 Ubuntu 22.04 x86_64。宿主构建通过不能替代最低系统运行验收。
+[依赖清单](../../tools/desktop-dependencies.json)、[Cargo.lock](../../Cargo.lock)和 [rust-toolchain.toml](../../rust-toolchain.toml)锁定本阶段输入。Qt 6.8.2、Scintilla 5.6.7、pulldown-cmark 0.13.6 与 Rust 1.99.0 构成本阶段组合；本机、按需桌面 CI、MSVC 2019 兼容配置和 Qt／Scintilla 试验 CI 都读取同一个 `qt.version`，不在配置中另设 Qt 版本。试验仍使用独立构建目录，不混用产物。Qt 采用动态库，Scintilla 从公开 Qt 端口源码构建，Rust 服务为静态库。默认编译器以 Qt 6.8 的[支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)为准：Windows CI 使用 MSVC 2022，macOS 按主机分别构建 x86_64／arm64，Linux 最低参考构建主机使用 Ubuntu 22.04 x86_64。宿主构建通过不能替代最低系统运行验收。
 
 需要 Python 3.12、CMake 4.4.4、Ninja 1.13.0、Rust 1.99.0（含 rustfmt、clippy）及本机 C++ 工具链。下列准备命令允许联网；普通构建和测试不下载 Qt、源码或 Cargo 依赖。工具可安装在独立虚拟环境，不修改全局 Rust 默认版本。Windows 在 x64 开发者终端运行，或给入口提供 `--vcvars`，指向已安装的 `vcvars64.bat`。Linux 还需 Qt WebEngine 所用桌面运行库及图形环境，具体 CI 安装列表见[工作流](../../.github/workflows/desktop-admission.yml)。
 
@@ -12,6 +12,14 @@
 python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 ```
+
+本机优先复用 `build/Qt/6.8.2/<平台子目录>/` 下现有 SDK，Windows 的 `qmllint.exe` 和 `qmake.exe` 位于 `msvc2022_64/bin/`；macOS 和 Linux 使用对应 SDK 的 `bin/`。工具可放在项目内固定虚拟环境 `build/toolchain/desktop-tools/`，创建及安装由开发者显式执行；不要为每个研发周期重复安装。已有环境先核对版本与实际可执行文件，CI 仍使用独立 runner。系统 Rust、MSVC 和其他宿主编译器沿用本机安装；目录约定不改变锁定版本或构建入口。
+
+```text
+python -m venv build/toolchain/desktop-tools
+```
+
+使用该虚拟环境的 Python 执行上面的 pip 安装命令；Windows 可调用 `build/toolchain/desktop-tools/Scripts/python.exe`，Unix 可调用 `build/toolchain/desktop-tools/bin/python`。研发周期临时产物的安全清理见[产研流程](workflow.md#工具诊断与周期收尾)。
 
 ## Windows 本机 MSVC 2019 配置
 
@@ -28,7 +36,7 @@ python scripts/desktop.py run --profile msvc2019
 
 入口优先发现已有的 2019 Build Tools，也可使用已安装 v142 工具集的 2022 宿主；两者都显式调用 `vcvars64.bat -vcvars_ver=14.29`，CMake 必须实际识别到 MSVC 19.29。可用 `--vcvars` 指定安装位置；`--vcvars-version` 只选择已经安装的工具，不负责安装。默认输出为 `build/desktop-msvc2019/`，SDK 为 `build/Qt/6.8.2/msvc2022_64/`，目录名中的 `msvc2022_64` 是上游预编译 SDK 标识，不是本机应用编译器的证明。
 
-Qt 6.8.2 的[编译器检查](https://github.com/qt/qtbase/blob/v6.8.2/src/corelib/global/qcompilerdetection.h)允许此编译器，而[官方支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)仍列 MSVC 2022；[微软二进制兼容说明](https://learn.microsoft.com/en-us/cpp/porting/binary-compat-2015-2017)也对链接器、输入工具链及运行库设有限制。因此本配置只记录实际验证的本地兼容结果，不将头文件可编译等同于上游支持或任意 ABI 兼容。不得用于发行；默认工具链的四平台检查继续执行。Windows CI 另用实际 v142／14.29 执行兼容回归，失败同样阻止桌面汇总通过。
+Qt 6.8.2 的[编译器检查](https://github.com/qt/qtbase/blob/v6.8.2/src/corelib/global/qcompilerdetection.h)允许此编译器，而[官方支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)仍列 MSVC 2022；[微软二进制兼容说明](https://learn.microsoft.com/en-us/cpp/porting/binary-compat-2015-2017)也对链接器、输入工具链及运行库设有限制。因此本配置只记录实际验证的本地兼容结果，不将头文件可编译等同于上游支持或任意 ABI 兼容。不得用于发行；默认工具链的四平台检查按需执行。按需 Windows CI 另用实际 v142／14.29 执行兼容回归，失败同样阻止桌面汇总通过。
 
 构建身份记录配置、SDK 前缀、Qt 版本及 CMake 实际编译器版本。测试和运行同时核对配置、SDK 和源码摘要，不能切换参数后直接启动另一个目录中的旧产物；变更入口或源码后先重新构建。
 
