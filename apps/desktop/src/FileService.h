@@ -63,6 +63,11 @@ struct ReadResult {
     std::shared_ptr<const FileBaseline> baseline;
     FileProblem problem;
 };
+struct BinaryReadResult {
+    QByteArray bytes;
+    FileProblem problem;
+    bool success = false;
+};
 
 enum class SaveStatus { Committed, Conflict, Failed, Uncertain };
 enum class SaveStage { Validate, StageWrite, Commit, Verify };
@@ -94,6 +99,8 @@ public:
     static constexpr qsizetype SourceLimit = 2 * 1024 * 1024;
     static ProbeResult probe(const QString &absolutePath);
     static ReadResult read(const FileReadRequest &request);
+    // Explicitly selected source file; this does not grant workspace access.
+    static BinaryReadResult readSelectedBinary(const QString &absolutePath, qsizetype maxBytes);
     // A diagnostic stage observer runs on the worker. It must not access GUI.
     static FileSaveResult save(const FileSaveRequest &request, const std::function<void(SaveStage)> &observer = {});
 };

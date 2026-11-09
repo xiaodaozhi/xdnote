@@ -4,6 +4,8 @@
 #include "SourceEditor.h"
 #include "MarkdownPreview.h"
 #include "WorkspaceResourceReader.h"
+#include "WorkspacePath.h"
+#include "ImageImport.h"
 #include "VisualTokens.h"
 #include "InputModality.h"
 #include "Utf8Text.h"
@@ -16,10 +18,12 @@
 #include <QDialog>
 #include <QDir>
 #include <QDragEnterEvent>
+#include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QFutureWatcher>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -38,6 +42,7 @@
 #include <QTextLayout>
 #include <QGlyphRun>
 #include <QRawFont>
+#include <QtConcurrentRun>
 #include <cmath>
 #ifdef Q_OS_WIN
 #define NOMINMAX
@@ -167,6 +172,7 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_menu->addSeparator();
     m_undoAction = action(QStringLiteral("撤销"), "undoAction", QKeySequence::Undo, [this] { if (m_document) m_document->session()->undo(); });
     m_redoAction = action(QStringLiteral("重做"), "redoAction", QKeySequence::Redo, [this] { if (m_document) m_document->session()->redo(); });
+    m_imageImportAction = action(QStringLiteral("插入图片…"), "insertImageAction", {}, [this] { chooseImage(); });
     m_menu->addSeparator();
     auto *appearanceMenu = new SharedMenu(m_appearance, m_menu); appearanceMenu->setTitle(QStringLiteral("外观")); appearanceMenu->setObjectName("appearanceMenu"); m_menu->addMenu(appearanceMenu);
     auto *themes = new QActionGroup(this); themes->setExclusive(true);
@@ -293,6 +299,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     }
     tools->addStretch(); layout->addWidget(format);
     m_editor = new SourceEditor(document->session(), m_editorPage, m_appearance); m_editor->setObjectName("sourceEditor");
+    connect(m_editor, &SourceEditor::imagePasteRequested, this, &SingleFileWindow::importClipboardImage);
     m_editor->send(SCI_SETMARGINWIDTHN, 0, token("controls", "lineNumberWidth")); m_editor->send(SCI_SETMARGINTYPEN, 0, SC_MARGIN_NUMBER);
     const auto bytes = document->session()->snapshot().utf8; const int lf = int(bytes.indexOf('\n')), cr = int(bytes.indexOf('\r'));
     m_editor->send(SCI_SETEOLMODE, cr >= 0 && (lf < 0 || cr < lf) ? (lf == cr + 1 ? SC_EOL_CRLF : SC_EOL_CR) : SC_EOL_LF);
@@ -322,7 +329,7 @@ SingleFileWindow::~SingleFileWindow() {
     if (m_footer && m_footer->parentWidget() != this) delete m_footer;
 }
 QString SingleFileWindow::displayPath() const { return m_document ? m_document->path() : m_openPath; }
-bool SingleFileWindow::canTransfer() const { return !m_prompting && !m_saveErrorDialog && m_document && !m_document->closed() && !m_document->saving() && !m_document->loading() && !m_document->session()->isBusy() && !m_document->session()->isComposing() && (!m_editor || !m_editor->dispatching()); }
+bool SingleFileWindow::canTransfer() const { return !m_imageImportPending && !m_prompting && !m_saveErrorDialog && m_document && !m_document->closed() && !m_document->saving() && !m_document->loading() && !m_document->session()->isBusy() && !m_document->session()->isComposing() && (!m_editor || !m_editor->dispatching()); }
 bool SingleFileWindow::embedIn(QWidget *parent) {
     if (!parent || m_embedded || (m_document && !canTransfer())) return false;
     if (m_localResourceRoot) m_localResourceRoot->revoke();
@@ -345,6 +352,7 @@ bool SingleFileWindow::embedIn(QWidget *parent) {
 void SingleFileWindow::setWorkspaceResourceRoot(std::shared_ptr<WorkspaceResourceReader> root, const QString &path) {
     m_workspaceResourceRoot = std::move(root); m_workspaceResourcePath = path;
     syncPreviewResources();
+    updateState();
 }
 
 void SingleFileWindow::syncPreviewResources() {
@@ -399,6 +407,7 @@ void SingleFileWindow::updateState() {
     m_save->setProperty("primary", m_editing && ready && m_document->dirty()); m_save->setText(busy ? QStringLiteral("处理中…") : QStringLiteral("保存")); m_save->update();
     m_saveSpinner->setVisible(busy); m_saveSpinner->setRunning(busy); m_statusIcon->setVisible(!busy);
     m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy);
+    m_imageImportAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_imageImportPending);
     m_undoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANUNDO)); m_redoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANREDO));
     for (auto *button : m_formats) button->setEnabled(ready && !m_document->readOnly()); updateCaret();
     if (!ready) {
@@ -491,7 +500,91 @@ void SingleFileWindow::wrapSelection(const QString &before, const QString &after
         m_editor->send(SCI_SETSEL, uptr_t(start + before.toUtf8().size()), sptr_t(end + before.toUtf8().size())); m_editor->setFocus(Qt::OtherFocusReason);
     }
 }
+
+void SingleFileWindow::chooseImage() {
+    const auto path = QFileDialog::getOpenFileName(this, QStringLiteral("选择图片"), {},
+        QStringLiteral("图片 (*.png *.jpg *.jpeg *.gif *.bmp *.webp);;所有文件 (*)"));
+    if (!path.isEmpty()) importImageFile(path);
+}
+void SingleFileWindow::importImageFile(const QString &path) { if (!path.isEmpty()) beginImageImport(path, {}); }
+void SingleFileWindow::importClipboardImage(const QImage &image) { beginImageImport({}, image); }
+
+void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage &bitmap) {
+    auto reject = [this](const QString &message) { reportHostMessage(message); emit imageImportFinished(false, message); };
+    if (m_imageImportPending) { reject(QStringLiteral("图片正在导入，请等待完成。")); return; }
+    if (!m_document || !m_editor || !m_editing || !m_embedded || !m_workspaceResourceRoot || m_workspaceResourcePath.isEmpty()) {
+        reject(QStringLiteral("请先在工作区打开文档并切换到编辑模式，再插入图片。")); return;
+    }
+    QPointer<FileDocument> document = m_document;
+    QPointer<DocumentSession> session = document->session();
+    if (!session || document->closed() || document->saving() || document->loading() || session->isReadOnly()
+        || session->isBusy() || session->isComposing() || session->isClosing()) {
+        reject(QStringLiteral("文档当前无法编辑，请完成正在进行的操作后重试。")); return;
+    }
+    const auto snapshot = session->snapshot();
+    if (!document || !session || snapshot.result != EditResult::Applied || document != m_document) {
+        reject(QStringLiteral("无法取得当前文档的编辑位置。")); return;
+    }
+    const auto anchor = qsizetype(m_editor->send(SCI_GETANCHOR));
+    const auto caret = qsizetype(m_editor->send(SCI_GETCURRENTPOS));
+    const auto start = qMin(anchor, caret), end = qMax(anchor, caret);
+    if (start < 0 || end > snapshot.utf8.size()) { reject(QStringLiteral("当前编辑位置无效。")); return; }
+    const auto before = snapshot.utf8.left(start), selected = snapshot.utf8.mid(start, end - start);
+    const auto beforeText = decodeUtf8Literal(before), selectedText = decodeUtf8Literal(selected);
+    if (beforeText.toUtf8() != before || selectedText.toUtf8() != selected) { reject(QStringLiteral("当前编辑位置无效。")); return; }
+    const auto root = m_workspaceResourceRoot;
+    const auto rootPath = m_workspaceResourcePath;
+    const auto relativeDocument = QDir(rootPath).relativeFilePath(document->path());
+    const auto identity = document->identity();
+    const int first = int(beforeText.size()), last = int(beforeText.size() + selectedText.size());
+    m_imageImportPending = true; m_hostMessage.clear(); updateState();
+    auto *worker = new QFutureWatcher<ImageImportResult>(this);
+    connect(worker, &QFutureWatcher<ImageImportResult>::finished, this,
+        [this, worker, document, session, snapshot, root, rootPath, relativeDocument, identity, anchor, caret, first, last] {
+        auto result = worker->future().takeResult(); worker->deleteLater();
+        m_imageImportPending = false;
+        auto &publication = result.publication;
+        const auto actualPath = publication.path.isEmpty() ? QString() : QDir(rootPath).filePath(publication.path);
+        const auto recoveryPath = publication.recoveryPath.isEmpty() ? QString() : QDir(rootPath).filePath(publication.recoveryPath);
+        QString message = result.message;
+        bool inserted = false;
+        if (publication.status == WorkspaceWriteStatus::Committed || publication.status == WorkspaceWriteStatus::Reused) {
+            const auto target = relativeWorkspaceUrl(relativeDocument, publication.path);
+            bool current = document && session && document == m_document && m_editor && m_editing
+                && !document->closed() && !document->saving() && !document->loading()
+                && document->identity() == identity && m_workspaceResourceRoot == root && m_workspaceResourcePath == rootPath
+                && root->active() && !session->isReadOnly() && !session->isBusy() && !session->isComposing() && !session->isClosing();
+            if (current) {
+                const auto latest = session->snapshot();
+                current = document && session && document == m_document && m_editor && m_editing && !document->closed()
+                    && !document->saving() && !document->loading() && document->identity() == identity
+                    && !session->isReadOnly() && !session->isBusy() && !session->isComposing() && !session->isClosing()
+                    && root->active() && m_workspaceResourceRoot == root && m_workspaceResourcePath == rootPath && latest.result == EditResult::Applied
+                    && latest.documentId == snapshot.documentId && latest.revision == snapshot.revision
+                    && qsizetype(m_editor->send(SCI_GETANCHOR)) == anchor && qsizetype(m_editor->send(SCI_GETCURRENTPOS)) == caret;
+            }
+            if (current && target.success) {
+                const auto edit = session->replace(first, last, QStringLiteral("![图片](%1)").arg(target.path), snapshot.revision);
+                inserted = edit == EditResult::Applied;
+            }
+            message = inserted
+                ? QStringLiteral("图片已%1：%2。文档修改尚未保存。").arg(publication.status == WorkspaceWriteStatus::Reused ? QStringLiteral("复用") : QStringLiteral("导入"), actualPath)
+                : QStringLiteral("图片位于 %1；文档或插入位置已变化，未插入引用。请检查后重试。").arg(actualPath);
+        } else if (publication.status == WorkspaceWriteStatus::PublishedButUnverified) {
+            message = QStringLiteral("图片写入结果无法确认，未插入引用。请检查：%1").arg(actualPath);
+        }
+        if (!recoveryPath.isEmpty()) message += QStringLiteral("\n请检查临时文件：%1").arg(recoveryPath);
+        if (message.isEmpty()) message = QStringLiteral("图片导入失败，未插入引用。");
+        publication.lease.reset();
+        reportHostMessage(message); emit imageImportFinished(inserted, message);
+    });
+    worker->setFuture(QtConcurrent::run([root, relativeDocument, identity, sourcePath, bitmap] {
+        return importWorkspaceImage(root, relativeDocument, identity, sourcePath, bitmap);
+    }));
+}
+
 void SingleFileWindow::closeEvent(QCloseEvent *event) {
+    if (m_imageImportPending) { reportHostMessage(QStringLiteral("图片正在导入，请等待完成后再关闭文档。")); event->ignore(); emit closeCancelled(); return; }
     if (m_prompting) { event->ignore(); return; }
     if (!m_document) { if (!m_intent.isNull()) emit cancelOpenRequested(m_intent); event->accept(); return; }
     if (m_document->closed()) { event->accept(); return; }
@@ -518,10 +611,26 @@ void SingleFileWindow::closeEvent(QCloseEvent *event) {
 }
 bool SingleFileWindow::eventFilter(QObject *target, QEvent *event) {
     auto *widget = qobject_cast<QWidget *>(target); if (!widget || (widget != this && !isAncestorOf(widget))) return QWidget::eventFilter(target, event);
-    if (event->type() == QEvent::DragEnter) { auto *drag = static_cast<QDragEnterEvent *>(event); if (drag->mimeData()->hasUrls()) { drag->acceptProposedAction(); return true; } }
+    const bool sourceTarget = m_editor && (widget == m_editor || m_editor->isAncestorOf(widget));
+    if (event->type() == QEvent::DragEnter || (sourceTarget && event->type() == QEvent::DragMove)) {
+        auto *drag = static_cast<QDragMoveEvent *>(event);
+        if (drag->mimeData()->hasUrls()) drag->acceptProposedAction(); else drag->ignore();
+        if (sourceTarget || drag->mimeData()->hasUrls()) return true;
+    }
     if (event->type() == QEvent::Drop) {
         auto *drop = static_cast<QDropEvent *>(event); const auto urls = drop->mimeData()->urls();
+        if (sourceTarget && urls.size() == 1 && urls.first().isLocalFile()) {
+            const auto path = urls.first().toLocalFile();
+            static const QStringList suffixes{"png", "jpg", "jpeg", "gif", "bmp", "webp"};
+            if (suffixes.contains(QFileInfo(path).suffix().toLower())) {
+                const auto point = widget->mapTo(m_editor, drop->position().toPoint());
+                const auto position = m_editor->send(SCI_POSITIONFROMPOINTCLOSE, uptr_t(point.x()), sptr_t(point.y()));
+                if (position >= 0) m_editor->send(SCI_SETSEL, uptr_t(position), position);
+                importImageFile(path); drop->acceptProposedAction(); return true;
+            }
+        }
         if (!urls.isEmpty() && urls.size() <= 16) { for (const auto &url : urls) if (url.isLocalFile()) emit openRequested(url.toLocalFile()); drop->acceptProposedAction(); return true; }
+        if (sourceTarget) { drop->ignore(); return true; }
     }
     if (widget == this && event->type() == QEvent::WindowActivate && m_document) { m_dismissedNotice.clear(); m_document->checkExternal(); }
     if (widget == this && event->type() == QEvent::WindowStateChange) { m_header->updateWindowState(); QTimer::singleShot(0, this, &SingleFileWindow::applyNativeAppearance); }

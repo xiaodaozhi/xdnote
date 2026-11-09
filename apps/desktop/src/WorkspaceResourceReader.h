@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QString>
 #include <memory>
+#include <functional>
 
 namespace xdnote {
 enum class WorkspaceReadError {
@@ -16,6 +17,21 @@ struct WorkspaceReadResult {
     qint64 nativeCode = 0;
     QString identity;
     bool ok() const { return error == WorkspaceReadError::None; }
+};
+
+enum class WorkspaceWriteStatus { Committed, Reused, Failed, PublishedButUnverified };
+enum class WorkspaceWriteStage { BeforeCommit, AfterCommit };
+struct WorkspaceWriteResult {
+    WorkspaceWriteStatus status = WorkspaceWriteStatus::Failed;
+    WorkspaceReadError error = WorkspaceReadError::None;
+    qint64 nativeCode = 0;
+    // Root-relative published path, if a file was committed or reused.
+    QString path;
+    // An owned temporary entry whose cleanup failed or whose commit is uncertain.
+    QString recoveryPath;
+    // Keeps the verified target, document and their directory handles stable.
+    // Retain until the caller has rechecked the session and inserted the link.
+    std::shared_ptr<void> lease;
 };
 
 class WorkspaceResourceReader;
@@ -36,6 +52,13 @@ public:
     WorkspaceResourceReader(const WorkspaceResourceReader &) = delete;
     WorkspaceResourceReader &operator=(const WorkspaceResourceReader &) = delete;
     WorkspaceReadResult read(const QString &rootRelativePath, qsizetype maxBytes) const;
+    // Publishes an already validated, bounded byte snapshot under assets/images.
+    // This method does not decode images or edit a Markdown document. A caller
+    // must recheck the document session/revision before inserting a reference.
+    WorkspaceWriteResult publishImage(const QString &documentPath, const QString &documentIdentity,
+                                      const QByteArray &bytes, const QString &suggestedName, const QString &extension,
+                                      const std::function<void(WorkspaceWriteStage)> &observer = {}) const;
+    bool active() const;
     void revoke();
 private:
     struct State;

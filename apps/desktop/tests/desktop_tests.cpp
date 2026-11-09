@@ -6,6 +6,7 @@
 #include "WorkspacePath.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceImagePreview.h"
+#include "ImageImport.h"
 #include "SourceEditor.h"
 #include "VisualTokens.h"
 #include "GuiRuntime.h"
@@ -15,12 +16,14 @@
 
 #include <QAccessible>
 #include <QApplication>
+#include <QCryptographicHash>
 #include <QBuffer>
 #include <QInputMethodEvent>
 #include <QFontDatabase>
 #include <QGlyphRun>
 #include <QTextLayout>
 #include <QTemporaryDir>
+#include <QSemaphore>
 #include <QTcpServer>
 #include <QHostAddress>
 #include <QQuickItem>
@@ -135,6 +138,144 @@ private slots:
         QCOMPARE(opened.reader->read(QStringLiteral("assets/图片.png"), 64).error, WorkspaceReadError::RootChanged);
         opened.reader->revoke();
         QCOMPARE(opened.reader->read(QStringLiteral("assets/图片.png"), 64).error, WorkspaceReadError::Revoked);
+#endif
+    }
+
+    void workspaceImagePublicationNeverOverwritesOrReusesDifferentBytes() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        const auto documentPath = dir.filePath("doc.md"); QVERIFY(fileFixtures::write(documentPath, "document"));
+        const auto file = FileService::probe(documentPath); QVERIFY(file.file);
+        auto root = WorkspaceResourceReader::open(dir.path());
+#if !defined(Q_OS_WIN)
+#ifdef Q_OS_LINUX
+        QVERIFY(root.reader);
+        QCOMPARE(root.reader->publishImage("doc.md", file.file->identity(), "bytes", "a.png", "png").error, WorkspaceReadError::Unsupported);
+#else
+        QCOMPARE(root.error, WorkspaceReadError::Unsupported);
+#endif
+        QVERIFY(!QFileInfo::exists(dir.filePath("assets"))); return;
+#else
+        QVERIFY(root.reader);
+        const QByteArray firstBytes("original-image-bytes"), secondBytes("different-image-bytes");
+        const auto invalid = root.reader->publishImage("doc.md", "wrong-id", firstBytes, "图.png", "png");
+        QCOMPARE(invalid.status, WorkspaceWriteStatus::Failed); QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+        auto first = root.reader->publishImage("doc.md", file.file->identity(), firstBytes, QStringLiteral("图.png"), "png");
+        QVERIFY2(first.status == WorkspaceWriteStatus::Committed, qPrintable(QStringLiteral("error=%1 native=%2 recovery=%3").arg(int(first.error)).arg(first.nativeCode).arg(first.recoveryPath)));
+        QCOMPARE(first.status, WorkspaceWriteStatus::Committed); QCOMPARE(first.path, QStringLiteral("assets/images/图.png")); QVERIFY(first.lease);
+        QFile held(dir.filePath(first.path)); QVERIFY(!held.open(QIODevice::ReadOnly));
+        QFile heldDocument(documentPath); QVERIFY(!heldDocument.open(QIODevice::WriteOnly));
+        QVERIFY(!QDir().rename(dir.filePath("assets"), dir.filePath("assets-moved")));
+        first.lease.reset(); QVERIFY(held.open(QIODevice::ReadOnly)); QCOMPARE(held.readAll(), firstBytes); held.close();
+        auto reused = root.reader->publishImage("doc.md", file.file->identity(), firstBytes, QStringLiteral("图.png"), "png");
+        QCOMPARE(reused.status, WorkspaceWriteStatus::Reused); QCOMPARE(reused.path, first.path); QVERIFY(reused.lease);
+        QFile overwrite(dir.filePath(reused.path)); QVERIFY(!overwrite.open(QIODevice::WriteOnly)); reused.lease.reset();
+        const auto digest = QString::fromLatin1(QCryptographicHash::hash(secondBytes, QCryptographicHash::Sha256).toHex().left(12));
+        const auto collision = dir.filePath(QStringLiteral("assets/images/图-%1.png").arg(digest));
+        QVERIFY(fileFixtures::write(collision, "occupied"));
+        auto second = root.reader->publishImage("doc.md", file.file->identity(), secondBytes, QStringLiteral("图.png"), "png");
+        QCOMPARE(second.status, WorkspaceWriteStatus::Committed); QCOMPARE(second.path, QStringLiteral("assets/images/图-%1-2.png").arg(digest));
+        second.lease.reset(); QFile saved(dir.filePath(second.path)); QVERIFY(saved.open(QIODevice::ReadOnly)); QCOMPARE(saved.readAll(), secondBytes);
+        QFile original(dir.filePath(first.path)); QVERIFY(original.open(QIODevice::ReadOnly)); QCOMPARE(original.readAll(), firstBytes);
+        QFile occupied(collision); QVERIFY(occupied.open(QIODevice::ReadOnly)); QCOMPARE(occupied.readAll(), QByteArray("occupied"));
+        const QDir imageDir(dir.filePath("assets/images")); QVERIFY(imageDir.entryList({".xdnote-*.tmp"}, QDir::Files | QDir::Hidden).isEmpty());
+        const auto tooLarge = root.reader->publishImage("doc.md", file.file->identity(), QByteArray(8 * 1024 * 1024 + 1, 'x'), "large.png", "png");
+        QCOMPARE(tooLarge.error, WorkspaceReadError::TooLarge);
+        root.reader->revoke(); QCOMPARE(root.reader->publishImage("doc.md", file.file->identity(), firstBytes, "x.png", "png").error, WorkspaceReadError::Revoked);
+#endif
+    }
+
+    void selectedBinarySourcePreservesBytesAndLimits() {
+        QTemporaryDir dir; QVERIFY(dir.isValid()); const auto path = dir.filePath(QStringLiteral("源图片.png"));
+        const auto bytes = QByteArray::fromHex("89504e47000d0aff0102"); QVERIFY(fileFixtures::write(path, bytes));
+        const auto source = FileService::readSelectedBinary(path, 1024); QVERIFY(source.success); QCOMPARE(source.bytes, bytes);
+        const auto limited = FileService::readSelectedBinary(path, 4); QVERIFY(!limited.success); QCOMPARE(limited.problem.code, FileError::TooLarge);
+        const auto missing = FileService::readSelectedBinary(dir.filePath("missing.png"), 1024); QVERIFY(!missing.success); QCOMPARE(missing.problem.code, FileError::Missing);
+        const auto badLimit = FileService::readSelectedBinary(path, 8 * 1024 * 1024 + 1); QVERIFY(!badLimit.success); QCOMPARE(badLimit.problem.code, FileError::InvalidPath);
+    }
+
+    void imageImportRejectsInvalidSourcesBeforeWriting() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined workspace resources are not available on this platform");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "doc"));
+        const auto svg = outside.filePath("active.svg");
+        QVERIFY(fileFixtures::write(svg, "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>"));
+        const auto doc = FileService::probe(dir.filePath("doc.md")); QVERIFY(doc.file);
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+        const auto invalid = importWorkspaceImage(root.reader, "doc.md", doc.file->identity(), svg, {});
+        QCOMPARE(invalid.publication.status, WorkspaceWriteStatus::Failed); QVERIFY(!invalid.message.isEmpty());
+        QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+        QImage oversized(8193, 1, QImage::Format_ARGB32); oversized.fill(Qt::red);
+        const auto bitmap = importWorkspaceImage(root.reader, "doc.md", doc.file->identity(), {}, oversized);
+        QCOMPARE(bitmap.publication.status, WorkspaceWriteStatus::Failed); QVERIFY(!bitmap.message.isEmpty());
+        QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+#endif
+    }
+
+    void workspaceImagePublicationRejectsBlockedResourceDirectories() {
+#ifndef Q_OS_WIN
+        QSKIP("Publication is currently implemented only for Windows");
+#else
+        QTemporaryDir rootDir, outside; QVERIFY(rootDir.isValid() && outside.isValid());
+        QVERIFY(fileFixtures::write(rootDir.filePath("doc.md"), "doc"));
+        const auto doc = FileService::probe(rootDir.filePath("doc.md")); QVERIFY(doc.file);
+        const auto root = WorkspaceResourceReader::open(rootDir.path()); QVERIFY(root.reader);
+        QVERIFY(fileFixtures::write(rootDir.filePath("assets"), "occupied"));
+        const auto blocked = root.reader->publishImage("doc.md", doc.file->identity(), "bytes", "a.png", "png");
+        QCOMPARE(blocked.status, WorkspaceWriteStatus::Failed);
+        QFile occupied(rootDir.filePath("assets")); QVERIFY(occupied.open(QIODevice::ReadOnly)); QCOMPARE(occupied.readAll(), QByteArray("occupied")); occupied.close();
+        QVERIFY(QFile::remove(rootDir.filePath("assets")));
+        fileFixtures::Junction junction; QVERIFY(junction.create(rootDir.filePath("assets"), outside.path()));
+        const auto escaped = root.reader->publishImage("doc.md", doc.file->identity(), "bytes", "a.png", "png");
+        QCOMPARE(escaped.status, WorkspaceWriteStatus::Failed); QVERIFY(!QFileInfo::exists(outside.filePath("images")));
+#endif
+    }
+
+    void workspaceImagePublicationHonorsRevocationAroundCommit() {
+#ifndef Q_OS_WIN
+        QSKIP("Publication is currently implemented only for Windows");
+#else
+        for (const auto stage : {WorkspaceWriteStage::BeforeCommit, WorkspaceWriteStage::AfterCommit}) {
+            QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "doc"));
+            const auto doc = FileService::probe(dir.filePath("doc.md")); QVERIFY(doc.file);
+            const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+            QSemaphore reached, resume;
+            const auto identity = doc.file->identity();
+            auto future = std::async(std::launch::async, [reader = root.reader, identity, stage, &reached, &resume] {
+                return reader->publishImage("doc.md", identity, "image-snapshot", "a.png", "png", [&](WorkspaceWriteStage point) {
+                    if (point == stage) { reached.release(); resume.acquire(); }
+                });
+            });
+            if (!reached.tryAcquire(1, 10000)) { resume.release(); future.wait(); QFAIL("publication did not reach the requested stage"); }
+            root.reader->revoke(); resume.release(); auto result = future.get();
+            if (stage == WorkspaceWriteStage::BeforeCommit) {
+                QCOMPARE(result.status, WorkspaceWriteStatus::Failed); QCOMPARE(result.error, WorkspaceReadError::Revoked);
+                QVERIFY(!QFileInfo::exists(dir.filePath("assets/images/a.png")));
+            } else {
+                QCOMPARE(result.status, WorkspaceWriteStatus::PublishedButUnverified); QCOMPARE(result.path, QStringLiteral("assets/images/a.png"));
+                QFile published(dir.filePath(result.path)); QVERIFY(published.open(QIODevice::ReadOnly)); QCOMPARE(published.readAll(), QByteArray("image-snapshot"));
+            }
+            const QDir images(dir.filePath("assets/images")); QVERIFY(images.entryList({".xdnote-*.tmp"}, QDir::Files | QDir::Hidden).isEmpty());
+        }
+#endif
+    }
+
+    void workspaceImagePublicationSerializesCollisions() {
+#ifndef Q_OS_WIN
+        QSKIP("Publication is currently implemented only for Windows");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "doc"));
+        const auto doc = FileService::probe(dir.filePath("doc.md")); QVERIFY(doc.file);
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+        const auto id = doc.file->identity();
+        auto first = std::async(std::launch::async, [reader = root.reader, id] { return reader->publishImage("doc.md", id, "first", "same.png", "png"); });
+        auto second = std::async(std::launch::async, [reader = root.reader, id] { return reader->publishImage("doc.md", id, "second", "same.png", "png"); });
+        auto a = first.get(), b = second.get();
+        QCOMPARE(a.status, WorkspaceWriteStatus::Committed); QCOMPARE(b.status, WorkspaceWriteStatus::Committed); QVERIFY(a.path != b.path);
+        a.lease.reset(); b.lease.reset();
+        QFile fileA(dir.filePath(a.path)), fileB(dir.filePath(b.path)); QVERIFY(fileA.open(QIODevice::ReadOnly)); QVERIFY(fileB.open(QIODevice::ReadOnly));
+        QCOMPARE(fileA.readAll(), QByteArray("first")); QCOMPARE(fileB.readAll(), QByteArray("second"));
 #endif
     }
 

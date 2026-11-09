@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ScintillaEditBase.h"
+#include <QImage>
 #include <QPointer>
 
 namespace xdnote {
@@ -16,6 +17,9 @@ public:
     bool dispatching() const { return m_inputDepth != 0; }
     static void installAccessibility();
     void setTextZoom(int percent);
+
+signals:
+    void imagePasteRequested(QImage image);
 
 protected:
     void inputMethodEvent(QInputMethodEvent *event) override;
