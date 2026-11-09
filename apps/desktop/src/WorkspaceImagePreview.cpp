@@ -18,7 +18,7 @@ char readFailure(WorkspaceReadError error) {
 bool verifiedDocument(const std::shared_ptr<WorkspaceResourceReader> &root,
                       const QString &path, const QString &identity) {
     if (!root || path.isEmpty() || identity.isEmpty()) return false;
-    const auto file = root->read(path, FileService::SourceLimit);
+    const auto file = root->read(path, FileService::DiskByteLimit);
     return file.ok() && file.identity == identity;
 }
 
