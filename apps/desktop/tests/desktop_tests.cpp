@@ -18,7 +18,9 @@
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QBuffer>
+#include <QElapsedTimer>
 #include <QInputMethodEvent>
+#include <QProcess>
 #include <QFontDatabase>
 #include <QGlyphRun>
 #include <QTextLayout>
@@ -93,6 +95,51 @@ private slots:
             QVERIFY(fileFixtures::write(path, disk)); const auto file = FileService::probe(path); QVERIFY(file.file);
             const auto loaded = FileService::read({file.file}); QVERIFY(!loaded.baseline); QCOMPARE(loaded.problem.code, FileError::TooLarge);
         }
+    }
+    void quickHostAccessibilityNavigationKeepsParentsAndActions() {
+        DocumentSession session("# fixture"); AdmissionWindow window(&session); window.show(); QTRY_VERIFY(window.isVisible());
+        auto *quick = window.findChild<QQuickWidget *>("sharedChrome"); QVERIFY(quick); QCOMPARE(quick->status(), QQuickWidget::Ready);
+        auto *host = QAccessible::queryAccessibleInterface(quick); QVERIFY(host); QCOMPARE(host->childCount(), 1);
+        auto *group = host->child(0); QVERIFY(group); QVERIFY(group->isValid()); QCOMPARE(group->parent(), host); QCOMPARE(host->indexOfChild(group), 0);
+        QCOMPARE(group->role(), QAccessible::Grouping); QCOMPARE(group->childCount(), 3);
+        const QStringList names{QStringLiteral("撤销"), QStringLiteral("重做"), QStringLiteral("设为只读")};
+        for (int index = 0; index < names.size(); ++index) {
+            auto *button = group->child(index); QVERIFY(button); QCOMPARE(button->text(QAccessible::Name), names[index]);
+            QCOMPARE(button->parent(), group); QCOMPARE(group->indexOfChild(button), index); QVERIFY(button->actionInterface());
+        }
+        auto *toggle = group->child(2)->actionInterface(); QVERIFY(toggle->actionNames().contains(QAccessibleActionInterface::pressAction()));
+        toggle->doAction(QAccessibleActionInterface::pressAction()); QTRY_VERIFY(session.isReadOnly());
+        toggle->doAction(QAccessibleActionInterface::pressAction()); QTRY_VERIFY(!session.isReadOnly());
+    }
+    void quickHostAccessibilityLifetimeIsBoundToItsWindow() {
+        DocumentSession first("first"), second("second");
+        auto *one = new AdmissionWindow(&first); auto *two = new AdmissionWindow(&second); one->show(); two->show();
+        auto *firstHost = one->findChild<QQuickWidget *>("sharedChrome"), *secondHost = two->findChild<QQuickWidget *>("sharedChrome");
+        QVERIFY(firstHost && secondHost); auto *firstInterface = QAccessible::queryAccessibleInterface(firstHost); auto *secondInterface = QAccessible::queryAccessibleInterface(secondHost);
+        QVERIFY(firstInterface && secondInterface); auto *firstRoot = firstInterface->child(0), *secondRoot = secondInterface->child(0); QVERIFY(firstRoot && secondRoot);
+        QVERIFY(firstRoot != secondRoot); QCOMPARE(firstRoot->parent(), firstInterface); QCOMPARE(secondRoot->parent(), secondInterface);
+        const auto firstId = QAccessible::uniqueId(firstRoot), secondId = QAccessible::uniqueId(secondRoot); QVERIFY(firstId != secondId);
+        delete one; QVERIFY(!QAccessible::accessibleInterface(firstId)); QVERIFY(QAccessible::accessibleInterface(secondId));
+        QCOMPARE(secondRoot->parent(), secondInterface); QCOMPARE(secondRoot->childCount(), 3);
+        delete two; QVERIFY(!QAccessible::accessibleInterface(secondId));
+    }
+    void quickHostExposesWindowsUiaTreeAndCommands() {
+#ifndef Q_OS_WIN
+        QSKIP("This test exercises the Windows UI Automation bridge");
+#else
+        DocumentSession session("# fixture"); AdmissionWindow window(&session); window.show(); QTRY_VERIFY(window.isVisible());
+        auto *quick = window.findChild<QQuickWidget *>("sharedChrome"); QVERIFY(quick); QTRY_COMPARE(quick->status(), QQuickWidget::Ready);
+        const auto script = QCoreApplication::applicationDirPath() + "/windows_uia_client.ps1"; QVERIFY(QFileInfo::exists(script));
+        QProcess client; client.setProcessChannelMode(QProcess::MergedChannels);
+        client.start(QStringLiteral("powershell.exe"), {QStringLiteral("-NoProfile"), QStringLiteral("-STA"), QStringLiteral("-NonInteractive"),
+            QStringLiteral("-ExecutionPolicy"), QStringLiteral("Bypass"), QStringLiteral("-File"), script, QString::number(quintptr(window.winId()))});
+        QVERIFY(client.waitForStarted(5000));
+        QElapsedTimer deadline; deadline.start();
+        while (client.state() != QProcess::NotRunning && deadline.elapsed() < 50000) QTest::qWait(50);
+        if (client.state() != QProcess::NotRunning) { client.kill(); client.waitForFinished(5000); QFAIL("UI Automation client did not finish"); }
+        const auto output = client.readAll(); qInfo().noquote() << output; QVERIFY2(client.exitStatus() == QProcess::NormalExit && client.exitCode() == 0, output.constData());
+        QCOMPARE(session.snapshot().utf8, QByteArray("UIA fixture updated")); QVERIFY(!session.isReadOnly());
+#endif
     }
     void headingMapKeepsSnapshotIdentityAndUtf8Ranges() {
         const auto source = QStringLiteral("# 中文 **加粗**\n# 中文 加粗\n#\n").toUtf8();
