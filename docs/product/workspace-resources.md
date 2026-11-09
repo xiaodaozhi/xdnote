@@ -1,6 +1,6 @@
 # 工作区图片与文档链接
 
-**状态：实施规格，产品待实现。** 用户已确认工作区新增受管图片默认集中在 `assets/images/`，正文使用相对路径。本页规定图片、链接和文件移动的共同契约，不表示已有资源管理界面、引用索引或批量修复能力。需求见[产品需求](requirements.md)，统一会话、保存与关闭见[交互规格](interaction-spec.md)，职责见[技术架构](../engineering/architecture.md)。
+**状态：实施规格，部分图片预览已接入。** Windows 和 Linux 的受限本地图片预览及 macOS 当前限制见[资源基础](../engineering/workspace-resource-foundation.md)；图片导入、链接管理、引用索引和移动维护尚未完成。用户已确认工作区新增受管图片默认集中在 `assets/images/`，正文使用相对路径。需求见[产品需求](requirements.md)，统一会话、保存与关闭见[交互规格](interaction-spec.md)，职责见[技术架构](../engineering/architecture.md)。
 
 ## 普通文件与解析基准
 

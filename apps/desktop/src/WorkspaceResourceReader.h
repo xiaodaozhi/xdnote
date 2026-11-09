@@ -14,6 +14,7 @@ struct WorkspaceReadResult {
     WorkspaceReadError error = WorkspaceReadError::None;
     QByteArray bytes;
     qint64 nativeCode = 0;
+    QString identity;
     bool ok() const { return error == WorkspaceReadError::None; }
 };
 

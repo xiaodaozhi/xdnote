@@ -3,6 +3,7 @@
 #include "SharedWidgets.h"
 #include "SourceEditor.h"
 #include "MarkdownPreview.h"
+#include "WorkspaceResourceReader.h"
 #include "VisualTokens.h"
 #include "InputModality.h"
 #include "Utf8Text.h"
@@ -13,6 +14,7 @@
 #include <QButtonGroup>
 #include <QCloseEvent>
 #include <QDialog>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
@@ -303,12 +305,14 @@ void SingleFileWindow::setDocument(FileDocument *document) {
         if (!m_closeAfterOperation) return; m_closeAfterOperation = false; if (success) QTimer::singleShot(0, this, [this] { close(); }); else emit closeCancelled();
     });
     connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) { m_previewError = message; updateState(); });
-    connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); updateState(); }); setEditing(false); updateState();
+    connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); updateState(); });
+    m_documentUiReady = true; setEditing(false); updateState();
 }
 SingleFileWindow::~SingleFileWindow() {
     // QWidget's native close can deliver Hide from its base destructor. Stop
     // the controller while our UI members are still alive, before it can emit
     // geometryWarning back into an already destroyed derived object.
+    if (m_localResourceRoot) m_localResourceRoot->revoke();
     if (m_geometry) { m_geometry->flush(); delete m_geometry; m_geometry = nullptr; }
     qApp->removeEventFilter(this);
     disconnect(m_appearance, nullptr, this, nullptr);
@@ -321,6 +325,8 @@ QString SingleFileWindow::displayPath() const { return m_document ? m_document->
 bool SingleFileWindow::canTransfer() const { return !m_prompting && !m_saveErrorDialog && m_document && !m_document->closed() && !m_document->saving() && !m_document->loading() && !m_document->session()->isBusy() && !m_document->session()->isComposing() && (!m_editor || !m_editor->dispatching()); }
 bool SingleFileWindow::embedIn(QWidget *parent) {
     if (!parent || m_embedded || (m_document && !canTransfer())) return false;
+    if (m_localResourceRoot) m_localResourceRoot->revoke();
+    m_localResourceRoot.reset(); m_localResourcePath.clear();
     // Keep the view objects themselves: Scintilla selection/undo and the web
     // reader position are not reconstructed from a second text buffer.
     if (m_geometry) { m_geometry->flush(); delete m_geometry; m_geometry = nullptr; }
@@ -334,6 +340,29 @@ bool SingleFileWindow::embedIn(QWidget *parent) {
     if (m_editor) { m_editor->send(SCI_SETSEL, uptr_t(selectionStart), sptr_t(selectionEnd)); m_editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(firstLine)); m_editor->send(SCI_SETXOFFSET, uptr_t(xOffset)); }
     if (m_preview) m_preview->restoreReadingPosition(reading);
     updateState(); return true;
+}
+
+void SingleFileWindow::setWorkspaceResourceRoot(std::shared_ptr<WorkspaceResourceReader> root, const QString &path) {
+    m_workspaceResourceRoot = std::move(root); m_workspaceResourcePath = path;
+    syncPreviewResources();
+}
+
+void SingleFileWindow::syncPreviewResources() {
+    if (!m_preview || !m_document || m_document->closed()) return;
+    QString base;
+    std::shared_ptr<WorkspaceResourceReader> root;
+    if (m_embedded) { base = m_workspaceResourcePath; root = m_workspaceResourceRoot; }
+    else {
+        base = QFileInfo(m_document->path()).absolutePath();
+        if (base != m_localResourcePath) {
+            if (m_localResourceRoot) m_localResourceRoot->revoke();
+            m_localResourcePath = base;
+            m_localResourceRoot = WorkspaceResourceReader::open(base).reader;
+        }
+        root = m_localResourceRoot;
+    }
+    const auto relative = base.isEmpty() ? QString() : QDir(base).relativeFilePath(m_document->path());
+    m_preview->setResourceContext(std::move(root), relative, m_document->identity());
 }
 void SingleFileWindow::activateDocument() { if (m_document) { m_dismissedNotice.clear(); m_document->checkExternal(); } if (m_editing && m_editor) m_editor->setFocus(Qt::OtherFocusReason); }
 void SingleFileWindow::reportHostMessage(const QString &message) { m_hostMessage = message; m_dismissedNotice.clear(); updateState(); }
@@ -357,6 +386,11 @@ void SingleFileWindow::updateCaret() {
     m_cursor->setText(QStringLiteral("行 %1，列 %2").arg(m_editor->send(SCI_LINEFROMPOSITION, uptr_t(position)) + 1).arg(m_editor->send(SCI_GETCOLUMN, uptr_t(position)) + 1));
 }
 void SingleFileWindow::updateState() {
+    // Native events may synchronously notify the window while setDocument is
+    // still constructing controls. The final call in setDocument applies the
+    // accumulated state after all document widgets exist.
+    if (m_document && !m_documentUiReady) return;
+    syncPreviewResources();
     emit viewStateChanged();
     const bool ready = m_document && !m_document->closed(); const bool busy = ready && (m_document->saving() || m_document->loading());
     if (ready && m_document->saving()) m_observedSave = true;
