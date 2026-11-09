@@ -1,6 +1,6 @@
 # 工作区基础与会话接管
 
-当前工作区原型采用现有 QWidget 桌面实现，入口为 `WorkspaceWindow`，与独立窗口共用 `ApplicationWindow`、`WindowTitleBar`、`SharedButton`、`SharedMenu`、外观设置与窗口几何控制器。默认无文件启动显示工作区欢迎页；命令行和系统文件打开事件仍按独立文件路由处理。图片导入、文档链接、引用索引、搜索、收藏和完整设置不属于本阶段能力。
+当前工作区原型采用现有 QWidget 桌面实现，入口为 `WorkspaceWindow`，与独立窗口共用 `ApplicationWindow`、`WindowTitleBar`、`SharedButton`、`SharedMenu`、外观设置与窗口几何控制器。默认无文件启动显示工作区欢迎页；命令行和系统文件打开事件仍按独立文件路由处理。Windows 工作区已支持[部分图片导入](workspace-resource-foundation.md)；其他平台图片导入、文档链接、引用索引、搜索、收藏和完整设置仍未完成。
 
 ## 目录与文件导航
 
