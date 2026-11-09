@@ -33,6 +33,23 @@ int byteToUtf16(const QString &text, sptr_t offset) {
     return decoded.toUtf8() == prefix ? int(decoded.size()) : -1;
 }
 
+void replaceAccessibleText(SourceEditor *view, int start, int end, const QString &value, bool wholeValue) {
+    // revision() can flush pending edits and notify observers. Do not call it
+    // before checking the owning thread, or from an invalid snapshot.
+    if (!view || QThread::currentThread() != view->thread()) return;
+    const QPointer<SourceEditor> guardedView(view);
+    const QPointer<DocumentSession> session(view->session());
+    if (!session) return;
+    const auto snapshot = session->snapshot();
+    if (!guardedView || !session || guardedView->session() != session) return;
+    if (snapshot.result != EditResult::Applied) {
+        session->reportRejection(snapshot.result);
+        return;
+    }
+    if (wholeValue) { start = 0; end = int(decodeUtf8Literal(snapshot.utf8).size()); }
+    session->replace(start, end, value, snapshot.revision);
+}
+
 class AccessibleSource final : public QAccessibleWidget, public QAccessibleTextInterface,
                                public QAccessibleEditableTextInterface {
 public:
@@ -63,12 +80,9 @@ public:
     }
     void setText(QAccessible::Text role, const QString &value) override {
         if (role != QAccessible::Value) { QAccessibleWidget::setText(role, value); return; }
-        auto *view = editor();
-        if (!view || !view->session()) return;
-        auto *session = view->session();
         // All accessible writes, including whole-value replacement, are normal
         // undoable session commands. Qt's void setter cannot report native HRESULT.
-        session->replace(0, contents(view).size(), value, session->revision());
+        replaceAccessibleText(editor(), 0, 0, value, true);
     }
     int characterCount() const override { return contents(editor()).size(); }
     QString text(int start, int end) const override {
@@ -137,8 +151,7 @@ public:
     void deleteText(int start, int end) override { replaceText(start, end, {}); }
     void insertText(int offset, const QString &value) override { replaceText(offset, offset, value); }
     void replaceText(int start, int end, const QString &value) override {
-        auto *view = editor();
-        if (view && view->session()) view->session()->replace(start, end, value, view->session()->revision());
+        replaceAccessibleText(editor(), start, end, value, false);
     }
 };
 }
