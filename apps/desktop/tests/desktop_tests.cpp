@@ -25,6 +25,7 @@
 #include <QWebEngineSettings>
 #include <QWebEngineView>
 #include <future>
+#include <atomic>
 
 using namespace xdnote;
 
@@ -441,6 +442,7 @@ private slots:
         QCOMPARE(session->snapshot().utf8, QStringLiteral("甲中文乙").toUtf8());
         session->setReadOnly(true);
         accessible->setText(QAccessible::Value, "blocked");
+        edit->insertText(0, "blocked");
         QCOMPARE(session->snapshot().utf8, QStringLiteral("甲中文乙").toUtf8());
         QVERIFY(accessible->state().readOnly);
         QVERIFY(!accessible->text(QAccessible::Description).isEmpty());
@@ -451,6 +453,51 @@ private slots:
         QVERIFY(!accessible->isValid());
         QCOMPARE(text->characterCount(), 0);
         edit->insertText(0, "ignored");
+    }
+
+    void accessibleWritesDoNotFlushDocumentOnAnotherThread() {
+        for (const bool wholeValue : {false, true}) {
+            DocumentSession session("a");
+            SourceEditor view(&session);
+            auto *accessible = QAccessible::queryAccessibleInterface(&view);
+            QVERIFY(accessible && accessible->editableTextInterface());
+            std::atomic<bool> wrongThread{false};
+            connect(&session, &DocumentSession::changed, &session, [&](quint64) {
+                if (QThread::currentThread() != session.thread()) wrongThread.store(true);
+            }, Qt::DirectConnection);
+            QTest::keyClick(&view, Qt::Key_X); // leaves a queued document flush
+            auto call = std::async(std::launch::async, [accessible, wholeValue] {
+                if (wholeValue) accessible->setText(QAccessible::Value, "forbidden");
+                else accessible->editableTextInterface()->insertText(0, "forbidden");
+            });
+            call.get();
+            QVERIFY(!wrongThread.load());
+            const auto snapshot = session.snapshot();
+            QCOMPARE(snapshot.result, EditResult::Applied);
+            QVERIFY(snapshot.utf8.contains('x'));
+            QVERIFY(!snapshot.utf8.contains("forbidden"));
+            QCOMPARE(session.undo(), EditResult::Applied);
+            QCOMPARE(session.snapshot().utf8, QByteArray("a"));
+        }
+    }
+
+    void accessibleWritesRejectUncommittedComposition() {
+        DocumentSession session("a");
+        SourceEditor view(&session);
+        auto *accessible = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(accessible && accessible->editableTextInterface());
+        QCOMPARE(session.replace(1, 1, "b", session.revision()), EditResult::Applied);
+        QInputMethodEvent preedit(QStringLiteral("ni"), {});
+        QApplication::sendEvent(&view, &preedit);
+        QCOMPARE(session.snapshot().result, EditResult::Composing);
+        accessible->setText(QAccessible::Value, "forbidden");
+        accessible->editableTextInterface()->insertText(0, "forbidden");
+        QCOMPARE(session.rejection(), resultDescription(EditResult::Composing));
+        QInputMethodEvent cancel;
+        QApplication::sendEvent(&view, &cancel);
+        QCOMPARE(session.snapshot().utf8, QByteArray("ab"));
+        QCOMPARE(session.undo(), EditResult::Applied);
+        QCOMPARE(session.snapshot().utf8, QByteArray("a"));
     }
 
     void nativeInputNotificationRejectsReentrantWrite() {
