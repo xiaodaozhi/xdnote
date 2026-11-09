@@ -111,6 +111,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/VisualTokens.cpp apps/desktop/src/VisualTokens.h
     apps/desktop/src/InputModality.cpp apps/desktop/src/InputModality.h
     apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h
+    apps/desktop/src/QuickAccessibleRoot.cpp apps/desktop/src/QuickAccessibleRoot.h
     apps/desktop/src/AdmissionWindow.cpp apps/desktop/src/AdmissionWindow.h)
 target_include_directories(xdnote_desktop PUBLIC apps/desktop/src)
 target_link_libraries(xdnote_desktop PUBLIC xdnote_scintilla xdnote_markdown
@@ -139,6 +140,9 @@ endif()
 
 if(BUILD_TESTING)
     find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS Test)
+    if(WIN32)
+        configure_file(apps/desktop/tests/windows_uia_client.ps1 "${CMAKE_BINARY_DIR}/windows_uia_client.ps1" COPYONLY)
+    endif()
     add_executable(xdnote_desktop_tests apps/desktop/tests/desktop_tests.cpp)
     target_link_libraries(xdnote_desktop_tests PRIVATE xdnote_desktop Qt6::Test)
     if(MSVC)
