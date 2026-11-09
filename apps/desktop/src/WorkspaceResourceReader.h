@@ -27,7 +27,7 @@ struct WorkspaceWriteResult {
     qint64 nativeCode = 0;
     // Root-relative published path, if a file was committed or reused.
     QString path;
-    // Only an uncommitted, owned temporary entry whose cleanup failed.
+    // An owned temporary entry whose cleanup failed or whose commit is uncertain.
     QString recoveryPath;
     // Keeps the verified target, document and their directory handles stable.
     // Retain until the caller has rechecked the session and inserted the link.
@@ -58,6 +58,7 @@ public:
     WorkspaceWriteResult publishImage(const QString &documentPath, const QString &documentIdentity,
                                       const QByteArray &bytes, const QString &suggestedName, const QString &extension,
                                       const std::function<void(WorkspaceWriteStage)> &observer = {}) const;
+    bool active() const;
     void revoke();
 private:
     struct State;

@@ -12,6 +12,10 @@
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QBuffer>
+#include <QClipboard>
+#include <QMimeData>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QEventLoop>
 #include <QTest>
 #include <QSignalSpy>
@@ -167,6 +171,84 @@ private slots:
         ready.clear(); workspace->setRootPath(replacement.path());
         QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 0, 10000);
         QCOMPARE(disk(path), source);
+#endif
+    }
+    void imageImportPreservesBytesUsesRelativeLinkAndUndo() {
+#ifndef Q_OS_WIN
+        QSKIP("Safe image publication is currently implemented on Windows");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        QVERIFY(QDir().mkpath(dir.filePath("notes")));
+        const auto documentPath = dir.filePath("notes/doc.md"), imagePath = outside.filePath(QStringLiteral("图 #%.png"));
+        const QByteArray original = QStringLiteral("前选择后").toUtf8(); QVERIFY(fileFixtures::write(documentPath, original));
+        QImage image(3, 2, QImage::Format_ARGB32); image.fill(Qt::blue); image.setText("description", "source metadata");
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG"));
+        QVERIFY(fileFixtures::write(imagePath, png));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true);
+        auto *session = pane->document()->session(); auto *editor = pane->editor();
+        const auto start = QStringLiteral("前").toUtf8().size(), end = QStringLiteral("前选择").toUtf8().size();
+        editor->send(SCI_SETSEL, uptr_t(start), sptr_t(end)); QSignalSpy finished(pane, &SingleFileWindow::imageImportFinished);
+        pane->importImageFile(imagePath); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        const auto asset = dir.filePath(QStringLiteral("assets/images/图 #%.png")); QCOMPARE(disk(asset), png); QCOMPARE(disk(imagePath), png);
+        QCOMPARE(session->snapshot().utf8, QStringLiteral("前![图片](../assets/images/%E5%9B%BE%20%23%25.png)后").toUtf8());
+        QCOMPARE(disk(documentPath), original); QVERIFY(session->isDirty());
+        QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, original); QCOMPARE(disk(asset), png);
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->importClipboardImage(image);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QVERIFY(session->snapshot().utf8.startsWith("!["));
+        QCOMPARE(QDir(dir.filePath("assets/images")).entryList(QDir::Files).size(), 2);
+#endif
+    }
+    void imageImportDoesNotInsertIntoAChangedSession() {
+#ifndef Q_OS_WIN
+        QSKIP("Safe image publication is currently implemented on Windows");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        const auto documentPath = dir.filePath("doc.md"), imagePath = outside.filePath("late.png");
+        QVERIFY(fileFixtures::write(documentPath, "old")); QImage image(2, 2, QImage::Format_ARGB32); image.fill(Qt::red);
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG")); QVERIFY(fileFixtures::write(imagePath, png));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true); auto *session = pane->document()->session();
+        QSignalSpy finished(pane, &SingleFileWindow::imageImportFinished); QSignalSpy cancelled(pane, &SingleFileWindow::closeCancelled);
+        pane->importImageFile(imagePath); pane->close(); QCOMPARE(cancelled.size(), 1); QVERIFY(pane->document());
+        QCOMPARE(session->replace(0, 0, "changed ", session->revision()), EditResult::Applied);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QCOMPARE(session->snapshot().utf8, QByteArray("changed old")); QCOMPARE(disk(dir.filePath("assets/images/late.png")), png);
+        QVERIFY(finished.first().at(1).toString().contains("late.png")); QCOMPARE(disk(documentPath), QByteArray("old"));
+        finished.clear(); pane->editor()->send(SCI_SETSEL, 0, 0); pane->importImageFile(imagePath);
+        pane->editor()->send(SCI_SETSEL, 1, 1);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QCOMPARE(session->snapshot().utf8, QByteArray("changed old")); QVERIFY(finished.first().at(1).toString().contains("late.png"));
+#endif
+    }
+    void imageDropAndClipboardUseTheImportService() {
+#ifndef Q_OS_WIN
+        QSKIP("Safe image publication is currently implemented on Windows");
+#else
+        // Avoid replacing the user's real clipboard during local native runs.
+        if (!qEnvironmentVariableIsSet("CI") && QGuiApplication::platformName() != "offscreen") QSKIP("Clipboard fixture requires CI or the offscreen platform");
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        const auto documentPath = dir.filePath("doc.md"), imagePath = outside.filePath("dropped.png");
+        QVERIFY(fileFixtures::write(documentPath, "")); QImage image(3, 2, QImage::Format_ARGB32); image.fill(Qt::green);
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG")); QVERIFY(fileFixtures::write(imagePath, png));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true); auto *editor = pane->editor(); auto *session = pane->document()->session();
+        QSignalSpy finished(pane, &SingleFileWindow::imageImportFinished);
+        QMimeData dropMime; dropMime.setUrls({QUrl::fromLocalFile(imagePath)});
+        QDragEnterEvent enter(QPoint(4, 4), Qt::CopyAction, &dropMime, Qt::LeftButton, Qt::NoModifier); QApplication::sendEvent(editor, &enter); QVERIFY(enter.isAccepted());
+        QDropEvent drop(QPointF(4, 4), Qt::CopyAction, &dropMime, Qt::LeftButton, Qt::NoModifier); QApplication::sendEvent(editor, &drop); QVERIFY(drop.isAccepted());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QCOMPARE(disk(dir.filePath("assets/images/dropped.png")), png); QCOMPARE(session->undo(), EditResult::Applied);
+        auto *textAndImage = new QMimeData; textAndImage->setText(QStringLiteral("https://example.invalid/image.png")); textAndImage->setImageData(image);
+        QApplication::clipboard()->setMimeData(textAndImage); finished.clear(); QTest::keySequence(editor, QKeySequence::Paste);
+        QTRY_COMPARE(session->snapshot().utf8, QByteArray("https://example.invalid/image.png")); QVERIFY(finished.isEmpty());
+        QCOMPARE(session->undo(), EditResult::Applied);
+        auto *bitmap = new QMimeData; bitmap->setImageData(image); QApplication::clipboard()->setMimeData(bitmap);
+        QTest::keySequence(editor, QKeySequence::Paste); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QVERIFY(session->snapshot().utf8.startsWith("![")); QCOMPARE(QDir(dir.filePath("assets/images")).entryList(QDir::Files).size(), 2);
 #endif
     }
     void saveShortcutFromTabAndFooterTargetsOnlyActiveDocument() {

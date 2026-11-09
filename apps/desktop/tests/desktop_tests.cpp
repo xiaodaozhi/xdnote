@@ -5,6 +5,7 @@
 #include "WorkspacePath.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceImagePreview.h"
+#include "ImageImport.h"
 #include "SourceEditor.h"
 #include "VisualTokens.h"
 #include "GuiRuntime.h"
@@ -171,6 +172,26 @@ private slots:
         const auto limited = FileService::readSelectedBinary(path, 4); QVERIFY(!limited.success); QCOMPARE(limited.problem.code, FileError::TooLarge);
         const auto missing = FileService::readSelectedBinary(dir.filePath("missing.png"), 1024); QVERIFY(!missing.success); QCOMPARE(missing.problem.code, FileError::Missing);
         const auto badLimit = FileService::readSelectedBinary(path, 8 * 1024 * 1024 + 1); QVERIFY(!badLimit.success); QCOMPARE(badLimit.problem.code, FileError::InvalidPath);
+    }
+
+    void imageImportRejectsInvalidSourcesBeforeWriting() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined workspace resources are not available on this platform");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "doc"));
+        const auto svg = outside.filePath("active.svg");
+        QVERIFY(fileFixtures::write(svg, "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>"));
+        const auto doc = FileService::probe(dir.filePath("doc.md")); QVERIFY(doc.file);
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+        const auto invalid = importWorkspaceImage(root.reader, "doc.md", doc.file->identity(), svg, {});
+        QCOMPARE(invalid.publication.status, WorkspaceWriteStatus::Failed); QVERIFY(!invalid.message.isEmpty());
+        QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+        QImage oversized(8193, 1, QImage::Format_ARGB32); oversized.fill(Qt::red);
+        const auto bitmap = importWorkspaceImage(root.reader, "doc.md", doc.file->identity(), {}, oversized);
+        QCOMPARE(bitmap.publication.status, WorkspaceWriteStatus::Failed); QVERIFY(!bitmap.message.isEmpty());
+        QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+#endif
     }
 
     void workspaceImagePublicationRejectsBlockedResourceDirectories() {

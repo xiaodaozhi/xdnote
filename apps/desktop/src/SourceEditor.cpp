@@ -16,6 +16,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QMimeData>
 
 namespace xdnote {
 namespace {
@@ -176,11 +177,11 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent, Appearance
     send(SCI_SETCODEPAGE, SC_CP_UTF8);
     send(SCI_SETWRAPMODE, SC_WRAP_WORD);
     send(SCI_SETMARGINWIDTHN, 1, 0);
-    // Native popup and drag/drop commands are admitted with the application
-    // command gateway later; this fixture does not expose a second edit route.
+    // The parent window handles file drops through the session command
+    // gateway. Scintilla's own popup remains disabled.
     send(SCI_USEPOPUP, SC_POPUP_NEVER);
-    setAcceptDrops(false);
-    viewport()->setAcceptDrops(false);
+    setAcceptDrops(true);
+    viewport()->setAcceptDrops(true);
     auto font = sourceFont();
     setFont(font);
     const QByteArray family = font.family().toUtf8();
@@ -284,7 +285,11 @@ void SourceEditor::contextMenuEvent(QContextMenuEvent *event) {
     };
     add(QStringLiteral("剪切"), "cut", writable && selected, [selectionCommand] { selectionCommand(true, false); });
     add(QStringLiteral("复制"), "copy", selected, [selectionCommand] { selectionCommand(false, false); });
-    add(QStringLiteral("粘贴"), "paste", writable, [selectionCommand] { selectionCommand(false, true); }); menu.addSeparator();
+    add(QStringLiteral("粘贴"), "paste", writable, [this, selectionCommand] {
+        const auto *mime = QApplication::clipboard()->mimeData();
+        if (mime && mime->hasImage() && !mime->hasText()) emit imagePasteRequested(QApplication::clipboard()->image());
+        else selectionCommand(false, true);
+    }); menu.addSeparator();
     add(QStringLiteral("全选"), "select-all", true, [this] { send(SCI_SELECTALL); });
     menu.exec(event->reason() == QContextMenuEvent::Keyboard ? mapToGlobal(rect().center()) : event->globalPos()); event->accept();
 }
@@ -317,6 +322,10 @@ void SourceEditor::keyPressEvent(QKeyEvent *event) {
     if (!m_session || m_session->isClosing() || m_session->isBusy()) { event->ignore(); return; }
     if (event->matches(QKeySequence::Undo)) { m_session->undo(); event->accept(); return; }
     if (event->matches(QKeySequence::Redo)) { m_session->redo(); event->accept(); return; }
+    if (event->matches(QKeySequence::Paste)) {
+        const auto *mime = QApplication::clipboard()->mimeData();
+        if (mime && mime->hasImage() && !mime->hasText()) { emit imagePasteRequested(QApplication::clipboard()->image()); event->accept(); return; }
+    }
     if (!DocumentSession::validText(event->text())) { m_session->reportRejection(EditResult::InvalidText); event->accept(); return; }
     {
         QScopedValueRollback<int> depth(m_inputDepth, m_inputDepth + 1);

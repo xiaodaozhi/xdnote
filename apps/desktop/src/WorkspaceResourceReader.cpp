@@ -248,6 +248,7 @@ struct WorkspaceResourceReader::State {
 
 WorkspaceResourceReader::WorkspaceResourceReader(std::unique_ptr<State> state) : m_state(std::move(state)) {}
 WorkspaceResourceReader::~WorkspaceResourceReader() = default;
+bool WorkspaceResourceReader::active() const { return m_state->active.load(std::memory_order_acquire); }
 void WorkspaceResourceReader::revoke() {
     std::lock_guard<std::mutex> lock(m_state->commitMutex);
     m_state->active.store(false, std::memory_order_release);
@@ -397,14 +398,21 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
 
     const ULONG dirOptions = FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT;
     auto &assets = lease->assets, &images = lease->images;
-    auto status = openRelative(lockedRoot.value, QStringLiteral("assets"), FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-                               FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF, dirOptions, assets.value);
-    if (status < 0) { const auto code = RtlNtStatusToDosError(status); return {WorkspaceWriteStatus::Failed, nativeError(code), code}; }
-    if (!directoryHandle(assets.value)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::OutsideOrLink};
-    status = openRelative(assets.value, QStringLiteral("images"), FILE_LIST_DIRECTORY | FILE_ADD_FILE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-                          FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF, dirOptions, images.value);
-    if (status < 0) { const auto code = RtlNtStatusToDosError(status); return {WorkspaceWriteStatus::Failed, nativeError(code), code}; }
-    if (!directoryHandle(images.value)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::OutsideOrLink};
+    NTSTATUS status = 0;
+    {
+        // Directory creation is a write too: once revoke() returns, it must
+        // not start a new creation under the previous authorization.
+        std::lock_guard<std::mutex> lock(m_state->commitMutex);
+        if (!m_state->active.load(std::memory_order_acquire)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Revoked};
+        status = openRelative(lockedRoot.value, QStringLiteral("assets"), FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF, dirOptions, assets.value);
+        if (status < 0) { const auto code = RtlNtStatusToDosError(status); return {WorkspaceWriteStatus::Failed, nativeError(code), code}; }
+        if (!directoryHandle(assets.value)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::OutsideOrLink};
+        status = openRelative(assets.value, QStringLiteral("images"), FILE_LIST_DIRECTORY | FILE_ADD_FILE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF, dirOptions, images.value);
+        if (status < 0) { const auto code = RtlNtStatusToDosError(status); return {WorkspaceWriteStatus::Failed, nativeError(code), code}; }
+        if (!directoryHandle(images.value)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::OutsideOrLink};
+    }
 
     const auto stem = safeStem(suggestedName);
     const auto digest = QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex().left(12));
@@ -434,8 +442,12 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
     auto stage = std::make_shared<NativeHandle>(); QString stageName;
     for (int attempt = 0; attempt < 16; ++attempt) {
         stageName = QStringLiteral(".xdnote-%1.tmp").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
-        status = openRelative(images.value, stageName, GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-                              0, FILE_CREATE, FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT, stage->value);
+        {
+            std::lock_guard<std::mutex> lock(m_state->commitMutex);
+            if (!m_state->active.load(std::memory_order_acquire)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Revoked};
+            status = openRelative(images.value, stageName, GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                                  0, FILE_CREATE, FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT, stage->value);
+        }
         if (status >= 0) break;
         const auto code = RtlNtStatusToDosError(status);
         if (code != ERROR_ALREADY_EXISTS && code != ERROR_FILE_EXISTS) return {WorkspaceWriteStatus::Failed, nativeError(code), code};
@@ -447,6 +459,7 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
     };
     qsizetype offset = 0;
     while (offset < bytes.size()) {
+        if (!m_state->active.load(std::memory_order_acquire)) return failStage(WorkspaceReadError::Revoked);
         DWORD count = 0; const auto chunk = DWORD(qMin<qsizetype>(bytes.size() - offset, 64 * 1024));
         if (!WriteFile(stage->value, bytes.constData() + offset, chunk, &count, nullptr) || count == 0) {
             const auto code = GetLastError(); return failStage(nativeError(code), code);
