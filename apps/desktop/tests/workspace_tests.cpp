@@ -4,6 +4,7 @@
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "MarkdownPreview.h"
+#include "FileService.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
 #include "GuiRuntime.h"
@@ -251,6 +252,13 @@ private slots:
         QCOMPARE(session->replace(0, 0, "changed ", session->revision()), EditResult::Applied);
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool()); QCOMPARE(session->snapshot().utf8, QByteArray("changed source"));
         QCOMPARE(disk(documentPath), QByteArray("source")); QCOMPARE(disk(targetPath), QByteArray("target"));
+        const auto maximum = QString(FileService::SourceLimit, QLatin1Char('x'));
+        QCOMPARE(session->replace(0, 14, maximum, session->revision()), EditResult::Applied);
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QVERIFY(finished.first().at(1).toString().contains(QStringLiteral("超过")));
+        QCOMPARE(session->snapshot().utf8.size(), FileService::SourceLimit);
+        QCOMPARE(disk(documentPath), QByteArray("source"));
 #endif
     }
     void imageImportDoesNotInsertIntoAChangedSession() {

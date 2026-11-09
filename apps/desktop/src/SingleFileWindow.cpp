@@ -586,9 +586,12 @@ void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath) {
                     && latest.result == EditResult::Applied && latest.documentId == snapshot.documentId && latest.revision == snapshot.revision
                     && qsizetype(m_editor->send(SCI_GETANCHOR)) == anchor && qsizetype(m_editor->send(SCI_GETCURRENTPOS)) == caret;
             }
-            if (current) inserted = session->replace(first, last, QStringLiteral("[%1](%2)").arg(label, result.url), snapshot.revision) == EditResult::Applied;
-            message = inserted ? QStringLiteral("文档链接已插入，文档修改尚未保存。")
-                               : QStringLiteral("文档或插入位置已变化，未插入链接。请重新选择。");
+            if (current) {
+                const auto edit = session->replace(first, last, QStringLiteral("[%1](%2)").arg(label, result.url), snapshot.revision);
+                inserted = edit == EditResult::Applied;
+                message = inserted ? QStringLiteral("文档链接已插入，文档修改尚未保存。")
+                                   : QStringLiteral("无法插入文档链接：%1。").arg(resultDescription(edit));
+            } else message = QStringLiteral("文档或插入位置已变化，未插入链接。请重新选择。");
         }
         if (message.isEmpty()) message = QStringLiteral("无法插入文档链接。");
         reportHostMessage(message); emit workspaceLinkFinished(inserted, message);
