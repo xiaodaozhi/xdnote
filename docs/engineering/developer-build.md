@@ -21,9 +21,20 @@ python -m venv build/toolchain/desktop-tools
 
 使用该虚拟环境的 Python 执行上面的 pip 安装命令；Windows 可调用 `build/toolchain/desktop-tools/Scripts/python.exe`，Unix 可调用 `build/toolchain/desktop-tools/bin/python`。研发周期临时产物的安全清理见[产研流程](workflow.md#工具诊断与周期收尾)。
 
-## Windows 本机 MSVC 2019 配置
+## Windows 本机默认配置
 
-本机使用现有 MSVC 2019 v142／14.29 x64 工具，不要求另装 Visual Studio 2022。显式选择 `--profile msvc2019`，它只选择本机编译器兼容方式，Qt 与默认配置统一为 6.8.2，沿用同一源码、Rust 版本及全部回归。两个 Windows 配置共用同一 SDK；CMake 目录和 Rust 测试产物仍分开，不修改 Qt 头文件或伪装编译器版本。
+本机默认使用已安装的 Visual Studio 2022／MSVC v143 x64 工具与 `default` 配置。可在 x64 开发者终端使用下列命令；非开发者终端通过 `--vcvars` 指向该安装的 `VC/Auxiliary/Build/vcvars64.bat`。本机默认输出为 `build/desktop-admission/`，Qt 使用 `build/Qt/6.8.2/msvc2022_64/`。构建日志和 `native-toolchain.json` 记录 CMake 实际识别的编译器，不以 SDK 目录名代替版本证据。
+
+```text
+python scripts/desktop.py doctor --profile default
+python scripts/desktop.py build --profile default
+python scripts/desktop.py test --profile default
+python scripts/desktop.py run --profile default
+```
+
+## MSVC 2019 兼容配置
+
+如需验证已安装的 MSVC 2019 v142／14.29 工具，显式选择 `--profile msvc2019`。该配置与默认配置统一使用 Qt 6.8.2，并沿用同一源码、Rust 版本及测试。两个 Windows 配置共用同一 SDK；CMake 目录和 Rust 测试产物分别保存，不修改 Qt 头文件或伪装编译器版本。
 
 ```text
 python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64 --profile msvc2019
@@ -40,7 +51,7 @@ Qt 6.8.2 的[编译器检查](https://github.com/qt/qtbase/blob/v6.8.2/src/corel
 
 构建身份记录配置、SDK 前缀、Qt 版本及 CMake 实际编译器版本。测试和运行同时核对配置、SDK 和源码摘要，不能切换参数后直接启动另一个目录中的旧产物；变更入口或源码后先重新构建。
 
-入口合并 Windows 工具链环境时统一变量名，避免 `Path` 与 `PATH` 并存而使子进程找不到 Qt DLL。有控制台时，入口在命令期间把输入／输出代码页共同设为 UTF-8，结束后恢复，确保 CMake 对中文 `/showIncludes` 前缀的解码与 Ninja 收到的字节一致。已有配置若记录了乱码前缀，使用 `build --fresh --profile msvc2019` 重新探测；不会改变系统或应用语言。
+入口合并 Windows 工具链环境时统一变量名，避免 `Path` 与 `PATH` 并存而使子进程找不到 Qt DLL。有控制台时，入口在命令期间把输入／输出代码页共同设为 UTF-8，结束后恢复，确保 CMake 对中文 `/showIncludes` 前缀的解码与 Ninja 收到的字节一致。已有配置若记录了乱码前缀，可在选定的配置下使用 `build --fresh` 重新探测；不会改变系统或应用语言。
 
 ## 分阶段入口
 
@@ -66,7 +77,7 @@ python scripts/desktop.py run --admission
 
 可用 `--qt-prefix` 指定完整的同版本 SDK，`--cmake`、`--ninja` 指定已安装工具，`--build-dir` 指定本仓库 `build/` 下的专用目录。入口拒绝逃逸路径和链接目录。构建记录源文件摘要、平台、架构与依赖清单，测试前拒绝使用内容已变化的旧构建；报告与窗口自身截图只进入忽略的构建目录或有期限的 CI 工件。测试日志中的 `QCRITICAL`、`QFATAL` 与断言失败即使未导致测试进程失败，也视为失败。
 
-`--file` 可重复传入；本机命令追加 `--profile msvc2019`。不传文件时显示选择文件入口，也支持应用内打开和拖入本地文件。后续启动经用户级 IPC 转交打开意图，失败时明确报错，不另建独立可写实例。`run` 只核对构建身份并启动已有产物，不要求在 PATH 中重新发现 CMake、Ninja 或 Rust；先完成对应配置的构建。`--admission` 与 `--file` 互斥。
+`--file` 可重复传入；默认配置可省略 `--profile default`，使用 v142 时须显式追加 `--profile msvc2019`。不传文件时显示选择文件入口，也支持应用内打开和拖入本地文件。后续启动经用户级 IPC 转交打开意图，失败时明确报错，不另建独立可写实例。`run` 只核对构建身份并启动已有产物，不要求在 PATH 中重新发现 CMake、Ninja 或 Rust；先完成对应配置的构建。`--admission` 与 `--file` 互斥。
 
 ## 当前模块边界
 

@@ -80,4 +80,4 @@ xdnote/
 
 ## 许可范围
 
-本仓库的自有软件代码（包括工具脚本和技术试验代码）采用 [Apache-2.0](LICENSE)；自有文档与原创设计素材采用 [CC BY 4.0](LICENSES/CC-BY-4.0.txt)。设计内容即使嵌入代码，仍按设计许可处理；第三方内容按其自身条款处理。适用范围、署名及品牌权利边界见[许可范围与依赖](docs/engineering/licensing.md)。
+本仓库的自有软件代码（包括工具脚本和技术试验代码）采用 [Apache-2.0](LICENSE)；自有文档与原创设计素材采用 [CC BY 4.0](LICENSES/CC-BY-4.0.txt)。设计内容即使嵌入代码，仍按设计许可处理；第三方内容按其自身条款处理。适用范围、署名及品牌权利边界见[许可范围与依赖](docs/engineering/licensing.md)，已核对的依赖与上游许可文本见[第三方许可记录](THIRD_PARTY_NOTICES.md)。
