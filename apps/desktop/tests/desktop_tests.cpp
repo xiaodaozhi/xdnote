@@ -1,6 +1,9 @@
 #include "AdmissionWindow.h"
 #include "DocumentSession.h"
 #include "MarkdownPreview.h"
+#include "MarkdownReferences.h"
+#include "WorkspacePath.h"
+#include "WorkspaceResourceReader.h"
 #include "SourceEditor.h"
 #include "VisualTokens.h"
 #include "GuiRuntime.h"
@@ -31,6 +34,80 @@ using namespace xdnote;
 class DesktopTests final : public QObject {
     Q_OBJECT
 private slots:
+    void markdownReferencesKeepSnapshotIdentityAndIncompleteStatus() {
+        const auto source = QStringLiteral("中文😀 ![图](../assets/a%23b.png) [甲][ref] [乙][ref]\n\n[ref]: notes/说明.md\n\n`[伪](ignored.md)`\n").toUtf8();
+        DocumentSession session(source); const auto snapshot = session.snapshot();
+        const auto result = analyzeMarkdownReferences(snapshot); QVERIFY2(result.success, qPrintable(result.reason)); QVERIFY(result.complete);
+        QCOMPARE(result.documentId, snapshot.documentId); QCOMPARE(result.revision, snapshot.revision); QCOMPARE(result.references.size(), 3);
+        QCOMPARE(result.references[0].kind, MarkdownReference::Kind::Image); QCOMPARE(result.references[0].target, QStringLiteral("../assets/a%23b.png"));
+        QCOMPARE(source.mid(result.references[0].usage.start, result.references[0].usage.end - result.references[0].usage.start), QByteArray("![图](../assets/a%23b.png)"));
+        QVERIFY(result.references[1].referenceStyle && result.references[2].referenceStyle); QVERIFY(result.references[1].definition.valid());
+        QCOMPARE(result.references[1].definition.start, result.references[2].definition.start); QCOMPARE(result.references[1].target, QStringLiteral("notes/说明.md"));
+        QCOMPARE(session.replace(0, 0, QStringLiteral("修改"), snapshot.revision), EditResult::Applied); QVERIFY(session.revision() != result.revision);
+        DocumentSnapshot bad{EditResult::Applied, QByteArray::fromHex("ff"), 42, QUuid::createUuid()}; const auto invalid = analyzeMarkdownReferences(bad); QVERIFY(!invalid.success); QVERIFY(invalid.references.isEmpty());
+        const auto longSource = QByteArray("[x][r] ").repeated(6000) + "\n\n[r]: " + QByteArray(4096, 'a') + '\n';
+        DocumentSnapshot large{EditResult::Applied, longSource, 7, QUuid::createUuid()}; const auto partial = analyzeMarkdownReferences(large);
+        QVERIFY2(partial.success, qPrintable(partial.reason)); QVERIFY(!partial.complete); QVERIFY(!partial.references.isEmpty());
+    }
+
+    void workspacePathsRoundTripWithoutGrantingFileAccess() {
+        const auto url = relativeWorkspaceUrl(QStringLiteral("notes/子目录/方案.md"), QStringLiteral("assets/images/猫 #1%.png"));
+        QVERIFY(url.success); QVERIFY(url.path.startsWith("../../assets/images/")); QVERIFY(!url.path.contains('#')); QVERIFY(!url.path.contains(' '));
+        const auto parsed = resolveWorkspaceTarget(QStringLiteral("notes/子目录/方案.md"), url.path + "#%E6%A0%87%E9%A2%98");
+        QVERIFY(parsed.success); QCOMPARE(parsed.path, QStringLiteral("assets/images/猫 #1%.png")); QVERIFY(parsed.hasFragment); QCOMPARE(parsed.fragment, QStringLiteral("标题"));
+        const auto escaped = resolveWorkspaceTarget(QStringLiteral("notes/a.md"), QStringLiteral("%2e%2e/%2e%2e/secret"));
+        QVERIFY(!escaped.success); QCOMPARE(escaped.error, QStringLiteral("escapes-workspace"));
+        const auto doubleEncoded = resolveWorkspaceTarget(QStringLiteral("notes/a.md"), QStringLiteral("x%252Fy.png"));
+        QVERIFY(doubleEncoded.success); QCOMPARE(doubleEncoded.path, QStringLiteral("notes/x%2Fy.png"));
+        const auto external = resolveWorkspaceTarget(QStringLiteral("notes/a.md"), QStringLiteral("file:///private/data")); QVERIFY(!external.success);
+    }
+
+    void workspaceResourcesRequireTheSelectedRootAndRejectLinks() {
+        QTemporaryDir temp; QVERIFY(temp.isValid());
+        const auto root = temp.filePath("root"), outside = temp.filePath("outside");
+        QVERIFY(QDir().mkpath(root + "/assets")); QVERIFY(QDir().mkpath(outside));
+        QVERIFY(fileFixtures::write(root + QStringLiteral("/assets/图片.png"), "image-bytes"));
+        QVERIFY(fileFixtures::write(outside + "/private.png", "secret"));
+        auto opened = WorkspaceResourceReader::open(root);
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QCOMPARE(opened.error, WorkspaceReadError::Unsupported); QVERIFY(!opened.reader); return;
+#else
+        QVERIFY(opened.reader); QCOMPARE(opened.error, WorkspaceReadError::None);
+        const auto image = opened.reader->read(QStringLiteral("assets/图片.png"), 64);
+#ifdef Q_OS_LINUX
+        if (image.error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
+#endif
+        QVERIFY(image.ok()); QCOMPARE(image.bytes, QByteArray("image-bytes"));
+        QCOMPARE(opened.reader->read(QStringLiteral("assets/图片.png"), 2).error, WorkspaceReadError::TooLarge);
+        QCOMPARE(opened.reader->read("../outside/private.png", 64).error, WorkspaceReadError::InvalidPath);
+        QCOMPARE(opened.reader->read("assets/../../outside/private.png", 64).error, WorkspaceReadError::InvalidPath);
+        QCOMPARE(opened.reader->read("/outside/private.png", 64).error, WorkspaceReadError::InvalidPath);
+        QCOMPARE(opened.reader->read("assets\\private.png", 64).error, WorkspaceReadError::InvalidPath);
+        QCOMPARE(opened.reader->read("missing.png", 64).error, WorkspaceReadError::Missing);
+        {
+#ifdef Q_OS_WIN
+        QCOMPARE(opened.reader->read("assets/图片.png:stream", 64).error, WorkspaceReadError::InvalidPath);
+        fileFixtures::Junction junction;
+        QVERIFY(junction.create(root + "/escape", outside));
+#else
+        QVERIFY(::symlink(QFile::encodeName(outside).constData(), QFile::encodeName(root + "/escape").constData()) == 0);
+        QVERIFY(::symlink(QFile::encodeName(outside + "/private.png").constData(), QFile::encodeName(root + "/assets/link.png").constData()) == 0);
+        QVERIFY(!opened.reader->read("assets/link.png", 64).ok());
+        QVERIFY(::mkfifo(QFile::encodeName(root + "/assets/pipe").constData(), 0600) == 0);
+        QVERIFY(!opened.reader->read("assets/pipe", 64).ok());
+#endif
+        const auto escaped = opened.reader->read("escape/private.png", 64);
+        QVERIFY(!escaped.ok()); QVERIFY(escaped.bytes.isEmpty());
+        }
+        // A different directory at the same path cannot inherit the prior
+        // authorization, even if it contains a similarly named file.
+        QVERIFY(QDir().rename(root, root + "-old")); QVERIFY(QDir().mkpath(root + "/assets"));
+        QVERIFY(fileFixtures::write(root + QStringLiteral("/assets/图片.png"), "replacement"));
+        QCOMPARE(opened.reader->read(QStringLiteral("assets/图片.png"), 64).error, WorkspaceReadError::RootChanged);
+        opened.reader->revoke();
+        QCOMPARE(opened.reader->read(QStringLiteral("assets/图片.png"), 64).error, WorkspaceReadError::Revoked);
+#endif
+    }
     void fileBaselinePreservesUtf8BomAndMixedNewlines() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
