@@ -177,7 +177,7 @@ NativeOpen openFile(const QString &path, bool contents, bool denyConcurrentWrite
     return {std::move(file), info, {}};
 }
 
-FileProblem readBytes(const NativeFile &file, QByteArray &bytes, qsizetype limit = FileService::SourceLimit + 3) {
+FileProblem readBytes(const NativeFile &file, QByteArray &bytes, qsizetype limit = FileService::DiskByteLimit) {
 #ifdef Q_OS_WIN
     LARGE_INTEGER zero{};
     if (!SetFilePointerEx(file.handle, zero, nullptr, FILE_BEGIN)) return nativeProblem(GetLastError());
@@ -229,7 +229,7 @@ ReadResult FileService::read(const FileReadRequest &request) {
     auto opened = openFile(file->path(), true);
     if (!opened.file) return {{}, opened.problem};
     if (opened.info.identity != file->identity()) return {{}, {FileError::Changed}};
-    if (opened.info.size > SourceLimit + 3) return {{}, {FileError::TooLarge}};
+    if (opened.info.size > DiskByteLimit) return {{}, {FileError::TooLarge}};
     QByteArray first, second;
     auto problem = readBytes(*opened.file, first);
     if (problem.code != FileError::None) return {{}, problem};

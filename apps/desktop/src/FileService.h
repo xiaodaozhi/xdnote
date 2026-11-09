@@ -97,6 +97,8 @@ struct FileSaveResult {
 class FileService final {
 public:
     static constexpr qsizetype SourceLimit = 2 * 1024 * 1024;
+    // A UTF-8 BOM is stored on disk but is not part of the source snapshot.
+    static constexpr qsizetype DiskByteLimit = SourceLimit + 3;
     static ProbeResult probe(const QString &absolutePath);
     static ReadResult read(const FileReadRequest &request);
     // Explicitly selected source file; this does not grant workspace access.

@@ -46,6 +46,56 @@ using namespace xdnote;
 class DesktopTests final : public QObject {
     Q_OBJECT
 private slots:
+    void resourcePreviewAcceptsMaximumDocumentWithOptionalBom_data() {
+        QTest::addColumn<bool>("bom"); QTest::newRow("without-bom") << false; QTest::newRow("with-bom") << true;
+    }
+    void resourcePreviewAcceptsMaximumDocumentWithOptionalBom() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource reads are unavailable on this platform");
+#else
+        QFETCH(bool, bom); QTemporaryDir dir; QVERIFY(dir.isValid());
+        QByteArray source("![x](a.png)\n"); source.append(QByteArray(FileService::SourceLimit - source.size(), 'x'));
+        const auto disk = (bom ? QByteArray::fromHex("efbbbf") : QByteArray()) + source;
+        QVERIFY(fileFixtures::write(dir.filePath("doc.md"), disk));
+        QImage image(2, 2, QImage::Format_ARGB32); image.fill(Qt::red); QByteArray png; QBuffer buffer(&png);
+        QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG")); QVERIFY(fileFixtures::write(dir.filePath("a.png"), png));
+        const auto file = FileService::probe(dir.filePath("doc.md")); QVERIFY(file.file);
+        const auto baseline = FileService::read({file.file}); QVERIFY2(baseline.baseline, qPrintable(baseline.problem.description()));
+        QCOMPARE(baseline.baseline->utf8(), source); QCOMPARE(baseline.baseline->hasUtf8Bom(), bom);
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+#ifdef Q_OS_LINUX
+        if (root.reader->read("a.png", 1024).error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
+#endif
+        DocumentSession session(source); const auto prepared = preparePreviewImages(session.snapshot(), root.reader, "doc.md", file.file->identity());
+        QVERIFY(prepared.analyzed); QCOMPARE(prepared.states.size(), 1); QCOMPARE(int(prepared.states[0]), 1); QVERIFY(prepared.png.contains(0));
+#endif
+    }
+    void resourcePublicationAcceptsMaximumDocumentWithOptionalBom_data() {
+        QTest::addColumn<bool>("bom"); QTest::newRow("without-bom") << false; QTest::newRow("with-bom") << true;
+    }
+    void resourcePublicationAcceptsMaximumDocumentWithOptionalBom() {
+#ifndef Q_OS_WIN
+        QSKIP("Image publication is currently implemented on Windows");
+#else
+        QFETCH(bool, bom); QTemporaryDir dir; QVERIFY(dir.isValid());
+        const QByteArray source(FileService::SourceLimit, 'x');
+        QVERIFY(fileFixtures::write(dir.filePath("doc.md"), (bom ? QByteArray::fromHex("efbbbf") : QByteArray()) + source));
+        const auto file = FileService::probe(dir.filePath("doc.md")); QVERIFY(file.file);
+        const auto baseline = FileService::read({file.file}); QVERIFY2(baseline.baseline, qPrintable(baseline.problem.description()));
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+        auto written = root.reader->publishImage("doc.md", file.file->identity(), "image bytes", "image.png", "png");
+        QVERIFY2(written.status == WorkspaceWriteStatus::Committed, qPrintable(QStringLiteral("error=%1").arg(int(written.error))));
+#endif
+    }
+    void fileReadStillRejectsContentAboveLimit() {
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        for (const bool bom : {false, true}) {
+            const auto path = dir.filePath(bom ? "bom.md" : "plain.md");
+            const auto disk = (bom ? QByteArray::fromHex("efbbbf") : QByteArray()) + QByteArray(FileService::SourceLimit + 1, 'x');
+            QVERIFY(fileFixtures::write(path, disk)); const auto file = FileService::probe(path); QVERIFY(file.file);
+            const auto loaded = FileService::read({file.file}); QVERIFY(!loaded.baseline); QCOMPARE(loaded.problem.code, FileError::TooLarge);
+        }
+    }
     void quickHostAccessibilityNavigationKeepsParentsAndActions() {
         DocumentSession session("# fixture"); AdmissionWindow window(&session); window.show(); QTRY_VERIFY(window.isVisible());
         auto *quick = window.findChild<QQuickWidget *>("sharedChrome"); QVERIFY(quick); QCOMPARE(quick->status(), QQuickWidget::Ready);

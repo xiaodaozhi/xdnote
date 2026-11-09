@@ -1,4 +1,5 @@
 #include "WorkspaceResourceReader.h"
+#include "FileService.h"
 
 #include <QDir>
 #include <QCryptographicHash>
@@ -200,7 +201,7 @@ bool lockDocument(PublicationLease &lease, const QString &path, const QString &i
             if (!GetFileInformationByHandleEx(handle->value, FileIdInfo, &actual, sizeof(actual))) return false;
             const auto found = QStringLiteral("win:%1:%2").arg(actual.VolumeSerialNumber, 0, 16).arg(
                 QString::fromLatin1(QByteArray(reinterpret_cast<const char *>(actual.FileId.Identifier), 16).toHex()));
-            if (found != identity || info.EndOfFile.QuadPart < 0 || info.EndOfFile.QuadPart > 2 * 1024 * 1024) return false;
+            if (found != identity || info.EndOfFile.QuadPart < 0 || info.EndOfFile.QuadPart > FileService::DiskByteLimit) return false;
         }
         parent = handle->value; handles.push_back(std::move(handle));
     }
@@ -383,7 +384,7 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
     if (documentIdentity.isEmpty() || bytes.isEmpty() || bytes.size() > MaxImageBytes
         || !(suffix == "png" || suffix == "jpg" || suffix == "jpeg" || suffix == "gif" || suffix == "bmp" || suffix == "webp"))
         return {WorkspaceWriteStatus::Failed, bytes.size() > MaxImageBytes ? WorkspaceReadError::TooLarge : WorkspaceReadError::InvalidPath};
-    auto document = read(documentPath, 2 * 1024 * 1024);
+    auto document = read(documentPath, FileService::DiskByteLimit);
     if (!document.ok()) return {WorkspaceWriteStatus::Failed, document.error, document.nativeCode};
     if (document.identity != documentIdentity) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Changed};
 
@@ -422,7 +423,7 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
     };
     auto contextValid = [&]() {
         if (!m_state->active.load(std::memory_order_acquire)) return false;
-        const auto checked = read(documentPath, 2 * 1024 * 1024);
+        const auto checked = read(documentPath, FileService::DiskByteLimit);
         return checked.ok() && checked.identity == documentIdentity;
     };
     auto relative = [](const QString &name) { return QStringLiteral("assets/images/") + name; };
