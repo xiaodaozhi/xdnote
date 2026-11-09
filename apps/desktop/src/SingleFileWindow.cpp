@@ -62,17 +62,17 @@ LinkTargetResult prepareWorkspaceLink(const std::shared_ptr<WorkspaceResourceRea
     if (!root || !root->active()) return {false, {}, QStringLiteral("工作区授权已失效。")};
     const auto url = relativeWorkspaceUrl(documentPath, targetPath);
     if (!url.success) return {false, {}, QStringLiteral("所选文档不在当前工作区内。")};
-    const auto source = root->read(documentPath, FileService::SourceLimit + 3);
+    const auto source = root->read(documentPath, FileService::DiskByteLimit);
     if (!source.ok() || source.identity != documentIdentity) return {false, {}, QStringLiteral("无法核验当前文档的位置或身份。")};
-    const auto target = root->read(targetPath, FileService::SourceLimit + 3);
+    const auto target = root->read(targetPath, FileService::DiskByteLimit);
     if (!target.ok()) return {false, {}, QStringLiteral("无法读取或核验所选文档，请检查位置、权限和大小。")};
     const bool bom = target.bytes.startsWith(QByteArray::fromHex("efbbbf"));
     const auto utf8 = bom ? target.bytes.mid(3) : target.bytes;
     bool valid = false; decodeUtf8Literal(utf8, &valid);
     if (!valid || utf8.contains('\0') || utf8.size() > FileService::SourceLimit)
         return {false, {}, QStringLiteral("所选文档不是受支持的 UTF-8 Markdown 文件。")};
-    const auto sourceAgain = root->read(documentPath, FileService::SourceLimit + 3);
-    const auto targetAgain = root->read(targetPath, FileService::SourceLimit + 3);
+    const auto sourceAgain = root->read(documentPath, FileService::DiskByteLimit);
+    const auto targetAgain = root->read(targetPath, FileService::DiskByteLimit);
     if (!root->active() || !sourceAgain.ok() || sourceAgain.identity != documentIdentity
         || !targetAgain.ok() || targetAgain.identity != target.identity || targetAgain.bytes != target.bytes)
         return {false, {}, QStringLiteral("工作区或所选文档已变化，请重新选择。")};
