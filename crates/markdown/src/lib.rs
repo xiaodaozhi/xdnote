@@ -5,6 +5,7 @@ use pulldown_cmark::{html, CodeBlockKind, CowStr, Event, LinkType, Options, Pars
 use std::io::{self, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
+pub mod headings;
 pub mod workspace_path;
 
 pub const MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
@@ -53,6 +54,7 @@ fn render_with_resources(
     if source.len() > MAX_SOURCE_BYTES {
         return Err(RenderError::SourceLimit);
     }
+    let mut headings = headings::analyze(source)?.into_iter();
     let mut parser = Parser::new_ext(source, markdown_options());
     let mut events = Vec::new();
     let mut code_index = 0;
@@ -90,6 +92,11 @@ fn render_with_resources(
             }
             event => events.push(match event {
                 Event::Html(value) | Event::InlineHtml(value) => Event::Text(value),
+                Event::Start(Tag::Heading { level, classes, attrs, .. }) => {
+                    let heading = headings.next().ok_or(RenderError::OutputLimit)?;
+                    if heading.level != level as u8 { return Err(RenderError::OutputLimit); }
+                    Event::Start(Tag::Heading { level, id: Some(CowStr::from(heading.id)), classes, attrs })
+                }
                 Event::Start(Tag::Link { .. }) => {
                     Event::Html(CowStr::Borrowed("<span class=\"link-placeholder\">"))
                 }
@@ -119,6 +126,9 @@ fn render_with_resources(
                 other => other,
             }),
         }
+    }
+    if headings.next().is_some() {
+        return Err(RenderError::OutputLimit);
     }
     let mut output = LimitedOutput(Vec::new());
     html::write_html_io(&mut output, events.into_iter()).map_err(|_| RenderError::OutputLimit)?;
@@ -223,6 +233,33 @@ pub fn references(source: &str) -> Result<Vec<u8>, RenderError> {
         }
     })();
     result.map_err(|_| RenderError::OutputLimit)?;
+    Ok(output.0)
+}
+
+/// Return the exact IDs used by preview, with snapshot-relative UTF-8 ranges.
+/// Callers must bind the returned map to the source document and revision.
+pub fn heading_map(source: &str) -> Result<Vec<u8>, RenderError> {
+    let headings = headings::analyze(source)?;
+    let mut output = LimitedOutput(Vec::new());
+    let written = (|| -> io::Result<()> {
+        output.write_all(b"{\"version\":1,\"headings\":[")?;
+        for (index, heading) in headings.iter().enumerate() {
+            if index > 0 {
+                output.write_all(b",")?;
+            }
+            write!(
+                output,
+                "{{\"start\":{},\"end\":{},\"level\":{},\"title\":",
+                heading.range.start, heading.range.end, heading.level
+            )?;
+            write_json_string(&mut output, &heading.title)?;
+            output.write_all(b",\"id\":")?;
+            write_json_string(&mut output, &heading.id)?;
+            output.write_all(b"}")?;
+        }
+        output.write_all(b"]}")
+    })();
+    written.map_err(|_| RenderError::OutputLimit)?;
     Ok(output.0)
 }
 
@@ -564,6 +601,14 @@ pub unsafe extern "C" fn xdnote_markdown_references(
     unsafe { snapshot_buffer(data, length, references) }
 }
 
+/// # Safety
+/// A non-empty input points to `length` readable bytes for the duration of the call.
+#[no_mangle]
+pub unsafe extern "C" fn xdnote_markdown_headings(data: *const u8, length: usize) -> RenderBuffer {
+    // SAFETY: this function forwards its documented input contract unchanged.
+    unsafe { snapshot_buffer(data, length, heading_map) }
+}
+
 unsafe fn workspace_path_buffer(
     document: *const u8,
     document_length: usize,
@@ -659,6 +704,21 @@ pub unsafe extern "C" fn xdnote_markdown_free(buffer: *mut RenderBuffer) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn preview_and_snapshot_heading_map_share_the_same_ids() {
+        let source = "# 中文 **加粗**\n# 中文 加粗\n# <script>\n#\n";
+        let headings = headings::analyze(source).unwrap();
+        let html = String::from_utf8(render(source).unwrap()).unwrap();
+        let map = String::from_utf8(heading_map(source).unwrap()).unwrap();
+        assert!(map.starts_with("{\"version\":1,\"headings\":["));
+        for heading in headings {
+            assert!(html.contains(&format!("id=\"{}\"", heading.id)));
+            assert!(map.contains(&format!("\"id\":\"{}\"", heading.id)));
+        }
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+
     fn output(source: &str) -> String {
         String::from_utf8(render(source).unwrap()).unwrap()
     }
@@ -668,7 +728,7 @@ mod tests {
         let text = "# 标题\n\n**粗体** ~~删除~~\n\n- [x] 完成\n\n|列|\n|-|\n|值|\n";
         let html = output(text);
         for fragment in [
-            "<h1>标题</h1>",
+            "<h1 id=\"标题\">标题</h1>",
             "<strong>粗体</strong>",
             "<del>删除</del>",
             "<table>",
@@ -832,6 +892,14 @@ mod tests {
             let data = std::slice::from_raw_parts(refs.data, refs.length);
             assert!(std::str::from_utf8(data).unwrap().contains("image.png"));
             xdnote_markdown_free(&mut refs);
+            let mut anchors = xdnote_markdown_headings(b"# heading".as_ptr(), 9);
+            assert_eq!(anchors.status, 0);
+            assert!(
+                std::str::from_utf8(std::slice::from_raw_parts(anchors.data, anchors.length))
+                    .unwrap()
+                    .contains("\"id\":\"heading\"")
+            );
+            xdnote_markdown_free(&mut anchors);
             assert_eq!(
                 xdnote_markdown_references(bad.as_ptr(), bad.len()).status,
                 1

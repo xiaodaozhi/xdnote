@@ -2,6 +2,7 @@
 #include "DocumentSession.h"
 #include "MarkdownPreview.h"
 #include "MarkdownReferences.h"
+#include "MarkdownHeadings.h"
 #include "WorkspacePath.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceImagePreview.h"
@@ -43,6 +44,24 @@ using namespace xdnote;
 class DesktopTests final : public QObject {
     Q_OBJECT
 private slots:
+    void headingMapKeepsSnapshotIdentityAndUtf8Ranges() {
+        const auto source = QStringLiteral("# 中文 **加粗**\n# 中文 加粗\n#\n").toUtf8();
+        DocumentSession session(source); const auto snapshot = session.snapshot();
+        const auto result = analyzeMarkdownHeadings(snapshot);
+        QVERIFY2(result.success, qPrintable(result.reason)); QCOMPARE(result.documentId, snapshot.documentId); QCOMPARE(result.revision, snapshot.revision);
+        QCOMPARE(result.headings.size(), 3); QCOMPARE(result.headings[0].title, QStringLiteral("中文 加粗"));
+        QCOMPARE(result.headings[0].id, QStringLiteral("中文-加粗")); QCOMPARE(result.headings[1].id, QStringLiteral("中文-加粗-1"));
+        QCOMPARE(result.headings[2].id, QStringLiteral("section"));
+        for (const auto &heading : result.headings) { QCOMPARE(heading.level, 1); QVERIFY(source.mid(heading.range.start, heading.range.end - heading.range.start).startsWith('#')); }
+        DocumentSnapshot invalid; invalid.result = EditResult::Composing;
+        QVERIFY(!analyzeMarkdownHeadings(invalid).success);
+        MarkdownPreview preview(&session); QSignalSpy ready(&preview, &MarkdownPreview::previewReady);
+        preview.resize(600, 400); preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
+        QString html; bool received = false;
+        preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
+        for (const auto &heading : result.headings) QVERIFY2(html.contains(QStringLiteral("id=\"%1\"").arg(heading.id)), qPrintable(heading.id));
+    }
     void markdownReferencesKeepSnapshotIdentityAndIncompleteStatus() {
         const auto source = QStringLiteral("中文😀 ![图](../assets/a%23b.png) [甲][ref] [乙][ref]\n\n[ref]: notes/说明.md\n\n`[伪](ignored.md)`\n").toUtf8();
         DocumentSession session(source); const auto snapshot = session.snapshot();

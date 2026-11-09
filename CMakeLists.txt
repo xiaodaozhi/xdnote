@@ -103,6 +103,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/SourceEditor.cpp apps/desktop/src/SourceEditor.h
     apps/desktop/src/MarkdownPreview.cpp apps/desktop/src/MarkdownPreview.h
     apps/desktop/src/MarkdownReferences.cpp apps/desktop/src/MarkdownReferences.h apps/desktop/src/MarkdownBridge.h
+    apps/desktop/src/MarkdownHeadings.cpp apps/desktop/src/MarkdownHeadings.h
     apps/desktop/src/WorkspacePath.cpp apps/desktop/src/WorkspacePath.h
     apps/desktop/src/WorkspaceResourceReader.cpp apps/desktop/src/WorkspaceResourceReader.h
     apps/desktop/src/WorkspaceImagePreview.cpp apps/desktop/src/WorkspaceImagePreview.h
