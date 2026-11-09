@@ -105,6 +105,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/MarkdownReferences.cpp apps/desktop/src/MarkdownReferences.h apps/desktop/src/MarkdownBridge.h
     apps/desktop/src/WorkspacePath.cpp apps/desktop/src/WorkspacePath.h
     apps/desktop/src/WorkspaceResourceReader.cpp apps/desktop/src/WorkspaceResourceReader.h
+    apps/desktop/src/WorkspaceImagePreview.cpp apps/desktop/src/WorkspaceImagePreview.h
     apps/desktop/src/VisualTokens.cpp apps/desktop/src/VisualTokens.h
     apps/desktop/src/InputModality.cpp apps/desktop/src/InputModality.h
     apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h

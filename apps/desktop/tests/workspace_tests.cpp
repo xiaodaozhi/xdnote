@@ -11,6 +11,8 @@
 #include "WindowGeometry.h"
 #include "file_fixtures.h"
 #include <QApplication>
+#include <QBuffer>
+#include <QEventLoop>
 #include <QTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -39,6 +41,28 @@ SingleFileWindow *waitStandalone(const QString &path) {
 QByteArray disk(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); }
 void capture(QWidget *window, const QString &name) { const auto directory = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (!directory.isEmpty()) { QDir().mkpath(directory + "/workspace"); window->grab().save(directory + "/workspace/" + name + ".png"); } }
 void chooseClose(int choice) { QTimer::singleShot(30, qApp, [choice] { for (auto *widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") { if (auto *button = widget->findChild<SharedButton *>(QStringLiteral("choice%1").arg(choice))) button->click(); } }); }
+int loadedImages(MarkdownPreview *preview) {
+    QEventLoop loop; QTimer timeout; timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    auto result = std::make_shared<int>(-1); const QPointer<QEventLoop> guarded(&loop);
+    preview->view()->page()->runJavaScript(QStringLiteral("Array.from(document.images).filter(i => i.naturalWidth > 0).length"), QWebEngineScript::ApplicationWorld,
+        [guarded, result](const QVariant &value) { *result = value.toInt(); if (guarded) guarded->quit(); });
+    timeout.start(10000); loop.exec(); return *result;
+}
+class InitializationWarning final : public QObject {
+public:
+    bool injected = false;
+protected:
+    bool eventFilter(QObject *target, QEvent *event) override {
+        if (injected || event->type() != QEvent::ChildAdded) return false;
+        auto *widget = qobject_cast<QWidget *>(target);
+        auto *pane = widget ? qobject_cast<SingleFileWindow *>(widget->window()) : nullptr;
+        if (!pane || !pane->document() || pane->preview() || !pane->windowGeometry()) return false;
+        injected = true;
+        pane->windowGeometry()->geometryWarning(QStringLiteral("初始化期间的窗口提示"));
+        return false;
+    }
+};
 }
 class WorkspaceTests final : public QObject {
     Q_OBJECT
@@ -65,6 +89,15 @@ private slots:
         FileManager manager; Appearance appearance; WindowGeometryStore store;
         auto *standalone = new SingleFileWindow(&manager, &appearance, &store); standalone->show(); QTRY_VERIFY(standalone->windowGeometry()->initialized()); QPointer<WindowGeometry> first = standalone->windowGeometry(); QVERIFY(first); delete standalone; QVERIFY(first.isNull()); QVERIFY(store.placement("standalone"));
         auto *workspace = new WorkspaceWindow(&appearance, &store); auto *pane = new SingleFileWindow(&manager, &appearance, &store); QVERIFY(workspace->addPane(pane)); workspace->show(); QTRY_VERIFY(workspace->windowGeometry()->initialized()); QPointer<WindowGeometry> second = workspace->windowGeometry(); QPointer<SingleFileWindow> child = pane; delete workspace; QVERIFY(second.isNull()); QVERIFY(child.isNull()); QVERIFY(store.placement("main"));
+    }
+    void documentInitializationToleratesSynchronousWindowWarning() {
+        QTemporaryDir dir; const auto path = dir.filePath("reentrant.md"); QVERIFY(fileFixtures::write(path, "hello"));
+        FileApplication desktop; InitializationWarning warning; qApp->installEventFilter(&warning);
+        desktop.open(path); auto *pane = waitStandalone(path);
+        qApp->removeEventFilter(&warning);
+        QVERIFY(pane); QVERIFY(warning.injected); QVERIFY(pane->preview()); QVERIFY(pane->editor());
+        QCOMPARE(pane->document()->session()->snapshot().utf8, QByteArray("hello"));
+        pane->setEditing(true); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Source);
     }
     void unreadableDirectoryRecoversAfterPermissionRestored() {
         QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "retained"));
@@ -112,6 +145,29 @@ private slots:
         QVERIFY(desktop.transferToWorkspace(pane)); QVERIFY(pane->embedded()); auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window()); QVERIFY(workspace); QVERIFY(workspace->rootPath().isEmpty()); QCOMPARE(workspace->tree()->state(), WorkspaceTree::State::Unselected);
         QCOMPARE(pane->editor(), editor); QCOMPARE(pane->document()->session(), session); QCOMPARE(session->documentId(), id); QCOMPARE(editor->send(SCI_GETANCHOR), sptr_t(3)); QCOMPARE(editor->send(SCI_GETCURRENTPOS), sptr_t(9)); QCOMPARE(editor->send(SCI_GETFIRSTVISIBLELINE), line);
         QCOMPARE(session->snapshot().utf8, QByteArray("dirty\n") + original); QCOMPARE(disk(path), original); QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, original); QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+    }
+    void imageAccessFollowsStandaloneAndWorkspaceAuthorization() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource reads are not available on this platform");
+#else
+        QTemporaryDir dir, replacement; QVERIFY(dir.isValid() && replacement.isValid());
+        QVERIFY(QDir().mkpath(dir.filePath("docs"))); QVERIFY(QDir().mkpath(dir.filePath("assets")));
+        const auto path = dir.filePath("docs/doc.md");
+        const auto source = QByteArray("![local](local.png) ![shared](../assets/shared.png)");
+        QVERIFY(fileFixtures::write(path, source));
+        QImage image(3, 2, QImage::Format_ARGB32); image.fill(Qt::red);
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG"));
+        QVERIFY(fileFixtures::write(dir.filePath("docs/local.png"), png)); QVERIFY(fileFixtures::write(dir.filePath("assets/shared.png"), png));
+        FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
+        QSignalSpy ready(pane->preview(), &MarkdownPreview::previewReady); pane->preview()->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 1, 10000);
+        auto *workspace = desktop.workspaceWindow(dir.path()); ready.clear();
+        QVERIFY(desktop.transferToWorkspace(pane, workspace));
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 2, 10000);
+        ready.clear(); workspace->setRootPath(replacement.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 0, 10000);
+        QCOMPARE(disk(path), source);
+#endif
     }
     void saveShortcutFromTabAndFooterTargetsOnlyActiveDocument() {
         QTemporaryDir dir; const auto first = dir.filePath("active.md"), second = dir.filePath("inactive.md"); QVERIFY(fileFixtures::write(first, "one")); QVERIFY(fileFixtures::write(second, "two")); FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(first, workspace); auto *one = waitPane(workspace, first); QVERIFY(one); desktop.openInWorkspace(second, workspace); auto *two = waitPane(workspace, second); QVERIFY(two);

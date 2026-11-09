@@ -201,6 +201,10 @@ WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype
     }
     FILE_STANDARD_INFO info{};
     if (!GetFileInformationByHandleEx(parent, FileStandardInfo, &info, sizeof(info))) return {WorkspaceReadError::Io, {}, GetLastError()};
+    FILE_ID_INFO fileIdentity{};
+    if (!GetFileInformationByHandleEx(parent, FileIdInfo, &fileIdentity, sizeof(fileIdentity))) return {WorkspaceReadError::Io, {}, GetLastError()};
+    const auto identity = QStringLiteral("win:%1:%2").arg(fileIdentity.VolumeSerialNumber, 0, 16).arg(
+        QString::fromLatin1(QByteArray(reinterpret_cast<const char *>(fileIdentity.FileId.Identifier), 16).toHex()));
     if (info.EndOfFile.QuadPart < 0 || info.EndOfFile.QuadPart > maxBytes) return {WorkspaceReadError::TooLarge};
     QByteArray bytes(qsizetype(info.EndOfFile.QuadPart), Qt::Uninitialized);
     qsizetype offset = 0;
@@ -231,6 +235,7 @@ WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype
     struct stat before{}, after{};
     if (::fstat(file.value, &before) != 0) return {WorkspaceReadError::Io, {}, errno};
     if (!S_ISREG(before.st_mode)) return {WorkspaceReadError::OutsideOrLink};
+    const auto identity = QStringLiteral("posix:%1:%2").arg(qulonglong(before.st_dev), 0, 16).arg(qulonglong(before.st_ino), 0, 16);
     if (before.st_size < 0 || before.st_size > maxBytes) return {WorkspaceReadError::TooLarge};
     QByteArray bytes(qsizetype(before.st_size), Qt::Uninitialized);
     qsizetype offset = 0;
@@ -256,7 +261,7 @@ WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype
 #endif
 #if defined(Q_OS_WIN) || (defined(Q_OS_LINUX) && defined(SYS_openat2))
     if (!m_state->active.load(std::memory_order_acquire)) return {WorkspaceReadError::Revoked};
-    return {WorkspaceReadError::None, std::move(bytes)};
+    return {WorkspaceReadError::None, std::move(bytes), 0, identity};
 #endif
 }
 }
