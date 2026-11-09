@@ -1,4 +1,5 @@
 #include "MarkdownPreview.h"
+#include "MarkdownBridge.h"
 #include "DocumentSession.h"
 #include "VisualTokens.h"
 #include "Appearance.h"
@@ -26,12 +27,6 @@
 #include <cstdint>
 #include <cmath>
 #include <limits>
-
-extern "C" {
-struct XdnoteRenderBuffer { unsigned char *data; std::size_t length; std::uint32_t status; };
-XdnoteRenderBuffer xdnote_markdown_render(const unsigned char *data, std::size_t length);
-void xdnote_markdown_free(XdnoteRenderBuffer *buffer);
-}
 
 namespace xdnote {
 namespace {

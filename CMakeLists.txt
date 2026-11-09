@@ -77,7 +77,7 @@ add_custom_command(OUTPUT "${XDNOTE_RUST_LIBRARY}"
         "RUSTUP_AUTO_INSTALL=0" "${XDNOTE_RUSTUP}" run "${XDNOTE_RUST_VERSION}" cargo build
         --manifest-path "${PROJECT_SOURCE_DIR}/Cargo.toml" --locked --offline --release
         --target "${XDNOTE_RUST_TARGET}" --target-dir "${CMAKE_BINARY_DIR}/cargo"
-    DEPENDS Cargo.toml Cargo.lock rust-toolchain.toml crates/markdown/Cargo.toml crates/markdown/src/lib.rs
+    DEPENDS Cargo.toml Cargo.lock rust-toolchain.toml crates/markdown/Cargo.toml crates/markdown/src/lib.rs crates/markdown/src/workspace_path.rs
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
 add_custom_target(xdnote_rust_build DEPENDS "${XDNOTE_RUST_LIBRARY}")
 add_library(xdnote_markdown STATIC IMPORTED GLOBAL)
@@ -102,6 +102,9 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/DocumentSession.cpp apps/desktop/src/DocumentSession.h
     apps/desktop/src/SourceEditor.cpp apps/desktop/src/SourceEditor.h
     apps/desktop/src/MarkdownPreview.cpp apps/desktop/src/MarkdownPreview.h
+    apps/desktop/src/MarkdownReferences.cpp apps/desktop/src/MarkdownReferences.h apps/desktop/src/MarkdownBridge.h
+    apps/desktop/src/WorkspacePath.cpp apps/desktop/src/WorkspacePath.h
+    apps/desktop/src/WorkspaceResourceReader.cpp apps/desktop/src/WorkspaceResourceReader.h
     apps/desktop/src/VisualTokens.cpp apps/desktop/src/VisualTokens.h
     apps/desktop/src/InputModality.cpp apps/desktop/src/InputModality.h
     apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h
