@@ -57,6 +57,7 @@ public:
     int contentZoom() const { return m_zoom; }
     void importImageFile(const QString &path);
     void importClipboardImage(const QImage &image);
+    void insertWorkspaceDocumentLink(const QString &targetPath);
 signals:
     void openRequested(QString path);
     void cancelOpenRequested(QUuid intent);
@@ -70,6 +71,7 @@ signals:
     void sidebarRequested();
     void viewStateChanged();
     void imageImportFinished(bool inserted, QString message);
+    void workspaceLinkFinished(bool inserted, QString message);
 protected:
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *target, QEvent *event) override;
@@ -84,6 +86,7 @@ private:
     void syncPreviewResources();
     void beginImageImport(const QString &path, const QImage &image);
     void chooseImage();
+    void chooseWorkspaceDocumentLink();
     FileManager *m_manager;
     const QUuid m_paneId = QUuid::createUuid();
     Appearance *m_appearance;
@@ -130,6 +133,7 @@ private:
     QAction *m_redoAction;
     QAction *m_reloadAction;
     QAction *m_imageImportAction;
+    QAction *m_linkInsertAction;
     QList<QAction *> m_themeActions, m_accentActions;
     SourceEditor *m_editor = nullptr;
     MarkdownPreview *m_preview = nullptr;
@@ -141,6 +145,7 @@ private:
     bool m_observedSave = false;
     bool m_documentUiReady = false;
     bool m_imageImportPending = false;
+    bool m_linkInsertPending = false;
     bool m_embedded = false;
     ViewMode m_mode = ViewMode::Reading;
 };

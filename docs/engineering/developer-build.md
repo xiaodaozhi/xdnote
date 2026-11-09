@@ -85,7 +85,7 @@ python scripts/desktop.py run --admission
 - `FileService` 提供不依赖 GUI 的身份探测、严格读取和原位替换保存；`SessionRegistry` 管理打开登记与替换后的身份重绑定。`FileManager` 串行协调后台 I/O、冻结保存快照与 GUI 回执，编辑保持可用；`FileApplication` 与 `SingleInstance` 统一窗口、退出和跨进程打开意图。具体保证见[文件读取](file-read-baseline.md)和[保存闭环](file-save-workflow.md)。
 - `SourceEditor` 提供控件输入与基础 Qt 辅助功能文本接口；辅助功能写入使用可撤销会话命令，拒绝原因对界面与辅助功能描述可见。Qt 的无返回值 setter 尚不能完成原生失败状态映射，原生 UIA／屏幕阅读器准入继续跟踪。
 - `MarkdownPreview` 只把不可变 UTF-8 快照交给 Rust，单个解析任务配合最新待处理快照，过期代次不能成为展示完成结果。FFI 输出由 Rust 分配并释放，不跨线程传递控件或文档指针。解析期间的强制取消、时间／内存预算与独立进程隔离尚未完成。
-- 本阶段预览转义原始 HTML。Windows 和 Linux 可在当前授权范围内读取受限本地图片，并以应用生成的内存资源提供预览；macOS 与受阻或不支持的图片仍显示占位。链接仍为惰性文字占位，尚未接入工作区链接或外部导航。文档不能控制资源 URL，也不能执行脚本或直接访问文件和网络；页面策略与请求拦截再次限制资源，详见[资源基础](workspace-resource-foundation.md)。
+- 本阶段预览转义原始 HTML。Windows 和 Linux 可在当前授权范围内读取受限本地图片，并以应用生成的内存资源提供预览；macOS 与受阻或不支持的图片仍显示占位。工作区已支持插入相对文档链接，但阅读预览中的链接仍为惰性文字占位，尚未接入链接激活或外部导航。文档不能控制资源 URL，也不能执行脚本或直接访问文件和网络；页面策略与请求拦截再次限制资源，详见[资源基础](workspace-resource-foundation.md)。
 - `AdmissionWindow` 采用 QWidget 容器，QQuickWidget 承载共享操作，Scintilla 与 WebEngine 保持各自公开 QWidget 端口。共享控件从同一视觉参数读取尺寸、字体、颜色与 Tab 焦点外框；此窗口只验证承载，原生装饰和主界面复刻另行验收。
 
 运行器与测试共用图形和交互初始化。Windows 选择 D3D11，CI 显式偏好系统 WARP 软件适配器；Linux／macOS 当前使用 OpenGL。图形初始化发生在应用对象建立前，同一顶层窗口共享图形 API。应用对象建立后设置本应用的 `TabFocusAllControls` 策略，使按钮也可参与 Tab 循环，不修改系统偏好。Linux CI 安装 Noto CJK 作为镜像的系统字体，应用仍使用系统字体及回退，不随此工程分发该字体；测试检查常规与等宽字体的中文成形不存在缺字。不得以跳过截图、隐藏图形错误或只检查 QML 加载状态代替渲染验证；硬件 GPU、远程会话和其他图形后端仍须分别验证。

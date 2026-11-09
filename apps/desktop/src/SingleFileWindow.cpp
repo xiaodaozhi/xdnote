@@ -6,6 +6,7 @@
 #include "WorkspaceResourceReader.h"
 #include "WorkspacePath.h"
 #include "ImageImport.h"
+#include "FileService.h"
 #include "VisualTokens.h"
 #include "InputModality.h"
 #include "Utf8Text.h"
@@ -55,6 +56,28 @@ namespace xdnote {
 namespace {
 int token(const char *section, const char *key) { return visualTokens().value(section).toObject().value(key).toInt(); }
 QJsonObject geometryTokens() { return visualTokens().value("windows").toObject().value("standalone").toObject(); }
+struct LinkTargetResult { bool success = false; QString url; QString message; };
+LinkTargetResult prepareWorkspaceLink(const std::shared_ptr<WorkspaceResourceReader> &root,
+    const QString &documentPath, const QString &documentIdentity, const QString &targetPath) {
+    if (!root || !root->active()) return {false, {}, QStringLiteral("工作区授权已失效。")};
+    const auto url = relativeWorkspaceUrl(documentPath, targetPath);
+    if (!url.success) return {false, {}, QStringLiteral("所选文档不在当前工作区内。")};
+    const auto source = root->read(documentPath, FileService::SourceLimit + 3);
+    if (!source.ok() || source.identity != documentIdentity) return {false, {}, QStringLiteral("无法核验当前文档的位置或身份。")};
+    const auto target = root->read(targetPath, FileService::SourceLimit + 3);
+    if (!target.ok()) return {false, {}, QStringLiteral("无法读取或核验所选文档，请检查位置、权限和大小。")};
+    const bool bom = target.bytes.startsWith(QByteArray::fromHex("efbbbf"));
+    const auto utf8 = bom ? target.bytes.mid(3) : target.bytes;
+    bool valid = false; decodeUtf8Literal(utf8, &valid);
+    if (!valid || utf8.contains('\0') || utf8.size() > FileService::SourceLimit)
+        return {false, {}, QStringLiteral("所选文档不是受支持的 UTF-8 Markdown 文件。")};
+    const auto sourceAgain = root->read(documentPath, FileService::SourceLimit + 3);
+    const auto targetAgain = root->read(targetPath, FileService::SourceLimit + 3);
+    if (!root->active() || !sourceAgain.ok() || sourceAgain.identity != documentIdentity
+        || !targetAgain.ok() || targetAgain.identity != target.identity || targetAgain.bytes != target.bytes)
+        return {false, {}, QStringLiteral("工作区或所选文档已变化，请重新选择。")};
+    return {true, url.path, {}};
+}
 void separator(QBoxLayout *layout, Appearance *appearance, QWidget *owner) {
     auto *line = new QWidget(owner); line->setFixedWidth(1); line->setFixedHeight(20);
     const auto refresh = [line, appearance] { line->setStyleSheet("background:" + appearance->color("border").name()); };
@@ -173,6 +196,7 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_undoAction = action(QStringLiteral("撤销"), "undoAction", QKeySequence::Undo, [this] { if (m_document) m_document->session()->undo(); });
     m_redoAction = action(QStringLiteral("重做"), "redoAction", QKeySequence::Redo, [this] { if (m_document) m_document->session()->redo(); });
     m_imageImportAction = action(QStringLiteral("插入图片…"), "insertImageAction", {}, [this] { chooseImage(); });
+    m_linkInsertAction = action(QStringLiteral("插入工作区文档链接…"), "insertWorkspaceLinkAction", {}, [this] { chooseWorkspaceDocumentLink(); });
     m_menu->addSeparator();
     auto *appearanceMenu = new SharedMenu(m_appearance, m_menu); appearanceMenu->setTitle(QStringLiteral("外观")); appearanceMenu->setObjectName("appearanceMenu"); m_menu->addMenu(appearanceMenu);
     auto *themes = new QActionGroup(this); themes->setExclusive(true);
@@ -408,6 +432,7 @@ void SingleFileWindow::updateState() {
     m_saveSpinner->setVisible(busy); m_saveSpinner->setRunning(busy); m_statusIcon->setVisible(!busy);
     m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy);
     m_imageImportAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_imageImportPending);
+    m_linkInsertAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_linkInsertPending);
     m_undoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANUNDO)); m_redoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANREDO));
     for (auto *button : m_formats) button->setEnabled(ready && !m_document->readOnly()); updateCaret();
     if (!ready) {
@@ -499,6 +524,78 @@ void SingleFileWindow::wrapSelection(const QString &before, const QString &after
     if (m_document->session()->replace(int(first.size()), int(first.size() + selected.size()), before + selected + after, snapshot.revision) == EditResult::Applied) {
         m_editor->send(SCI_SETSEL, uptr_t(start + before.toUtf8().size()), sptr_t(end + before.toUtf8().size())); m_editor->setFocus(Qt::OtherFocusReason);
     }
+}
+
+void SingleFileWindow::chooseWorkspaceDocumentLink() {
+    const auto path = QFileDialog::getOpenFileName(this, QStringLiteral("选择工作区文档"), m_workspaceResourcePath,
+        QStringLiteral("Markdown 文档 (*.md *.markdown)"));
+    if (!path.isEmpty()) insertWorkspaceDocumentLink(path);
+}
+
+void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath) {
+    auto reject = [this](const QString &message) { reportHostMessage(message); emit workspaceLinkFinished(false, message); };
+    if (m_linkInsertPending) { reject(QStringLiteral("正在检查所选文档，请稍候。")); return; }
+    if (!m_document || !m_editor || !m_editing || !m_embedded || !m_workspaceResourceRoot || m_workspaceResourcePath.isEmpty()) {
+        reject(QStringLiteral("请先在工作区打开文档并切换到编辑模式。")); return;
+    }
+    const auto suffix = QFileInfo(targetPath).suffix().toLower();
+    if (!QDir::isAbsolutePath(targetPath) || (suffix != "md" && suffix != "markdown")) {
+        reject(QStringLiteral("请选择工作区内的 Markdown 文档。")); return;
+    }
+    QPointer<FileDocument> document = m_document; QPointer<DocumentSession> session = document->session();
+    if (!session || document->closed() || document->saving() || document->loading() || session->isReadOnly()
+        || session->isBusy() || session->isComposing() || session->isClosing()) {
+        reject(QStringLiteral("文档当前无法编辑，请完成正在进行的操作后重试。")); return;
+    }
+    const auto snapshot = session->snapshot();
+    if (!document || !session || snapshot.result != EditResult::Applied || document != m_document) {
+        reject(QStringLiteral("无法取得当前文档的编辑位置。")); return;
+    }
+    const auto anchor = qsizetype(m_editor->send(SCI_GETANCHOR)), caret = qsizetype(m_editor->send(SCI_GETCURRENTPOS));
+    const auto start = qMin(anchor, caret), end = qMax(anchor, caret);
+    if (start < 0 || end > snapshot.utf8.size()) { reject(QStringLiteral("当前编辑位置无效。")); return; }
+    const auto before = snapshot.utf8.left(start), selected = snapshot.utf8.mid(start, end - start);
+    const auto beforeText = decodeUtf8Literal(before), selectedText = decodeUtf8Literal(selected);
+    if (beforeText.toUtf8() != before || selectedText.toUtf8() != selected) { reject(QStringLiteral("当前编辑位置无效。")); return; }
+    auto label = selectedText.isEmpty() ? QFileInfo(targetPath).fileName() : selectedText;
+    if (label.contains('\n') || label.contains('\r') || label.contains(QChar(0x2028)) || label.contains(QChar(0x2029))) {
+        reject(QStringLiteral("请选择单行文字作为链接名称。")); return;
+    }
+    label.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]");
+    const auto root = m_workspaceResourceRoot; const auto rootPath = m_workspaceResourcePath;
+    const auto relativeDocument = QDir(rootPath).relativeFilePath(document->path());
+    const auto relativeTarget = QDir(rootPath).relativeFilePath(QDir::cleanPath(targetPath));
+    const auto identity = document->identity(); const int first = int(beforeText.size()), last = int(beforeText.size() + selectedText.size());
+    m_linkInsertPending = true; m_hostMessage.clear(); updateState();
+    auto *worker = new QFutureWatcher<LinkTargetResult>(this);
+    connect(worker, &QFutureWatcher<LinkTargetResult>::finished, this,
+        [this, worker, document, session, snapshot, root, rootPath, identity, anchor, caret, first, last, label] {
+        const auto result = worker->result(); worker->deleteLater(); m_linkInsertPending = false;
+        auto message = result.message; bool inserted = false;
+        if (result.success) {
+            bool current = document && session && document == m_document && m_editor && m_editing
+                && !document->closed() && !document->saving() && !document->loading() && document->identity() == identity
+                && m_workspaceResourceRoot == root && m_workspaceResourcePath == rootPath && root->active()
+                && !session->isReadOnly() && !session->isBusy() && !session->isComposing() && !session->isClosing();
+            if (current) {
+                const auto latest = session->snapshot();
+                current = document && session && document == m_document && m_editor && m_editing && !document->closed()
+                    && !document->saving() && !document->loading() && document->identity() == identity
+                    && m_workspaceResourceRoot == root && m_workspaceResourcePath == rootPath && root->active()
+                    && !session->isReadOnly() && !session->isBusy() && !session->isComposing() && !session->isClosing()
+                    && latest.result == EditResult::Applied && latest.documentId == snapshot.documentId && latest.revision == snapshot.revision
+                    && qsizetype(m_editor->send(SCI_GETANCHOR)) == anchor && qsizetype(m_editor->send(SCI_GETCURRENTPOS)) == caret;
+            }
+            if (current) inserted = session->replace(first, last, QStringLiteral("[%1](%2)").arg(label, result.url), snapshot.revision) == EditResult::Applied;
+            message = inserted ? QStringLiteral("文档链接已插入，文档修改尚未保存。")
+                               : QStringLiteral("文档或插入位置已变化，未插入链接。请重新选择。");
+        }
+        if (message.isEmpty()) message = QStringLiteral("无法插入文档链接。");
+        reportHostMessage(message); emit workspaceLinkFinished(inserted, message);
+    });
+    worker->setFuture(QtConcurrent::run([root, relativeDocument, identity, relativeTarget] {
+        return prepareWorkspaceLink(root, relativeDocument, identity, relativeTarget);
+    }));
 }
 
 void SingleFileWindow::chooseImage() {
