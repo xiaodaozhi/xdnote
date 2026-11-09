@@ -15,6 +15,7 @@ class FileDocument final : public QObject {
 public:
     DocumentSession *session() const { return m_session; }
     QString path() const { return m_baseline->file()->path(); }
+    QString identity() const { return m_baseline->file()->identity(); }
     bool dirty() const { return m_session && m_session->isDirty(); }
     bool saving() const { return m_saving; }
     bool loading() const { return m_loading; }

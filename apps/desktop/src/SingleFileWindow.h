@@ -21,6 +21,7 @@ class ElidedLabel;
 class WindowGeometry;
 class WindowGeometryStore;
 class SharedSpinner;
+class WorkspaceResourceReader;
 class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -44,6 +45,7 @@ public:
     void setLoading(const QString &path, const QUuid &intent);
     void showOpenError(const QString &path, const QString &message);
     void setDocument(FileDocument *document);
+    void setWorkspaceResourceRoot(std::shared_ptr<WorkspaceResourceReader> root, const QString &path);
     bool editing() const { return m_editing; }
     void finishOpen() { m_intent = {}; }
     void setEditing(bool editing);
@@ -75,11 +77,14 @@ private:
     void applyAppearance();
     void updateCaret();
     void showSaveError();
+    void syncPreviewResources();
     FileManager *m_manager;
     const QUuid m_paneId = QUuid::createUuid();
     Appearance *m_appearance;
     WindowGeometry *m_geometry = nullptr;
     QPointer<FileDocument> m_document;
+    std::shared_ptr<WorkspaceResourceReader> m_workspaceResourceRoot, m_localResourceRoot;
+    QString m_workspaceResourcePath, m_localResourcePath;
     QUuid m_intent;
     WindowTitleBar *m_header;
     ElidedLabel *m_path;
@@ -127,6 +132,7 @@ private:
     QString m_appearanceError, m_geometryError, m_dismissedNotice, m_openPath, m_openError;
     int m_zoom = 100;
     bool m_observedSave = false;
+    bool m_documentUiReady = false;
     bool m_embedded = false;
     ViewMode m_mode = ViewMode::Reading;
 };

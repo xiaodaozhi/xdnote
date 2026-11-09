@@ -4,6 +4,7 @@
 #include "MarkdownReferences.h"
 #include "WorkspacePath.h"
 #include "WorkspaceResourceReader.h"
+#include "WorkspaceImagePreview.h"
 #include "SourceEditor.h"
 #include "VisualTokens.h"
 #include "GuiRuntime.h"
@@ -14,12 +15,15 @@
 #include <QAccessible>
 #include <QApplication>
 #include <QCryptographicHash>
+#include <QBuffer>
 #include <QInputMethodEvent>
 #include <QFontDatabase>
 #include <QGlyphRun>
 #include <QTextLayout>
 #include <QTemporaryDir>
 #include <QSemaphore>
+#include <QTcpServer>
+#include <QHostAddress>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWidget>
@@ -27,9 +31,11 @@
 #include <QSignalSpy>
 #include <QTest>
 #include <QWebEnginePage>
+#include <QWebEngineScript>
 #include <QWebEngineSettings>
 #include <QWebEngineView>
 #include <future>
+#include <atomic>
 
 using namespace xdnote;
 
@@ -80,6 +86,10 @@ private slots:
         if (image.error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
 #endif
         QVERIFY(image.ok()); QCOMPARE(image.bytes, QByteArray("image-bytes"));
+        {
+            const auto fileProbe = FileService::probe(root + QStringLiteral("/assets/图片.png"));
+            QVERIFY(fileProbe.file); QCOMPARE(image.identity, fileProbe.file->identity());
+        }
         QCOMPARE(opened.reader->read(QStringLiteral("assets/图片.png"), 2).error, WorkspaceReadError::TooLarge);
         QCOMPARE(opened.reader->read("../outside/private.png", 64).error, WorkspaceReadError::InvalidPath);
         QCOMPARE(opened.reader->read("assets/../../outside/private.png", 64).error, WorkspaceReadError::InvalidPath);
@@ -226,6 +236,79 @@ private slots:
         a.lease.reset(); b.lease.reset();
         QFile fileA(dir.filePath(a.path)), fileB(dir.filePath(b.path)); QVERIFY(fileA.open(QIODevice::ReadOnly)); QVERIFY(fileB.open(QIODevice::ReadOnly));
         QCOMPARE(fileA.readAll(), QByteArray("first")); QCOMPARE(fileB.readAll(), QByteArray("second"));
+#endif
+    }
+
+    void workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding() {
+        QTemporaryDir temp; QVERIFY(temp.isValid());
+        QVERIFY(QDir().mkpath(temp.filePath("assets")));
+        const auto source = QByteArray("![ok](assets/a.png) ![remote](https://example.invalid/a.png) "
+            "![svg](assets/a.svg) ![escape](../private.png) ![missing](assets/missing.png)");
+        QVERIFY(fileFixtures::write(temp.filePath("doc.md"), source));
+        QImage image(3, 2, QImage::Format_ARGB32); image.fill(QColor("#8b42aa"));
+        QByteArray bytes; QBuffer buffer(&bytes); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG"));
+        QVERIFY(fileFixtures::write(temp.filePath("assets/a.png"), bytes));
+        QVERIFY(fileFixtures::write(temp.filePath("assets/a.svg"), "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>"));
+        const auto file = FileService::probe(temp.filePath("doc.md")); QVERIFY(file.file);
+        const auto root = WorkspaceResourceReader::open(temp.path());
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QCOMPARE(root.error, WorkspaceReadError::Unsupported); return;
+#else
+        QVERIFY(root.reader);
+        DocumentSession session(source); const auto snapshot = session.snapshot();
+        const auto prepared = preparePreviewImages(snapshot, root.reader, "doc.md", file.file->identity());
+#ifdef Q_OS_LINUX
+        if (prepared.png.isEmpty() && prepared.states.size() == 5 && prepared.states[0] == 5) QSKIP("Kernel does not offer confined openat2");
+#endif
+        QVERIFY(prepared.analyzed); QCOMPARE(prepared.states.size(), 5);
+        QCOMPARE(int(prepared.states[0]), 1); QCOMPARE(int(prepared.states[1]), 2);
+        QCOMPARE(int(prepared.states[2]), 4); QCOMPARE(int(prepared.states[3]), 2); QCOMPARE(int(prepared.states[4]), 5);
+        QCOMPARE(prepared.png.size(), 1); QVERIFY(prepared.png.contains(0));
+        const auto decoded = QImage::fromData(prepared.png.value(0), "PNG");
+        QCOMPARE(decoded.size(), QSize(3, 2)); QCOMPARE(decoded.pixelColor(0, 0), QColor("#8b42aa"));
+        const auto wrongDocument = preparePreviewImages(snapshot, root.reader, "doc.md", "another-identity");
+        QVERIFY(wrongDocument.png.isEmpty()); QCOMPARE(wrongDocument.states, QByteArray(5, char(5)));
+        root.reader->revoke();
+        const auto revoked = preparePreviewImages(snapshot, root.reader, "doc.md", file.file->identity());
+        QVERIFY(revoked.png.isEmpty()); QCOMPARE(revoked.states, QByteArray(5, char(5)));
+#endif
+    }
+
+    void previewLoadsOnlyVerifiedMemoryImages() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource reads are not available on this platform");
+#else
+        QTemporaryDir temp; QVERIFY(temp.isValid());
+        QTcpServer server; QVERIFY(server.listen(QHostAddress::LocalHost, 0)); QSignalSpy incoming(&server, &QTcpServer::newConnection);
+        const auto remote = QStringLiteral("http://127.0.0.1:%1/a.png").arg(server.serverPort());
+        const auto source = QStringLiteral("![local](a.png) ![remote](%1) <img src='file:///private'>").arg(remote).toUtf8();
+        QVERIFY(fileFixtures::write(temp.filePath("doc.md"), source));
+        QImage image(3, 2, QImage::Format_ARGB32); image.fill(Qt::red);
+        QByteArray bytes; QBuffer buffer(&bytes); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG"));
+        QVERIFY(fileFixtures::write(temp.filePath("a.png"), bytes));
+        const auto file = FileService::probe(temp.filePath("doc.md")); QVERIFY(file.file);
+        const auto root = WorkspaceResourceReader::open(temp.path()); QVERIFY(root.reader);
+        DocumentSession session(source); MarkdownPreview preview(&session);
+        QSignalSpy ready(&preview, &MarkdownPreview::previewReady), errors(&preview, &MarkdownPreview::previewError);
+        preview.setResourceContext(root.reader, "doc.md", file.file->identity());
+        preview.resize(600, 400); preview.show();
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty() || !errors.isEmpty(), 30000);
+        QVERIFY2(errors.isEmpty(), errors.isEmpty() ? "" : qPrintable(errors.first().first().toString()));
+        QString html; bool received = false;
+        preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
+        QVERIFY(!html.contains(remote)); QVERIFY(!html.contains("<img src=\"file:///private"));
+        QVERIFY(html.contains("src=\"xdnote-preview:"));
+        QVariant size; bool checked = false;
+        preview.view()->page()->runJavaScript(QStringLiteral("document.images.length ? document.images[0].naturalWidth : -1"), QWebEngineScript::ApplicationWorld,
+            [&](const QVariant &value) { size = value; checked = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(checked, 10000); QCOMPARE(size.toInt(), 3);
+        QTest::qWait(200); QCOMPARE(incoming.count(), 0);
+        root.reader->revoke(); ready.clear(); preview.refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
+        received = false;
+        preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(received, 10000); QVERIFY(!html.contains("<img src=\"xdnote-preview:"));
 #endif
     }
     void fileBaselinePreservesUtf8BomAndMixedNewlines() {
@@ -638,6 +721,7 @@ private slots:
         QCOMPARE(session->snapshot().utf8, QStringLiteral("甲中文乙").toUtf8());
         session->setReadOnly(true);
         accessible->setText(QAccessible::Value, "blocked");
+        edit->insertText(0, "blocked");
         QCOMPARE(session->snapshot().utf8, QStringLiteral("甲中文乙").toUtf8());
         QVERIFY(accessible->state().readOnly);
         QVERIFY(!accessible->text(QAccessible::Description).isEmpty());
@@ -648,6 +732,51 @@ private slots:
         QVERIFY(!accessible->isValid());
         QCOMPARE(text->characterCount(), 0);
         edit->insertText(0, "ignored");
+    }
+
+    void accessibleWritesDoNotFlushDocumentOnAnotherThread() {
+        for (const bool wholeValue : {false, true}) {
+            DocumentSession session("a");
+            SourceEditor view(&session);
+            auto *accessible = QAccessible::queryAccessibleInterface(&view);
+            QVERIFY(accessible && accessible->editableTextInterface());
+            std::atomic<bool> wrongThread{false};
+            connect(&session, &DocumentSession::changed, &session, [&](quint64) {
+                if (QThread::currentThread() != session.thread()) wrongThread.store(true);
+            }, Qt::DirectConnection);
+            QTest::keyClick(&view, Qt::Key_X); // leaves a queued document flush
+            auto call = std::async(std::launch::async, [accessible, wholeValue] {
+                if (wholeValue) accessible->setText(QAccessible::Value, "forbidden");
+                else accessible->editableTextInterface()->insertText(0, "forbidden");
+            });
+            call.get();
+            QVERIFY(!wrongThread.load());
+            const auto snapshot = session.snapshot();
+            QCOMPARE(snapshot.result, EditResult::Applied);
+            QVERIFY(snapshot.utf8.contains('x'));
+            QVERIFY(!snapshot.utf8.contains("forbidden"));
+            QCOMPARE(session.undo(), EditResult::Applied);
+            QCOMPARE(session.snapshot().utf8, QByteArray("a"));
+        }
+    }
+
+    void accessibleWritesRejectUncommittedComposition() {
+        DocumentSession session("a");
+        SourceEditor view(&session);
+        auto *accessible = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(accessible && accessible->editableTextInterface());
+        QCOMPARE(session.replace(1, 1, "b", session.revision()), EditResult::Applied);
+        QInputMethodEvent preedit(QStringLiteral("ni"), {});
+        QApplication::sendEvent(&view, &preedit);
+        QCOMPARE(session.snapshot().result, EditResult::Composing);
+        accessible->setText(QAccessible::Value, "forbidden");
+        accessible->editableTextInterface()->insertText(0, "forbidden");
+        QCOMPARE(session.rejection(), resultDescription(EditResult::Composing));
+        QInputMethodEvent cancel;
+        QApplication::sendEvent(&view, &cancel);
+        QCOMPARE(session.snapshot().utf8, QByteArray("ab"));
+        QCOMPARE(session.undo(), EditResult::Applied);
+        QCOMPARE(session.snapshot().utf8, QByteArray("a"));
     }
 
     void nativeInputNotificationRejectsReentrantWrite() {
