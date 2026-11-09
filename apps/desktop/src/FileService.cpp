@@ -151,15 +151,16 @@ struct NativeOpen {
     FileProblem problem;
 };
 
-NativeOpen openFile(const QString &path, bool contents) {
+NativeOpen openFile(const QString &path, bool contents, bool denyConcurrentWriters = false) {
     auto file = std::make_shared<NativeFile>();
 #ifdef Q_OS_WIN
     const auto nativePath = QDir::toNativeSeparators(path);
     file->handle = CreateFileW(reinterpret_cast<LPCWSTR>(nativePath.utf16()), contents ? GENERIC_READ : FILE_READ_ATTRIBUTES,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        denyConcurrentWriters ? FILE_SHARE_READ : FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
         FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     if (file->handle == INVALID_HANDLE_VALUE) return {{}, {}, nativeProblem(GetLastError())};
 #else
+    Q_UNUSED(denyConcurrentWriters);
     const auto nativePath = path.toUtf8();
     int flags = O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
 #ifdef Q_OS_MACOS
@@ -176,7 +177,7 @@ NativeOpen openFile(const QString &path, bool contents) {
     return {std::move(file), info, {}};
 }
 
-FileProblem readBytes(const NativeFile &file, QByteArray &bytes) {
+FileProblem readBytes(const NativeFile &file, QByteArray &bytes, qsizetype limit = FileService::SourceLimit + 3) {
 #ifdef Q_OS_WIN
     LARGE_INTEGER zero{};
     if (!SetFilePointerEx(file.handle, zero, nullptr, FILE_BEGIN)) return nativeProblem(GetLastError());
@@ -193,7 +194,7 @@ FileProblem readBytes(const NativeFile &file, QByteArray &bytes) {
         if (count < 0) { if (errno == EINTR) continue; return nativeProblem(errno); }
 #endif
         if (!count) return {};
-        if (bytes.size() + qsizetype(count) > FileService::SourceLimit + 3) return {FileError::TooLarge};
+        if (qsizetype(count) > limit - bytes.size()) return {FileError::TooLarge};
         bytes.append(chunk, qsizetype(count));
     }
 }
@@ -252,6 +253,31 @@ ReadResult FileService::read(const FileReadRequest &request) {
     if (!valid) return {{}, {FileError::InvalidUtf8}};
     if (utf8.contains('\0')) return {{}, {FileError::UnsupportedContent}};
     return {std::shared_ptr<const FileBaseline>(new FileBaseline(file, request.requestId, std::move(first), std::move(utf8), bom)), {}};
+}
+
+BinaryReadResult FileService::readSelectedBinary(const QString &path, qsizetype maxBytes) {
+    if (maxBytes <= 0 || maxBytes > 8 * 1024 * 1024) return {{}, {FileError::InvalidPath}};
+    const auto initial = probe(path);
+    if (!initial.file) return {{}, initial.problem};
+    auto opened = openFile(initial.file->path(), true, true);
+    if (!opened.file) return {{}, opened.problem};
+    if (opened.info.identity != initial.file->identity()) return {{}, {FileError::Changed}};
+    if (opened.info.size > maxBytes) return {{}, {FileError::TooLarge}};
+    QByteArray first, second;
+    auto problem = readBytes(*opened.file, first, maxBytes);
+    if (problem.code != FileError::None) return {{}, problem};
+    NativeInfo between, after;
+    problem = inspect(*opened.file, between);
+    if (problem.code != FileError::None) return {{}, problem};
+    if (!(opened.info == between) || first.size() != between.size) return {{}, {FileError::Changed}};
+    problem = readBytes(*opened.file, second, maxBytes);
+    if (problem.code != FileError::None) return {{}, problem};
+    problem = inspect(*opened.file, after);
+    if (problem.code != FileError::None) return {{}, problem};
+    const auto namespaceCheck = probe(path);
+    if (!(between == after) || first != second || !namespaceCheck.file || namespaceCheck.file->identity() != initial.file->identity())
+        return {{}, {FileError::Changed, namespaceCheck.problem.nativeCode}};
+    return {std::move(first), {}, true};
 }
 
 FileSaveResult FileService::save(const FileSaveRequest &request, const std::function<void(SaveStage)> &observer) {
