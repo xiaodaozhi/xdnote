@@ -1,6 +1,7 @@
 #pragma once
 #include "FileManager.h"
 #include "WindowChrome.h"
+#include <QImage>
 
 class QLabel;
 class QStackedWidget;
@@ -54,6 +55,8 @@ public:
     Appearance *appearance() const { return m_appearance; }
     void setContentZoom(int percent);
     int contentZoom() const { return m_zoom; }
+    void importImageFile(const QString &path);
+    void importClipboardImage(const QImage &image);
 signals:
     void openRequested(QString path);
     void cancelOpenRequested(QUuid intent);
@@ -66,6 +69,7 @@ signals:
     void openDirectoryRequested();
     void sidebarRequested();
     void viewStateChanged();
+    void imageImportFinished(bool inserted, QString message);
 protected:
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *target, QEvent *event) override;
@@ -78,6 +82,8 @@ private:
     void updateCaret();
     void showSaveError();
     void syncPreviewResources();
+    void beginImageImport(const QString &path, const QImage &image);
+    void chooseImage();
     FileManager *m_manager;
     const QUuid m_paneId = QUuid::createUuid();
     Appearance *m_appearance;
@@ -123,6 +129,7 @@ private:
     QAction *m_undoAction;
     QAction *m_redoAction;
     QAction *m_reloadAction;
+    QAction *m_imageImportAction;
     QList<QAction *> m_themeActions, m_accentActions;
     SourceEditor *m_editor = nullptr;
     MarkdownPreview *m_preview = nullptr;
@@ -133,6 +140,7 @@ private:
     int m_zoom = 100;
     bool m_observedSave = false;
     bool m_documentUiReady = false;
+    bool m_imageImportPending = false;
     bool m_embedded = false;
     ViewMode m_mode = ViewMode::Reading;
 };

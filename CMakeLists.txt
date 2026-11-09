@@ -106,6 +106,8 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/WorkspacePath.cpp apps/desktop/src/WorkspacePath.h
     apps/desktop/src/WorkspaceResourceReader.cpp apps/desktop/src/WorkspaceResourceReader.h
     apps/desktop/src/WorkspaceImagePreview.cpp apps/desktop/src/WorkspaceImagePreview.h
+    apps/desktop/src/ImageAdmission.cpp apps/desktop/src/ImageAdmission.h
+    apps/desktop/src/ImageImport.cpp apps/desktop/src/ImageImport.h
     apps/desktop/src/VisualTokens.cpp apps/desktop/src/VisualTokens.h
     apps/desktop/src/InputModality.cpp apps/desktop/src/InputModality.h
     apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h
