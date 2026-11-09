@@ -221,6 +221,15 @@ private slots:
         finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
         QVERIFY(session->snapshot().utf8.startsWith(QStringLiteral("[目标 #%.md](../docs/").toUtf8()));
+        const auto bom = QByteArray::fromHex("efbbbf");
+        QVERIFY(fileFixtures::write(targetPath, bom + QByteArray(FileService::SourceLimit, 'x')));
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        const auto beforeTooLarge = session->snapshot().utf8;
+        QVERIFY(fileFixtures::write(targetPath, bom + QByteArray(FileService::SourceLimit + 1, 'x')));
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QCOMPARE(session->snapshot().utf8, beforeTooLarge);
 #endif
     }
     void workspaceDocumentLinkRejectsOutsideAndStaleTargets() {
