@@ -61,7 +61,16 @@ SingleFileWindow *waitStandalone(const QString &path) {
     QElapsedTimer timer; timer.start(); while (timer.elapsed() < 10000) { for (auto *widget : QApplication::topLevelWidgets()) if (auto *pane = qobject_cast<SingleFileWindow *>(widget)) if (pane->document() && pane->document()->path() == path) return pane; QTest::qWait(10); } return nullptr;
 }
 QByteArray disk(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); }
-void capture(QWidget *window, const QString &name) { const auto directory = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (!directory.isEmpty()) { QDir().mkpath(directory + "/workspace"); window->grab().save(directory + "/workspace/" + name + ".png"); } }
+void capture(QWidget *window, const QString &name) {
+    const auto directory = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
+    if (directory.isEmpty()) return;
+    const QFontMetrics metrics(window->font());
+    if (!metrics.inFont(QChar('M')) || !metrics.inFont(QChar(0x5199))) {
+        QTest::qFail("Visual capture needs real Latin and Chinese glyphs; configure the test font directory first", __FILE__, __LINE__); return;
+    }
+    QDir().mkpath(directory + "/workspace");
+    if (!window->grab().save(directory + "/workspace/" + name + ".png")) QTest::qFail("Visual capture could not be saved", __FILE__, __LINE__);
+}
 bool hasColorNear(const QImage &image, QPointF logical, const QColor &color) { const auto point = logical * image.devicePixelRatio(); for (int y = qMax(0, qRound(point.y()) - 2); y <= qMin(image.height() - 1, qRound(point.y()) + 2); ++y) for (int x = qMax(0, qRound(point.x()) - 2); x <= qMin(image.width() - 1, qRound(point.x()) + 2); ++x) if (image.pixelColor(x, y) == color) return true; return false; }
 bool hasRuleAt(const QImage &image, QPoint logical, const QColor &color) {
     const qreal ratio = image.devicePixelRatio();

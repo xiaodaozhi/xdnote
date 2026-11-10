@@ -31,3 +31,5 @@
 `workspace_workflow` 使用自建 Markdown 工作区，核验相对路径、会话连续性、导航持久化与失败恢复、主题像素和边界位置。截图使用稳定的 `light-split.png`、`dark-split.png` 及相应 `recent`、`favorites`、`search-empty` 状态名，进入构建目录下的 `evidence/workspace/`；替换同用途旧图，不存入设计目录或源码。
 
 必须实际查看本次运行截图，不能只凭控件几何或测试退出码判断视觉正确。像素检查、人工视觉、真实输入法、原生辅助技术与物理跨屏分别记录；未执行的项目继续保留，不能在本清单中写成已经通过。
+
+Windows 的离屏复核进程需显式提供系统字体目录，例如临时设置 `QT_QPA_FONTDIR=C:/Windows/Fonts`；截图入口检查拉丁与中文字形，缺字方框不作为可验收截图。使用固定 Qt 6.8.2 的 `offscreen:configfile=<本周期 JSON 的相对路径>` 设置足够的虚拟屏幕，例如 `{"screens":[{"name":"review","width":1920,"height":1080,"logicalDpi":96,"logicalBaseDpi":96,"dpr":1}]}`。常规窗口与低可用区场景分别采样，不能把插件默认的小屏幕收敛结果当作正常宽度布局；这些设置仅用于测试进程，不修改系统缩放或真实显示器配置。
