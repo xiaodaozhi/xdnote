@@ -59,7 +59,7 @@ int openWithin(int root, const QString &path, bool directory, dev_t device, bool
     const auto parts = components(path); if (parts.isEmpty()) { errno = EINVAL; return -1; }
 #ifdef Q_OS_LINUX
     open_how how{};
-    how.flags = (metadata ? O_PATH : O_RDONLY) | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK | (directory ? O_DIRECTORY : 0);
+    how.flags = (metadata ? O_PATH : O_RDONLY | O_NONBLOCK) | O_CLOEXEC | O_NOFOLLOW | (directory ? O_DIRECTORY : 0);
     how.resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV;
     const auto bytes = path.toUtf8();
     const int result = int(::syscall(SYS_openat2, root, bytes.constData(), &how, sizeof(how)));

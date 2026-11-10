@@ -19,7 +19,10 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux]", text)
+        self.assertIn("(inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux')", text)
+        self.assertIn("Workspace resources - Linux only", text)
+        self.assertIn("failure() && runner.os == 'Linux' && inputs.scope == 'workspace-linux'", text)
         self.assertIn("default: full", text)
         matrices = [json.loads(value) for value in re.findall(r"'(\[\{[^\n]+?\}\])'", text)]
         self.assertEqual(len(matrices), 4)
