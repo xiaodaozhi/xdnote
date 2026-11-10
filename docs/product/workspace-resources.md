@@ -104,4 +104,4 @@
 2. 建立同一解析配置的有版本引用索引，提供缺失、入站／出站引用及扫描覆盖反馈。
 3. 基于索引加入预览确认的移动／重命名维护，覆盖 dirty 会话、未打开文件和部分失败；不以文件已改名代替引用维护完成。
 
-图片功能由 [Issue #50](https://github.com/xiaodaozhi/xdnote/issues/50) 跟踪，文档链接与移动维护由 [Issue #51](https://github.com/xiaodaozhi/xdnote/issues/51) 跟踪。两者均为待实现任务，不阻塞先完成 [Issue #12](https://github.com/xiaodaozhi/xdnote/issues/12) 的单文件闭环；正式工作区交付须满足本页和[验收规格](../qa/acceptance.md)，原生与实际输入法结果另行记录。
+图片功能由 [Issue #50](https://github.com/xiaodaozhi/xdnote/issues/50) 跟踪，文档链接与移动维护由 [Issue #51](https://github.com/xiaodaozhi/xdnote/issues/51) 跟踪。两者正在分步实施，当前能力与未接入范围见[资源实现边界](../engineering/workspace-resource-foundation.md)，不阻塞先完成 [Issue #12](https://github.com/xiaodaozhi/xdnote/issues/12) 的单文件闭环；正式工作区交付须满足本页和[验收规格](../qa/acceptance.md)，原生与实际输入法结果另行记录。
