@@ -8,6 +8,8 @@
 #include <QStringList>
 #include <QUuid>
 #include <atomic>
+#include <array>
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -26,6 +28,7 @@ extern "C" NTSYSAPI NTSTATUS NTAPI NtSetInformationFile(HANDLE, PIO_STATUS_BLOCK
 #include <sys/stat.h>
 #include <unistd.h>
 #ifdef Q_OS_LINUX
+#include <dirent.h>
 #include <linux/openat2.h>
 #include <sys/syscall.h>
 #endif
@@ -278,6 +281,131 @@ WorkspaceRootResult WorkspaceResourceReader::open(const QString &absoluteRoot) {
 #endif
     return {std::shared_ptr<WorkspaceResourceReader>(new WorkspaceResourceReader(std::move(state)))};
 #endif
+}
+
+WorkspaceDirectoryResult WorkspaceResourceReader::listDirectory(const QString &path, int maxEntries) const {
+    if (!active()) return {WorkspaceReadError::Revoked};
+    const auto parts = components(path);
+    if ((!path.isEmpty() && parts.isEmpty()) || maxEntries < 1 || maxEntries > 10000)
+        return {WorkspaceReadError::InvalidPath};
+    WorkspaceDirectoryResult result;
+#ifdef Q_OS_WIN
+    NativeHandle lockedRoot;
+    lockedRoot.value = openRoot(m_state->path, FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if (lockedRoot.value == INVALID_HANDLE_VALUE) { const auto code = GetLastError(); return {nativeError(code), code}; }
+    FILE_ID_INFO rootIdentity{};
+    if (!directoryInfo(lockedRoot.value, rootIdentity) || !sameIdentity(rootIdentity, m_state->identity))
+        return {WorkspaceReadError::RootChanged};
+    std::vector<std::unique_ptr<NativeHandle>> opened;
+    HANDLE directory = lockedRoot.value;
+    for (const auto &part : parts) {
+        auto handle = std::make_unique<NativeHandle>();
+        const auto status = openChild(directory, part, true, handle->value);
+        if (status < 0) { const auto code = RtlNtStatusToDosError(status); return {nativeError(code), code}; }
+        FILE_ID_INFO identity{};
+        if (!directoryInfo(handle->value, identity)) return {WorkspaceReadError::OutsideOrLink};
+        directory = handle->value; opened.push_back(std::move(handle));
+    }
+    FILE_ID_INFO identity{}; FILE_BASIC_INFO before{}, after{};
+    if (!directoryInfo(directory, identity) || !GetFileInformationByHandleEx(directory, FileBasicInfo, &before, sizeof(before)))
+        return {WorkspaceReadError::Io, GetLastError()};
+    result.identity = QStringLiteral("win:%1:%2").arg(identity.VolumeSerialNumber, 0, 16).arg(
+        QString::fromLatin1(QByteArray(reinterpret_cast<const char *>(identity.FileId.Identifier), 16).toHex()));
+    alignas(FILE_ID_BOTH_DIR_INFO) std::array<unsigned char, 64 * 1024> buffer{};
+    bool restart = true, limited = false;
+    while (!limited) {
+        if (!active()) return {WorkspaceReadError::Revoked};
+        buffer.fill(0);
+        if (!GetFileInformationByHandleEx(directory, restart ? FileIdBothDirectoryRestartInfo : FileIdBothDirectoryInfo,
+                                         buffer.data(), DWORD(buffer.size()))) {
+            const auto code = GetLastError();
+            if (code == ERROR_NO_MORE_FILES) { result.complete = true; break; }
+            return {nativeError(code), code};
+        }
+        restart = false;
+        std::size_t offset = 0;
+        for (;;) {
+            constexpr auto header = offsetof(FILE_ID_BOTH_DIR_INFO, FileName);
+            if (offset > buffer.size() - header) return {WorkspaceReadError::Io};
+            const auto *entry = reinterpret_cast<const FILE_ID_BOTH_DIR_INFO *>(buffer.data() + offset);
+            if (entry->FileNameLength == 0 || entry->FileNameLength % sizeof(wchar_t)
+                || entry->FileNameLength > buffer.size() - offset - header) return {WorkspaceReadError::Io};
+            const auto name = QString::fromWCharArray(entry->FileName, int(entry->FileNameLength / sizeof(wchar_t)));
+            if (name != "." && name != "..") {
+                if (result.entries.size() == maxEntries) { limited = true; break; }
+                auto kind = WorkspaceDirectoryEntry::Kind::Unsupported;
+                if (!components(name).isEmpty() && !(entry->FileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DEVICE)))
+                    kind = entry->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? WorkspaceDirectoryEntry::Kind::Directory : WorkspaceDirectoryEntry::Kind::File;
+                result.entries.append({name, kind});
+            }
+            if (!entry->NextEntryOffset) break;
+            if (entry->NextEntryOffset < header + entry->FileNameLength || entry->NextEntryOffset % alignof(FILE_ID_BOTH_DIR_INFO)
+                || entry->NextEntryOffset > buffer.size() - offset - header) return {WorkspaceReadError::Io};
+            offset += entry->NextEntryOffset;
+        }
+    }
+    if (!GetFileInformationByHandleEx(directory, FileBasicInfo, &after, sizeof(after))) return {WorkspaceReadError::Io, GetLastError()};
+    if (before.LastWriteTime.QuadPart != after.LastWriteTime.QuadPart || before.ChangeTime.QuadPart != after.ChangeTime.QuadPart)
+        return {WorkspaceReadError::Changed};
+#elif defined(Q_OS_LINUX) && defined(SYS_openat2)
+    NativeHandle currentRoot;
+    const auto rootPath = QFile::encodeName(m_state->path);
+    currentRoot.value = ::open(rootPath.constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (currentRoot.value < 0) { const int code = errno; return {nativeError(code), code}; }
+    struct stat rootInfo{};
+    if (::fstat(currentRoot.value, &rootInfo) != 0 || rootInfo.st_dev != m_state->device || rootInfo.st_ino != m_state->inode)
+        return {WorkspaceReadError::RootChanged};
+    const auto nativePath = QFile::encodeName(path.isEmpty() ? QStringLiteral(".") : path);
+    open_how how{};
+    how.flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
+    how.resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV;
+    NativeHandle directory;
+    directory.value = int(::syscall(SYS_openat2, currentRoot.value, nativePath.constData(), &how, sizeof(how)));
+    if (directory.value < 0) { const int code = errno; return {nativeError(code), code}; }
+    struct stat before{}, after{};
+    if (::fstat(directory.value, &before) != 0) return {WorkspaceReadError::Io, errno};
+    result.identity = QStringLiteral("posix:%1:%2").arg(qulonglong(before.st_dev), 0, 16).arg(qulonglong(before.st_ino), 0, 16);
+    DIR *raw = ::fdopendir(directory.value);
+    if (!raw) return {WorkspaceReadError::Io, errno};
+    directory.value = -1;
+    const auto stream = std::unique_ptr<DIR, decltype(&::closedir)>(raw, &::closedir);
+    for (;;) {
+        if (!active()) return {WorkspaceReadError::Revoked};
+        errno = 0; const auto *entry = ::readdir(stream.get());
+        if (!entry) {
+            if (errno) return {WorkspaceReadError::Io, errno};
+            result.complete = true; break;
+        }
+        const QByteArray nativeName(entry->d_name);
+        if (nativeName == "." || nativeName == "..") continue;
+        if (result.entries.size() == maxEntries) break;
+        const auto name = QFile::decodeName(nativeName);
+        auto kind = WorkspaceDirectoryEntry::Kind::Unsupported;
+        if (QFile::encodeName(name) == nativeName && !components(name).isEmpty()) {
+            struct stat info{};
+            if (::fstatat(::dirfd(stream.get()), entry->d_name, &info, AT_SYMLINK_NOFOLLOW) != 0)
+                return {nativeError(errno), errno};
+            if (info.st_dev == m_state->device && !S_ISLNK(info.st_mode)) {
+                if (S_ISDIR(info.st_mode)) kind = WorkspaceDirectoryEntry::Kind::Directory;
+                else if (S_ISREG(info.st_mode)) kind = WorkspaceDirectoryEntry::Kind::File;
+            }
+        }
+        result.entries.append({name, kind});
+    }
+    if (::fstat(::dirfd(stream.get()), &after) != 0) return {WorkspaceReadError::Io, errno};
+    if (before.st_mtim.tv_sec != after.st_mtim.tv_sec || before.st_mtim.tv_nsec != after.st_mtim.tv_nsec
+        || before.st_ctim.tv_sec != after.st_ctim.tv_sec || before.st_ctim.tv_nsec != after.st_ctim.tv_nsec)
+        return {WorkspaceReadError::Changed};
+    NativeHandle verifyRoot;
+    verifyRoot.value = ::open(rootPath.constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    struct stat verified{};
+    if (verifyRoot.value < 0 || ::fstat(verifyRoot.value, &verified) != 0
+        || verified.st_dev != m_state->device || verified.st_ino != m_state->inode) return {WorkspaceReadError::RootChanged};
+#else
+    return {WorkspaceReadError::Unsupported};
+#endif
+    if (!active()) return {WorkspaceReadError::Revoked};
+    return result;
 }
 
 WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype maxBytes) const {

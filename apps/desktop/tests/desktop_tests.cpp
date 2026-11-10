@@ -5,6 +5,7 @@
 #include "MarkdownHeadings.h"
 #include "WorkspacePath.h"
 #include "WorkspaceReferenceIndex.h"
+#include "WorkspaceReferenceScan.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceImagePreview.h"
 #include "ImageImport.h"
@@ -337,6 +338,121 @@ private slots:
         }};
         const auto index = buildWorkspaceReferenceIndex(input);
         QVERIFY(!index.complete); QVERIFY(!index.gaps.isEmpty()); QVERIFY(!index.references.isEmpty());
+    }
+
+    void workspaceDirectoryEnumerationIsBoundedAndRootBound() {
+        QTemporaryDir temp; QVERIFY(temp.isValid());
+        const auto root = temp.filePath("root"), outside = temp.filePath("outside");
+        QVERIFY(QDir().mkpath(root + "/nested")); QVERIFY(QDir().mkpath(outside));
+        QVERIFY(fileFixtures::write(root + "/a.md", "inside"));
+        QVERIFY(fileFixtures::write(outside + "/private.md", "outside"));
+        const auto opened = WorkspaceResourceReader::open(root);
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QCOMPARE(opened.error, WorkspaceReadError::Unsupported); return;
+#else
+        QVERIFY(opened.reader);
+#ifdef Q_OS_WIN
+        fileFixtures::Junction junction; QVERIFY(junction.create(root + "/escape", outside));
+#else
+        QVERIFY(::symlink(QFile::encodeName(outside).constData(), QFile::encodeName(root + "/escape").constData()) == 0);
+#endif
+        const auto listed = opened.reader->listDirectory("");
+#ifdef Q_OS_LINUX
+        if (listed.error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
+#endif
+        QVERIFY2(listed.ok(), qPrintable(QString::number(int(listed.error)))); QVERIFY(listed.complete);
+        QVERIFY(!listed.identity.isEmpty()); QCOMPARE(listed.entries.size(), 3);
+        const auto exact = opened.reader->listDirectory("", 3); QVERIFY(exact.ok()); QVERIFY(exact.complete);
+        QHash<QString, WorkspaceDirectoryEntry::Kind> kinds;
+        for (const auto &entry : listed.entries) kinds.insert(entry.name, entry.kind);
+        QCOMPARE(kinds.value("a.md"), WorkspaceDirectoryEntry::Kind::File);
+        QCOMPARE(kinds.value("nested"), WorkspaceDirectoryEntry::Kind::Directory);
+        QCOMPARE(kinds.value("escape"), WorkspaceDirectoryEntry::Kind::Unsupported);
+        const auto capped = opened.reader->listDirectory("", 1); QVERIFY(capped.ok());
+        QCOMPARE(capped.entries.size(), 1); QVERIFY(!capped.complete);
+        const auto empty = opened.reader->listDirectory("nested"); QVERIFY(empty.ok()); QVERIFY(empty.complete); QVERIFY(empty.entries.isEmpty());
+        QCOMPARE(opened.reader->listDirectory("../outside").error, WorkspaceReadError::InvalidPath);
+        QVERIFY(!opened.reader->listDirectory("escape").ok());
+        const auto scan = scanWorkspaceReferences(opened.reader, {QUuid::createUuid(), 1, 1, false, {}, {}});
+        QVERIFY(!scan.index.complete); QCOMPARE(scan.index.sources.size(), 1); QCOMPARE(scan.index.sources.first().path, QStringLiteral("a.md"));
+        QVERIFY(QDir().rename(root, root + "-old")); QVERIFY(QDir().mkpath(root));
+        QCOMPARE(opened.reader->listDirectory("").error, WorkspaceReadError::RootChanged);
+        const auto changed = scanWorkspaceReferences(opened.reader, {QUuid::createUuid(), 1, 2, false, {}, {}});
+        QVERIFY(!changed.index.complete); QVERIFY(changed.index.sources.isEmpty());
+        opened.reader->revoke(); QCOMPARE(opened.reader->listDirectory("").error, WorkspaceReadError::Revoked);
+#endif
+    }
+
+    void workspaceReferenceScanUsesDiskAndAuthoritativeLiveSnapshots() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource reads are unavailable on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        QVERIFY(QDir().mkpath(dir.filePath("notes"))); QVERIFY(QDir().mkpath(dir.filePath(".git")));
+        QVERIFY(fileFixtures::write(dir.filePath("notes/a.md"), "[old](../old.md)"));
+        QVERIFY(fileFixtures::write(dir.filePath("other.markdown"), QByteArray::fromHex("efbbbf") + "[r][id]\n\n[id]: target.md\n\n```md\n[fake](fake.md)\n```"));
+        QVERIFY(fileFixtures::write(dir.filePath("target.md"), "no references"));
+        QVERIFY(fileFixtures::write(dir.filePath(".git/hidden.md"), "[hidden](hidden.md)"));
+        QVERIFY(fileFixtures::write(dir.filePath(".gitignore"), "ignored.md"));
+        QVERIFY(fileFixtures::write(dir.filePath("ignored.md"), "![image](assets/images/p.png)"));
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+        const auto disk = root.reader->read("notes/a.md", 1024);
+#ifdef Q_OS_LINUX
+        if (disk.error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
+#endif
+        QVERIFY(disk.ok()); DocumentSession session("[live](../target.md)");
+        const auto snapshot = session.snapshot();
+        ReferenceIndexInput input{QUuid::createUuid(), 2, 4, false, {}, {
+            {QStringLiteral("notes/a.md"), disk.identity, 7, snapshot, ReferenceIndexSource::Origin::Session}
+        }};
+        const auto result = scanWorkspaceReferences(root.reader, input);
+        QVERIFY2(result.index.complete, qPrintable(result.index.gaps.join(';')));
+        QCOMPARE(result.readDocuments, 4); QCOMPARE(result.index.sources.size(), 4);
+        QCOMPARE(result.excludedDirectories, QStringList{".git"});
+        QVERIFY(result.index.inbound("old.md").isEmpty()); QVERIFY(result.index.inbound("fake.md").isEmpty());
+        QCOMPARE(result.index.inbound("target.md").size(), 2); QCOMPARE(result.index.inbound("assets/images/p.png").size(), 1);
+        const auto live = result.index.outbound("notes/a.md"); QCOMPARE(live.size(), 1);
+        QCOMPARE(live.first().documentId, snapshot.documentId); QCOMPARE(live.first().revision, snapshot.revision);
+        QCOMPARE(live.first().sourcePathGeneration, quint64(7)); QCOMPARE(live.first().origin, ReferenceIndexSource::Origin::Session);
+        for (const auto &source : result.index.sources) if (source.path == "notes/a.md")
+            QCOMPARE(source.textSha256, QCryptographicHash::hash(snapshot.utf8, QCryptographicHash::Sha256));
+        input.sources.first().snapshot.result = EditResult::Composing;
+        const auto composing = scanWorkspaceReferences(root.reader, input);
+        QVERIFY(!composing.index.complete); QVERIFY(composing.index.outbound("notes/a.md").isEmpty());
+#endif
+    }
+
+    void workspaceReferenceScanRetainsGapsAndDiscardsRevokedResults() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource reads are unavailable on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        QVERIFY(fileFixtures::write(dir.filePath("a.md"), "[a](target.md)"));
+        QVERIFY(fileFixtures::write(dir.filePath("b.md"), "[b](target.md)"));
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+#ifdef Q_OS_LINUX
+        if (root.reader->listDirectory("").error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
+#endif
+        ReferenceIndexInput input{QUuid::createUuid(), 1, 1, false, {}, {}};
+        ReferenceScanLimits limits; limits.documents = 1;
+        const auto capped = scanWorkspaceReferences(root.reader, input, limits);
+        QVERIFY(!capped.index.complete); QCOMPARE(capped.readDocuments, 1); QVERIFY(!capped.index.gaps.isEmpty());
+        limits = {}; limits.sourceBytes = 2;
+        const auto bytes = scanWorkspaceReferences(root.reader, input, limits);
+        QVERIFY(!bytes.index.complete); QVERIFY(bytes.index.sources.isEmpty()); QVERIFY(!bytes.index.gaps.isEmpty());
+        QVERIFY(fileFixtures::write(dir.filePath("invalid.md"), QByteArray::fromHex("ff")));
+        const auto invalid = scanWorkspaceReferences(root.reader, input);
+        QVERIFY(!invalid.index.complete); QCOMPARE(invalid.index.sources.size(), 2); QVERIFY(!invalid.index.gaps.isEmpty());
+        limits = {}; limits.entries = 50001;
+        const auto invalidLimits = scanWorkspaceReferences(root.reader, input, limits);
+        QVERIFY(!invalidLimits.index.complete); QCOMPARE(invalidLimits.visitedDirectories, 0);
+        const auto stop = std::make_shared<std::atomic_bool>(true);
+        const auto cancelled = scanWorkspaceReferences(root.reader, input, {}, stop);
+        QVERIFY(cancelled.cancelled); QVERIFY(!cancelled.index.complete); QVERIFY(cancelled.index.sources.isEmpty());
+        root.reader->revoke();
+        const auto revoked = scanWorkspaceReferences(root.reader, input);
+        QVERIFY(!revoked.index.complete); QVERIFY(revoked.index.references.isEmpty()); QVERIFY(!revoked.index.gaps.isEmpty());
+#endif
     }
 
     void workspacePathsRoundTripWithoutGrantingFileAccess() {
