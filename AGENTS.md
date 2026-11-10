@@ -19,6 +19,7 @@
 - 提交及推送前按改动风险完成本地验证；文档变更检查链接、JSON、图片引用及材料摘要，产品实现验证受影响路径。源码或配置变化影响结论时重新验证；功能、视觉、平台集成及未执行项分别记录，见 `docs/engineering/workflow.md`。
 - 需求、Bug、设计和研究使用 GitHub Issue 跟踪；从最新 main 创建带 Issue 编号的短期分支，PR 关联 Issue。当前 head 的适用 CI、必要审查和验收完成后合并 main；仅完整满足 Issue 验收时关闭，部分交付保持开放。安全清理本次已合并的临时分支和临时数据，详见 `docs/engineering/workflow.md`。
 - 已授权的实施任务默认推进至提交、推送、PR 和满足门槛后的合并；用户指定暂不合并、仅设计或验收未通过时遵守该边界。不要删除无关改动、他人工作或未合并分支。
-- 本机优先复用 `build/Qt/6.8.2/` 和 `build/toolchain/desktop-tools/`；先核对工具实际路径与版本。研发周期完成后安全清理本周期可丢弃产物，保留活动 worktree、共享工具和仍需证据；使用 `scripts/cleanup_cycles.py` 预览和手动兜底，详见 `docs/engineering/workflow.md`。
+- 项目专用 SDK、Python 虚拟环境、构建工具与缓存放在本项目 `build/`，优先复用 `build/Qt/6.8.2/` 和 `build/toolchain/desktop-tools/`。禁止执行或依赖其他项目目录中的工具、虚拟环境、SDK、库及构建产物；缺失时在本项目显式准备，不跨项目兜底。系统安装的 Python、Rust、Node 和编译器可复用；同项目 worktree 可共享主工作区的工具，须核对真实路径、归属与版本，不用链接掩盖跨项目依赖。
+- 研发周期完成后安全清理本周期可丢弃产物，保留活动 worktree、本项目共享工具和仍需证据；使用 `scripts/cleanup_cycles.py` 预览和手动兜底，详见 `docs/engineering/workflow.md`。
 - 设计输入纳入版本管理；设计导出 ZIP、`build/`、`target/`、各层级 `dist/`、缓存和运行证据不进入源码。保留已有用户改动，不输出凭据和私人文件内容。
 - 默认使用简体中文说明和英文技术标识。不创建虚构的构建命令、下载地址、CI 徽章、已通过验收或发行记录。
