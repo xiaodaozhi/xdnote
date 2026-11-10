@@ -28,6 +28,8 @@ Qt WebEngine 包含 Chromium 相关代码，不能只记录 Qt 自身的许可�
 
 ## 字体、设计与研发工具
 
+[固定 Qt 许可输入](tools/deployment-notices.json)记录来自 Qt 6.8.2 上游的 LGPLv3 和 GPLv3 原文与摘要，日常检查核对其版本与文件。实际 Windows 诊断目录的文件、DLL 导入及模块 SBOM 由[部署核查工具](docs/engineering/deployment.md)生成；现有 SDK 模块 SBOM 未提供完整 Chromium 声明，这项缺口和最终发行义务继续单独保留。
+
 当前源码不包含 TTF、OTF、WOFF 或 WOFF2 字体文件；界面代码请求系统字体和回退字体。设计素材清单将复用图标记为项目原创几何，并注明没有导出字体；设计素材的项目许可与来源见[素材交付说明](docs/visual/asset-handoff.md)。这些记录不授予第三方字体或素材的额外权利。
 
 `sharp`、Node、Python 构建工具、CMake、Ninja 和 SDK 准备工具用于设计检查或构建；当前尚无证据表明它们随产品发行。若后续交付包含这些工具、其他字体或素材，需重新核对其许可、版权和实际版本。

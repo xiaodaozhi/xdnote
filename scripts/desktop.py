@@ -176,7 +176,7 @@ def source_fingerprint():
         paths.extend(path for path in (ROOT / folder).rglob("*") if path.is_file())
     vendor = BUILD / f"scintilla-{DEPS['scintilla']['version']}" / "scintilla"
     paths.extend(path for path in vendor.rglob("*") if path.suffix in (".h", ".cxx", ".cpp"))
-    paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py"))
+    paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py", "background_validation.py", "deployment_inventory.py", "check_third_party_licenses.py"))
     digest = hashlib.sha256()
     for path in sorted(paths):
         digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
@@ -234,7 +234,7 @@ def main():
     parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
     parser.add_argument("--file", type=Path, action="append", default=[], help="local Markdown file to open with run; repeat for multiple files")
     parser.add_argument("--admission", action="store_true", help="run the memory-only component window instead of xdnote")
-    parser.add_argument("--suite", choices=("full", "resources"), default="full", help="test scope; resources runs only affected file/image paths")
+    parser.add_argument("--suite", choices=("full", "resources", "background"), default="full", help="test scope; background uses offscreen Qt without native desktop automation")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
@@ -306,6 +306,10 @@ def main():
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
         verify_build_identity(build, args.profile, qt)
+        if args.suite == "background":
+            from background_validation import validate
+            validate(build, env)
+            return
         if args.suite == "resources":
             suffix = ".exe" if platform.system() == "Windows" else ""
             publication = ["workspaceImagePublicationNeverOverwritesOrReusesDifferentBytes", "workspaceImagePublicationHonorsRevocationAroundCommit", "workspaceImagePublicationSerializesCollisions"] if suffix else ["posixImagePublicationPreservesCollisionsAndRejectsDirectoryLinks", "workspaceImagePublicationHonorsRevocationAroundCommit", "workspaceImagePublicationSerializesCollisions"]

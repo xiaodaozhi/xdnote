@@ -6,10 +6,18 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_third_party_licenses import validate_inventory
+from check_third_party_licenses import validate_inventory, validate_deployment_notices
 
 
 class ThirdPartyLicenseInventoryTests(unittest.TestCase):
+    def test_qt_notice_version_digest_and_path_must_match(self):
+        notices = {"schemaVersion": 1, "qtVersion": "6.8.2", "texts": [{"path": "LICENSES/third-party/Qt.txt", "sha256": hashlib.sha256(b"text").hexdigest()}]}
+        dependencies = {"qt": {"version": "6.8.2"}}
+        self.assertEqual(validate_deployment_notices(notices, dependencies, lambda _: b"text"), [])
+        self.assertTrue(validate_deployment_notices(notices, {"qt": {"version": "changed"}}, lambda _: b"text"))
+        self.assertTrue(validate_deployment_notices(notices, dependencies, lambda _: b"changed"))
+        notices["texts"][0]["path"] = "../outside"
+        self.assertTrue(validate_deployment_notices(notices, dependencies, lambda _: b"text"))
     def setUp(self):
         self.text = b"license text"
         digest = hashlib.sha256(self.text).hexdigest()

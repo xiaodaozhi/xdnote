@@ -1,6 +1,6 @@
 # 桌面工程与本地构建
 
-`apps/desktop` 和 `crates/markdown` 包含工作区／单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；使用系统外框与共享逻辑尺寸。独立窗口支持系统／浅色／深色主题、六种强调色和正文缩放；外观菜单选择通过用户级设置持久化并同步已打开窗口。无文件启动显示工作区欢迎页，可显式打开目录、使用多标签和三种视图，并接管独立窗口原会话，详见[工作区基础](workspace-foundation.md)。完整设置、资源与链接、文件关联注册、安装和发行尚未完成。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和 Qt WebEngine 混合承载，不接收文件或读写用户文档。
+`apps/desktop` 和 `crates/markdown` 包含工作区／单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；使用系统外框与共享逻辑尺寸。独立窗口支持系统／浅色／深色主题、六种强调色和正文缩放；外观菜单选择通过用户级设置持久化并同步已打开窗口。无文件启动显示工作区欢迎页，可显式打开目录、使用多标签和三种视图，并接管独立窗口原会话，详见[工作区基础](workspace-foundation.md)。完整设置、文件关联注册、安装和发行尚未完成。资源与链接的当前实现见[资源基础](workspace-resource-foundation.md)。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和 Qt WebEngine 混合承载，不接收文件或读写用户文档。
 
 ## 工具与依赖
 
@@ -86,6 +86,8 @@ python scripts/desktop.py run --admission
 `--file` 可重复传入；默认配置可省略 `--profile default`，使用 v142 时须显式追加 `--profile msvc2019`。不传文件时显示选择文件入口，也支持应用内打开和拖入本地文件。后续启动经用户级 IPC 转交打开意图，失败时明确报错，不另建独立可写实例。`run` 只核对构建身份并启动已有产物，不要求在 PATH 中重新发现 CMake、Ninja 或 Rust；先完成对应配置的构建。`--admission` 与 `--file` 互斥。
 
 ## 当前模块边界
+
+锁屏或无交互桌面时使用 `test --suite background`，见[后台验证](../qa/background-validation.md)；它固定离屏平台，不执行 UIA、真实输入或原生选择器。独立目录与实际依赖核查见[部署诊断](deployment.md)，该入口不创建安装器或发行包。
 
 - `DocumentSession` 在界面线程持有唯一 Scintilla 文档与撤销栈；隐藏的公开控件维持文档寿命，可见视图通过公开文档引用接口接管。快照按显式字节长度读取，保留原文中的中文、补充字符、空字符及不同换行字符。编辑命令校验 UTF-16 边界、预期版本、只读、组合输入、关闭与重入。
 - `FileService` 提供不依赖 GUI 的身份探测、严格读取和原位替换保存；`SessionRegistry` 管理打开登记与替换后的身份重绑定。`FileManager` 串行协调后台 I/O、冻结保存快照与 GUI 回执，编辑保持可用；`FileApplication` 与 `SingleInstance` 统一窗口、退出和跨进程打开意图。具体保证见[文件读取](file-read-baseline.md)和[保存闭环](file-save-workflow.md)。

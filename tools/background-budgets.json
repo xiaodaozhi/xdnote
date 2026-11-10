@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "purpose": "offscreen regression guardrails; not interactive UX or total application memory budgets",
+  "peakWorkerMiB": 512,
+  "p95Milliseconds": {
+    "render": 5000,
+    "references": 5000,
+    "headings": 2000,
+    "session": 250,
+    "file": 2000,
+    "image": 2000,
+    "scan": 30000,
+    "cancel": 100
+  },
+  "previewReadyMilliseconds": 20000
+}

@@ -98,7 +98,32 @@ def audit(root):
             raise ValueError("License path leaves its directory")
         return file.read_bytes()
 
-    return validate_inventory(lock, manifest, dependencies, read_license)
+    try:
+        notices = json.loads((root / "tools/deployment-notices.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        return [f"Cannot read Qt notice inputs: {error}"]
+    return validate_inventory(lock, manifest, dependencies, read_license) + validate_deployment_notices(notices, dependencies, read_license)
+
+
+def validate_deployment_notices(notices, dependencies, read_license):
+    errors = []
+    if notices.get("schemaVersion") != 1 or notices.get("qtVersion") != dependencies.get("qt", {}).get("version"):
+        errors.append("Qt notice version differs from locked Qt SDK")
+    records = notices.get("texts", [])
+    if not records:
+        errors.append("Qt notice text inputs are missing")
+    for record in records:
+        path = record.get("path", "")
+        parts = PurePosixPath(path).parts
+        if len(parts) != 3 or parts[:2] != ("LICENSES", "third-party") or parts[2] in (".", ".."):
+            errors.append("Qt notice path leaves recorded license directory")
+            continue
+        try:
+            if hashlib.sha256(read_license(path)).hexdigest() != record.get("sha256"):
+                errors.append(f"Qt notice digest mismatch: {path}")
+        except (OSError, ValueError):
+            errors.append(f"Cannot read Qt notice text: {path}")
+    return errors
 
 
 if __name__ == "__main__":

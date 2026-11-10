@@ -14,6 +14,7 @@
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
+| 部署 | [部署诊断与依赖清单](engineering/deployment.md) | 独立诊断目录、导入闭包、许可材料和发行边界 |
 | 文件基础 | [文件读取与会话登记](engineering/file-read-baseline.md) | 原生身份、严格字节基线、请求失效与当前限制 |
 | 文件闭环 | [真实文件保存与冲突](engineering/file-save-workflow.md) | 冻结快照、替换保存、硬链接保护、冲突和关闭 |
 | 独立窗口 | [视觉、交互与自动验证](engineering/standalone-window.md) | 共享控件、主题、阅读位置、反馈与验证边界 |
@@ -25,6 +26,7 @@
 | 平台 | [平台目标与验证基线](engineering/platform-support.md) | 最低系统、64 位架构、Linux 图形环境及实际验收边界 |
 | 计划 | [开发路线](planning/roadmap.md) | 阶段顺序、产物和退出条件 |
 | 验收 | [验收规格](qa/acceptance.md) | 需求映射、真实文件与平台验证方法 |
+| 后台验证 | [无交互桌面的自动验证](qa/background-validation.md) | 锁屏可运行的离屏回归、性能和排版证据 |
 | 工作区界面 | [工作区界面核对](qa/workspace-visual.md) | 标签边界、侧栏、面包屑及导航页的明暗状态检查 |
 | 覆盖 | [界面清单](visual/screen-inventory.md) | 33 张图板、89 个页面与状态 |
 | 素材 | [交付说明](visual/asset-handoff.md)、[素材几何](visual/asset-geometry.json) | 原图切片、SVG、透明 PNG 与使用约定 |
