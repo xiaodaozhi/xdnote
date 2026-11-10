@@ -23,6 +23,7 @@ void FileDocument::permissions() {
         && m_session->isReadOnly() != m_readOnly) m_session->setReadOnly(m_readOnly);
 }
 QString FileDocument::statusText() const {
+    if (m_maintenance) return QStringLiteral("正在维护工作区引用…");
     if (m_saving) return QStringLiteral("保存中…");
     if (m_loading) return QStringLiteral("重新载入中…");
     if (m_conflict) return QStringLiteral("磁盘内容已变化");
@@ -51,6 +52,34 @@ void FileManager::pump() {
     auto job = std::move(m_jobs.front()); m_jobs.pop_front(); job();
 }
 void FileManager::finish() { m_running = false; QTimer::singleShot(0, this, &FileManager::pump); }
+QUuid FileManager::beginWorkspaceOperation() {
+    if (!idle()) return {};
+    m_workspaceOperation = QUuid::createUuid(); m_running = true; return m_workspaceOperation;
+}
+bool FileManager::protectWorkspaceDocument(FileDocument *document, const QUuid &operation, bool protect) {
+    if (operation.isNull() || operation != m_workspaceOperation || !document || document->closed() || !document->session()) return false;
+    if (protect) {
+        if (document->saving() || document->loading() || document->conflict() || document->hasError()
+            || document->session()->beginResourceUpdate() != EditResult::Applied) return false;
+        document->m_maintenance = true;
+    } else { document->m_maintenance = false; document->session()->endResourceUpdate(); }
+    emit document->stateChanged(); return true;
+}
+bool FileManager::relocateWorkspaceDocument(FileDocument *document, const QString &path, const QUuid &operation) {
+    if (operation.isNull() || operation != m_workspaceOperation || !document || document->closed() || !document->m_maintenance) return false;
+    const auto baseline = FileService::relocatedBaseline(document->m_baseline, path);
+    if (!baseline || m_registry.rebind(document->session(), baseline) != RegistryResult::Reused) return false;
+    document->m_baseline = baseline; document->permissions(); emit document->stateChanged(); return true;
+}
+void FileManager::reportWorkspaceProblem(FileDocument *document, const QString &message, const QUuid &operation) {
+    if (operation.isNull() || operation != m_workspaceOperation || !document || document->closed()) return;
+    document->m_error = true; document->m_conflict = true; document->m_message = message; emit document->stateChanged();
+}
+void FileManager::endWorkspaceOperation(const QUuid &operation) {
+    if (operation.isNull() || operation != m_workspaceOperation) return;
+    for (auto *document : documents()) if (document->m_maintenance) protectWorkspaceDocument(document, operation, false);
+    m_workspaceOperation = {}; emit resourcesChanged(); emit documentsChanged(); finish();
+}
 
 void FileManager::open(const QString &input, const QUuid &intent) {
     const auto path = QDir::isAbsolutePath(input) ? input : QDir::currentPath() + '/' + input;
@@ -232,7 +261,7 @@ bool FileManager::reload(FileDocument *document) {
 }
 
 void FileManager::check(FileDocument *document) {
-    if (!document || document->closed() || document->saving() || document->loading() || document->m_checkPending) return;
+    if (!document || document->closed() || document->saving() || document->loading() || document->m_maintenance || document->m_checkPending) return;
     document->m_checkPending = true;
     const QPointer<FileDocument> guard(document);
     enqueue([this, guard] {
@@ -258,7 +287,7 @@ void FileManager::check(FileDocument *document) {
     });
 }
 bool FileManager::closeDocument(FileDocument *document) {
-    if (!document || document->closed() || document->saving() || document->loading() || !document->session()) return false;
+    if (!document || document->closed() || document->saving() || document->loading() || document->m_maintenance || !document->session()) return false;
     if (document->session()->requestClose() != EditResult::Applied) return false;
     document->m_closed = true;
     emit documentsChanged();

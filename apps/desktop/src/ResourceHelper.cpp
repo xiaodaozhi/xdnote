@@ -1,4 +1,8 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #include "WorkspaceResourceReader.h"
+#include "FileService.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -10,6 +14,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <stdexcept>
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -17,8 +22,12 @@
 #ifdef Q_OS_LINUX
 #include <linux/landlock.h>
 #include <linux/fs.h>
+#include <linux/openat2.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#ifndef LANDLOCK_ACCESS_FS_REFER
+#define LANDLOCK_ACCESS_FS_REFER (1ULL << 13)
+#endif
 #else
 #include <sandbox.h>
 #endif
@@ -35,7 +44,7 @@ Error errorFor(int e) {
     if (e == ELOOP || e == EXDEV) return Error::OutsideOrLink;
     return Error::Io;
 }
-QJsonObject failed(Error e, int native = 0) { return {{"error", int(e)}, {"native", native}}; }
+QJsonObject failed(Error e, int native = 0) { return {{"error", int(e)}, {"native", native}, {"moveStatus", int(xdnote::WorkspaceMoveStatus::Failed)}}; }
 QStringList components(const QString &path) {
     if (path.isEmpty() || path.size() > 8192 || path.startsWith('/') || path.contains('\\')) return {};
     const auto parts = path.split('/');
@@ -48,6 +57,19 @@ QStringList components(const QString &path) {
 int openWithin(int root, const QString &path, bool directory, dev_t device, bool metadata = false) {
     if (path.isEmpty() && directory) return ::dup(root);
     const auto parts = components(path); if (parts.isEmpty()) { errno = EINVAL; return -1; }
+#ifdef Q_OS_LINUX
+    open_how how{};
+    how.flags = (metadata ? O_PATH : O_RDONLY | O_NONBLOCK) | O_CLOEXEC | O_NOFOLLOW | (directory ? O_DIRECTORY : 0);
+    how.resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV;
+    const auto bytes = path.toUtf8();
+    const int result = int(::syscall(SYS_openat2, root, bytes.constData(), &how, sizeof(how)));
+    if (result < 0) return -1;
+    struct stat info{};
+    if (::fstat(result, &info) != 0 || info.st_dev != device || (directory ? !S_ISDIR(info.st_mode) : !S_ISREG(info.st_mode))) {
+        ::close(result); errno = EXDEV; return -1;
+    }
+    return result;
+#else
     Fd parent; parent.value = ::dup(root); if (parent.value < 0) return -1;
     for (qsizetype i = 0; i < parts.size(); ++i) {
         const bool dir = directory || i + 1 < parts.size();
@@ -56,7 +78,7 @@ int openWithin(int root, const QString &path, bool directory, dev_t device, bool
 #ifdef Q_OS_MACOS
         if (!dir && metadata) access = O_EVTONLY;
 #else
-        Q_UNUSED(metadata);
+        if (metadata) access = O_PATH;
 #endif
         const int child = ::openat(parent.value, name.constData(), access | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK | (dir ? O_DIRECTORY : 0));
         if (child < 0) {
@@ -76,8 +98,9 @@ int openWithin(int root, const QString &path, bool directory, dev_t device, bool
         ::close(parent.value); parent.value = child;
     }
     const int result = parent.value; parent.value = -1; return result;
+#endif
 }
-bool restrictFilesystem(int root, const QString &path, bool writing) {
+bool restrictFilesystem(int root, const QString &path, bool writing, bool moving) {
 #ifdef Q_OS_LINUX
     Q_UNUSED(path);
     const int abi = int(::syscall(SYS_landlock_create_ruleset, nullptr, 0, LANDLOCK_CREATE_RULESET_VERSION));
@@ -86,6 +109,7 @@ bool restrictFilesystem(int root, const QString &path, bool writing) {
         | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_REMOVE_FILE
         | LANDLOCK_ACCESS_FS_MAKE_CHAR | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG
         | LANDLOCK_ACCESS_FS_MAKE_SOCK | LANDLOCK_ACCESS_FS_MAKE_FIFO | LANDLOCK_ACCESS_FS_MAKE_BLOCK | LANDLOCK_ACCESS_FS_MAKE_SYM;
+    if (abi >= 2) rights |= LANDLOCK_ACCESS_FS_REFER;
     // ABI 1 denies cross-directory reparenting. No copy/delete fallback is used.
     landlock_ruleset_attr attributes{}; attributes.handled_access_fs = rights;
     Fd rules; rules.value = int(::syscall(SYS_landlock_create_ruleset, &attributes, sizeof(attributes), 0));
@@ -94,10 +118,13 @@ bool restrictFilesystem(int root, const QString &path, bool writing) {
     rule.allowed_access = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
     if (writing) rule.allowed_access |= LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_MAKE_DIR
         | LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_REMOVE_FILE;
+    if (moving) rule.allowed_access |= LANDLOCK_ACCESS_FS_REMOVE_DIR;
+    if (moving && abi >= 2) rule.allowed_access |= LANDLOCK_ACCESS_FS_REFER;
     return ::syscall(SYS_landlock_add_rule, rules.value, LANDLOCK_RULE_PATH_BENEATH, &rule, 0) == 0
         && ::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == 0 && ::syscall(SYS_landlock_restrict_self, rules.value, 0) == 0;
 #else
     Q_UNUSED(root);
+    Q_UNUSED(moving);
     auto quoted = QJsonDocument(QJsonArray{path}).toJson(QJsonDocument::Compact); quoted = quoted.mid(1, quoted.size() - 2);
     QByteArray profile = "(version 1)(deny default)(allow file-read* (subpath " + quoted + "))";
     if (writing) profile += "(allow file-write* (subpath " + quoted + "))";
@@ -140,12 +167,70 @@ QJsonObject request(const QJsonObject &input) {
     if (identity(rootInfo) != expected) return failed(Error::RootChanged);
     const auto canonical = QDir(rootPath).canonicalPath();
     const auto nonce = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    if (canonical.isEmpty() || !restrictFilesystem(root.value, canonical, operation == "publish")) return failed(Error::Unsupported);
+    if (canonical.isEmpty() || !restrictFilesystem(root.value, canonical, operation == "publish" || operation == "move" || operation == "save", operation == "move")) return failed(Error::Unsupported);
     auto rootCurrent = [&] {
         Fd check; check.value = ::open(QFile::encodeName(rootPath).constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
         struct stat info{}; return check.value >= 0 && ::fstat(check.value, &info) == 0 && identity(info) == expected;
     };
     if (!rootCurrent()) return failed(Error::RootChanged);
+    if (operation == "save") {
+        using namespace xdnote;
+        if (components(path).isEmpty()) return failed(Error::InvalidPath);
+        const auto expectedFile = input.value("expected").toString();
+        auto check = [&] (bool original) {
+            Fd file; file.value = openWithin(root.value, path, false, rootInfo.st_dev, true);
+            struct stat info{};
+            return rootCurrent() && file.value >= 0 && ::fstat(file.value, &info) == 0
+                && (!original || identity(info) == expectedFile);
+        };
+        if (!check(true)) return failed(Error::Changed);
+        const auto probe = FileService::probe(QDir(rootPath).filePath(path));
+        if (!probe.file || probe.file->identity() != expectedFile) return failed(Error::Changed);
+        const auto before = FileService::read({probe.file});
+        if (!before.baseline || before.baseline->sha256().toHex() != input.value("sha256").toString().toLatin1()) return failed(Error::Changed);
+        FileSaveRequest save;
+        save.baseline = before.baseline; save.path = probe.file->path();
+        save.utf8 = QByteArray::fromBase64(input.value("bytes").toString().toLatin1()); save.bom = input.value("bom").toBool();
+        const auto result = FileService::save(save, [&](SaveStage stage) {
+            if (!check(stage != SaveStage::Verify)) throw std::runtime_error("root or entry changed");
+        });
+        return {{"error", 0}, {"saveStatus", int(result.status)}, {"saveStage", int(result.stage)},
+            {"fileError", int(result.problem.code)}, {"native", double(result.problem.nativeCode)},
+            {"recovery", result.recoveryPath}, {"staged", result.stagedPath},
+            {"savedIdentity", result.baseline ? result.baseline->file()->identity() : QString{}}};
+    }
+    if (operation == "move") {
+        const auto destination = input.value("to").toString(); const auto expectedEntry = input.value("expected").toString();
+        const bool directory = input.value("directory").toBool();
+        const auto fromParts = components(path), toParts = components(destination);
+        if (fromParts.isEmpty() || toParts.isEmpty() || expectedEntry.isEmpty() || path == destination
+            || (directory && destination.startsWith(path + '/'))) return failed(Error::InvalidPath);
+        Fd source; source.value = openWithin(root.value, path, directory, rootInfo.st_dev, true);
+        struct stat original{};
+        if (source.value < 0 || ::fstat(source.value, &original) != 0) return failed(errorFor(errno), errno);
+        if (identity(original) != expectedEntry) return failed(Error::Changed);
+        const auto parent = [](const QStringList &parts) { auto prefix = parts; prefix.removeLast(); return prefix.join('/'); };
+        Fd fromParent, toParent;
+        fromParent.value = openWithin(root.value, parent(fromParts), true, rootInfo.st_dev);
+        toParent.value = openWithin(root.value, parent(toParts), true, rootInfo.st_dev);
+        if (fromParent.value < 0 || toParent.value < 0) return failed(errorFor(errno), errno);
+        struct stat pending{};
+        if (::fstatat(fromParent.value, fromParts.last().toUtf8().constData(), &pending, AT_SYMLINK_NOFOLLOW) != 0
+            || identity(pending) != expectedEntry) return failed(Error::Changed, errno);
+#ifdef Q_OS_LINUX
+        const int renamed = int(::syscall(SYS_renameat2, fromParent.value, fromParts.last().toUtf8().constData(),
+            toParent.value, toParts.last().toUtf8().constData(), RENAME_NOREPLACE));
+#else
+        const int renamed = ::renameatx_np(fromParent.value, fromParts.last().toUtf8().constData(),
+            toParent.value, toParts.last().toUtf8().constData(), RENAME_EXCL);
+#endif
+        if (renamed != 0) return failed(errorFor(errno), errno);
+        Fd verified; verified.value = openWithin(root.value, destination, directory, rootInfo.st_dev, true); struct stat after{};
+        const bool matches = verified.value >= 0 && ::fstat(verified.value, &after) == 0 && identity(after) == expectedEntry && rootCurrent();
+        const bool synced = ::fsync(fromParent.value) == 0 && ::fsync(toParent.value) == 0;
+        return {{"error", matches ? 0 : int(Error::Changed)}, {"moveStatus", int(matches && synced ? xdnote::WorkspaceMoveStatus::Moved : xdnote::WorkspaceMoveStatus::Uncertain)},
+                {"actual", matches ? destination : QString()}, {"recovery", matches && synced ? QString() : destination}};
+    }
     if (operation == "publish") {
         const auto bytes = QByteArray::fromBase64(input.value("bytes").toString().toLatin1());
         if (bytes.isEmpty() || bytes.size() > 8 * 1024 * 1024) return failed(Error::TooLarge);

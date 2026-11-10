@@ -20,6 +20,7 @@ struct MarkdownReference {
     QString title;
     QString referenceLabel;
     bool referenceStyle = false;
+    MarkdownRange destination;
 };
 
 struct MarkdownReferenceAnalysis {

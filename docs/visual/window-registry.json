@@ -43,8 +43,8 @@
       "designStatus": "reference-available",
       "implementationStatus": "workspace-prototype",
       "implementationSource": "apps/desktop/src/WorkspaceWindow.cpp",
-      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection", "filename-search", "recent-documents", "favorites", "relative-breadcrumb", "appearance-menu"],
-      "deferredStates": ["resources-and-links", "full-text-search", "full-settings-window", "mapped-scroll-sync"],
+      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection", "filename-search", "recent-documents", "favorites", "relative-breadcrumb", "appearance-menu", "resources-and-links"],
+      "deferredStates": ["full-text-search", "full-settings-window", "mapped-scroll-sync"],
       "nativeValidation": "not-run"
     },
     {
@@ -179,6 +179,21 @@
       "designStatus": "reference-available",
       "implementationStatus": "not-started",
       "nativeValidation": "not-run"
+    },
+    {
+      "id": "workspace-resource-maintenance",
+      "label": "工作区资源移动与引用影响预览",
+      "kind": "owner-modal-dialog",
+      "sizeToken": "windows.largeDialog",
+      "sizeRationale": "复用共享大型弹窗逻辑宽度；影响列表滚动，确认前展示未覆盖项与仅移动影响。",
+      "designAssetIds": [
+        "ui-v2-15-unsaved-close",
+        "ui-v2-18-file-lifecycle"
+      ],
+      "designStatus": "shared-pattern-extension",
+      "implementationStatus": "workspace-resource-prototype",
+      "nativeValidation": "not-run",
+      "implementationSource": "apps/desktop/src/ResourceMaintenanceController.cpp"
     }
   ],
   "platformOwnedSurfaces": [

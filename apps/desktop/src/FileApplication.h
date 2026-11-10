@@ -36,6 +36,10 @@ private:
         QString sourcePath, sourceIdentity, fragment;
         quint64 revision = 0;
         bool embedded = false, hasFragment = false;
+        bool sourceLocation = false;
+        QByteArray sourceSha256;
+        QString locationIdentity;
+        qsizetype locationStart = 0, locationEnd = 0;
     };
     bool validLinkSource(const LinkNavigation &navigation) const;
     Appearance m_appearance;

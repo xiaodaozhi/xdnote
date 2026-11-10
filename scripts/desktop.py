@@ -312,7 +312,13 @@ def main():
             groups = {
                 "file": ["confinedOpenKeepsDirtySessionAndAllowsAtomicSave", "confinedReadRejectsParentLinkReplacementAfterProbe"],
                 "desktop": publication + ["workspaceResourcesRequireTheSelectedRootAndRejectLinks", "workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding", "imageImportRejectsInvalidSourcesBeforeWriting"],
-                "workspace": ["standaloneImageImportUsesExplicitDirectoryAndKeepsOriginalBytes", "imageDiagnosticsDistinguishBrokenAndMissingResources", "workspaceReferencesTrackSessionsFilesAndMenuCoverage"],
+                "workspace": ["standaloneImageImportUsesExplicitDirectoryAndKeepsOriginalBytes", "imageDiagnosticsDistinguishBrokenAndMissingResources", "workspaceReferencesTrackSessionsFilesAndMenuCoverage",
+                              "resourceMoveRewritesOnlyParsedTargetsAndRecovers", "resourceMoveRejectsStaleSourcesCollisionAndHardLinkAlias",
+                              "resourceMoveReportsPartialWritesAndPreservesLaterEditsOnRecovery", "resourceMoveKeepsDirtySessionUndoAndUniqueOpen",
+                              "acceptedFileCapabilitySurvivesSourceRootRevocation", "externalMoveRepairRequiresConfirmedTargetAndDoesNotGuessSourcePaths",
+                              "headingPickerUsesDirtyTargetAndInboundLocationRejectsStaleOffsets", "directoryMoveRebindsLiveDocumentAndRetainsUnsavedBaseline",
+                              "workspaceDocumentLinksUseVerifiedRelativePathsAndUndo", "workspaceDocumentLinkRejectsOutsideAndStaleTargets", "workspaceDocumentLinkMenuKeyboardUsesFilePicker",
+                              "documentLinksReuseDirtyTargetAndNavigateHeadings", "documentLinksRejectUnsafeTargetsAndStaleSource", "documentLinksPreviewClicksKeepStandaloneRouting"],
             }
             for name, functions in groups.items():
                 report = build / f"resources-{name}-qtest.txt"

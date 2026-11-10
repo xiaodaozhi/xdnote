@@ -1,6 +1,8 @@
 #include "SingleFileWindow.h"
 #include "DocumentBreadcrumb.h"
 #include <algorithm>
+#include <QCryptographicHash>
+#include <QCursor>
 #include <QUrl>
 #include "MarkdownReferences.h"
 #include "MarkdownHeadings.h"
@@ -61,14 +63,20 @@ namespace xdnote {
 namespace {
 int token(const char *section, const char *key) { return visualTokens().value(section).toObject().value(key).toInt(); }
 QJsonObject geometryTokens() { return visualTokens().value("windows").toObject().value("standalone").toObject(); }
-struct LinkTargetResult { bool success = false; QString url; QString message; };
+struct LinkTargetResult {
+    bool success = false; QString url, message, identity;
+    DocumentSnapshot snapshot; QByteArray disk;
+};
 LinkTargetResult prepareWorkspaceLink(const std::shared_ptr<WorkspaceResourceReader> &root,
-    const QString &documentPath, const QString &documentIdentity, const QString &targetPath) {
+    const QString &documentPath, const QString &documentIdentity, const QString &targetPath, const QSet<QString> &openIdentities) {
     if (!root || !root->active()) return {false, {}, QStringLiteral("工作区授权已失效。")};
     const auto url = relativeWorkspaceUrl(documentPath, targetPath);
     if (!url.success) return {false, {}, QStringLiteral("所选文档不在当前工作区内。")};
-    const auto source = root->read(documentPath, FileService::DiskByteLimit);
+    const auto source = root->inspect(documentPath);
     if (!source.ok() || source.identity != documentIdentity) return {false, {}, QStringLiteral("无法核验当前文档的位置或身份。")};
+    const auto targetIdentity = root->inspect(targetPath);
+    if (!targetIdentity.ok()) return {false, {}, QStringLiteral("无法核验所选文档的位置或身份。")};
+    if (openIdentities.contains(targetIdentity.identity)) return {true, url.path, {}, targetIdentity.identity};
     const auto target = root->read(targetPath, FileService::DiskByteLimit);
     if (!target.ok()) return {false, {}, QStringLiteral("无法读取或核验所选文档，请检查位置、权限和大小。")};
     const bool bom = target.bytes.startsWith(QByteArray::fromHex("efbbbf"));
@@ -76,12 +84,12 @@ LinkTargetResult prepareWorkspaceLink(const std::shared_ptr<WorkspaceResourceRea
     bool valid = false; decodeUtf8Literal(utf8, &valid);
     if (!valid || utf8.contains('\0') || utf8.size() > FileService::SourceLimit)
         return {false, {}, QStringLiteral("所选文档不是受支持的 UTF-8 Markdown 文件。")};
-    const auto sourceAgain = root->read(documentPath, FileService::DiskByteLimit);
+    const auto sourceAgain = root->inspect(documentPath);
     const auto targetAgain = root->read(targetPath, FileService::DiskByteLimit);
     if (!root->active() || !sourceAgain.ok() || sourceAgain.identity != documentIdentity
         || !targetAgain.ok() || targetAgain.identity != target.identity || targetAgain.bytes != target.bytes)
         return {false, {}, QStringLiteral("工作区或所选文档已变化，请重新选择。")};
-    return {true, url.path, {}};
+    return {true, url.path, {}, target.identity, {EditResult::Applied, utf8, 0, QUuid::createUuid()}, target.bytes};
 }
 QWidget *separator(QBoxLayout *layout, Appearance *appearance, QWidget *owner) {
     auto *line = new QWidget(owner); line->setFixedWidth(1); line->setFixedHeight(20);
@@ -436,6 +444,15 @@ void SingleFileWindow::activateDocumentLink(const QString &target, quint64 revis
         else reportHostMessage(QStringLiteral("链接中的标题标识无效。"));
     } else emit documentLinkRequested(target, revision);
 }
+void SingleFileWindow::navigateToReference(const QString &identity, const QByteArray &sha256, qsizetype start, qsizetype end) {
+    if (!m_document || m_document->closed()) return;
+    const auto snapshot = m_document->session()->snapshot();
+    if (snapshot.result != EditResult::Applied || m_document->identity() != identity
+        || QCryptographicHash::hash(snapshot.utf8, QCryptographicHash::Sha256) != sha256 || start < 0 || end < start || end > snapshot.utf8.size()) {
+        reportHostMessage(QStringLiteral("来源内容已变化，已打开文档；请重新检查引用后定位。")); return;
+    }
+    setEditing(true); if (m_editor) { m_editor->send(SCI_SETSEL, uptr_t(start), sptr_t(end)); m_editor->send(SCI_SCROLLCARET); m_editor->setFocus(Qt::OtherFocusReason); }
+}
 void SingleFileWindow::navigateToHeading(const QString &fragment) {
     if (!m_document || m_document->closed()) return;
     const auto snapshot = m_document->session()->snapshot(); const auto headings = analyzeMarkdownHeadings(snapshot);
@@ -498,7 +515,7 @@ void SingleFileWindow::updateState() {
     syncPreviewResources();
     if (m_embedded) m_breadcrumb->setDocumentPath(displayPath(), m_workspaceRoot);
     emit viewStateChanged();
-    const bool ready = m_document && !m_document->closed(); const bool busy = ready && (m_document->saving() || m_document->loading());
+    const bool ready = m_document && !m_document->closed(); const bool busy = ready && (m_document->saving() || m_document->loading() || m_document->maintainingResources());
     if (ready && m_document->saving()) m_observedSave = true;
     m_read->setEnabled(ready); m_edit->setEnabled(ready && !m_document->readOnly()); m_read->setChecked(m_mode == ViewMode::Reading); m_edit->setChecked(m_mode == ViewMode::Source); m_split->setEnabled(ready); m_split->setChecked(m_mode == ViewMode::Split);
     m_pathButton->setEnabled(ready); m_zoomButton->setEnabled(ready); m_save->setEnabled(ready && !busy && (m_document->dirty() || m_document->conflict()) && (!m_document->readOnly() || m_document->conflict()));
@@ -606,10 +623,10 @@ void SingleFileWindow::wrapSelection(const QString &before, const QString &after
 void SingleFileWindow::chooseWorkspaceDocumentLink() {
     const auto path = QFileDialog::getOpenFileName(this, QStringLiteral("选择工作区文档"), m_workspaceResourcePath,
         QStringLiteral("Markdown 文档 (*.md *.markdown)"));
-    if (!path.isEmpty()) insertWorkspaceDocumentLink(path);
+    if (!path.isEmpty()) insertWorkspaceDocumentLink(path, {}, true);
 }
 
-void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath) {
+void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath, const QString &heading, bool chooseHeading) {
     auto reject = [this](const QString &message) { reportHostMessage(message); emit workspaceLinkFinished(false, message); };
     if (m_linkInsertPending) { reject(QStringLiteral("正在检查所选文档，请稍候。")); return; }
     if (!m_document || !m_editor || !m_editing || !m_embedded || !m_workspaceResourceRoot || m_workspaceResourcePath.isEmpty()) {
@@ -643,14 +660,51 @@ void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath) {
     const auto relativeDocument = QDir(rootPath).relativeFilePath(document->path());
     const auto relativeTarget = QDir(rootPath).relativeFilePath(QDir::cleanPath(targetPath));
     const auto identity = document->identity(); const int first = int(beforeText.size()), last = int(beforeText.size() + selectedText.size());
+    QSet<QString> openIdentities; for (auto *opened : m_manager->documents()) openIdentities.insert(opened->identity());
     m_linkInsertPending = true; m_hostMessage.clear(); updateState();
     auto *worker = new QFutureWatcher<LinkTargetResult>(this);
     connect(worker, &QFutureWatcher<LinkTargetResult>::finished, this,
-        [this, worker, document, session, snapshot, root, rootPath, identity, anchor, caret, first, last, label] {
-        const auto result = worker->result(); worker->deleteLater(); m_linkInsertPending = false;
+        [this, worker, document, session, snapshot, root, rootPath, identity, relativeDocument, relativeTarget, anchor, caret, first, last, label, heading, chooseHeading] {
+        auto result = worker->result(); worker->deleteLater();
+        if (!result.success) { m_linkInsertPending = false; reportHostMessage(result.message); emit workspaceLinkFinished(false, result.message); return; }
+        QPointer<FileDocument> targetDocument;
+        for (auto *opened : m_manager->documents()) if (opened->identity() == result.identity) { targetDocument = opened; break; }
+        if (targetDocument && !targetDocument->closed() && targetDocument->session()) result.snapshot = targetDocument->session()->snapshot();
+        const auto headings = analyzeMarkdownHeadings(result.snapshot);
+        QString selected = heading;
+        if (!headings.success) { m_linkInsertPending = false; const auto message = QStringLiteral("目标文档正在变化，暂时无法选择标题。"); reportHostMessage(message); emit workspaceLinkFinished(false, message); return; }
+        if (chooseHeading) {
+            SharedMenu menu(m_appearance, this); menu.setObjectName("workspaceLinkHeadingMenu");
+            menu.addAction(QStringLiteral("链接到整个文档"))->setData(QString()); menu.addSeparator(); int count = 0;
+            for (const auto &item : headings.headings) {
+                if (++count > 512) { auto *more = menu.addAction(QStringLiteral("仅显示前 512 个标题，其余可手动填写片段")); more->setEnabled(false); break; }
+                auto text = QStringLiteral("H%1  %2").arg(item.level).arg(item.title.left(90)); text.replace('&', "&&");
+                menu.addAction(text)->setData(item.id);
+            }
+            if (!count) { auto *empty = menu.addAction(QStringLiteral("目标文档没有可用标题")); empty->setEnabled(false); }
+            m_prompting = true; auto *choice = menu.exec(m_pathButton->mapToGlobal(QPoint(0, m_pathButton->height()))); m_prompting = false;
+            if (!choice) { m_linkInsertPending = false; const auto message = QStringLiteral("已取消插入文档链接。"); reportHostMessage(message); emit workspaceLinkFinished(false, message); return; }
+            selected = choice->data().toString();
+        }
+        if (!selected.isEmpty() && std::none_of(headings.headings.cbegin(), headings.headings.cend(), [&](const MarkdownHeading &item) { return item.id == selected; })) {
+            m_linkInsertPending = false; const auto message = QStringLiteral("所选标题已不存在，请重新选择。"); reportHostMessage(message); emit workspaceLinkFinished(false, message); return;
+        }
+        if (!selected.isEmpty()) result.url += '#' + QString::fromLatin1(QUrl::toPercentEncoding(selected));
+        auto *validation = new QFutureWatcher<bool>(this);
+        connect(validation, &QFutureWatcher<bool>::finished, this,
+            [this, validation, result, targetDocument, wasLive = bool(targetDocument), document, session, snapshot, root, rootPath, identity, anchor, caret, first, last, label] {
+        const bool validated = validation->result(); validation->deleteLater(); m_linkInsertPending = false;
         auto message = result.message; bool inserted = false;
-        if (result.success) {
-            bool current = document && session && document == m_document && m_editor && m_editing
+        bool targetCurrent = validated && (!wasLive || (targetDocument && !targetDocument->closed() && targetDocument->session()));
+        if (targetCurrent && targetDocument) {
+            const auto targetSnapshot = targetDocument->session()->snapshot();
+            targetCurrent = targetCurrent && !targetDocument->closed() && targetDocument->identity() == result.identity
+                && targetSnapshot.result == EditResult::Applied && targetSnapshot.documentId == result.snapshot.documentId && targetSnapshot.revision == result.snapshot.revision;
+        } else for (auto *opened : m_manager->documents()) if (opened->identity() == result.identity) {
+            const auto targetSnapshot = opened->session()->snapshot(); targetCurrent = targetCurrent && targetSnapshot.result == EditResult::Applied && targetSnapshot.utf8 == result.snapshot.utf8;
+        }
+        if (targetCurrent) {
+            bool current = !m_prompting && !m_saveErrorDialog && document && session && document == m_document && m_editor && m_editing
                 && !document->closed() && !document->saving() && !document->loading() && document->identity() == identity
                 && m_workspaceResourceRoot == root && m_workspaceResourcePath == rootPath && root->active()
                 && !session->isReadOnly() && !session->isBusy() && !session->isComposing() && !session->isClosing();
@@ -669,12 +723,19 @@ void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath) {
                 message = inserted ? QStringLiteral("文档链接已插入，文档修改尚未保存。")
                                    : QStringLiteral("无法插入文档链接：%1。").arg(resultDescription(edit));
             } else message = QStringLiteral("文档或插入位置已变化，未插入链接。请重新选择。");
-        }
+        } else message = QStringLiteral("目标文档、标题或授权已变化，未插入链接。请重新选择。");
         if (message.isEmpty()) message = QStringLiteral("无法插入文档链接。");
         reportHostMessage(message); emit workspaceLinkFinished(inserted, message);
+        });
+        validation->setFuture(QtConcurrent::run([root, relativeDocument, relativeTarget, identity, result, live = bool(targetDocument)] {
+            const auto source = root->inspect(relativeDocument), target = root->inspect(relativeTarget);
+            if (!root->active() || !source.ok() || source.identity != identity || !target.ok() || target.identity != result.identity) return false;
+            if (live) return true;
+            const auto disk = root->read(relativeTarget, FileService::DiskByteLimit); return disk.ok() && disk.identity == result.identity && disk.bytes == result.disk;
+        }));
     });
-    worker->setFuture(QtConcurrent::run([root, relativeDocument, identity, relativeTarget] {
-        return prepareWorkspaceLink(root, relativeDocument, identity, relativeTarget);
+    worker->setFuture(QtConcurrent::run([root, relativeDocument, identity, relativeTarget, openIdentities] {
+        return prepareWorkspaceLink(root, relativeDocument, identity, relativeTarget, openIdentities);
     }));
 }
 
@@ -786,6 +847,7 @@ void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage 
 }
 
 void SingleFileWindow::closeEvent(QCloseEvent *event) {
+    if (m_document && m_document->maintainingResources()) { reportHostMessage(QStringLiteral("正在维护工作区资源，请等待完成后关闭。")); event->ignore(); emit closeCancelled(); return; }
     if (m_imageImportPending) { reportHostMessage(QStringLiteral("图片正在导入，请等待完成后再关闭文档。")); event->ignore(); emit closeCancelled(); return; }
     if (m_prompting) { event->ignore(); return; }
     if (!m_document) { if (!m_intent.isNull()) emit cancelOpenRequested(m_intent); event->accept(); return; }

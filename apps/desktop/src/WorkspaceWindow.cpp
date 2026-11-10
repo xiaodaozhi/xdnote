@@ -2,6 +2,7 @@
 #include "WorkspaceTree.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceReferenceController.h"
+#include "ResourceMaintenanceController.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "Appearance.h"
@@ -30,6 +31,7 @@
 #include <QListWidget>
 #include <QPainterPath>
 #include <QMouseEvent>
+#include <algorithm>
 
 namespace xdnote {
 namespace {
@@ -100,6 +102,7 @@ private:
 }
 WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *store, NavigationStore *navigation, FileManager *manager) : ApplicationWindow(appearance), m_navigation(navigation ? navigation : new NavigationStore(this)) {
     m_references = new WorkspaceReferenceController(manager, this);
+    m_maintenance = new ResourceMaintenanceController(manager, this);
     setObjectName("workspaceWindow"); setAttribute(Qt::WA_DeleteOnClose); const auto tokens = mainTokens(); resize(tokens.value("defaultWidth").toInt(), tokens.value("defaultHeight").toInt()); setMinimumSize(tokens.value("minWidth").toInt(), tokens.value("minHeight").toInt()); setFont(uiFont(visualTokens().value("typography").toObject().value("ui").toObject().value("size").toInt()));
     auto *layout = new QVBoxLayout(this); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
     m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabStrip = new WorkspaceTabStrip(windowAppearance(), m_header); auto *tabs = tabStrip->tabs; m_tabs = tabs; connect(tabStrip->add, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested); m_header->setCenter(tabStrip, tokens.value("sidebarWidth").toInt()); layout->addWidget(m_header);
@@ -160,6 +163,7 @@ void WorkspaceWindow::applyAppearance() {
 }
 WorkspaceWindow::~WorkspaceWindow() {
     m_tearingDown = true;
+    delete m_maintenance; m_maintenance = nullptr;
     delete m_references; m_references = nullptr;
     if (m_resourceRoot) m_resourceRoot->revoke();
     m_searchDelay.stop(); m_tree->cancelSearch(); m_search->removeEventFilter(this);
@@ -174,6 +178,7 @@ WorkspaceWindow::~WorkspaceWindow() {
 }
 QString WorkspaceWindow::rootPath() const { return m_tree->rootPath(); }
 void WorkspaceWindow::setRootPath(const QString &path) {
+    if (m_maintenance->busy()) { showNotice(QStringLiteral("正在维护资源，请等待完成后切换工作区。")); return; }
     m_searchDelay.stop(); m_search->clear();
     if (m_resourceRoot) m_resourceRoot->revoke();
     m_tree->setRootPath(path);
@@ -216,6 +221,12 @@ void WorkspaceWindow::populateReferences(QMenu *menu, SingleFileWindow *pane) {
     };
     const auto label = [&](QMenu *target, const QString &text) { auto *action = target->addAction(caption(text)); action->setToolTip(text); action->setEnabled(false); };
     menu->setToolTipsVisible(true);
+    auto *move = menu->addAction(QStringLiteral("移动或重命名资源…")); move->setObjectName("resourceMaintenanceAction");
+    move->setEnabled(m_resourceRoot && m_resourceRoot->active() && !m_maintenance->busy());
+    connect(move, &QAction::triggered, this, [this, pane] { m_maintenance->show(pane->document() ? m_references->relativePath(pane->document()->path()) : QString{}); });
+    auto *stopMaintenance = menu->addAction(QStringLiteral("停止后续资源维护")); stopMaintenance->setEnabled(m_maintenance->busy());
+    connect(stopMaintenance, &QAction::triggered, m_maintenance, &ResourceMaintenanceController::cancel);
+    menu->addSeparator();
     label(menu, m_references->statusText());
     auto *refresh = menu->addAction(QStringLiteral("重新检查工作区")); refresh->setObjectName("refreshReferencesAction");
     refresh->setEnabled(m_resourceRoot && m_resourceRoot->active()); connect(refresh, &QAction::triggered, m_references, &WorkspaceReferenceController::refresh);
@@ -257,16 +268,29 @@ void WorkspaceWindow::populateReferences(QMenu *menu, SingleFileWindow *pane) {
     auto *inbound = submenu(QStringLiteral("引用当前文档的位置"), "inboundReferencesMenu"); shown = 0;
     for (const auto &reference : result.index.inbound(path)) {
         if (++shown > 200) { label(inbound, QStringLiteral("引用较多，仅显示前 200 项")); break; }
-        label(inbound, QStringLiteral("%1，第 %2 行").arg(reference.sourcePath).arg(reference.sourceLine));
+        const auto source = std::find_if(result.index.sources.cbegin(), result.index.sources.cend(), [&](const auto &item) { return item.path == reference.sourcePath; });
+        if (source == result.index.sources.cend()) continue;
+        auto *action = inbound->addAction(caption(QStringLiteral("%1，第 %2 行").arg(reference.sourcePath).arg(reference.sourceLine)));
+        connect(action, &QAction::triggered, this, [this, reference, sha = source->textSha256, generation] {
+            if (!m_references->current(generation)) { showNotice(QStringLiteral("引用快照已变化，请重新打开检查菜单。")); return; }
+            emit referenceSourceRequested(reference.sourcePath, reference.sourceIdentity, sha, reference.reference.usage.start, reference.reference.usage.end);
+        });
     }
     if (!shown) label(inbound, QStringLiteral("当前扫描中没有识别到入站引用"));
     auto *problems = submenu(QStringLiteral("缺失或受阻的目标"), "referenceProblemsMenu"); shown = 0;
     for (const auto &reference : result.index.references) {
         const auto state = result.targets.value(reference.target.path); const auto error = state.error;
-        if (reference.target.success && error == WorkspaceReadError::None && state.diagnostic.isEmpty()) continue;
+        const auto fragmentProblem = result.fragmentProblems.value(referenceDiagnosticKey(reference));
+        if (reference.target.success && error == WorkspaceReadError::None && state.diagnostic.isEmpty() && fragmentProblem.isEmpty()) continue;
         if (++shown > 200) { label(problems, QStringLiteral("问题较多，仅显示前 200 项")); break; }
-        label(problems, QStringLiteral("%1，第 %2 行：%3 — %4").arg(reference.sourcePath).arg(reference.sourceLine)
-            .arg(reference.reference.target.left(80), !state.diagnostic.isEmpty() ? state.diagnostic : reference.target.success ? targetStatus(error) : QStringLiteral("不支持的目标")));
+        const auto message = QStringLiteral("%1，第 %2 行：%3 — %4").arg(reference.sourcePath).arg(reference.sourceLine)
+            .arg(reference.reference.target.left(80), !fragmentProblem.isEmpty() ? fragmentProblem : !state.diagnostic.isEmpty() ? state.diagnostic : reference.target.success ? targetStatus(error) : QStringLiteral("不支持的目标"));
+        auto *action = problems->addAction(caption(message)); action->setToolTip(message);
+        const auto source = std::find_if(result.index.sources.cbegin(), result.index.sources.cend(), [&](const auto &item) { return item.path == reference.sourcePath; });
+        if (source != result.index.sources.cend()) connect(action, &QAction::triggered, this, [this, reference, sha = source->textSha256, generation] {
+            if (!m_references->current(generation)) { showNotice(QStringLiteral("引用已变化，请重新检查后定位源文。")); return; }
+            emit referenceSourceRequested(reference.sourcePath, reference.sourceIdentity, sha, reference.reference.usage.start, reference.reference.usage.end);
+        });
     }
     if (!shown) label(problems, QStringLiteral("当前扫描中没有发现缺失或受阻目标"));
     auto *candidates = submenu(QStringLiteral("未引用图片候选"), "unreferencedImagesMenu");
@@ -315,7 +339,7 @@ void WorkspaceWindow::showNavigation(bool favorites) { { const QSignalBlocker bl
 void WorkspaceWindow::startSearch() { const auto query = m_search->text().trimmed(); if (!query.isEmpty()) m_tree->searchFiles(query); }
 void WorkspaceWindow::updateNavigationSelection() { const bool recent = m_navigationVisible && m_navigationPage->page() == WorkspaceNavigation::Page::Recent, favorites = m_navigationVisible && m_navigationPage->page() == WorkspaceNavigation::Page::Favorites; m_recent->setProperty("navigationSelected", recent); m_favorites->setProperty("navigationSelected", favorites); m_recent->update(); m_favorites->update(); if (!m_favoriteAction) return; const auto *pane = activePane(); const auto path = m_navigationVisible ? m_navigationPage->selectedPath() : pane && pane->document() ? pane->document()->path() : QString(); m_favoriteAction->setText(m_navigation->favorite(path) ? QStringLiteral("取消收藏") : QStringLiteral("添加到收藏")); m_favoriteAction->setEnabled(!path.isEmpty()); }
 void WorkspaceWindow::closePane(const QUuid &id) { if (m_closingAll) return; if (auto *pane = m_panes.value(id).data()) { activatePane(id); pane->close(); } }
-void WorkspaceWindow::closeEvent(QCloseEvent *event) { if (m_panes.isEmpty()) { m_closingAll = true; event->accept(); return; } event->ignore(); if (!m_closingAll) { m_closingAll = true; QTimer::singleShot(0, this, &WorkspaceWindow::advanceClose); } }
+void WorkspaceWindow::closeEvent(QCloseEvent *event) { if (m_maintenance->busy()) { event->ignore(); showNotice(QStringLiteral("正在维护资源，请等待逐项结果后再关闭。")); emit closeCancelled(); return; } if (m_panes.isEmpty()) { m_closingAll = true; event->accept(); return; } event->ignore(); if (!m_closingAll) { m_closingAll = true; QTimer::singleShot(0, this, &WorkspaceWindow::advanceClose); } }
 void WorkspaceWindow::advanceClose() { if (!m_closingAll) return; if (m_panes.isEmpty()) { close(); return; } const auto list = panes(); if (!list.isEmpty()) { auto *pane = list.first(); activatePane(pane->paneId()); pane->close(); } }
 void WorkspaceWindow::resizeEvent(QResizeEvent *event) { ApplicationWindow::resizeEvent(event); updateSidebar(); }
 void WorkspaceWindow::updateSidebar() { if (m_sidebar) m_sidebar->setVisible(m_sidebarWanted && (m_sidebarExplicit || width() >= mainTokens().value("compactBelowWidth").toInt())); }

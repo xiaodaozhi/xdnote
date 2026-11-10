@@ -6,6 +6,7 @@ use std::io::{self, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub mod headings;
+mod reference_targets;
 pub mod workspace_path;
 
 pub const MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
@@ -158,8 +159,8 @@ fn render_with_link_policy(
 
 /// Analyze one immutable source snapshot using the same Markdown extensions as
 /// the preview. Ranges are UTF-8 byte offsets in that snapshot, and cover the
-/// entire usage or reference definition, not a safely rewritable destination.
-/// In particular, callers must not replace a range by searching for `target`.
+/// entire usage or reference definition. An optional `destination` is a
+/// separately admitted, safely rewritable byte range; null means read-only.
 /// `complete` is false when the parser's reference-expansion guard could have
 /// suppressed usages, even when every emitted event was processed successfully.
 pub fn references(source: &str) -> Result<Vec<u8>, RenderError> {
@@ -238,7 +239,20 @@ pub fn references(source: &str) -> Result<Vec<u8>, RenderError> {
                 output.write_all(b"null")?;
             }
             output.write_all(b",\"definition\":")?;
-            if let Some(span) = definition {
+            if let Some(ref span) = definition {
+                write!(output, "[{},{}]", span.start, span.end)?;
+            } else {
+                output.write_all(b"null")?;
+            }
+            output.write_all(b",\"destination\":")?;
+            let destination_span = if let Some(ref span) = definition {
+                reference_targets::destination_range(source, span.clone(), true, &destination)
+            } else if matches!(link_type, LinkType::Inline) {
+                reference_targets::destination_range(source, range.clone(), false, &destination)
+            } else {
+                None
+            };
+            if let Some(span) = destination_span {
                 write!(output, "[{},{}]", span.start, span.end)?;
             } else {
                 output.write_all(b"null")?;

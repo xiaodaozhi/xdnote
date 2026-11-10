@@ -63,9 +63,15 @@ async function main() {
     const admission = w.id === 'desktop-admission' && w.kind === 'validation-window';
     const filePrototype = ['standalone', 'unsaved-confirmation', 'external-conflict'].includes(w.id);
     const workspacePrototype = w.id === 'main' && w.kind === 'application-window';
-    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : workspacePrototype ? 'workspace-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    const resourcePrototype = w.id === 'workspace-resource-maintenance' && w.kind === 'owner-modal-dialog';
+    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : workspacePrototype ? 'workspace-prototype' : resourcePrototype ? 'workspace-resource-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    if (resourcePrototype) {
+      assert(w.sizeToken === 'windows.largeDialog' && w.designStatus === 'shared-pattern-extension' && w.sizeRationale, 'Resource maintenance dialog scope');
+      assert(w.implementationSource === 'apps/desktop/src/ResourceMaintenanceController.cpp', 'Resource maintenance source identity');
+      await fs.access(path.join(ROOT, w.implementationSource));
+    }
     if (workspacePrototype) {
-      assert(w.implementationSource === 'apps/desktop/src/WorkspaceWindow.cpp' && w.implementedStates?.includes('session-transfer') && w.deferredStates?.includes('resources-and-links'), 'Workspace prototype scope');
+      assert(w.implementationSource === 'apps/desktop/src/WorkspaceWindow.cpp' && w.implementedStates?.includes('session-transfer') && w.implementedStates?.includes('resources-and-links'), 'Workspace prototype scope');
       assert(w.sizeToken === 'windows.main' && w.purpose && w.sizeRationale, 'Workspace window geometry');
       await fs.access(path.join(ROOT, w.implementationSource));
     }

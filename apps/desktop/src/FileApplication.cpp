@@ -3,9 +3,11 @@
 #include "WorkspaceWindow.h"
 #include "WorkspaceTree.h"
 #include "SourceEditor.h"
+#include "MarkdownPreview.h"
 #include "InputModality.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspacePath.h"
+#include "WorkspaceReferenceController.h"
 #include <QApplication>
 #include <QFileOpenEvent>
 #include <QFileDialog>
@@ -26,6 +28,9 @@ QString rootKey(const QString &path) { const QFileInfo info(path); auto key = in
 FileApplication::FileApplication(QObject *parent, QString settingsPath)
     : QObject(parent), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
     qApp->installEventFilter(this);
+    connect(&m_manager, &FileManager::resourcesChanged, this, [this] {
+        for (auto pane : m_documents) if (pane && pane->preview()) pane->preview()->refresh();
+    });
     connect(&m_manager, &FileManager::opened, this, [this](QUuid intent, FileDocument *document, bool reused) {
         auto placeholder = m_requests.take(intent);
         const auto navigation = m_linkNavigations.take(intent);
@@ -38,12 +43,13 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
         if (!placeholder) { if (!reused) m_manager.closeDocument(document); return; }
         m_navigation.recordOpen(document->path());
         const auto id = document->session()->documentId(); auto pane = m_documents.value(id);
-        if (pane) { placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); if (navigation.hasFragment) pane->navigateToHeading(navigation.fragment); return; }
+        if (pane) { placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); if (navigation.hasFragment) pane->navigateToHeading(navigation.fragment); if (navigation.sourceLocation) pane->navigateToReference(navigation.locationIdentity, navigation.sourceSha256, navigation.locationStart, navigation.locationEnd); return; }
         m_documents.insert(id, placeholder); placeholder->setDocument(document);
         connect(placeholder, &QObject::destroyed, this, [this, id] { m_documents.remove(id); });
         connect(document, &FileDocument::stateChanged, this, [this, document, path = document->path()]() mutable { if (path != document->path()) { path = document->path(); m_navigation.recordOpen(path); } QTimer::singleShot(0, this, &FileApplication::retryTransfers); });
         connect(document->session(), &DocumentSession::stateChanged, this, [this] { QTimer::singleShot(0, this, &FileApplication::retryTransfers); }); activatePane(placeholder);
         if (navigation.hasFragment) placeholder->navigateToHeading(navigation.fragment);
+        if (navigation.sourceLocation) placeholder->navigateToReference(navigation.locationIdentity, navigation.sourceSha256, navigation.locationStart, navigation.locationEnd);
     });
     connect(&m_manager, &FileManager::openFailed, this, [this](QUuid intent, const QString &path, const QString &message) {
         auto pane = m_requests.take(intent); const auto navigation = m_linkNavigations.take(intent);
@@ -75,6 +81,14 @@ SingleFileWindow *FileApplication::createWindow() {
 }
 WorkspaceWindow *FileApplication::createWorkspace() {
     auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_navigation, &m_manager); m_workspaces.insert(workspace);
+    connect(workspace, &WorkspaceWindow::referenceSourceRequested, this, [this, workspace](const QString &path, const QString &identity, const QByteArray &sha, qsizetype start, qsizetype end) {
+        LinkNavigation navigation; navigation.sourceLocation = true; navigation.workspace = workspace; navigation.root = workspace->resourceRoot();
+        navigation.source = workspace->activePane(); navigation.sourceSha256 = sha; navigation.locationIdentity = identity; navigation.locationStart = start; navigation.locationEnd = end;
+        if (!validLinkSource(navigation)) return;
+        auto *placeholder = createWindow(); const auto intent = QUuid::createUuid(); placeholder->setLoading(QDir(navigation.root->rootPath()).filePath(path), intent);
+        if (!workspace->addPane(placeholder)) { delete placeholder; return; }
+        m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation); m_manager.openWithin(navigation.root, path, intent);
+    });
     connect(workspace, &WorkspaceWindow::openRequested, this, [this, workspace](const QString &path) { openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseFileRequested, this, [this, workspace] { const auto path = QFileDialog::getOpenFileName(workspace, QStringLiteral("打开 Markdown 文件"), workspace->rootPath(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)")); InputModality::forApplication()->clear(); if (!path.isEmpty()) openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseDirectoryRequested, this, [this, workspace] { chooseDirectory(workspace); });
@@ -105,6 +119,8 @@ void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *work
 }
 void FileApplication::activatePane(SingleFileWindow *pane) { if (auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window())) workspace->activatePane(pane->paneId()); else { if (pane->isMinimized()) pane->showNormal(); pane->show(); pane->raise(); pane->activateWindow(); } }
 bool FileApplication::validLinkSource(const LinkNavigation &navigation) const {
+    if (navigation.sourceLocation) return navigation.workspace && !navigation.workspace->closingWorkspace()
+        && navigation.root && navigation.root->active() && navigation.workspace->resourceRoot() == navigation.root;
     const auto source = navigation.source;
     if (!source || !navigation.root || !navigation.root->active() || !source->document() || source->document()->closed()
         || source->resourceRoot() != navigation.root || source->resourceDocumentPath() != navigation.sourcePath
