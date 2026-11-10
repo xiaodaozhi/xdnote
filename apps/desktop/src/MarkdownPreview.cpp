@@ -144,9 +144,9 @@ private:
 
 RenderResult renderSnapshot(QByteArray source, QUuid documentId, quint64 generation, quint64 revision,
     const std::shared_ptr<WorkspaceResourceReader> &root, const QString &documentPath,
-    const QString &documentIdentity, const QByteArray &prefix) {
+    const QString &documentIdentity, const QByteArray &prefix, const AuthorizedPreviewImages &authorizedImages) {
     const DocumentSnapshot snapshot{EditResult::Applied, source, revision, documentId};
-    const auto prepared = preparePreviewImages(snapshot, root, documentPath, documentIdentity);
+    const auto prepared = preparePreviewImages(snapshot, root, documentPath, documentIdentity, authorizedImages);
     QStringList headingIds;
     bool enableFragments = false;
     if (prepared.analyzed) {
@@ -164,7 +164,7 @@ RenderResult renderSnapshot(QByteArray source, QUuid documentId, quint64 generat
     const auto release = qScopeGuard([&] { xdnote_markdown_free(&buffer); });
     if (buffer.status != 0 || !buffer.data || buffer.length > 8 * 1024 * 1024)
         return {{}, {}, QStringLiteral("预览失败：无效源文或生成内容过大"), generation, revision};
-    return {QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), prepared.png, {}, generation, revision, prepared.linkTargets, headingIds};
+    return {QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), prepared.png, {}, generation, revision, prepared.linkTargets, headingIds, prepared.watchedPaths};
 }
 
 QString pageFor(const QByteArray &body, quint64 generation, int padding, Appearance *appearance) {
@@ -270,6 +270,11 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_view);
     connect(session, &DocumentSession::changed, this, &MarkdownPreview::refresh, Qt::QueuedConnection);
+    m_imageDelay.setSingleShot(true); m_imageDelay.setInterval(180);
+    const auto imageChanged = [this, page] { page->clearImages(); m_imageDelay.start(); };
+    connect(&m_imageWatch, &QFileSystemWatcher::fileChanged, this, imageChanged);
+    connect(&m_imageWatch, &QFileSystemWatcher::directoryChanged, this, imageChanged);
+    connect(&m_imageDelay, &QTimer::timeout, this, &MarkdownPreview::refresh);
     connect(session, &DocumentSession::closed, this, [this, page] {
         m_closed = true; ++m_generation; m_hasPending = false; m_presentingLinkTargets.clear(); m_presentingHeadingIds.clear(); m_view->stop(); page->clearImages();
     });
@@ -284,6 +289,9 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
                 m_presentingRevision = result.revision;
                 m_presentingLinkTargets = result.linkTargets;
                 m_presentingHeadingIds = result.headingIds;
+                const auto previous = m_imageWatch.files() + m_imageWatch.directories();
+                if (!previous.isEmpty()) m_imageWatch.removePaths(previous);
+                if (!result.imageWatchPaths.isEmpty()) m_imageWatch.addPaths(result.imageWatchPaths);
                 m_restoring = true;
                 page->present(pageFor(result.html, result.generation, m_padding, m_appearance), result.generation, result.images);
             }
@@ -381,10 +389,14 @@ void MarkdownPreview::refresh() {
     startPending();
 }
 
-void MarkdownPreview::setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &documentPath, const QString &documentIdentity) {
-    if (m_closed || (m_resourceRoot == root && m_resourceDocumentPath == documentPath && m_resourceDocumentIdentity == documentIdentity)) return;
+void MarkdownPreview::setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &documentPath, const QString &documentIdentity, const AuthorizedPreviewImages &authorizedImages) {
+    if (m_closed || (m_resourceRoot == root && m_resourceDocumentPath == documentPath && m_resourceDocumentIdentity == documentIdentity && m_authorizedImages == authorizedImages)) return;
     const bool cancelledNavigation = m_navigationPending; m_navigationPending = false;
     m_resourceRoot = std::move(root); m_resourceDocumentPath = documentPath; m_resourceDocumentIdentity = documentIdentity;
+    m_authorizedImages = authorizedImages;
+    m_imageDelay.stop();
+    const auto previousWatches = m_imageWatch.files() + m_imageWatch.directories();
+    if (!previousWatches.isEmpty()) m_imageWatch.removePaths(previousWatches);
     if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
     ++m_generation; m_hasPending = false;
     static_cast<RestrictedPage *>(m_view->page())->clearImages();
@@ -401,10 +413,11 @@ void MarkdownPreview::startPending() {
     const auto revision = m_pendingRevision;
     const auto documentId = m_pendingDocumentId;
     const auto root = m_resourceRoot;
+    const auto authorizedImages = m_authorizedImages;
     const auto documentPath = m_resourceDocumentPath, documentIdentity = m_resourceDocumentIdentity;
     const auto prefix = static_cast<RestrictedPage *>(m_view->page())->imagePrefix(generation).toUtf8();
-    m_worker.setFuture(QtConcurrent::run([snapshot = std::move(snapshot), documentId, generation, revision, root, documentPath, documentIdentity, prefix] {
-        return renderSnapshot(snapshot, documentId, generation, revision, root, documentPath, documentIdentity, prefix);
+    m_worker.setFuture(QtConcurrent::run([snapshot = std::move(snapshot), documentId, generation, revision, root, documentPath, documentIdentity, prefix, authorizedImages] {
+        return renderSnapshot(snapshot, documentId, generation, revision, root, documentPath, documentIdentity, prefix, authorizedImages);
     }));
 }
 }

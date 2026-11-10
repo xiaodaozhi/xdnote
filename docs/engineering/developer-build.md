@@ -36,6 +36,8 @@ python scripts/desktop.py test --profile default
 python scripts/desktop.py run --profile default
 ```
 
+启动本机构建统一使用 `run` 入口；自定义构建目录同时传入对应的 `--build-dir` 和 `--qt-prefix`。入口只为子进程设置 Qt DLL、插件、QML 和 WebEngine 路径，检查关键 DLL 与 WebEngine 进程文件后才启动；不修改系统 PATH。不要从文件管理器、桌面自动化工具或 `Start-Process` 裸启动 exe，也不通过复制运行库来掩盖漏传运行环境的问题。
+
 ## MSVC 2019 兼容配置
 
 如需验证已安装的 MSVC 2019 v142／14.29 工具，显式选择 `--profile msvc2019`。该配置与默认配置统一使用 Qt 6.8.2，并沿用同一源码、Rust 版本及测试。两个 Windows 配置共用同一 SDK；CMake 目录和 Rust 测试产物分别保存，不修改 Qt 头文件或伪装编译器版本。

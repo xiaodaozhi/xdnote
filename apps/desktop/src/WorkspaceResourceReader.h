@@ -48,6 +48,7 @@ struct WorkspaceWriteResult {
     // Keeps the verified target, document and their directory handles stable.
     // Retain until the caller has rechecked the session and inserted the link.
     std::shared_ptr<void> lease;
+    QString identity;
 };
 
 class WorkspaceResourceReader;
@@ -78,7 +79,9 @@ public:
     // must recheck the document session/revision before inserting a reference.
     WorkspaceWriteResult publishImage(const QString &documentPath, const QString &documentIdentity,
                                       const QByteArray &bytes, const QString &suggestedName, const QString &extension,
-                                      const std::function<void(WorkspaceWriteStage)> &observer = {}) const;
+                                      const std::function<void(WorkspaceWriteStage)> &observer = {},
+                                      const QString &destination = QStringLiteral("assets/images"),
+                                      const std::shared_ptr<WorkspaceResourceReader> &documentRoot = {}) const;
     bool active() const;
     void revoke();
 private:

@@ -8,7 +8,10 @@
 #include <QStringList>
 #include <QUuid>
 #include <QWidget>
+#include <QFileSystemWatcher>
+#include <QTimer>
 #include <memory>
+#include "WorkspaceImagePreview.h"
 
 class QWebEngineView;
 
@@ -23,6 +26,7 @@ struct RenderResult {
     quint64 generation = 0;
     quint64 revision = 0;
     QStringList linkTargets, headingIds;
+    QStringList imageWatchPaths;
 };
 
 class MarkdownPreview final : public QWidget {
@@ -34,7 +38,8 @@ public:
     quint64 requestedGeneration() const { return m_generation; }
     quint64 displayedRevision() const { return m_displayedRevision; }
     void refresh();
-    void setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &documentPath, const QString &documentIdentity);
+    void setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &documentPath, const QString &documentIdentity,
+                            const AuthorizedPreviewImages &authorizedImages = {});
     QPointF readingPosition() const { return m_scroll; }
     void restoreReadingPosition(const QPointF &position);
     void navigateToHeading(const QString &fragment, quint64 revision);
@@ -53,6 +58,9 @@ private:
     QByteArray m_pending;
     QUuid m_pendingDocumentId;
     std::shared_ptr<WorkspaceResourceReader> m_resourceRoot;
+    AuthorizedPreviewImages m_authorizedImages;
+    QFileSystemWatcher m_imageWatch;
+    QTimer m_imageDelay;
     QString m_resourceDocumentPath, m_resourceDocumentIdentity;
     QStringList m_presentingLinkTargets, m_presentingHeadingIds;
     quint64 m_pendingRevision = 0;

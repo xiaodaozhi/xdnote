@@ -6,7 +6,8 @@
 
 namespace xdnote {
 ImageImportResult importWorkspaceImage(const std::shared_ptr<WorkspaceResourceReader> &root,
-    const QString &documentPath, const QString &documentIdentity, const QString &sourcePath, const QImage &bitmap) {
+    const QString &documentPath, const QString &documentIdentity, const QString &sourcePath, const QImage &bitmap,
+    const QString &destination, const std::shared_ptr<WorkspaceResourceReader> &documentRoot) {
     ImageImportResult result;
     if (!root || !root->active()) { result.message = QStringLiteral("工作区授权已失效。"); return result; }
     QByteArray source;
@@ -31,7 +32,16 @@ ImageImportResult importWorkspaceImage(const std::shared_ptr<WorkspaceResourceRe
                                      : QStringLiteral("图片损坏或格式不受支持。请使用 PNG、JPEG、GIF、BMP 或 WebP。");
         return result;
     }
-    result.publication = root->publishImage(documentPath, documentIdentity, source, name, QString::fromLatin1(format));
+    result.publication = root->publishImage(documentPath, documentIdentity, source, name, QString::fromLatin1(format), {}, destination, documentRoot);
+    if (result.publication.status == WorkspaceWriteStatus::Committed || result.publication.status == WorkspaceWriteStatus::Reused) {
+        result.imageIdentity = result.publication.identity;
+        result.imageDigest = QCryptographicHash::hash(source, QCryptographicHash::Sha256);
+#ifndef Q_OS_WIN
+        const auto verified = root->read(result.publication.path, MaxImageSourceBytes);
+        if (!verified.ok() || verified.bytes != source || verified.identity != result.imageIdentity) result.imageIdentity.clear();
+#endif
+        if (result.imageIdentity.isEmpty()) { result.publication.status = WorkspaceWriteStatus::PublishedButUnverified; result.publication.error = WorkspaceReadError::Changed; }
+    }
     if (result.publication.status == WorkspaceWriteStatus::Failed) {
         switch (result.publication.error) {
         case WorkspaceReadError::Unsupported: result.message = QStringLiteral("当前平台尚不支持安全写入工作区图片。"); break;

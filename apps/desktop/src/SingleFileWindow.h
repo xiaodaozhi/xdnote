@@ -1,6 +1,7 @@
 #pragma once
 #include "FileManager.h"
 #include "WindowChrome.h"
+#include "WorkspaceImagePreview.h"
 #include <QImage>
 
 class QLabel;
@@ -58,8 +59,8 @@ public:
     Appearance *appearance() const { return m_appearance; }
     void setContentZoom(int percent);
     int contentZoom() const { return m_zoom; }
-    void importImageFile(const QString &path);
-    void importClipboardImage(const QImage &image);
+    void importImageFile(const QString &path, const QString &destinationDirectory = {});
+    void importClipboardImage(const QImage &image, const QString &destinationDirectory = {});
     void insertWorkspaceDocumentLink(const QString &targetPath);
     void activateDocumentLink(const QString &target, quint64 revision);
     void navigateToHeading(const QString &fragment);
@@ -93,7 +94,7 @@ private:
     void updateCaret();
     void showSaveError();
     void syncPreviewResources();
-    void beginImageImport(const QString &path, const QImage &image);
+    void beginImageImport(const QString &path, const QImage &image, const QString &destinationDirectory = {});
     void chooseImage();
     void chooseWorkspaceDocumentLink();
     FileManager *m_manager;
@@ -103,6 +104,8 @@ private:
     QPointer<FileDocument> m_document;
     std::shared_ptr<WorkspaceResourceReader> m_workspaceResourceRoot, m_localResourceRoot;
     QString m_workspaceResourcePath, m_localResourcePath;
+    AuthorizedPreviewImages m_importedImages;
+    QString m_importedImageDocument;
     QUuid m_intent;
     WindowTitleBar *m_header;
     ElidedLabel *m_path;
