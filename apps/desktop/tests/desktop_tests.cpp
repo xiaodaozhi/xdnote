@@ -231,8 +231,14 @@ private slots:
         QSignalSpy ready(&preview, &MarkdownPreview::previewReady), moved(&preview, &MarkdownPreview::fragmentNavigated);
         preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
         auto *page = preview.view()->page(); auto *surface = preview.view()->focusProxy() ? preview.view()->focusProxy() : preview.view();
+        evaluatePreview(page, QStringLiteral("globalThis.xdnoteFocusTrace=[];['keydown','focusin','focusout'].forEach(t=>document.addEventListener(t,e=>xdnoteFocusTrace.push([t,e.key||'',e.target.tagName]),true));window.addEventListener('blur',()=>xdnoteFocusTrace.push(['blur']));true"));
+        const auto before = evaluatePreview(page, QStringLiteral("JSON.stringify({active:document.activeElement.tagName,focused:document.hasFocus()})")).toString();
         surface->setFocus(Qt::OtherFocusReason); QTest::keyClick(surface, Qt::Key_Tab);
         QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.activeElement === document.querySelector('a.link-placeholder')")).toBool(), 10000);
+        QTest::qWait(250);
+        if (!evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool())
+            qWarning().noquote() << "Focus diagnosis:" << before << "Qt focus:" << surface->hasFocus()
+                << evaluatePreview(page, QStringLiteral("JSON.stringify({active:document.activeElement.tagName,focused:document.hasFocus(),visible:document.activeElement.matches(':focus-visible'),events:xdnoteFocusTrace})")).toString();
         QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool(), 10000);
         QTest::keyClick(surface, Qt::Key_Return);
         QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000); QCOMPARE(moved.first().first().toString(), QStringLiteral("target"));
