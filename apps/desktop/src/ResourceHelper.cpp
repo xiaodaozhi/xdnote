@@ -59,7 +59,14 @@ int openWithin(int root, const QString &path, bool directory, dev_t device, bool
         Q_UNUSED(metadata);
 #endif
         const int child = ::openat(parent.value, name.constData(), access | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK | (dir ? O_DIRECTORY : 0));
-        if (child < 0) return -1;
+        if (child < 0) {
+            const int code = errno; struct stat entry{};
+            // Darwin may report ENOTDIR for O_DIRECTORY | O_NOFOLLOW on a
+            // symbolic link. Preserve the blocked-link distinction in feedback.
+            if (code == ENOTDIR && ::fstatat(parent.value, name.constData(), &entry, AT_SYMLINK_NOFOLLOW) == 0 && S_ISLNK(entry.st_mode)) errno = ELOOP;
+            else errno = code;
+            return -1;
+        }
         struct stat info{};
         if (::fstat(child, &info) != 0 || info.st_dev != device || (dir ? !S_ISDIR(info.st_mode) : !S_ISREG(info.st_mode))) {
             ::close(child); errno = EXDEV; return -1;
@@ -96,8 +103,8 @@ bool restrictFilesystem(int root, const QString &path, bool writing) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     const int status = sandbox_init(profile.constData(), 0, &message);
-#pragma clang diagnostic pop
     if (message) sandbox_free_error(message);
+#pragma clang diagnostic pop
     return status == 0;
 #endif
 }
