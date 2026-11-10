@@ -4,6 +4,7 @@
 #include "MarkdownReferences.h"
 #include "MarkdownHeadings.h"
 #include "WorkspacePath.h"
+#include "WorkspaceReferenceIndex.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceImagePreview.h"
 #include "ImageImport.h"
@@ -173,6 +174,79 @@ private slots:
         const auto longSource = QByteArray("[x][r] ").repeated(6000) + "\n\n[r]: " + QByteArray(4096, 'a') + '\n';
         DocumentSnapshot large{EditResult::Applied, longSource, 7, QUuid::createUuid()}; const auto partial = analyzeMarkdownReferences(large);
         QVERIFY2(partial.success, qPrintable(partial.reason)); QVERIFY(!partial.complete); QVERIFY(!partial.references.isEmpty());
+    }
+
+    void referenceIndexUsesLiveSnapshotsAndRetainsSourceVersions() {
+        const auto diskId = QUuid::createUuid(), sessionId = QUuid::createUuid(), rootId = QUuid::createUuid();
+        const QByteArray disk("![old](../old.png)\n");
+        const auto live = QStringLiteral("![图](../assets/images/猫%23.png) [一][ref] [二][ref]\n\n[ref]: ../其他.md#标题\n\n`[伪](../fake.md)`\n").toUtf8();
+        ReferenceIndexInput input{rootId, 3, 8, true, {}, {
+            {QStringLiteral("notes/a.md"), QStringLiteral("file-id"), 5, {EditResult::Applied, disk, 1, diskId}, ReferenceIndexSource::Origin::Disk},
+            {QStringLiteral("notes/a.md"), QStringLiteral("file-id"), 5, {EditResult::Applied, live, 7, sessionId}, ReferenceIndexSource::Origin::Session},
+            {QStringLiteral("empty.md"), QStringLiteral("empty-id"), 2, {EditResult::Applied, QByteArray("empty"), 1, QUuid::createUuid()}, ReferenceIndexSource::Origin::Disk}
+        }};
+        const auto index = buildWorkspaceReferenceIndex(input);
+        QVERIFY2(index.complete, qPrintable(index.gaps.join(';')));
+        QCOMPARE(index.rootId, rootId); QCOMPARE(index.rootGeneration, quint64(3)); QCOMPARE(index.scanGeneration, quint64(8));
+        QCOMPARE(index.sources.size(), 2); QCOMPARE(index.sources.first().path, QStringLiteral("empty.md"));
+        QVERIFY(index.sources.first().analysisComplete); QCOMPARE(index.sources.last().textSha256, QCryptographicHash::hash(live, QCryptographicHash::Sha256));
+        QCOMPARE(index.references.size(), 3); QVERIFY(index.inbound("old.png").isEmpty());
+        const auto images = index.inbound(QStringLiteral("assets/images/猫#.png")); QCOMPARE(images.size(), 1);
+        QCOMPARE(images.first().reference.kind, MarkdownReference::Kind::Image);
+        QCOMPARE(images.first().documentId, sessionId); QCOMPARE(images.first().revision, quint64(7));
+        QCOMPARE(images.first().sourcePathGeneration, quint64(5));
+        QCOMPARE(images.first().origin, ReferenceIndexSource::Origin::Session);
+        QCOMPARE(live.mid(images.first().reference.usage.start, images.first().reference.usage.end - images.first().reference.usage.start),
+                 QStringLiteral("![图](../assets/images/猫%23.png)").toUtf8());
+        const auto links = index.inbound(QStringLiteral("其他.md")); QCOMPARE(links.size(), 2);
+        QVERIFY(links.first().target.hasFragment); QCOMPARE(links.first().target.fragment, QStringLiteral("标题"));
+        QVERIFY(links.first().reference.referenceStyle && links.last().reference.referenceStyle);
+        QCOMPARE(links.first().reference.definition.start, links.last().reference.definition.start);
+        QCOMPARE(index.outbound("notes/a.md").size(), 3);
+    }
+
+    void referenceIndexNeverFallsBackWhenCoverageOrSessionIsUncertain() {
+        const auto root = QUuid::createUuid(), diskId = QUuid::createUuid(), liveId = QUuid::createUuid();
+        ReferenceIndexSource disk{QStringLiteral("a.md"), QStringLiteral("identity"), 1,
+            {EditResult::Applied, QByteArray("[old](old.md)"), 1, diskId}, ReferenceIndexSource::Origin::Disk};
+        ReferenceIndexSource live{QStringLiteral("a.md"), QStringLiteral("identity"), 1,
+            {EditResult::Composing, QByteArray(), 2, liveId}, ReferenceIndexSource::Origin::Session};
+        ReferenceIndexInput input{root, 1, 2, true, {}, {disk, live}};
+        auto index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QVERIFY(index.references.isEmpty()); QVERIFY(!index.gaps.isEmpty());
+
+        live.snapshot = {EditResult::Applied, QByteArray("[live](new.md)"), 3, liveId};
+        live.identity = QStringLiteral("replacement"); input.sources = {disk, live};
+        index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QCOMPARE(index.inbound("new.md").size(), 1); QVERIFY(index.inbound("old.md").isEmpty());
+
+        live.identity = disk.identity; live.pathGeneration = 2; input.sources = {disk, live};
+        QVERIFY(!buildWorkspaceReferenceIndex(input).complete);
+        live.pathGeneration = disk.pathGeneration; input.sources = {disk, live, live};
+        index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QVERIFY(index.references.isEmpty());
+
+        input.sources = {disk}; input.enumerationComplete = false;
+        index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QCOMPARE(index.inbound("old.md").size(), 1);
+        input.enumerationComplete = true; input.enumerationGaps = {QStringLiteral("不可读文件")};
+        QVERIFY(!buildWorkspaceReferenceIndex(input).complete);
+
+        input.enumerationGaps.clear(); disk.snapshot.utf8 = "[x](../../outside)"; input.sources = {disk};
+        index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QCOMPARE(index.references.size(), 1); QVERIFY(!index.references.first().target.success);
+        disk.path = QStringLiteral("../outside.md"); input.sources = {disk};
+        index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QVERIFY(index.references.isEmpty());
+    }
+
+    void referenceIndexKeepsIncompleteParserOutputMarkedIncomplete() {
+        const auto source = QByteArray("[x][r] ").repeated(6000) + "\n\n[r]: " + QByteArray(4096, 'a') + '\n';
+        ReferenceIndexInput input{QUuid::createUuid(), 1, 1, true, {}, {
+            {QStringLiteral("source.md"), QStringLiteral("id"), 1, {EditResult::Applied, source, 1, QUuid::createUuid()}, ReferenceIndexSource::Origin::Disk}
+        }};
+        const auto index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QVERIFY(!index.gaps.isEmpty()); QVERIFY(!index.references.isEmpty());
     }
 
     void workspacePathsRoundTripWithoutGrantingFileAccess() {
