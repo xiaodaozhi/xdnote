@@ -1,6 +1,8 @@
 #include "MarkdownPreview.h"
 #include "MarkdownBridge.h"
+#include "MarkdownHeadings.h"
 #include "WorkspaceImagePreview.h"
+#include "WorkspacePath.h"
 #include "DocumentSession.h"
 #include "VisualTokens.h"
 #include "Appearance.h"
@@ -95,9 +97,12 @@ public:
         scripts().insert(controls);
     }
     std::function<void(quint64, int)> copyRequested;
+    std::function<void(quint64, int)> fragmentRequested;
     QString imagePrefix(quint64 generation) const { return QStringLiteral("xdnote-preview:/%1/%2/images/").arg(m_id).arg(generation); }
+    QString linkPrefix(quint64 generation) const { return QStringLiteral("xdnote-preview:/%1/%2/links/").arg(m_id).arg(generation); }
     void clearImages() { m_memory->clearImages(); }
     void present(const QString &html, quint64 generation, const QHash<int, QByteArray> &images) {
+        m_expectedGeneration = generation;
         m_expectedBase = QUrl(QStringLiteral("xdnote-preview:/%1/%2").arg(m_id).arg(generation));
         QHash<QUrl, QByteArray> resources;
         for (auto it = images.cbegin(); it != images.cend(); ++it) resources.insert(QUrl(imagePrefix(generation) + QString::number(it.key())), it.value());
@@ -107,8 +112,19 @@ public:
     QUrl expectedBase() const { return m_expectedBase; }
 protected:
     bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool mainFrame) override {
-        // Authorize the exact generated document, regardless of navigation type.
-        Q_UNUSED(type);
+        // Never hand document-controlled URLs to WebEngine or the OS. A click
+        // may name only a numeric token generated for this exact page.
+        const auto prefix = linkPrefix(m_expectedGeneration);
+        const auto encoded = url.toString(QUrl::FullyEncoded);
+        if (mainFrame && type == QWebEnginePage::NavigationTypeLinkClicked && !m_expectedBase.isEmpty()
+            && encoded.startsWith(prefix)) {
+            const auto suffix = encoded.mid(prefix.size()); bool valid = false;
+            const auto index = suffix.toInt(&valid);
+            if (valid && index >= 0 && suffix == QString::number(index) && fragmentRequested)
+                fragmentRequested(m_expectedGeneration, index);
+            return false;
+        }
+        // Authorize only the exact generated document, regardless of type.
         return mainFrame && !m_expectedBase.isEmpty() && url == m_expectedBase;
     }
     QWebEnginePage *createWindow(WebWindowType) override { return nullptr; }
@@ -123,21 +139,33 @@ private:
     QString m_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString m_copyPrefix = "xdnote-copy:" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ':';
     QUrl m_expectedBase;
+    quint64 m_expectedGeneration = 0;
 };
 
 RenderResult renderSnapshot(QByteArray source, QUuid documentId, quint64 generation, quint64 revision,
     const std::shared_ptr<WorkspaceResourceReader> &root, const QString &documentPath,
     const QString &documentIdentity, const QByteArray &prefix) {
-    const auto prepared = preparePreviewImages({EditResult::Applied, source, revision, documentId}, root, documentPath, documentIdentity);
+    const DocumentSnapshot snapshot{EditResult::Applied, source, revision, documentId};
+    const auto prepared = preparePreviewImages(snapshot, root, documentPath, documentIdentity);
+    bool hasFragments = false;
+    for (const auto &target : prepared.linkTargets) if (target.startsWith('#')) { hasFragments = true; break; }
+    QStringList headingIds;
+    bool enableFragments = false;
+    if (prepared.analyzed && hasFragments) {
+        const auto headings = analyzeMarkdownHeadings(snapshot);
+        if (headings.success) {
+            for (const auto &heading : headings.headings) headingIds.append(heading.id);
+            enableFragments = true;
+        }
+    }
     const auto pointer = reinterpret_cast<const unsigned char *>(source.constData());
-    auto buffer = prepared.analyzed
-        ? xdnote_markdown_render_images(pointer, std::size_t(source.size()), reinterpret_cast<const unsigned char *>(prefix.constData()), std::size_t(prefix.size()),
-              reinterpret_cast<const unsigned char *>(prepared.states.constData()), std::size_t(prepared.states.size()))
-        : xdnote_markdown_render(pointer, std::size_t(source.size()));
+    auto renderWithResources = enableFragments ? xdnote_markdown_render_images_and_fragments : xdnote_markdown_render_images;
+    auto buffer = prepared.analyzed ? renderWithResources(pointer, std::size_t(source.size()), reinterpret_cast<const unsigned char *>(prefix.constData()), std::size_t(prefix.size()),
+        reinterpret_cast<const unsigned char *>(prepared.states.constData()), std::size_t(prepared.states.size())) : xdnote_markdown_render(pointer, std::size_t(source.size()));
     const auto release = qScopeGuard([&] { xdnote_markdown_free(&buffer); });
     if (buffer.status != 0 || !buffer.data || buffer.length > 8 * 1024 * 1024)
         return {{}, {}, QStringLiteral("预览失败：无效源文或生成内容过大"), generation, revision};
-    return {QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), prepared.png, {}, generation, revision};
+    return {QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), prepared.png, {}, generation, revision, prepared.linkTargets, headingIds};
 }
 
 QString pageFor(const QByteArray &body, quint64 generation, int padding, Appearance *appearance) {
@@ -145,7 +173,7 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
     const auto reader = typography.value(QStringLiteral("reader")).toObject();
     const auto colors = visualTokens().value("themes").toObject().value(appearance->scheme()).toObject();
     // All markup and CSS around the body are application-owned. Raw source HTML
-    // and URLs have already been converted to inert text by the Rust service.
+    // is escaped; admitted resources and fragment actions use generated tokens.
     QString head = QStringLiteral(
         "<!doctype html><html><head><meta charset=\"utf-8\">"
         "<meta name=\"xdnote-generation\" content=\"%1\">"
@@ -155,7 +183,7 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
         "<style>:root{color-scheme:%14}body{margin:%10px auto;padding:0 %10px;max-width:%2px;font:%3px/%4 system-ui,sans-serif;"
         "color:%5;background:%6;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:%7;padding:16px}"
         "code{font-family:monospace}table{border-collapse:collapse}td,th{border:1px solid %8;padding:6px 12px}"
-        ".link-placeholder{color:%9;text-decoration:underline}.image-placeholder{color:%9}img{max-width:100%;height:auto}"
+        ".link-placeholder{color:%9;text-decoration:underline}a.link-placeholder{cursor:pointer}.image-placeholder{color:%9}img{max-width:100%;height:auto}"
         "h1{font-size:%11px}h2{font-size:%12px}h3{font-size:%13px}h1,h2,h3{line-height:1.4;margin:1.2em 0 .65em}"
         "body>:first-child{margin-top:0}pre{border:1px solid %8;border-radius:6px}"
         "input[type=checkbox]{accent-color:%15;pointer-events:none}::selection{background:%16;color:%17}"
@@ -179,7 +207,7 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
         "figure.code-block{margin:1em 0;border:1px solid %1;border-radius:8px;overflow:hidden;background:%2}"
         ".code-block figcaption{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 12px;border-bottom:1px solid %1;font:12px/24px %3;color:%4}"
         ".code-block button{border:0;border-radius:4px;background:transparent;color:%4;font:14px/24px %3;padding:2px 8px;cursor:pointer}"
-        ".code-block button:hover{background:%5;color:%6}button:focus,pre:focus,.table-scroll:focus{outline:none}.xdnote-keyboard-focus:focus{outline:2px solid %7;outline-offset:-2px}"
+        ".code-block button:hover{background:%5;color:%6}button:focus,a:focus,pre:focus,.table-scroll:focus{outline:none}.xdnote-keyboard-focus:focus{outline:2px solid %7;outline-offset:-2px}"
         ".code-block pre{margin:0;max-width:100%;overflow-x:auto;white-space:pre;overflow-wrap:normal;border:0;border-radius:0;padding:12px 16px}"
         "code{font-size:14px;line-height:1.8}.table-scroll{max-width:100%;overflow-x:auto;margin:1em 0}.table-scroll table{width:max-content;min-width:100%}.table-scroll td,.table-scroll th{white-space:nowrap;overflow-wrap:normal}"
         "li:has(>input[type=checkbox]){list-style:none}ul:has(>li>input[type=checkbox]){padding-left:4px}"
@@ -216,6 +244,34 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
         page->runJavaScript(QStringLiteral("(()=>{const c=document.querySelectorAll('figure.code-block pre code')[%1];return c?c.textContent:null})()").arg(index), QWebEngineScript::ApplicationWorld,
             [guard, generation](const QVariant &value) { if (guard && !guard->m_closed && generation == guard->m_generation && value.isValid() && currentRevision(guard->m_session, guard->m_displayedRevision)) { const auto text = value.toString(); if (text.toUtf8().size() <= 2 * 1024 * 1024) emit guard->copyTextRequested(text); } });
     };
+    page->fragmentRequested = [this, page](quint64 generation, int index) {
+        if (m_closed || generation != m_generation || generation != m_presentingGeneration
+            || m_displayedRevision != m_presentingRevision || !currentRevision(m_session, m_displayedRevision)
+            || index < 0 || index >= m_presentingLinkTargets.size()) return;
+        const auto target = m_presentingLinkTargets.at(index);
+        if (!target.startsWith('#')) return;
+        const auto resolved = resolveWorkspaceTarget(QStringLiteral("document.md"), target);
+        if (!resolved.success || !resolved.hasFragment || resolved.fragment.isEmpty()) {
+            emit fragmentNavigationMessage(QStringLiteral("链接中的标题标识无效。")); return;
+        }
+        const int heading = m_presentingHeadingIds.indexOf(resolved.fragment);
+        if (heading < 0) {
+            const auto name = resolved.fragment.size() > 120 ? resolved.fragment.left(120) + QStringLiteral("…") : resolved.fragment;
+            emit fragmentNavigationMessage(QStringLiteral("未找到标题：%1").arg(name)); return;
+        }
+        const auto revision = m_displayedRevision;
+        const QPointer<MarkdownPreview> guard(this);
+        // Only a validated numeric position is passed to application-owned
+        // script. Document text and target URLs never enter the script.
+        const auto script = QStringLiteral("(()=>{const h=document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')[%1];if(!h)return false;h.scrollIntoView({block:'start'});return true;})()").arg(heading);
+        page->runJavaScript(script, QWebEngineScript::ApplicationWorld, [guard, generation, revision, fragment = resolved.fragment](const QVariant &value) {
+            if (!guard || guard->m_closed || generation != guard->m_generation || generation != guard->m_presentingGeneration
+                || guard->m_displayedRevision != revision || !currentRevision(guard->m_session, revision)) return;
+            if (!value.toBool()) { emit guard->fragmentNavigationMessage(QStringLiteral("无法定位标题，请重新打开链接。")); return; }
+            emit guard->fragmentNavigationMessage({});
+            if (guard) emit guard->fragmentNavigated(fragment);
+        });
+    };
     page->setBackgroundColor(m_appearance->color("background"));
     connect(m_appearance, &Appearance::changed, this, [this, page] { page->setBackgroundColor(m_appearance->color("background")); refresh(); });
     connect(page, &QWebEnginePage::scrollPositionChanged, this, [this](const QPointF &position) { if (!m_restoring) m_scroll = position; });
@@ -232,9 +288,9 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     layout->addWidget(m_view);
     connect(session, &DocumentSession::changed, this, &MarkdownPreview::refresh, Qt::QueuedConnection);
     connect(session, &DocumentSession::closed, this, [this, page] {
-        m_closed = true; ++m_generation; m_hasPending = false; m_view->stop(); page->clearImages();
+        m_closed = true; ++m_generation; m_hasPending = false; m_presentingLinkTargets.clear(); m_presentingHeadingIds.clear(); m_view->stop(); page->clearImages();
     });
-    connect(session, &QObject::destroyed, this, [this, page] { m_closed = true; ++m_generation; m_hasPending = false; page->clearImages(); });
+    connect(session, &QObject::destroyed, this, [this, page] { m_closed = true; ++m_generation; m_hasPending = false; m_presentingLinkTargets.clear(); m_presentingHeadingIds.clear(); page->clearImages(); });
     connect(&m_worker, &QFutureWatcher<RenderResult>::finished, this, [this, page] {
         const auto result = m_worker.result();
         m_running = false;
@@ -243,6 +299,8 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
             else {
                 m_presentingGeneration = result.generation;
                 m_presentingRevision = result.revision;
+                m_presentingLinkTargets = result.linkTargets;
+                m_presentingHeadingIds = result.headingIds;
                 m_restoring = true;
                 page->present(pageFor(result.html, result.generation, m_padding, m_appearance), result.generation, result.images);
             }
