@@ -1,5 +1,7 @@
 # 桌面工程与本地构建
 
+产品已明确禁止 Chromium。以下默认工程仍描述尚待迁移的旧原型，其中 Qt WebEngine 的链接和运行配置尚未移除，不能作为已符合该约束的交付。当前非 Chromium 评估使用[独立原生入口](../../experiments/native-preview-spike/README.md)，只查找 Qt Widgets，不运行旧产品预览；候选取舍与迁移门槛见[预览方案评估](preview-alternatives.md)。
+
 `apps/desktop` 和 `crates/markdown` 包含工作区／单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；使用系统外框与共享逻辑尺寸。独立窗口支持系统／浅色／深色主题、六种强调色和正文缩放；外观菜单选择通过用户级设置持久化并同步已打开窗口。无文件启动显示工作区欢迎页，可显式打开目录、使用多标签和三种视图，并接管独立窗口原会话，详见[工作区基础](workspace-foundation.md)。完整设置、资源与链接、文件关联注册、安装和发行尚未完成。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和 Qt WebEngine 混合承载，不接收文件或读写用户文档。
 
 ## 工具与依赖
