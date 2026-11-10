@@ -1,6 +1,7 @@
 #include "WorkspaceWindow.h"
 #include "WorkspaceTree.h"
 #include "WorkspaceResourceReader.h"
+#include "WorkspaceReferenceController.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "Appearance.h"
@@ -97,7 +98,8 @@ private:
     bool m_arranging = false;
 };
 }
-WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *store, NavigationStore *navigation) : ApplicationWindow(appearance), m_navigation(navigation ? navigation : new NavigationStore(this)) {
+WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *store, NavigationStore *navigation, FileManager *manager) : ApplicationWindow(appearance), m_navigation(navigation ? navigation : new NavigationStore(this)) {
+    m_references = new WorkspaceReferenceController(manager, this);
     setObjectName("workspaceWindow"); setAttribute(Qt::WA_DeleteOnClose); const auto tokens = mainTokens(); resize(tokens.value("defaultWidth").toInt(), tokens.value("defaultHeight").toInt()); setMinimumSize(tokens.value("minWidth").toInt(), tokens.value("minHeight").toInt()); setFont(uiFont(visualTokens().value("typography").toObject().value("ui").toObject().value("size").toInt()));
     auto *layout = new QVBoxLayout(this); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
     m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabStrip = new WorkspaceTabStrip(windowAppearance(), m_header); auto *tabs = tabStrip->tabs; m_tabs = tabs; connect(tabStrip->add, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested); m_header->setCenter(tabStrip, tokens.value("sidebarWidth").toInt()); layout->addWidget(m_header);
@@ -158,6 +160,7 @@ void WorkspaceWindow::applyAppearance() {
 }
 WorkspaceWindow::~WorkspaceWindow() {
     m_tearingDown = true;
+    delete m_references; m_references = nullptr;
     if (m_resourceRoot) m_resourceRoot->revoke();
     m_searchDelay.stop(); m_tree->cancelSearch(); m_search->removeEventFilter(this);
     // Native hide/focus notifications and child-model teardown can still emit
@@ -175,6 +178,7 @@ void WorkspaceWindow::setRootPath(const QString &path) {
     if (m_resourceRoot) m_resourceRoot->revoke();
     m_tree->setRootPath(path);
     m_resourceRoot = path.isEmpty() ? nullptr : WorkspaceResourceReader::open(m_tree->rootPath()).reader;
+    m_references->setRoot(m_resourceRoot, m_tree->rootPath());
     for (auto *pane : panes()) {
         pane->setWorkspaceRoot(rootPath());
         pane->setWorkspaceResourceRoot(m_resourceRoot, rootPath());
@@ -192,6 +196,7 @@ bool WorkspaceWindow::addPane(SingleFileWindow *pane) {
     if (!pane || m_closingAll || m_panes.contains(pane->paneId()) || !pane->embedIn(m_pages)) return false;
     pane->setWorkspaceRoot(rootPath());
     pane->setWorkspaceResourceRoot(m_resourceRoot, rootPath());
+    connect(pane, &SingleFileWindow::referencesRequested, this, [this, pane](QMenu *menu) { populateReferences(menu, pane); });
     const auto id = pane->paneId(); m_panes.insert(id, pane); m_pages->addWidget(pane); auto *footer = pane->footer(); m_footers->addWidget(footer); footer->setStyleSheet(pane->styleSheet());
     if (auto *menu = pane->findChild<QMenu *>("documentMenu")) { auto *before = pane->findChild<QAction *>("closeAction"); menu->insertAction(before, m_favoriteAction); }
     const int index = m_tabs->addTab(QString()); m_tabs->setTabData(index, QVariantMap{{"id", id}});
@@ -201,6 +206,83 @@ bool WorkspaceWindow::addPane(SingleFileWindow *pane) {
     connect(pane, &SingleFileWindow::closeCancelled, this, [this] { m_closingAll = false; emit closeCancelled(); });
     connect(pane, &QObject::destroyed, this, [this, id] { m_panes.remove(id); const int index = indexOf(id); if (index >= 0) m_tabs->removeTab(index); selectCurrent(); if (m_closingAll) QTimer::singleShot(0, this, &WorkspaceWindow::advanceClose); });
     refreshPane(id); activatePane(id); return true;
+}
+void WorkspaceWindow::populateReferences(QMenu *menu, SingleFileWindow *pane) {
+    menu->clear(); qDeleteAll(menu->findChildren<QMenu *>(QString(), Qt::FindDirectChildrenOnly));
+    const auto caption = [](QString text) {
+        for (auto &ch : text) if (ch.category() == QChar::Other_Control) ch = ' ';
+        if (text.size() > 110) text = text.left(107) + QStringLiteral("…");
+        return text.replace('&', "&&");
+    };
+    const auto label = [&](QMenu *target, const QString &text) { auto *action = target->addAction(caption(text)); action->setToolTip(text); action->setEnabled(false); };
+    menu->setToolTipsVisible(true);
+    label(menu, m_references->statusText());
+    auto *refresh = menu->addAction(QStringLiteral("重新检查工作区")); refresh->setObjectName("refreshReferencesAction");
+    refresh->setEnabled(m_resourceRoot && m_resourceRoot->active()); connect(refresh, &QAction::triggered, m_references, &WorkspaceReferenceController::refresh);
+    auto *cancel = menu->addAction(QStringLiteral("取消检查")); cancel->setEnabled(m_references->running());
+    connect(cancel, &QAction::triggered, m_references, &WorkspaceReferenceController::cancel);
+    const auto generation = m_references->generation();
+    if (!pane->document() || !m_references->current(generation)) return;
+    const auto path = m_references->relativePath(pane->document()->path());
+    if (path.isEmpty()) { label(menu, QStringLiteral("当前文档不在此工作区目录内，无法显示它的引用关系。")); return; }
+    const auto &result = m_references->result();
+    const auto submenu = [&](const QString &title, const QString &name) {
+        auto *child = new SharedMenu(windowAppearance(), menu); child->setTitle(title); child->setObjectName(name); child->setToolTipsVisible(true); menu->addMenu(child); return child;
+    };
+    const auto targetStatus = [](WorkspaceReadError error) {
+        switch (error) {
+        case WorkspaceReadError::None: return QStringLiteral("目标存在");
+        case WorkspaceReadError::Missing: return QStringLiteral("目标不存在");
+        case WorkspaceReadError::Denied: return QStringLiteral("没有读取权限");
+        case WorkspaceReadError::OutsideOrLink: return QStringLiteral("链接或范围受阻");
+        case WorkspaceReadError::Unsupported: return QStringLiteral("当前平台不支持");
+        default: return QStringLiteral("未能完成检查");
+        }
+    };
+    auto *outbound = submenu(QStringLiteral("当前文档引用"), "outboundReferencesMenu");
+    int shown = 0;
+    for (const auto &reference : result.index.outbound(path)) {
+        if (++shown > 200) { label(outbound, QStringLiteral("引用较多，仅显示前 200 项")); break; }
+        const auto status = reference.target.success ? targetStatus(result.targets.value(reference.target.path).error) : QStringLiteral("目标不在支持范围内");
+        const auto target = reference.target.success ? reference.target.path + (reference.target.hasFragment ? '#' + reference.target.fragment : QString()) : reference.reference.target;
+        auto *action = outbound->addAction(caption(target + QStringLiteral(" — ") + status));
+        action->setToolTip(target); action->setData(reference.reference.target);
+        action->setEnabled(reference.reference.kind == MarkdownReference::Kind::Link);
+        connect(action, &QAction::triggered, pane, [this, pane, generation, reference] {
+            if (!m_references->current(generation)) { pane->reportHostMessage(QStringLiteral("引用已变化，请重新打开引用检查菜单。")); return; }
+            pane->activateDocumentLink(reference.reference.target, reference.revision);
+        });
+    }
+    if (!shown) label(outbound, QStringLiteral("当前快照没有识别到引用"));
+    auto *inbound = submenu(QStringLiteral("引用当前文档的位置"), "inboundReferencesMenu"); shown = 0;
+    for (const auto &reference : result.index.inbound(path)) {
+        if (++shown > 200) { label(inbound, QStringLiteral("引用较多，仅显示前 200 项")); break; }
+        label(inbound, QStringLiteral("%1，第 %2 行").arg(reference.sourcePath).arg(reference.sourceLine));
+    }
+    if (!shown) label(inbound, QStringLiteral("当前扫描中没有识别到入站引用"));
+    auto *problems = submenu(QStringLiteral("缺失或受阻的目标"), "referenceProblemsMenu"); shown = 0;
+    for (const auto &reference : result.index.references) {
+        const auto error = result.targets.value(reference.target.path).error;
+        if (reference.target.success && error == WorkspaceReadError::None) continue;
+        if (++shown > 200) { label(problems, QStringLiteral("问题较多，仅显示前 200 项")); break; }
+        label(problems, QStringLiteral("%1，第 %2 行：%3 — %4").arg(reference.sourcePath).arg(reference.sourceLine)
+            .arg(reference.reference.target.left(80), reference.target.success ? targetStatus(error) : QStringLiteral("不支持的目标")));
+    }
+    if (!shown) label(problems, QStringLiteral("当前扫描中没有发现缺失或受阻目标"));
+    auto *candidates = submenu(QStringLiteral("未引用图片候选"), "unreferencedImagesMenu");
+    label(candidates, result.index.complete ? QStringLiteral("不自动删除；工作区外仍可能引用这些图片") : QStringLiteral("扫描不完整，候选清单仅供参考；不自动删除"));
+    shown = 0;
+    for (const auto &image : result.imageCandidates) if (result.index.inbound(image).isEmpty()) {
+        if (++shown > 200) { label(candidates, QStringLiteral("候选较多，仅显示前 200 项")); break; }
+        label(candidates, image);
+    }
+    if (!shown) label(candidates, QStringLiteral("当前扫描中没有识别到候选"));
+    if (!result.index.gaps.isEmpty() || !result.excludedDirectories.isEmpty()) {
+        auto *coverage = submenu(QStringLiteral("检查范围与限制"), "referenceCoverageMenu");
+        for (const auto &excluded : result.excludedDirectories) label(coverage, QStringLiteral("未扫描版本管理目录：") + excluded);
+        for (const auto &gap : result.index.gaps.first(30)) label(coverage, gap);
+        if (result.index.gaps.size() > 30) label(coverage, QStringLiteral("另有 %1 项未完成检查").arg(result.index.gaps.size() - 30));
+    }
 }
 void WorkspaceWindow::refreshPane(const QUuid &id) {
     auto *pane = m_panes.value(id).data(); const int index = indexOf(id); if (!pane || index < 0) return;

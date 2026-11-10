@@ -61,6 +61,10 @@ public:
     void importImageFile(const QString &path);
     void importClipboardImage(const QImage &image);
     void insertWorkspaceDocumentLink(const QString &targetPath);
+    void activateDocumentLink(const QString &target, quint64 revision);
+    void navigateToHeading(const QString &fragment);
+    std::shared_ptr<WorkspaceResourceReader> resourceRoot() const { return m_embedded ? m_workspaceResourceRoot : m_localResourceRoot; }
+    QString resourceDocumentPath() const;
 signals:
     void openRequested(QString path);
     void cancelOpenRequested(QUuid intent);
@@ -75,6 +79,8 @@ signals:
     void viewStateChanged();
     void imageImportFinished(bool inserted, QString message);
     void workspaceLinkFinished(bool inserted, QString message);
+    void referencesRequested(QMenu *menu);
+    void documentLinkRequested(QString target, quint64 revision);
 protected:
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *target, QEvent *event) override;
@@ -139,6 +145,8 @@ private:
     QAction *m_reloadAction;
     QAction *m_imageImportAction;
     QAction *m_linkInsertAction;
+    QMenu *m_referencesMenu;
+    QAction *m_openLinkAction;
     SourceEditor *m_editor = nullptr;
     MarkdownPreview *m_preview = nullptr;
     bool m_editing = false, m_prompting = false, m_closeAfterOperation = false;

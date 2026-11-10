@@ -110,6 +110,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/WorkspacePath.cpp apps/desktop/src/WorkspacePath.h
     apps/desktop/src/WorkspaceReferenceIndex.cpp apps/desktop/src/WorkspaceReferenceIndex.h
     apps/desktop/src/WorkspaceReferenceScan.cpp apps/desktop/src/WorkspaceReferenceScan.h
+    apps/desktop/src/WorkspaceReferenceController.cpp apps/desktop/src/WorkspaceReferenceController.h
     apps/desktop/src/WorkspaceResourceReader.cpp apps/desktop/src/WorkspaceResourceReader.h
     apps/desktop/src/WorkspaceImagePreview.cpp apps/desktop/src/WorkspaceImagePreview.h
     apps/desktop/src/ImageAdmission.cpp apps/desktop/src/ImageAdmission.h

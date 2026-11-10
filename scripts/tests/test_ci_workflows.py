@@ -1,5 +1,6 @@
 """Protect routine and on-demand Actions entry points from accidental drift."""
 from pathlib import Path
+import json
 import re
 import unittest
 
@@ -16,6 +17,20 @@ def events(path):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
+        text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
+        self.assertIn("options: [full, workspace-linux]", text)
+        self.assertIn("default: full", text)
+        matrices = [json.loads(value) for value in re.findall(r"'(\[\{[^\n]+?\}\])'", text)]
+        self.assertEqual(len(matrices), 2)
+        self.assertEqual([entry['os'] for entry in matrices[0]], ['ubuntu-22.04'])
+        self.assertEqual(len(matrices[1]), 5)
+        self.assertEqual(sum(entry.get('profile') == 'msvc2019' for entry in matrices[1]), 1)
+        self.assertIn("runner.os == 'Linux' && inputs.scope != 'workspace-linux'", text)
+        self.assertIn("if: inputs.scope == 'workspace-linux'", text)
+        self.assertIn("Workspace references (Linux)", text)
+        self.assertIn("Fatal Qt diagnostic", text)
+
     def test_routine_workflow_is_single_linux_job(self):
         path = WORKFLOWS / "materials.yml"
         text = path.read_text(encoding="utf-8")

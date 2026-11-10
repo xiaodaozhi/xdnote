@@ -16,9 +16,19 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
         if (stopped()) { result.cancelled = true; input.sources.clear(); input.enumerationGaps.append(QStringLiteral("扫描已取消")); input.enumerationComplete = false; }
         if (!root || !root->active()) { input.sources.clear(); input.enumerationGaps.append(QStringLiteral("工作区授权已失效")); input.enumerationComplete = false; }
         result.index = buildWorkspaceReferenceIndex(input);
+        if (root && root->active() && !stopped()) {
+            for (const auto &reference : result.index.references) {
+                if (stopped()) break;
+                if (!reference.target.success || result.targets.contains(reference.target.path)) continue;
+                if (result.targets.size() >= 4096) { result.index.complete = false; result.index.gaps.append(QStringLiteral("目标检查达到上限")); break; }
+                const auto target = root->inspect(reference.target.path);
+                result.targets.insert(reference.target.path, {target.error, target.identity});
+            }
+        }
         if (stopped() || !root || !root->active()) {
             result.cancelled = stopped(); result.index.complete = false;
             result.index.sources.clear(); result.index.references.clear();
+            result.targets.clear(); result.imageCandidates.clear(); result.watchedDirectories.clear();
             result.index.gaps.append(result.cancelled ? QStringLiteral("扫描已取消") : QStringLiteral("工作区授权已失效"));
         }
         return result;
@@ -30,7 +40,7 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
     }
     QHash<QString, quint64> livePathGenerations;
     qsizetype liveBytes = 0;
-    if (input.sources.size() > limits.documents) {
+    if (input.sources.size() > limits.documents || input.sessionsOutsideRoot.size() > limits.documents) {
         input.sources.clear(); input.enumerationGaps.append(QStringLiteral("打开会话数量超过扫描上限")); return finish();
     }
     for (const auto &source : input.sources) {
@@ -59,6 +69,7 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
             input.enumerationGaps.append(QStringLiteral("目录身份重复：%1").arg(directory)); continue;
         }
         directories.insert(listing.identity);
+        result.watchedDirectories.append(directory);
         if (!listing.complete) input.enumerationGaps.append(QStringLiteral("目录枚举达到上限：%1").arg(directory.isEmpty() ? QStringLiteral(".") : directory));
         result.visitedEntries += listing.entries.size();
         for (const auto &entry : listing.entries) {
@@ -74,6 +85,7 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
                 continue;
             }
             const auto suffix = QFileInfo(entry.name).suffix().toLower();
+            if (path.startsWith("assets/images/") && QStringList{"png", "jpg", "jpeg", "gif", "bmp", "webp"}.contains(suffix)) result.imageCandidates.append(path);
             if (suffix != "md" && suffix != "markdown") continue;
             if (result.readDocuments >= limits.documents || result.readBytes + liveBytes >= limits.sourceBytes) { limited = true; break; }
             const auto read = root->read(path, qMin<qsizetype>(FileService::DiskByteLimit, limits.sourceBytes - result.readBytes - liveBytes));
@@ -82,6 +94,9 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
                 input.enumerationGaps.append(QStringLiteral("无法读取文档：%1（%2）").arg(path).arg(int(read.error))); continue;
             }
             result.readBytes += read.bytes.size();
+            if (input.sessionsOutsideRoot.contains(read.identity)) {
+                input.enumerationGaps.append(QStringLiteral("文档同时在工作区外的其他路径打开，无法确认相对引用基准：%1").arg(path)); continue;
+            }
             auto text = read.bytes.startsWith(QByteArray::fromHex("efbbbf")) ? read.bytes.mid(3) : read.bytes;
             bool valid = false; decodeUtf8Literal(text, &valid);
             if (!valid || text.contains('\0') || text.size() > FileService::SourceLimit) {

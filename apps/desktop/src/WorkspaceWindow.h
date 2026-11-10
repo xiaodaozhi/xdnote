@@ -11,6 +11,7 @@ class QStackedWidget;
 class QLabel;
 class QAction;
 class QLineEdit;
+class QMenu;
 namespace xdnote {
 class SingleFileWindow;
 class WindowGeometry;
@@ -21,10 +22,12 @@ class SharedButton;
 class NavigationStore;
 class WorkspaceNavigation;
 class WorkspaceResourceReader;
+class WorkspaceReferenceController;
+class FileManager;
 class WorkspaceWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
-    WorkspaceWindow(Appearance *appearance, WindowGeometryStore *store, NavigationStore *navigation = nullptr);
+    WorkspaceWindow(Appearance *appearance, WindowGeometryStore *store, NavigationStore *navigation = nullptr, FileManager *manager = nullptr);
     ~WorkspaceWindow() override;
     bool addPane(SingleFileWindow *pane);
     void activatePane(const QUuid &id);
@@ -37,6 +40,8 @@ public:
     WorkspaceTree *tree() const { return m_tree; }
     WindowGeometry *windowGeometry() const { return m_geometry; }
     void showNotice(const QString &message);
+    WorkspaceReferenceController *references() const { return m_references; }
+    std::shared_ptr<WorkspaceResourceReader> resourceRoot() const { return m_resourceRoot; }
 signals:
     void openRequested(QString path);
     void chooseFileRequested();
@@ -57,9 +62,11 @@ private:
     void showNavigation(bool favorites);
     void updateNavigationSelection();
     void startSearch();
+    void populateReferences(QMenu *menu, SingleFileWindow *pane);
     int indexOf(const QUuid &id) const;
     QHash<QUuid, QPointer<SingleFileWindow>> m_panes;
     std::shared_ptr<WorkspaceResourceReader> m_resourceRoot;
+    WorkspaceReferenceController *m_references;
     WindowTitleBar *m_header;
     QTabBar *m_tabs;
     QWidget *m_sidebar = nullptr;

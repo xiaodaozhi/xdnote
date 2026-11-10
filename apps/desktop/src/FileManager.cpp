@@ -1,4 +1,5 @@
 #include "FileManager.h"
+#include "WorkspaceResourceReader.h"
 #include <QDir>
 #include <QFileInfo>
 
@@ -53,10 +54,29 @@ void FileManager::finish() { m_running = false; QTimer::singleShot(0, this, &Fil
 
 void FileManager::open(const QString &input, const QUuid &intent) {
     const auto path = QDir::isAbsolutePath(input) ? input : QDir::currentPath() + '/' + input;
-    enqueue([this, path, intent] {
+    openRequest(path, intent);
+}
+void FileManager::openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &path, const QUuid &intent, const QString &sourcePath, const QString &sourceIdentity) {
+    if (!root) { emit openFailed(intent, path, QStringLiteral("当前入口没有目录授权")); return; }
+    openRequest(QDir(root->rootPath()).filePath(path), intent, root, path, sourcePath, sourceIdentity);
+}
+QList<FileDocument *> FileManager::documents() const {
+    QList<FileDocument *> result;
+    for (auto document : m_documents) if (document && !document->closed()) result.append(document);
+    return result;
+}
+void FileManager::openRequest(const QString &path, const QUuid &intent, std::shared_ptr<WorkspaceResourceReader> root, QString relativePath, QString sourcePath, QString sourceIdentity) {
+    enqueue([this, path, intent, root, relativePath, sourcePath, sourceIdentity] {
         if (m_cancelled.remove(intent)) { finish(); return; }
-        worker<ProbeResult>([path] { return FileService::probe(path); }, [this, path, intent](ProbeResult probe) {
+        worker<ProbeResult>([path, root, relativePath, sourcePath, sourceIdentity] {
+            if (root && !sourcePath.isEmpty()) {
+                const auto source = root->inspect(sourcePath);
+                if (!source.ok() || source.identity != sourceIdentity) return ProbeResult{{}, {FileError::Changed}};
+            }
+            return root ? FileService::probeWithin(root, relativePath) : FileService::probe(path);
+        }, [this, path, intent, root](ProbeResult probe) {
             if (m_cancelled.remove(intent)) { finish(); return; }
+            if (root && !root->active()) { emit openFailed(intent, path, QStringLiteral("工作区授权已失效")); finish(); return; }
             if (!probe.file) { emit openFailed(intent, path, probe.problem.description()); finish(); return; }
             auto opening = m_registry.beginOpen(probe.file);
             if (opening.result == RegistryResult::Reused) {
@@ -67,8 +87,9 @@ void FileManager::open(const QString &input, const QUuid &intent) {
             }
             if (!opening.startRead) { emit openFailed(intent, path, QStringLiteral("文档正在打开或关闭，请稍后重试")); finish(); return; }
             const auto request = opening.read;
-            worker<ReadResult>([request] { return FileService::read(request); }, [this, path, intent, request](ReadResult loaded) {
+            worker<ReadResult>([request] { return FileService::read(request); }, [this, path, intent, request, root](ReadResult loaded) {
                 if (m_cancelled.remove(intent)) { m_registry.cancel(request); finish(); return; }
+                if (root && !root->active()) { m_registry.cancel(request); emit openFailed(intent, path, QStringLiteral("工作区授权已失效")); finish(); return; }
                 if (!loaded.baseline) {
                     m_registry.cancel(request); emit openFailed(intent, path, loaded.problem.description()); finish(); return;
                 }
@@ -77,7 +98,8 @@ void FileManager::open(const QString &input, const QUuid &intent) {
                 auto *document = new FileDocument(this, registered.session, loaded.baseline);
                 const auto id = registered.session->documentId();
                 m_documents.insert(id, document);
-                connect(document, &QObject::destroyed, this, [this, id] { m_documents.remove(id); });
+                connect(document, &QObject::destroyed, this, [this, id] { m_documents.remove(id); emit documentsChanged(); });
+                emit documentsChanged();
                 emit opened(intent, document, false);
                 finish();
             });
@@ -239,6 +261,7 @@ bool FileManager::closeDocument(FileDocument *document) {
     if (!document || document->closed() || document->saving() || document->loading() || !document->session()) return false;
     if (document->session()->requestClose() != EditResult::Applied) return false;
     document->m_closed = true;
+    emit documentsChanged();
     return true;
 }
 }

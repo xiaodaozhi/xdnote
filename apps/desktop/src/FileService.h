@@ -9,6 +9,7 @@
 
 namespace xdnote {
 struct NativeFile;
+class WorkspaceResourceReader;
 
 enum class FileError { None, InvalidPath, Missing, Denied, InUse, UnsupportedFile, TooLarge, InvalidUtf8, UnsupportedContent, Changed, Io, HardLinks, AtomicUnsupported };
 struct FileProblem {
@@ -25,10 +26,12 @@ public:
     const QString &identity() const { return m_identity; }
 private:
     friend class FileService;
-    FileProbe(QString path, QString identity, std::shared_ptr<NativeFile> lease);
+    FileProbe(QString path, QString identity, std::shared_ptr<const void> lease);
     QString m_path;
     QString m_identity;
-    std::shared_ptr<NativeFile> m_lease;
+    std::shared_ptr<const void> m_lease;
+    std::shared_ptr<WorkspaceResourceReader> m_root;
+    QString m_relativePath;
 };
 
 class FileBaseline final {
@@ -100,6 +103,7 @@ public:
     // A UTF-8 BOM is stored on disk but is not part of the source snapshot.
     static constexpr qsizetype DiskByteLimit = SourceLimit + 3;
     static ProbeResult probe(const QString &absolutePath);
+    static ProbeResult probeWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &relativePath);
     static ReadResult read(const FileReadRequest &request);
     // Explicitly selected source file; this does not grant workspace access.
     static BinaryReadResult readSelectedBinary(const QString &absolutePath, qsizetype maxBytes);
