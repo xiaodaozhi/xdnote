@@ -20,6 +20,7 @@ public:
     void prepare(const QString &from, const QString &to, bool retargetOnly = false);
     bool apply(bool maintain = true);
     bool recover();
+    void cancel();
     void show(const QString &from = {});
 signals:
     void previewReady();

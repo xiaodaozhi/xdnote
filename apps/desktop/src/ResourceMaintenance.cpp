@@ -46,10 +46,13 @@ bool sameSources(const ReferenceIndexSnapshot &a, const ReferenceIndexSnapshot &
 }
 ResourceMaintenancePreview prepareResourceMove(const std::shared_ptr<WorkspaceResourceReader> &root,
     ReferenceIndexInput live, ReferenceMoveRequest request,
-    const QHash<QString, std::shared_ptr<const FileBaseline>> &openBaselines) {
+    const QHash<QString, std::shared_ptr<const FileBaseline>> &openBaselines,
+    const std::shared_ptr<std::atomic_bool> &cancelled) {
     ResourceMaintenancePreview result; result.live = live;
     if (!root || !root->active()) { result.plan.problem = QStringLiteral("工作区授权已失效。"); return result; }
-    const auto scan = scanWorkspaceReferences(root, live);
+    const auto stopped = [&] { return cancelled && cancelled->load(std::memory_order_acquire); };
+    const auto scan = scanWorkspaceReferences(root, live, {}, cancelled);
+    if (scan.cancelled || stopped()) { result.plan.problem = QStringLiteral("已取消影响预览。"); return result; }
     result.scanned = scan.index;
     ReferenceMoveInput input; input.index = scan.index; input.texts = scan.sourceTexts;
     QHash<QString, WorkspaceDirectoryResult> directories;
@@ -73,11 +76,13 @@ ResourceMaintenancePreview prepareResourceMove(const std::shared_ptr<WorkspaceRe
         request.to = parent + request.to.mid(slash);
     }
     for (const auto &source : input.index.sources) {
+        if (stopped()) { result.plan.problem = QStringLiteral("已取消影响预览。"); return result; }
         const auto actual = actualPath(root, source.path, directories);
         if (actual.isEmpty()) input.index.gaps.append(source.path + QStringLiteral("：无法核验实际路径"));
         else input.actualPaths.insert(source.path, actual);
     }
     for (auto it = scan.targets.cbegin(); it != scan.targets.cend(); ++it) {
+        if (stopped()) { result.plan.problem = QStringLiteral("已取消影响预览。"); return result; }
         if (it->error != WorkspaceReadError::None) continue;
         const auto actual = actualPath(root, it.key(), directories);
         if (!actual.isEmpty()) input.actualPaths.insert(it.key(), actual);
@@ -87,6 +92,7 @@ ResourceMaintenancePreview prepareResourceMove(const std::shared_ptr<WorkspaceRe
     result.actualPaths = input.actualPaths;
     if (!result.plan.valid()) return result;
     for (auto &document : result.plan.documents) {
+        if (stopped()) { result.plan.problem = QStringLiteral("已取消影响预览。"); return result; }
         auto baseline = openBaselines.value(document.source.path);
         if (!baseline) {
             const auto probe = FileService::probeWithin(root, document.from);

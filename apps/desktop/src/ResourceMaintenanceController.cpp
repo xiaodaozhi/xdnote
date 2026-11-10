@@ -44,12 +44,13 @@ ResourceMaintenanceController::ResourceMaintenanceController(FileManager *manage
     connect(&m_execute, &QFutureWatcher<ResourceMaintenanceResult>::finished, this, [this] { finish(m_execute.result()); });
 }
 ResourceMaintenanceController::~ResourceMaintenanceController() {
-    if (m_cancelled) m_cancelled->store(true, std::memory_order_release);
+    cancel();
     // The GUI normally refuses close while busy. Teardown still joins workers
     // before releasing the directory and unfreezes surviving sessions.
     m_prepare.waitForFinished(); m_execute.waitForFinished();
     if (m_manager && !m_operation.isNull()) m_manager->endWorkspaceOperation(m_operation);
 }
+void ResourceMaintenanceController::cancel() { if (m_cancelled) m_cancelled->store(true, std::memory_order_release); }
 QString ResourceMaintenanceController::relativePath(const QString &path) const {
     if (!m_root) return {};
     const auto relative = QDir(m_root->rootPath()).relativeFilePath(path);
@@ -73,7 +74,8 @@ void ResourceMaintenanceController::prepare(const QString &from, const QString &
         m_open.insert(path, document); baselines.insert(path, document->baseline());
     }
     m_busy = true; const auto root = m_root;
-    m_prepare.setFuture(QtConcurrent::run([root, input, from, to, baselines, retargetOnly] { return prepareResourceMove(root, input, {from, to, {}, false, retargetOnly}, baselines); }));
+    m_cancelled = std::make_shared<std::atomic_bool>(false); const auto cancelled = m_cancelled;
+    m_prepare.setFuture(QtConcurrent::run([root, input, from, to, baselines, retargetOnly, cancelled] { return prepareResourceMove(root, input, {from, to, {}, false, retargetOnly}, baselines, cancelled); }));
 }
 bool ResourceMaintenanceController::apply(bool maintain) { m_recovering = false; return start(maintain); }
 bool ResourceMaintenanceController::start(bool maintain) {
@@ -178,7 +180,8 @@ bool ResourceMaintenanceController::recover() {
         const auto path = relativePath(document->path()); if (path.isEmpty()) continue;
         const auto snapshot = document->session()->snapshot(); bytes += snapshot.utf8.size();
         if (snapshot.result != EditResult::Applied || bytes > 32 * 1024 * 1024 || m_open.size() >= 1024) return false;
-        m_open.insert(path, document); m_preview.live.sources.append({path, document->identity(), 1, snapshot, ReferenceIndexSource::Origin::Session});
+        const auto canonical = m_receipt.actualPaths.value(path, path); m_preview.actualPaths.insert(path, canonical);
+        m_open.insert(canonical, document); m_preview.live.sources.append({path, document->identity(), 1, snapshot, ReferenceIndexSource::Origin::Session});
     }
     for (auto &document : m_preview.plan.documents) {
         if (document.source.origin != ReferenceIndexSource::Origin::Session) continue;
@@ -209,7 +212,7 @@ void ResourceMaintenanceController::show(const QString &from) {
     auto *description = new QLabel(QStringLiteral("使用工作区相对路径；目标父目录须已存在。先预览影响，再确认移动。")); description->setWordWrap(true); description->setTextFormat(Qt::PlainText); layout->addWidget(description);
     auto *externalMove = new QCheckBox(QStringLiteral("原位置已在应用外移动：仅把引用改到我确认的新位置")); layout->addWidget(externalMove);
     auto *tree = new QTreeWidget; tree->setHeaderLabels({QStringLiteral("文件／引用位置"), QStringLiteral("处理结果或新目标")}); tree->setMinimumHeight(200); tree->setMaximumHeight(280); tree->setObjectName("resourceMoveImpact"); layout->addWidget(tree);
-    const auto fields = QStringLiteral("QLineEdit,QTreeWidget{background:%1;color:%2;border:1px solid %3;border-radius:6px} QLineEdit{padding:4px 8px} QTreeWidget::item{padding:4px} QHeaderView::section{background:%1;color:%2;border:0;border-bottom:1px solid %3;padding:6px} QTreeWidget::item:selected{background:%4}")
+    const auto fields = QStringLiteral("QLineEdit,QTreeWidget{background:%1;color:%2;border:1px solid %3;border-radius:6px} QLineEdit{padding:4px 8px} QTreeWidget{outline:0} QTreeWidget::item{padding:4px} QHeaderView::section{background:%1;color:%2;border:0;border-bottom:1px solid %3;padding:6px} QTreeWidget::item:selected{background:%4}")
         .arg(appearance->color("surface").name(), appearance->color("text").name(), appearance->color("border").name(), appearance->color("sidebar").name());
     source->setStyleSheet(fields); target->setStyleSheet(fields); tree->setStyleSheet(fields + themedScrollBars(appearance));
     auto *maintain = new QCheckBox(QStringLiteral("维护已识别的引用（打开文档保留未保存状态）")); maintain->setChecked(true); layout->addWidget(maintain);
@@ -229,9 +232,9 @@ void ResourceMaintenanceController::show(const QString &from) {
     const auto invalidate = [&] { apply->setEnabled(false); };
     connect(source, &QLineEdit::textChanged, &dialog, invalidate); connect(target, &QLineEdit::textChanged, &dialog, invalidate);
     connect(externalMove, &QCheckBox::toggled, &dialog, invalidate);
-    connect(preview, &QPushButton::clicked, &dialog, [&, this] { tree->clear(); description->setText(QStringLiteral("正在核验来源与影响…")); preview->setEnabled(false); prepare(source->text(), target->text(), externalMove->isChecked()); });
+    connect(preview, &QPushButton::clicked, &dialog, [&, this] { tree->clear(); description->setText(QStringLiteral("正在核验来源与影响…")); preview->setEnabled(false); source->setEnabled(false); target->setEnabled(false); externalMove->setEnabled(false); prepare(source->text(), target->text(), externalMove->isChecked()); });
     connect(this, &ResourceMaintenanceController::previewReady, &dialog, [&, this] {
-        preview->setEnabled(true); tree->clear(); const auto &plan = m_preview.plan;
+        preview->setEnabled(true); source->setEnabled(true); target->setEnabled(true); externalMove->setEnabled(true); tree->clear(); const auto &plan = m_preview.plan;
         description->setText(plan.valid() ? plan.request.from + QStringLiteral(" → ") + plan.request.to : plan.problem);
         for (const auto &document : plan.documents) {
             auto *item = new QTreeWidgetItem(tree, {document.from, document.problem.isEmpty() ? document.source.origin == ReferenceIndexSource::Origin::Session ? QStringLiteral("更新会话，等待保存") : QStringLiteral("写入文件") : document.problem});
@@ -241,6 +244,7 @@ void ResourceMaintenanceController::show(const QString &from) {
         tree->expandAll(); tree->resizeColumnToContents(0); apply->setEnabled(plan.valid());
     });
     connect(cancel, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(&dialog, &QDialog::rejected, this, [this] { if (m_prepare.isRunning()) this->cancel(); });
     connect(apply, &QPushButton::clicked, &dialog, [&, this] {
         if ((!maintain->isChecked() || !m_preview.plan.gaps.isEmpty()) && !ack->isChecked()) { description->setText(QStringLiteral("请先确认已了解未覆盖项目及断链影响。")); return; }
         if (this->apply(maintain->isChecked())) dialog.accept();

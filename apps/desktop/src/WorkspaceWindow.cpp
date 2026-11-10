@@ -140,6 +140,8 @@ void WorkspaceWindow::populateReferences(QMenu *menu, SingleFileWindow *pane) {
     auto *move = menu->addAction(QStringLiteral("移动或重命名资源…")); move->setObjectName("resourceMaintenanceAction");
     move->setEnabled(m_resourceRoot && m_resourceRoot->active() && !m_maintenance->busy());
     connect(move, &QAction::triggered, this, [this, pane] { m_maintenance->show(pane->document() ? m_references->relativePath(pane->document()->path()) : QString{}); });
+    auto *stopMaintenance = menu->addAction(QStringLiteral("停止后续资源维护")); stopMaintenance->setEnabled(m_maintenance->busy());
+    connect(stopMaintenance, &QAction::triggered, m_maintenance, &ResourceMaintenanceController::cancel);
     menu->addSeparator();
     label(menu, m_references->statusText());
     auto *refresh = menu->addAction(QStringLiteral("重新检查工作区")); refresh->setObjectName("refreshReferencesAction");

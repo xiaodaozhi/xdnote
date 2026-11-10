@@ -547,15 +547,16 @@ private slots:
         QApplication::setActiveWindow(workspace); editor->setFocus(Qt::OtherFocusReason); editor->send(SCI_SETSEL, 0, 0);
         QSignalSpy finished(pane, &SingleFileWindow::workspaceLinkFinished);
         QSignalSpy triggered(insert, &QAction::triggered);
-        bool pickerSeen = false, timedOut = false;
+        bool pickerSeen = false, headingsSeen = false, timedOut = false;
         QTimer pickerProbe, watchdog; pickerProbe.setInterval(20); watchdog.setSingleShot(true);
         connect(&pickerProbe, &QTimer::timeout, this, [&] {
             for (auto *widget : QApplication::topLevelWidgets()) if (widget->objectName() == "workspaceLinkHeadingMenu") {
+                headingsSeen = true;
                 auto *headings = qobject_cast<QMenu *>(widget); headings->setActiveAction(headings->actions().first()); QTest::keyClick(headings, Qt::Key_Return); pickerProbe.stop(); return;
             }
             QFileDialog *dialog = nullptr;
             for (auto *widget : QApplication::topLevelWidgets())
-                if ((dialog = qobject_cast<QFileDialog *>(widget)) && dialog->isVisible()) break;
+                if (auto *candidate = qobject_cast<QFileDialog *>(widget); candidate && candidate->isVisible()) { dialog = candidate; break; }
             if (!dialog) return;
             if (pickerSeen) return;
             pickerSeen = true; dialog->selectFile(targetPath);
@@ -571,12 +572,12 @@ private slots:
         menu->popup(button->mapToGlobal(button->rect().bottomLeft()));
         QTRY_VERIFY(menu->isVisible());
         QVERIFY(QTest::qWaitForWindowExposed(menu, 5000));
-        QApplication::setActiveWindow(menu);
+        menu->activateWindow(); menu->setFocus(Qt::PopupFocusReason); QTest::qWait(50);
         menu->setActiveAction(insert); QCOMPARE(menu->activeAction(), insert);
         pickerProbe.start(); watchdog.start(10000);
         QTest::keyClick(menu, Qt::Key_Return);
         QTRY_VERIFY_WITH_TIMEOUT(pickerSeen || timedOut, 12000);
-        QVERIFY2(!timedOut, "The Qt test file picker did not appear");
+        QVERIFY2(!timedOut, qPrintable(QStringLiteral("Qt picker timeout: action=%1 picker=%2 headings=%3").arg(triggered.size()).arg(pickerSeen).arg(headingsSeen)));
         QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); watchdog.stop();
         QCOMPARE(triggered.size(), 1);
         QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));

@@ -28,7 +28,8 @@ struct ResourceMaintenanceResult {
 // Bounded worker operations. No session access; live text is captured on GUI.
 ResourceMaintenancePreview prepareResourceMove(const std::shared_ptr<WorkspaceResourceReader> &root,
     ReferenceIndexInput live, ReferenceMoveRequest request,
-    const QHash<QString, std::shared_ptr<const FileBaseline>> &openBaselines = {});
+    const QHash<QString, std::shared_ptr<const FileBaseline>> &openBaselines = {},
+    const std::shared_ptr<std::atomic_bool> &cancelled = {});
 ResourceMaintenanceResult executeResourceMove(const std::shared_ptr<WorkspaceResourceReader> &root,
     const ResourceMaintenancePreview &preview, bool maintain,
     const std::shared_ptr<std::atomic_bool> &cancelled = {});
