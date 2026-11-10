@@ -8,6 +8,12 @@
 #include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
 #include <QStringList>
 #include <QUuid>
 #include <atomic>
@@ -66,6 +72,53 @@ QStringList components(const QString &path) {
 #endif
     }
     return parts;
+}
+
+#ifndef Q_OS_WIN
+QJsonObject helperRequest(const QString &root, const QString &identity, const QString &operation,
+                         const QString &path, int limit = 0, QJsonObject extra = {}) {
+    const auto executable = QCoreApplication::applicationDirPath() + QStringLiteral("/xdnote-resource-helper");
+    if (!QFileInfo::exists(executable)) return {{"error", int(WorkspaceReadError::Unsupported)}};
+    extra["root"] = root; extra["identity"] = identity; extra["operation"] = operation; extra["path"] = path; extra["limit"] = limit;
+    QProcess process; process.setProgram(executable); process.setProcessChannelMode(QProcess::SeparateChannels); process.start();
+    if (!process.waitForStarted(3000)) return {{"error", int(WorkspaceReadError::Unsupported)}};
+    const auto input = QJsonDocument(extra).toJson(QJsonDocument::Compact);
+    process.write(input); process.closeWriteChannel();
+    QElapsedTimer elapsed; elapsed.start(); QByteArray response;
+    while (process.state() != QProcess::NotRunning && elapsed.elapsed() < 15000) {
+        process.waitForFinished(20); response += process.readAllStandardOutput();
+        if (response.size() > 48 * 1024 * 1024) break;
+    }
+    if (process.state() != QProcess::NotRunning) { process.kill(); process.waitForFinished(3000); }
+    response += process.readAllStandardOutput();
+    QJsonParseError error{}; const auto parsed = QJsonDocument::fromJson(response, &error);
+    if (response.size() > 48 * 1024 * 1024 || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0
+        || error.error != QJsonParseError::NoError || !parsed.isObject() || !parsed.object().contains("error")) {
+        // A lost response after a write is uncertain, never a fabricated failure
+        // with an implicit rollback or a reason to remove a published image.
+        return {{"error", int(WorkspaceReadError::Io)}, {"status", int(WorkspaceWriteStatus::PublishedButUnverified)}, {"path", path}};
+    }
+    return parsed.object();
+}
+#endif
+
+QString safeStem(const QString &suggestedName) {
+    auto value = QFileInfo(QDir::fromNativeSeparators(suggestedName)).completeBaseName();
+    if (QString::fromUtf8(value.toUtf8()) != value) value.clear();
+    for (auto &ch : value) {
+        if (ch.isNull() || ch.category() == QChar::Other_Control || QStringLiteral("<>:\"/\\|?*").contains(ch)) ch = '_';
+    }
+    value = value.trimmed();
+    while (value.endsWith('.') || value.endsWith(' ')) value.chop(1);
+    if (value.size() > 80) { value.truncate(80); if (!value.isEmpty() && value.back().isHighSurrogate()) value.chop(1); }
+    while (value.endsWith('.') || value.endsWith(' ')) value.chop(1);
+    if (value.isEmpty() || value == "." || value == "..") value = QStringLiteral("image");
+    const auto reserved = value.section('.', 0, 0).toUpper();
+    if (reserved == "CON" || reserved == "PRN" || reserved == "AUX" || reserved == "NUL" || reserved == "CONIN$" || reserved == "CONOUT$"
+        || ((reserved.startsWith("COM") || reserved.startsWith("LPT")) && reserved.size() == 4
+            && ((reserved.at(3) >= '1' && reserved.at(3) <= '9')
+                || reserved.at(3) == QChar(u'\u00b9') || reserved.at(3) == QChar(u'\u00b2') || reserved.at(3) == QChar(u'\u00b3')))) value.prepend('_');
+    return value;
 }
 
 #ifdef Q_OS_WIN
@@ -132,24 +185,6 @@ NTSTATUS openChild(HANDLE parent, const QString &part, bool directory, HANDLE &o
     return openRelative(parent, part, access, sharing, FILE_OPEN, options, opened);
 }
 
-QString safeStem(const QString &suggestedName) {
-    auto value = QFileInfo(QDir::fromNativeSeparators(suggestedName)).completeBaseName();
-    if (QString::fromUtf8(value.toUtf8()) != value) value.clear();
-    for (auto &ch : value) {
-        if (ch.isNull() || ch.category() == QChar::Other_Control || QStringLiteral("<>:\"/\\|?*").contains(ch)) ch = '_';
-    }
-    value = value.trimmed();
-    while (value.endsWith('.') || value.endsWith(' ')) value.chop(1);
-    if (value.size() > 80) { value.truncate(80); if (!value.isEmpty() && value.back().isHighSurrogate()) value.chop(1); }
-    while (value.endsWith('.') || value.endsWith(' ')) value.chop(1);
-    if (value.isEmpty() || value == "." || value == "..") value = QStringLiteral("image");
-    const auto reserved = value.section('.', 0, 0).toUpper();
-    if (reserved == "CON" || reserved == "PRN" || reserved == "AUX" || reserved == "NUL" || reserved == "CONIN$" || reserved == "CONOUT$"
-        || ((reserved.startsWith("COM") || reserved.startsWith("LPT")) && reserved.size() == 4
-            && ((reserved.at(3) >= '1' && reserved.at(3) <= '9')
-                || reserved.at(3) == QChar(u'\u00b9') || reserved.at(3) == QChar(u'\u00b2') || reserved.at(3) == QChar(u'\u00b3')))) value.prepend('_');
-    return value;
-}
 
 bool directoryHandle(HANDLE handle) {
     FILE_ATTRIBUTE_TAG_INFO attrs{}; FILE_STANDARD_INFO standard{};
@@ -160,6 +195,12 @@ bool directoryHandle(HANDLE handle) {
 }
 
 enum class Existing { Missing, Same, Occupied };
+QString nativeIdentity(HANDLE handle) {
+    FILE_ID_INFO info{};
+    if (!GetFileInformationByHandleEx(handle, FileIdInfo, &info, sizeof(info))) return {};
+    return QStringLiteral("win:%1:%2").arg(info.VolumeSerialNumber, 0, 16)
+        .arg(QString::fromLatin1(QByteArray(reinterpret_cast<const char *>(info.FileId.Identifier), 16).toHex()));
+}
 struct ExistingResult { Existing state; std::shared_ptr<NativeHandle> file; };
 ExistingResult existingBytes(HANDLE directory, const QString &name, const QByteArray &bytes) {
     auto file = std::make_shared<NativeHandle>();
@@ -183,7 +224,7 @@ ExistingResult existingBytes(HANDLE directory, const QString &name, const QByteA
 }
 
 struct PublicationLease {
-    NativeHandle root, assets, images;
+    NativeHandle root, assets, images, documentRoot;
     std::shared_ptr<NativeHandle> resource;
     std::vector<std::shared_ptr<NativeHandle>> documentPath;
 };
@@ -191,7 +232,7 @@ struct PublicationLease {
 bool lockDocument(PublicationLease &lease, const QString &path, const QString &identity) {
     const auto parts = components(path);
     if (parts.isEmpty()) return false;
-    HANDLE parent = lease.root.value;
+    HANDLE parent = lease.documentRoot.value != INVALID_HANDLE_VALUE ? lease.documentRoot.value : lease.root.value;
     std::vector<std::shared_ptr<NativeHandle>> handles;
     for (qsizetype i = 0; i < parts.size(); ++i) {
         const bool directory = i + 1 < parts.size();
@@ -263,9 +304,7 @@ void WorkspaceResourceReader::revoke() {
 
 WorkspaceRootResult WorkspaceResourceReader::open(const QString &absoluteRoot) {
     if (!QDir::isAbsolutePath(absoluteRoot) || absoluteRoot.contains(QChar::Null)) return {{}, WorkspaceReadError::InvalidPath};
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
-    // A lexical or canonical-path check cannot make concurrent directory
-    // replacement safe. Unsupported platforms must fail closed.
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
     return {{}, WorkspaceReadError::Unsupported};
 #else
     auto state = std::make_unique<State>();
@@ -404,6 +443,18 @@ WorkspaceDirectoryResult WorkspaceResourceReader::listDirectory(const QString &p
     struct stat verified{};
     if (verifyRoot.value < 0 || ::fstat(verifyRoot.value, &verified) != 0
         || verified.st_dev != m_state->device || verified.st_ino != m_state->inode) return {WorkspaceReadError::RootChanged};
+#elif defined(Q_OS_MACOS)
+    const auto rootIdentity = QStringLiteral("posix:%1:%2").arg(qulonglong(m_state->device), 0, 16).arg(qulonglong(m_state->inode), 0, 16);
+    const auto response = helperRequest(m_state->path, rootIdentity, "list", path, maxEntries);
+    if (!active()) return {WorkspaceReadError::Revoked};
+    const auto error = WorkspaceReadError(response.value("error").toInt(int(WorkspaceReadError::Io)));
+    if (error != WorkspaceReadError::None) return {error, response.value("native").toInteger()};
+    result.identity = response.value("identity").toString();
+    for (const auto value : response.value("entries").toArray()) {
+        const auto entry = value.toObject(); result.entries.append({entry.value("name").toString(), WorkspaceDirectoryEntry::Kind(entry.value("kind").toInt(2))});
+    }
+    result.complete = response.value("complete").toBool();
+    return result;
 #else
     return {WorkspaceReadError::Unsupported};
 #endif
@@ -515,8 +566,32 @@ WorkspaceReadResult WorkspaceResourceReader::readImpl(const QString &path, qsize
     struct stat verified{};
     if (verifyRoot.value < 0 || ::fstat(verifyRoot.value, &verified) != 0
         || verified.st_dev != m_state->device || verified.st_ino != m_state->inode) return {WorkspaceReadError::RootChanged};
+#elif defined(Q_OS_MACOS)
+    const auto rootIdentity = QStringLiteral("posix:%1:%2").arg(qulonglong(m_state->device), 0, 16).arg(qulonglong(m_state->inode), 0, 16);
+    const auto response = helperRequest(m_state->path, rootIdentity, metadataOnly ? "inspect" : "read", path, int(maxBytes));
+    if (!active()) return {WorkspaceReadError::Revoked};
+    const auto error = WorkspaceReadError(response.value("error").toInt(int(WorkspaceReadError::Io)));
+    if (error != WorkspaceReadError::None) return {error, {}, response.value("native").toInteger()};
+    WorkspaceReadResult result; result.identity = response.value("identity").toString();
+    if (metadataOnly) {
+        // Hold the already authorized object's identity against inode reuse.
+        // These parent-process opens request events/metadata, never file data;
+        // all content reads stay inside the restricted helper.
+        NativeHandle parent; parent.value = ::dup(m_state->root.value);
+        for (qsizetype i = 0; i < parts.size(); ++i) {
+            const bool directory = i + 1 < parts.size();
+            const int child = ::openat(parent.value, parts.at(i).toUtf8().constData(), O_CLOEXEC | O_NOFOLLOW
+                | (directory ? O_RDONLY | O_DIRECTORY : O_EVTONLY));
+            if (child < 0) return {nativeError(errno), {}, errno};
+            ::close(parent.value); parent.value = child;
+        }
+        struct stat actual{};
+        if (::fstat(parent.value, &actual) != 0 || QStringLiteral("posix:%1:%2").arg(qulonglong(actual.st_dev), 0, 16)
+            .arg(qulonglong(actual.st_ino), 0, 16) != result.identity) return {WorkspaceReadError::Changed};
+        auto lease = std::make_shared<NativeHandle>(); lease->value = parent.value; parent.value = -1; result.lease = std::move(lease);
+    } else result.bytes = QByteArray::fromBase64(response.value("bytes").toString().toLatin1());
+    return result;
 #else
-    Q_UNUSED(maxBytes);
     return {WorkspaceReadError::Unsupported};
 #endif
 #if defined(Q_OS_WIN) || (defined(Q_OS_LINUX) && defined(SYS_openat2))
@@ -527,10 +602,36 @@ WorkspaceReadResult WorkspaceResourceReader::readImpl(const QString &path, qsize
 
 WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &documentPath, const QString &documentIdentity,
     const QByteArray &bytes, const QString &suggestedName, const QString &extension,
-    const std::function<void(WorkspaceWriteStage)> &observer) const {
+    const std::function<void(WorkspaceWriteStage)> &observer, const QString &destination,
+    const std::shared_ptr<WorkspaceResourceReader> &documentRoot) const {
+    const auto &sourceReader = documentRoot ? *documentRoot : *this;
+    if (bytes.isEmpty() || bytes.size() > 8 * 1024 * 1024) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::TooLarge};
+    if ((!destination.isEmpty() && destination != "assets/images") || !active() || !sourceReader.active())
+        return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Revoked};
 #ifndef Q_OS_WIN
-    Q_UNUSED(documentPath); Q_UNUSED(documentIdentity); Q_UNUSED(bytes); Q_UNUSED(suggestedName); Q_UNUSED(extension); Q_UNUSED(observer);
-    return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Unsupported};
+    const auto source = sourceReader.inspect(documentPath);
+    if (!source.ok() || source.identity != documentIdentity) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Changed};
+    if (observer) { try { observer(WorkspaceWriteStage::BeforeCommit); } catch (...) { return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Io}; } }
+    QJsonObject response;
+    {
+        std::lock_guard<std::mutex> lock(m_state->commitMutex);
+        if (!active() || !sourceReader.active()) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Revoked};
+        const auto current = sourceReader.inspect(documentPath);
+        if (!current.ok() || current.identity != documentIdentity) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Changed};
+        const auto rootIdentity = QStringLiteral("posix:%1:%2").arg(qulonglong(m_state->device), 0, 16).arg(qulonglong(m_state->inode), 0, 16);
+        response = helperRequest(m_state->path, rootIdentity, "publish", destination, 0, {{"bytes", QString::fromLatin1(bytes.toBase64())}, {"stem", safeStem(suggestedName)}, {"extension", extension.toLower()}});
+    }
+    const auto status = WorkspaceWriteStatus(response.value("status").toInt(int(WorkspaceWriteStatus::Failed)));
+    const auto path = response.value("path").toString();
+    if (observer && (status == WorkspaceWriteStatus::Committed || status == WorkspaceWriteStatus::Reused)) {
+        try { observer(WorkspaceWriteStage::AfterCommit); } catch (...) { return {WorkspaceWriteStatus::PublishedButUnverified, WorkspaceReadError::Io, 0, path}; }
+    }
+    if (status == WorkspaceWriteStatus::Committed || status == WorkspaceWriteStatus::Reused) {
+        const auto checked = sourceReader.inspect(documentPath);
+        if (!active() || !sourceReader.active() || !checked.ok() || checked.identity != documentIdentity)
+            return {WorkspaceWriteStatus::PublishedButUnverified, WorkspaceReadError::Changed, 0, path};
+    }
+    return {status, WorkspaceReadError(response.value("error").toInt(int(WorkspaceReadError::Io))), response.value("native").toInteger(), path, response.value("recovery").toString(), {}, response.value("identity").toString()};
 #else
     constexpr qsizetype MaxImageBytes = 8 * 1024 * 1024;
     if (!m_state->active.load(std::memory_order_acquire)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Revoked};
@@ -538,19 +639,25 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
     if (documentIdentity.isEmpty() || bytes.isEmpty() || bytes.size() > MaxImageBytes
         || !(suffix == "png" || suffix == "jpg" || suffix == "jpeg" || suffix == "gif" || suffix == "bmp" || suffix == "webp"))
         return {WorkspaceWriteStatus::Failed, bytes.size() > MaxImageBytes ? WorkspaceReadError::TooLarge : WorkspaceReadError::InvalidPath};
-    auto document = read(documentPath, FileService::DiskByteLimit);
+    auto document = sourceReader.read(documentPath, FileService::DiskByteLimit);
     if (!document.ok()) return {WorkspaceWriteStatus::Failed, document.error, document.nativeCode};
     if (document.identity != documentIdentity) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Changed};
 
     auto lease = std::make_shared<PublicationLease>();
     auto &lockedRoot = lease->root;
     lockedRoot.value = openRoot(m_state->path, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES);
+                                FILE_LIST_DIRECTORY | FILE_ADD_FILE | FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES);
     if (lockedRoot.value == INVALID_HANDLE_VALUE) { const auto code = GetLastError(); return {WorkspaceWriteStatus::Failed, nativeError(code), code}; }
     FILE_ID_INFO rootIdentity{};
     if (!directoryInfo(lockedRoot.value, rootIdentity) || !sameIdentity(rootIdentity, m_state->identity))
         return {WorkspaceWriteStatus::Failed, WorkspaceReadError::RootChanged};
 
+    if (documentRoot && documentRoot.get() != this) {
+        lease->documentRoot.value = openRoot(documentRoot->m_state->path, FILE_SHARE_READ | FILE_SHARE_WRITE);
+        FILE_ID_INFO actual{};
+        if (lease->documentRoot.value == INVALID_HANDLE_VALUE || !directoryInfo(lease->documentRoot.value, actual)
+            || !sameIdentity(actual, documentRoot->m_state->identity)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::RootChanged};
+    }
     const ULONG dirOptions = FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT;
     auto &assets = lease->assets, &images = lease->images;
     NTSTATUS status = 0;
@@ -559,6 +666,10 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
         // not start a new creation under the previous authorization.
         std::lock_guard<std::mutex> lock(m_state->commitMutex);
         if (!m_state->active.load(std::memory_order_acquire)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Revoked};
+        if (destination.isEmpty()) {
+            if (!DuplicateHandle(GetCurrentProcess(), lockedRoot.value, GetCurrentProcess(), &images.value, 0, FALSE, DUPLICATE_SAME_ACCESS))
+                return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Io, GetLastError()};
+        } else {
         status = openRelative(lockedRoot.value, QStringLiteral("assets"), FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
                               FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF, dirOptions, assets.value);
         if (status < 0) { const auto code = RtlNtStatusToDosError(status); return {WorkspaceWriteStatus::Failed, nativeError(code), code}; }
@@ -567,6 +678,7 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
                               FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF, dirOptions, images.value);
         if (status < 0) { const auto code = RtlNtStatusToDosError(status); return {WorkspaceWriteStatus::Failed, nativeError(code), code}; }
         if (!directoryHandle(images.value)) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::OutsideOrLink};
+        }
     }
 
     const auto stem = safeStem(suggestedName);
@@ -577,10 +689,10 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
     };
     auto contextValid = [&]() {
         if (!m_state->active.load(std::memory_order_acquire)) return false;
-        const auto checked = read(documentPath, FileService::DiskByteLimit);
+        const auto checked = sourceReader.read(documentPath, FileService::DiskByteLimit);
         return checked.ok() && checked.identity == documentIdentity;
     };
-    auto relative = [](const QString &name) { return QStringLiteral("assets/images/") + name; };
+    auto relative = [&destination](const QString &name) { return destination.isEmpty() ? name : destination + '/' + name; };
     int selected = 0;
     for (; selected < 128; ++selected) {
         const auto existing = existingBytes(images.value, candidate(selected), bytes);
@@ -588,7 +700,7 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
         if (existing.state == Existing::Same) {
             if (!lockDocument(*lease, documentPath, documentIdentity) || !contextValid()) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Changed};
             lease->resource = existing.file;
-            return {WorkspaceWriteStatus::Reused, WorkspaceReadError::None, 0, relative(candidate(selected)), {}, lease};
+            return {WorkspaceWriteStatus::Reused, WorkspaceReadError::None, 0, relative(candidate(selected)), {}, lease, nativeIdentity(lease->resource->value)};
         }
     }
     if (selected == 128) return {WorkspaceWriteStatus::Failed, WorkspaceReadError::Io};
@@ -708,7 +820,7 @@ WorkspaceWriteResult WorkspaceResourceReader::publishImage(const QString &docume
         }
         if (verified != bytes || !contextValid()) return {WorkspaceWriteStatus::PublishedButUnverified, WorkspaceReadError::Changed, 0, published};
         lease->resource = std::move(stage);
-        return {WorkspaceWriteStatus::Committed, WorkspaceReadError::None, 0, published, {}, lease};
+        return {WorkspaceWriteStatus::Committed, WorkspaceReadError::None, 0, published, {}, lease, nativeIdentity(lease->resource->value)};
     }
     return failStage(WorkspaceReadError::Io);
 #endif

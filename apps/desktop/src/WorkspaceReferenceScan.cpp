@@ -1,6 +1,7 @@
 #include "WorkspaceReferenceScan.h"
 #include "FileService.h"
 #include "Utf8Text.h"
+#include "ImageAdmission.h"
 #include <QFileInfo>
 #include <QHash>
 #include <QSet>
@@ -17,12 +18,31 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
         if (!root || !root->active()) { input.sources.clear(); input.enumerationGaps.append(QStringLiteral("工作区授权已失效")); input.enumerationComplete = false; }
         result.index = buildWorkspaceReferenceIndex(input);
         if (root && root->active() && !stopped()) {
+            int images = 0; qsizetype imageBytes = 0; qint64 pixels = 0;
             for (const auto &reference : result.index.references) {
                 if (stopped()) break;
-                if (!reference.target.success || result.targets.contains(reference.target.path)) continue;
+                if (!reference.target.success) continue;
+                const bool imageReference = reference.reference.kind == MarkdownReference::Kind::Image;
+                if (result.targets.contains(reference.target.path) && (!imageReference || result.targets.value(reference.target.path).imageChecked)) continue;
                 if (result.targets.size() >= 4096) { result.index.complete = false; result.index.gaps.append(QStringLiteral("目标检查达到上限")); break; }
                 const auto target = root->inspect(reference.target.path);
                 result.targets.insert(reference.target.path, {target.error, target.identity});
+                if (imageReference) {
+                    auto &state = result.targets[reference.target.path]; state.imageChecked = true;
+                    if (!target.ok()) continue;
+                    if (++images > 32 || imageBytes >= 32 * 1024 * 1024) {
+                        state.diagnostic = QStringLiteral("图片诊断达到本轮数量或字节上限"); result.index.complete = false;
+                        result.index.gaps.append(state.diagnostic); continue;
+                    }
+                    const auto read = root->read(reference.target.path, qMin<qsizetype>(MaxImageSourceBytes, 32 * 1024 * 1024 - imageBytes));
+                    if (!read.ok() || read.identity != target.identity) {
+                        state.error = read.ok() ? WorkspaceReadError::Changed : read.error;
+                        state.diagnostic = QStringLiteral("图片无法读取或对象已变化"); continue;
+                    }
+                    imageBytes += read.bytes.size(); QByteArray png;
+                    const auto status = decodeImage(read.bytes, pixels, 32 * 1024 * 1024, png);
+                    if (status != 1) state.diagnostic = status == 3 ? QStringLiteral("图片超过字节、像素或解码限制") : QStringLiteral("图片损坏、格式不支持或包含未准入活动内容");
+                }
             }
         }
         if (stopped() || !root || !root->active()) {

@@ -84,6 +84,16 @@ add_library(xdnote_markdown STATIC IMPORTED GLOBAL)
 set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUST_LIBRARY}")
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
+if(UNIX)
+    add_executable(xdnote_resource_helper apps/desktop/src/ResourceHelper.cpp)
+    set_target_properties(xdnote_resource_helper PROPERTIES OUTPUT_NAME "xdnote-resource-helper")
+    target_link_libraries(xdnote_resource_helper PRIVATE Qt6::Core)
+    if(APPLE)
+        find_library(XDNOTE_SANDBOX_LIBRARY sandbox REQUIRED)
+        target_link_libraries(xdnote_resource_helper PRIVATE "${XDNOTE_SANDBOX_LIBRARY}")
+    endif()
+endif()
+
 add_library(xdnote_desktop STATIC
     apps/desktop/src/WorkspaceTree.cpp apps/desktop/src/WorkspaceTree.h
     apps/desktop/src/WorkspaceWindow.cpp apps/desktop/src/WorkspaceWindow.h
@@ -118,6 +128,9 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/QuickAccessibleRoot.cpp apps/desktop/src/QuickAccessibleRoot.h
     apps/desktop/src/AdmissionWindow.cpp apps/desktop/src/AdmissionWindow.h)
 target_include_directories(xdnote_desktop PUBLIC apps/desktop/src)
+if(UNIX)
+    add_dependencies(xdnote_desktop xdnote_resource_helper)
+endif()
 target_link_libraries(xdnote_desktop PUBLIC xdnote_scintilla xdnote_markdown
     Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::QuickControls2 Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Network Qt6::Svg)
 if(WIN32)

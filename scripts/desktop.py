@@ -192,6 +192,36 @@ def verify_build_identity(build, profile, qt):
     return identity
 
 
+def runtime_environment(environment_values, qt, system=None):
+    """Build a process-local Qt environment; never change the user's PATH."""
+    result = dict(environment_values)
+    system = system or platform.system()
+    if system == "Windows":
+        required = ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6WebEngineCore.dll")
+        missing = [name for name in required if not (qt / "bin" / name).is_file()]
+        if missing:
+            raise RuntimeError(f"Qt runtime is incomplete in {qt / 'bin'}: {', '.join(missing)}")
+    result["PATH"] = str(qt / "bin") + os.pathsep + result.get("PATH", "")
+    result["QML_IMPORT_PATH"] = str(qt / "qml")
+    result["QML2_IMPORT_PATH"] = str(qt / "qml")
+    result["QT_PLUGIN_PATH"] = str(qt / "plugins")
+    result["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(qt / "plugins/platforms")
+    helper = qt / ("bin/QtWebEngineProcess.exe" if system == "Windows" else "libexec/QtWebEngineProcess")
+    if system == "Darwin" and not helper.is_file():
+        framework = qt / "lib/QtWebEngineCore.framework"
+        candidates = [framework / "Helpers/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess"]
+        candidates.extend(framework.glob("Versions/*/Helpers/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess"))
+        helper = next((candidate for candidate in candidates if candidate.is_file()), helper)
+    if not helper.is_file():
+        raise RuntimeError(f"Qt WebEngine runtime helper missing: {helper}")
+    result["QTWEBENGINEPROCESS_PATH"] = str(helper)
+    for name in ("QTWEBENGINE_RESOURCES_PATH", "QTWEBENGINE_LOCALES_PATH"):
+        result.pop(name, None)
+    if system == "Linux":
+        result["LD_LIBRARY_PATH"] = str(qt / "lib") + os.pathsep + result.get("LD_LIBRARY_PATH", "")
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("doctor", "prepare", "build", "test", "run"))
@@ -204,10 +234,13 @@ def main():
     parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
     parser.add_argument("--file", type=Path, action="append", default=[], help="local Markdown file to open with run; repeat for multiple files")
     parser.add_argument("--admission", action="store_true", help="run the memory-only component window instead of xdnote")
+    parser.add_argument("--suite", choices=("full", "resources"), default="full", help="test scope; resources runs only affected file/image paths")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
     args = parser.parse_args()
+    if args.suite != "full" and args.command != "test":
+        parser.error("--suite is supported by test only")
     checked_tool_path(sys.executable, "Python interpreter")
     checked_tool_path(getattr(sys, "_base_executable", sys.executable), "Python base interpreter")
     if args.fresh and args.command != "build":
@@ -247,11 +280,8 @@ def main():
     qt = checked_tool_path(args.qt_prefix, "Qt SDK", sdk=True)
     if not (qt / "lib/cmake/Qt6WebEngineWidgets/Qt6WebEngineWidgetsConfig.cmake").is_file():
         raise RuntimeError("Qt WebEngine SDK missing; run the explicit SDK preparation first")
-    env["PATH"] = str(qt / "bin") + os.pathsep + env["PATH"]
-    env["QML_IMPORT_PATH"] = str(qt / "qml")
-    env["QT_PLUGIN_PATH"] = str(qt / "plugins")
+    env = runtime_environment(env, qt)
     if platform.system() == "Linux":
-        env["LD_LIBRARY_PATH"] = str(qt / "lib") + os.pathsep + env.get("LD_LIBRARY_PATH", "")
         for binary in (qt / "plugins/platforms/libqxcb.so", qt / "libexec/QtWebEngineProcess"):
             libraries = subprocess.check_output(["ldd", str(binary)], env=env, text=True)
             missing = [line.strip() for line in libraries.splitlines() if "not found" in line]
@@ -276,6 +306,26 @@ def main():
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
         verify_build_identity(build, args.profile, qt)
+        if args.suite == "resources":
+            suffix = ".exe" if platform.system() == "Windows" else ""
+            publication = ["workspaceImagePublicationNeverOverwritesOrReusesDifferentBytes", "workspaceImagePublicationHonorsRevocationAroundCommit", "workspaceImagePublicationSerializesCollisions"] if suffix else ["posixImagePublicationPreservesCollisionsAndRejectsDirectoryLinks", "workspaceImagePublicationHonorsRevocationAroundCommit", "workspaceImagePublicationSerializesCollisions"]
+            groups = {
+                "file": ["confinedOpenKeepsDirtySessionAndAllowsAtomicSave", "confinedReadRejectsParentLinkReplacementAfterProbe"],
+                "desktop": publication + ["workspaceResourcesRequireTheSelectedRootAndRejectLinks", "workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding", "imageImportRejectsInvalidSourcesBeforeWriting"],
+                "workspace": ["standaloneImageImportUsesExplicitDirectoryAndKeepsOriginalBytes", "imageDiagnosticsDistinguishBrokenAndMissingResources", "workspaceReferencesTrackSessionsFilesAndMenuCoverage"],
+            }
+            for name, functions in groups.items():
+                report = build / f"resources-{name}-qtest.txt"
+                report.unlink(missing_ok=True)
+                try:
+                    run([build / f"xdnote_{name}_tests{suffix}", *functions, "-o", "-,txt", "-o", f"{report},txt"], env, build / f"resources-{name}.log")
+                finally:
+                    if not report.is_file():
+                        raise RuntimeError(f"This resource test run did not create {report.name}")
+                    text = report.read_text(encoding="utf-8", errors="replace")
+                    if re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", text):
+                        raise RuntimeError(f"Fatal Qt diagnostic in {report.name}")
+            return
         run(cargo("fmt", "--all", "--", "--check"), env, build / "rust-fmt.log")
         run(cargo("clippy", "--locked", "--offline", "--workspace", "--all-targets", "--", "-D", "warnings"), env, build / "rust-clippy.log")
         run(cargo("test", "--locked", "--offline", "--workspace"), env, build / "rust-test.log")

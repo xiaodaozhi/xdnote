@@ -18,6 +18,24 @@ SPEC.loader.exec_module(desktop)
 
 
 class DesktopToolTests(unittest.TestCase):
+    def test_runtime_environment_is_local_and_rejects_missing_dlls_before_launch(self):
+        desktop.BUILD.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="runtime-", dir=desktop.BUILD) as directory:
+            qt = Path(directory)
+            (qt / "bin").mkdir()
+            original = {"PATH": "existing", "QT_PLUGIN_PATH": "foreign", "QTWEBENGINEPROCESS_PATH": "foreign", "QTWEBENGINE_RESOURCES_PATH": "foreign"}
+            with self.assertRaisesRegex(RuntimeError, "Qt runtime is incomplete"):
+                desktop.runtime_environment(original, qt, "Windows")
+            for name in ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6WebEngineCore.dll", "QtWebEngineProcess.exe"):
+                (qt / "bin" / name).touch()
+            result = desktop.runtime_environment(original, qt, "Windows")
+            self.assertEqual(result["PATH"], str(qt / "bin") + os.pathsep + "existing")
+            self.assertEqual(result["QT_PLUGIN_PATH"], str(qt / "plugins"))
+            self.assertEqual(result["QTWEBENGINEPROCESS_PATH"], str(qt / "bin/QtWebEngineProcess.exe"))
+            self.assertNotIn("QTWEBENGINE_RESOURCES_PATH", result)
+            self.assertEqual(original["PATH"], "existing")
+            self.assertEqual(original["QT_PLUGIN_PATH"], "foreign")
+
     def test_system_package_receipt_does_not_exempt_arbitrary_checkouts(self):
         desktop.BUILD.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="system-package-", dir=desktop.BUILD) as directory:

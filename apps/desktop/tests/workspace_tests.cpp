@@ -89,8 +89,40 @@ protected:
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void standaloneImageImportUsesExplicitDirectoryAndKeepsOriginalBytes() {
+        QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("docs"))); QVERIFY(QDir().mkpath(dir.filePath("pictures")));
+        const auto path = dir.filePath("docs/doc.md"), source = dir.filePath(QStringLiteral("图 #%.png"));
+        QVERIFY(fileFixtures::write(path, "# doc\n")); QImage image(4, 3, QImage::Format_ARGB32); image.fill(Qt::red);
+        QByteArray bytes; QBuffer buffer(&bytes); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG")); QVERIFY(fileFixtures::write(source, bytes));
+        FileApplication app(nullptr, dir.filePath("settings/state.ini")); app.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); pane->setEditing(true);
+        pane->editor()->send(SCI_GOTOPOS, uptr_t(6)); QSignalSpy imported(pane, &SingleFileWindow::imageImportFinished);
+        pane->importImageFile(source, dir.filePath("pictures")); QTRY_COMPARE_WITH_TIMEOUT(imported.size(), 1, 20000);
+        QVERIFY2(imported.first().first().toBool(), qPrintable(imported.first().last().toString()));
+        const auto saved = dir.filePath(QStringLiteral("pictures/图 #%.png")); QCOMPARE(disk(saved), bytes); QCOMPARE(disk(source), bytes);
+        const auto snapshot = pane->document()->session()->snapshot(); QVERIFY(snapshot.utf8.contains("../pictures/")); QVERIFY(snapshot.utf8.contains("%23%25"));
+        pane->setEditing(false); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 1, 15000);
+        QVERIFY(QFile::rename(saved, saved + ".original")); QVERIFY(fileFixtures::write(saved, "changed image"));
+        QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 0, 15000);
+        QVERIFY(QFile::remove(saved)); QVERIFY(QFile::rename(saved + ".original", saved));
+        QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 1, 15000);
+        QCOMPARE(pane->document()->session()->undo(), EditResult::Applied); QCOMPARE(pane->document()->session()->snapshot().utf8, QByteArray("# doc\n")); QCOMPARE(disk(saved), bytes);
+        QVERIFY(!QFileInfo::exists(dir.filePath("assets"))); QVERIFY(!pane->embedded());
+        for (auto *widget : QApplication::topLevelWidgets()) QVERIFY(!qobject_cast<WorkspaceWindow *>(widget));
+    }
+    void imageDiagnosticsDistinguishBrokenAndMissingResources() {
+        QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("assets/images")));
+        QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "![bad](assets/images/bad.png)\n![missing](assets/images/missing.png)"));
+        QVERIFY(fileFixtures::write(dir.filePath("assets/images/bad.png"), "not an image"));
+        FileApplication app(nullptr, dir.filePath("settings/state.ini")); auto *workspace = app.workspaceWindow(dir.path());
+        app.openInWorkspace(dir.filePath("doc.md"), workspace); QVERIFY(waitPane(workspace, dir.filePath("doc.md")));
+        auto *references = workspace->references(); QTRY_VERIFY_WITH_TIMEOUT(references->current(references->generation()), 20000);
+        const auto &targets = references->result().targets;
+        QVERIFY(targets.value("assets/images/bad.png").imageChecked); QVERIFY(!targets.value("assets/images/bad.png").diagnostic.isEmpty());
+        QCOMPARE(targets.value("assets/images/missing.png").error, WorkspaceReadError::Missing);
+        QCOMPARE(disk(dir.filePath("assets/images/bad.png")), QByteArray("not an image"));
+    }
     void workspaceReferencesTrackSessionsFilesAndMenuCoverage() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource indexing is not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid());
@@ -124,7 +156,7 @@ private slots:
 #endif
     }
     void workspaceReferencesCancelAndDiscardPreviousRoot() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource indexing is not available on this platform");
 #else
         QTemporaryDir first, second; QVERIFY(first.isValid() && second.isValid());
@@ -143,7 +175,7 @@ private slots:
 #endif
     }
     void documentLinksReuseDirtyTargetAndNavigateHeadings() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined document links are not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid()); const auto source = dir.filePath("source.md"), target = dir.filePath(QStringLiteral("中文 #%.md"));
@@ -173,7 +205,7 @@ private slots:
 #endif
     }
     void documentLinksRejectUnsafeTargetsAndStaleSource() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined document links are not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid()); const auto source = dir.filePath("source.md");
@@ -196,7 +228,7 @@ private slots:
 #endif
     }
     void workspaceReferencesDoNotUseDiskAliasesOfOutsideSessions() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource indexing is not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("root")));
@@ -214,7 +246,7 @@ private slots:
 #endif
     }
     void documentLinksPreviewClicksKeepStandaloneRouting() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined document links are not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid()); const auto source = dir.filePath("source.md"), target = dir.filePath("target.md");
@@ -314,7 +346,7 @@ private slots:
         QCOMPARE(session->snapshot().utf8, QByteArray("dirty\n") + original); QCOMPARE(disk(path), original); QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, original); QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
     }
     void imageAccessFollowsStandaloneAndWorkspaceAuthorization() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource reads are not available on this platform");
 #else
         QTemporaryDir dir, replacement; QVERIFY(dir.isValid() && replacement.isValid());
@@ -365,7 +397,7 @@ private slots:
 #endif
     }
     void workspaceDocumentLinkMenuKeyboardUsesFilePicker() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined workspace resources are not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid());
@@ -420,7 +452,7 @@ private slots:
     }
 
     void workspaceDocumentLinksUseVerifiedRelativePathsAndUndo() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined workspace resources are not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("notes"))); QVERIFY(QDir().mkpath(dir.filePath("docs")));
@@ -450,7 +482,7 @@ private slots:
 #endif
     }
     void workspaceDocumentLinkRejectsOutsideAndStaleTargets() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined workspace resources are not available on this platform");
 #else
         QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
