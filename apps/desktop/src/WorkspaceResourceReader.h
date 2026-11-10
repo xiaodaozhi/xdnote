@@ -17,6 +17,7 @@ struct WorkspaceReadResult {
     QByteArray bytes;
     qint64 nativeCode = 0;
     QString identity;
+    std::shared_ptr<const void> lease;
     bool ok() const { return error == WorkspaceReadError::None; }
 };
 
@@ -67,6 +68,8 @@ public:
     WorkspaceResourceReader(const WorkspaceResourceReader &) = delete;
     WorkspaceResourceReader &operator=(const WorkspaceResourceReader &) = delete;
     WorkspaceReadResult read(const QString &rootRelativePath, qsizetype maxBytes) const;
+    WorkspaceReadResult inspect(const QString &rootRelativePath) const;
+    QString rootPath() const;
     // Empty path means the selected root. Entries are only candidates: every
     // later read must still resolve from the current root, not a joined path.
     WorkspaceDirectoryResult listDirectory(const QString &rootRelativePath, int maxEntries = 10000) const;
@@ -79,6 +82,7 @@ public:
     bool active() const;
     void revoke();
 private:
+    WorkspaceReadResult readImpl(const QString &path, qsizetype maxBytes, bool metadataOnly) const;
     struct State;
     explicit WorkspaceResourceReader(std::unique_ptr<State> state);
     std::unique_ptr<State> m_state;

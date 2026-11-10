@@ -1,3 +1,6 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #include "WorkspaceResourceReader.h"
 #include "FileService.h"
 
@@ -409,6 +412,11 @@ WorkspaceDirectoryResult WorkspaceResourceReader::listDirectory(const QString &p
 }
 
 WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype maxBytes) const {
+    return readImpl(path, maxBytes, false);
+}
+WorkspaceReadResult WorkspaceResourceReader::inspect(const QString &path) const { return readImpl(path, 0, true); }
+QString WorkspaceResourceReader::rootPath() const { return m_state->path; }
+WorkspaceReadResult WorkspaceResourceReader::readImpl(const QString &path, qsizetype maxBytes, bool metadataOnly) const {
     if (!m_state->active.load(std::memory_order_acquire)) return {WorkspaceReadError::Revoked};
     const auto parts = components(path);
     if (parts.isEmpty() || maxBytes < 0 || maxBytes > MaxReadBytes) return {WorkspaceReadError::InvalidPath};
@@ -423,7 +431,10 @@ WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype
     for (qsizetype index = 0; index < parts.size(); ++index) {
         const bool directory = index + 1 < parts.size();
         auto handle = std::make_unique<NativeHandle>();
-        const auto status = openChild(parent, parts.at(index), directory, handle->value);
+        const auto status = metadataOnly && !directory
+            ? openRelative(parent, parts.at(index), FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           FILE_OPEN, FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT | FILE_NON_DIRECTORY_FILE, handle->value)
+            : openChild(parent, parts.at(index), directory, handle->value);
         if (status < 0) { const DWORD code = RtlNtStatusToDosError(status); return {nativeError(code), {}, code}; }
         FILE_ATTRIBUTE_TAG_INFO attrs{}; FILE_STANDARD_INFO standard{};
         if (!GetFileInformationByHandleEx(handle->value, FileAttributeTagInfo, &attrs, sizeof(attrs))
@@ -439,6 +450,11 @@ WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype
     if (!GetFileInformationByHandleEx(parent, FileIdInfo, &fileIdentity, sizeof(fileIdentity))) return {WorkspaceReadError::Io, {}, GetLastError()};
     const auto identity = QStringLiteral("win:%1:%2").arg(fileIdentity.VolumeSerialNumber, 0, 16).arg(
         QString::fromLatin1(QByteArray(reinterpret_cast<const char *>(fileIdentity.FileId.Identifier), 16).toHex()));
+    if (metadataOnly) {
+        if (!active()) return {WorkspaceReadError::Revoked};
+        std::shared_ptr<NativeHandle> lease(std::move(opened.back()));
+        return {WorkspaceReadError::None, {}, 0, identity, std::move(lease)};
+    }
     if (info.EndOfFile.QuadPart < 0 || info.EndOfFile.QuadPart > maxBytes) return {WorkspaceReadError::TooLarge};
     QByteArray bytes(qsizetype(info.EndOfFile.QuadPart), Qt::Uninitialized);
     qsizetype offset = 0;
@@ -459,7 +475,7 @@ WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype
         return {WorkspaceReadError::RootChanged};
     const auto nativePath = QFile::encodeName(path);
     open_how how{};
-    how.flags = O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
+    how.flags = (metadataOnly ? O_PATH : O_RDONLY | O_NONBLOCK) | O_CLOEXEC | O_NOFOLLOW;
     // Bind mounts are not symlinks: without NO_XDEV they could expose an
     // unrelated directory under the authorized root.
     how.resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV;
@@ -470,6 +486,16 @@ WorkspaceReadResult WorkspaceResourceReader::read(const QString &path, qsizetype
     if (::fstat(file.value, &before) != 0) return {WorkspaceReadError::Io, {}, errno};
     if (!S_ISREG(before.st_mode)) return {WorkspaceReadError::OutsideOrLink};
     const auto identity = QStringLiteral("posix:%1:%2").arg(qulonglong(before.st_dev), 0, 16).arg(qulonglong(before.st_ino), 0, 16);
+    if (metadataOnly) {
+        NativeHandle verifyRoot;
+        verifyRoot.value = ::open(rootPath.constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        struct stat verified{};
+        if (verifyRoot.value < 0 || ::fstat(verifyRoot.value, &verified) != 0
+            || verified.st_dev != m_state->device || verified.st_ino != m_state->inode) return {WorkspaceReadError::RootChanged};
+        if (!active()) return {WorkspaceReadError::Revoked};
+        auto lease = std::make_shared<NativeHandle>(); lease->value = file.value; file.value = -1;
+        return {WorkspaceReadError::None, {}, 0, identity, std::move(lease)};
+    }
     if (before.st_size < 0 || before.st_size > maxBytes) return {WorkspaceReadError::TooLarge};
     QByteArray bytes(qsizetype(before.st_size), Qt::Uninitialized);
     qsizetype offset = 0;

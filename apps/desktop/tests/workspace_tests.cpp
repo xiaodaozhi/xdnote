@@ -1,6 +1,8 @@
 #include "FileApplication.h"
 #include "WorkspaceWindow.h"
 #include "WorkspaceTree.h"
+#include "WorkspaceReferenceController.h"
+#include "MarkdownHeadings.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "MarkdownPreview.h"
@@ -12,6 +14,9 @@
 #include "WindowGeometry.h"
 #include "file_fixtures.h"
 #include <QApplication>
+#include <QThreadPool>
+#include <QSemaphore>
+#include <QtConcurrentRun>
 #include <QAction>
 #include <QBuffer>
 #include <QClipboard>
@@ -58,6 +63,14 @@ int loadedImages(MarkdownPreview *preview) {
         [guarded, result](const QVariant &value) { *result = value.toInt(); if (guarded) guarded->quit(); });
     timeout.start(10000); loop.exec(); return *result;
 }
+QVariant previewValue(MarkdownPreview *preview, const QString &script) {
+    QEventLoop loop; QTimer timeout; timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    auto result = std::make_shared<QVariant>(); const QPointer<QEventLoop> guarded(&loop);
+    preview->view()->page()->runJavaScript(script, QWebEngineScript::ApplicationWorld,
+        [guarded, result](const QVariant &value) { *result = value; if (guarded) guarded->quit(); });
+    timeout.start(10000); loop.exec(); return *result;
+}
 class InitializationWarning final : public QObject {
 public:
     bool injected = false;
@@ -76,6 +89,151 @@ protected:
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void workspaceReferencesTrackSessionsFilesAndMenuCoverage() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource indexing is not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        const auto source = dir.filePath("source.md"), other = dir.filePath("other.md");
+        QVERIFY(fileFixtures::write(source, "[old](old.md)\n![missing](assets/images/missing.png)"));
+        QVERIFY(fileFixtures::write(other, "[outside-pane](source.md)"));
+        QVERIFY(QDir().mkpath(dir.filePath("assets/images"))); QVERIFY(fileFixtures::write(dir.filePath("assets/images/unused.png"), "candidate"));
+        FileApplication app(nullptr, dir.filePath("settings/state.ini")); auto *workspace = app.workspaceWindow(dir.path());
+        app.openInWorkspace(source, workspace); auto *pane = waitPane(workspace, source); QVERIFY(pane);
+        app.open(other); auto *standalone = waitStandalone(other); QVERIFY(standalone);
+        auto *index = workspace->references();
+        QTRY_VERIFY_WITH_TIMEOUT(index->current(index->generation()), 15000);
+        QCOMPARE(index->result().index.inbound("source.md").size(), 1);
+        QCOMPARE(index->result().targets.value("assets/images/missing.png").error, WorkspaceReadError::Missing);
+        QVERIFY(index->result().imageCandidates.contains("assets/images/unused.png"));
+        const auto before = pane->document()->session()->snapshot();
+        QCOMPARE(pane->document()->session()->replace(0, 0, "[dirty](new.md)\n", before.revision), EditResult::Applied);
+        QTRY_VERIFY_WITH_TIMEOUT(index->current(index->generation()) && index->result().index.inbound("new.md").size() == 1, 15000);
+        QVERIFY(!disk(source).contains("new.md"));
+        auto *menu = pane->findChild<QMenu *>("workspaceReferencesMenu"); QVERIFY(menu);
+        QVERIFY(QMetaObject::invokeMethod(menu, "aboutToShow", Qt::DirectConnection));
+        QVERIFY(menu->findChild<QMenu *>("outboundReferencesMenu")); QVERIFY(menu->findChild<QMenu *>("inboundReferencesMenu"));
+        QVERIFY(menu->findChild<QMenu *>("referenceProblemsMenu")); QVERIFY(menu->findChild<QMenu *>("unreferencedImagesMenu"));
+        const auto generation = index->generation(); pane->document()->stateChanged(); QCOMPARE(index->generation(), generation);
+        QVERIFY(fileFixtures::write(other, "[changed](another.md)"));
+        // The opened session remains authoritative despite its external disk change.
+        QTRY_VERIFY_WITH_TIMEOUT(index->generation() > generation && index->current(index->generation()), 15000);
+        QCOMPARE(index->result().index.inbound("source.md").size(), 1); QVERIFY(index->result().index.inbound("another.md").isEmpty());
+        QVERIFY(fileFixtures::write(dir.filePath("unopened.md"), "[new-file](fresh.md)"));
+        QTRY_VERIFY_WITH_TIMEOUT(index->current(index->generation()) && index->result().index.inbound("fresh.md").size() == 1, 15000);
+#endif
+    }
+    void workspaceReferencesCancelAndDiscardPreviousRoot() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource indexing is not available on this platform");
+#else
+        QTemporaryDir first, second; QVERIFY(first.isValid() && second.isValid());
+        QVERIFY(fileFixtures::write(first.filePath("a.md"), "[old](old.md)"));
+        QVERIFY(fileFixtures::write(second.filePath("b.md"), "[new](new.md)"));
+        FileApplication app(nullptr, first.filePath("settings/state.ini")); auto *workspace = app.workspaceWindow(first.path()); auto *index = workspace->references();
+        QTRY_VERIFY_WITH_TIMEOUT(index->current(index->generation()), 15000);
+        auto *pool = QThreadPool::globalInstance(); const int previous = pool->maxThreadCount(); pool->setMaxThreadCount(1);
+        QSemaphore entered, gate; auto blocker = QtConcurrent::run([&] { entered.release(); gate.acquire(); });
+        const auto release = qScopeGuard([&] { gate.release(); blocker.waitForFinished(); pool->setMaxThreadCount(previous); });
+        QVERIFY(entered.tryAcquire(1, 10000)); index->refresh(); QTest::qWait(250); QVERIFY(index->running());
+        index->cancel(); QVERIFY(!index->current(index->generation())); QVERIFY(index->result().index.references.isEmpty());
+        workspace->setRootPath(second.path()); gate.release();
+        QTRY_VERIFY_WITH_TIMEOUT(index->current(index->generation()), 15000);
+        QVERIFY(index->result().index.inbound("old.md").isEmpty()); QCOMPARE(index->result().index.inbound("new.md").size(), 1);
+#endif
+    }
+    void documentLinksReuseDirtyTargetAndNavigateHeadings() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined document links are not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid()); const auto source = dir.filePath("source.md"), target = dir.filePath(QStringLiteral("中文 #%.md"));
+        QVERIFY(fileFixtures::write(source, "[link](target.md)")); QVERIFY(fileFixtures::write(target, "# old\n"));
+        FileApplication app(nullptr, dir.filePath("settings/state.ini")); auto *workspace = app.workspaceWindow(dir.path());
+        app.openInWorkspace(source, workspace); auto *pane = waitPane(workspace, source); QVERIFY(pane);
+        app.open(target); auto *destination = waitStandalone(target); QVERIFY(destination); destination->setEditing(true);
+        auto *session = destination->document()->session(); const auto before = session->snapshot();
+        const auto text = QStringLiteral("# 已修改\n\n正文\n\n# 已修改\n");
+        QCOMPARE(session->replace(0, QString::fromUtf8(before.utf8).size(), text, before.revision), EditResult::Applied);
+        const auto live = session->snapshot(); const auto headings = analyzeMarkdownHeadings(live); QVERIFY(headings.success);
+        const auto url = relativeWorkspaceUrl("source.md", QFileInfo(target).fileName()); QVERIFY(url.success);
+        pane->activateDocumentLink(url.path + QStringLiteral("#%E5%B7%B2%E4%BF%AE%E6%94%B9-1"), pane->document()->session()->revision());
+        QTRY_COMPARE(destination->editor()->send(SCI_GETCURRENTPOS), sptr_t(headings.headings.last().range.start));
+        QCOMPARE(session->snapshot().utf8, live.utf8); QVERIFY(session->isDirty()); QVERIFY(!destination->embedded());
+        QTRY_COMPARE(workspace->panes().size(), 1); QCOMPARE(disk(target), QByteArray("# old\n"));
+        pane->activateDocumentLink(url.path + "#missing", pane->document()->session()->revision());
+        QTRY_VERIFY(destination->findChild<QLabel *>("documentNotice")->text().contains(QStringLiteral("未找到标题")));
+        QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, before.utf8);
+        const auto fresh = dir.filePath("fresh.md");
+        QVERIFY(fileFixtures::write(fresh, QByteArray("paragraph\n\n").repeated(80) + "# destination\n"));
+        pane->activateDocumentLink("fresh.md#destination", pane->document()->session()->revision());
+        auto *newPane = waitPane(workspace, fresh); QVERIFY(newPane);
+        const auto expected = analyzeMarkdownHeadings(newPane->document()->session()->snapshot()); QVERIFY(expected.success);
+        QCOMPARE(newPane->editor()->send(SCI_GETCURRENTPOS), sptr_t(expected.headings.first().range.start));
+        QTRY_VERIFY_WITH_TIMEOUT(previewValue(newPane->preview(), QStringLiteral("window.scrollY > 0")).toBool(), 15000);
+#endif
+    }
+    void documentLinksRejectUnsafeTargetsAndStaleSource() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined document links are not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid()); const auto source = dir.filePath("source.md");
+        QVERIFY(fileFixtures::write(source, "[target](target.md)")); QVERIFY(fileFixtures::write(dir.filePath("target.md"), "# target\n"));
+        FileApplication app(nullptr, dir.filePath("settings/state.ini")); auto *workspace = app.workspaceWindow(dir.path());
+        app.openInWorkspace(source, workspace); auto *pane = waitPane(workspace, source); QVERIFY(pane);
+        for (const auto &target : {"../outside.md", "%2e%2e/outside.md", "file:///private.md", "javascript:bad", "image.png"}) {
+            pane->activateDocumentLink(target, pane->document()->session()->revision()); QCOMPARE(workspace->panes().size(), 1);
+        }
+        auto *pool = QThreadPool::globalInstance(); const int previous = pool->maxThreadCount(); pool->setMaxThreadCount(1);
+        QSemaphore entered, gate; auto blocker = QtConcurrent::run([&] { entered.release(); gate.acquire(); });
+        const auto release = qScopeGuard([&] { gate.release(); blocker.waitForFinished(); pool->setMaxThreadCount(previous); });
+        QVERIFY(entered.tryAcquire(1, 10000));
+        pane->activateDocumentLink("target.md#target", pane->document()->session()->revision());
+        QCOMPARE(pane->document()->session()->replace(0, 0, "changed ", pane->document()->session()->revision()), EditResult::Applied);
+        gate.release();
+        QTRY_COMPARE_WITH_TIMEOUT(workspace->panes().size(), 1, 15000);
+        QTRY_VERIFY(pane->findChild<QLabel *>("documentNotice")->text().contains(QStringLiteral("已变化")));
+        QVERIFY(pane->document()->session()->snapshot().utf8.startsWith("changed ")); QCOMPARE(disk(dir.filePath("target.md")), QByteArray("# target\n"));
+#endif
+    }
+    void workspaceReferencesDoNotUseDiskAliasesOfOutsideSessions() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource indexing is not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("root")));
+        const auto outside = dir.filePath("outside.md"), alias = dir.filePath("root/alias.md");
+        QVERIFY(fileFixtures::write(outside, "[old](old.md)")); QVERIFY(fileFixtures::hardLink(outside, alias));
+        FileApplication app(nullptr, dir.filePath("settings/state.ini")); app.open(outside);
+        auto *pane = waitStandalone(outside); QVERIFY(pane);
+        QCOMPARE(pane->document()->session()->replace(0, 0, "[dirty](dirty.md) ", pane->document()->session()->revision()), EditResult::Applied);
+        auto *workspace = app.workspaceWindow(dir.filePath("root")); auto *index = workspace->references();
+        QTRY_VERIFY_WITH_TIMEOUT(index->current(index->generation()), 15000);
+        QVERIFY(!index->result().index.complete); QVERIFY(index->result().index.inbound("old.md").isEmpty());
+        QVERIFY(!index->result().index.gaps.isEmpty());
+        chooseClose(2); pane->close();
+        QTRY_VERIFY_WITH_TIMEOUT(index->current(index->generation()) && index->result().index.inbound("old.md").size() == 1, 15000);
+#endif
+    }
+    void documentLinksPreviewClicksKeepStandaloneRouting() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined document links are not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid()); const auto source = dir.filePath("source.md"), target = dir.filePath("target.md");
+        QVERIFY(fileFixtures::write(source, "[open](target.md#target)")); QVERIFY(fileFixtures::write(target, "intro\n\n# target\n"));
+        FileApplication app(nullptr, dir.filePath("settings/state.ini")); app.open(source); auto *pane = waitStandalone(source); QVERIFY(pane);
+        auto *preview = pane->preview();
+        QTRY_VERIFY_WITH_TIMEOUT(previewValue(preview, QStringLiteral("!!document.querySelector('a.link-placeholder')")).toBool(), 15000);
+        QSignalSpy requested(pane, &SingleFileWindow::documentLinkRequested);
+        const auto token = previewValue(preview, QStringLiteral("document.querySelector('a.link-placeholder').href")).toString();
+        QVERIFY(token.startsWith("xdnote-preview:")); preview->view()->page()->load(QUrl(token)); QTest::qWait(100); QVERIFY(requested.isEmpty());
+        const auto point = previewValue(preview, QStringLiteral("(()=>{const r=document.querySelector('a.link-placeholder').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")).toMap(); QVERIFY(!point.isEmpty());
+        QTest::mouseClick(preview->view()->focusProxy() ? preview->view()->focusProxy() : preview->view(), Qt::LeftButton, Qt::NoModifier,
+            QPoint(qRound(point.value("x").toDouble()), qRound(point.value("y").toDouble())));
+        auto *destination = waitStandalone(target); QVERIFY(destination); QVERIFY(!destination->embedded());
+        QCOMPARE(requested.size(), 1); QCOMPARE(destination->document()->session()->snapshot().utf8, QByteArray("intro\n\n# target\n"));
+        QCOMPARE(destination->editor()->send(SCI_GETCURRENTPOS), sptr_t(7));
+        for (auto *widget : QApplication::topLevelWidgets()) QVERIFY(!qobject_cast<WorkspaceWindow *>(widget));
+#endif
+    }
     void initTestCase() { qApp->setQuitOnLastWindowClosed(false); SourceEditor::installAccessibility(); }
     void directoryLoadingEmptyMissingAndNoFilesystemWrites() {
         QTemporaryDir dir; QVERIFY(dir.isValid()); FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path());

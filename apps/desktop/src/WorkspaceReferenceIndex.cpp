@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QSet>
 #include <utility>
+#include <algorithm>
 
 namespace xdnote {
 namespace {
@@ -68,6 +69,10 @@ ReferenceIndexSnapshot buildWorkspaceReferenceIndex(const ReferenceIndexInput &i
             result.gaps.append(QStringLiteral("来源身份或代次无效：%1").arg(it.key()));
             continue;
         }
+        if (input.sessionsOutsideRoot.contains(source->identity)) {
+            result.gaps.append(QStringLiteral("来源在工作区外的其他路径打开：%1").arg(it.key()));
+            if (source->origin == ReferenceIndexSource::Origin::Disk) continue;
+        }
         if (aliases.contains(source->identity)) {
             result.gaps.append(QStringLiteral("同一文件身份存在多个来源路径：%1").arg(it.key()));
             // An open session may contain unsaved text for every hard-link or
@@ -94,12 +99,15 @@ ReferenceIndexSnapshot buildWorkspaceReferenceIndex(const ReferenceIndexInput &i
         if (!analysis.complete)
             result.gaps.append(QStringLiteral("来源分析不完整：%1").arg(it.key()));
         bool unresolved = false;
+        QList<int> lineStarts{0};
+        for (int offset = 0; offset < source->snapshot.utf8.size(); ++offset)
+            if (source->snapshot.utf8.at(offset) == '\n') lineStarts.append(offset + 1);
         for (const auto &reference : analysis.references) {
             auto target = resolveWorkspaceTarget(source->path, reference.target);
             if (!target.success) unresolved = true;
             result.references.append({source->path, source->identity, source->pathGeneration,
                                       analysis.documentId, analysis.revision, source->origin,
-                                      reference, std::move(target)});
+                                      reference, std::move(target), int(std::upper_bound(lineStarts.cbegin(), lineStarts.cend(), reference.usage.start) - lineStarts.cbegin())});
         }
         if (unresolved) result.gaps.append(QStringLiteral("引用目标未解析：%1").arg(it.key()));
     }

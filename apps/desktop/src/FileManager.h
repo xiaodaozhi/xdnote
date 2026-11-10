@@ -57,15 +57,19 @@ class FileManager final : public QObject {
 public:
     explicit FileManager(QObject *parent = nullptr, std::function<void(SaveStage)> observer = {}, bool monitoring = true);
     void open(const QString &path, const QUuid &intent = QUuid::createUuid());
+    void openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &relativePath, const QUuid &intent, const QString &sourcePath = {}, const QString &sourceIdentity = {});
+    QList<FileDocument *> documents() const;
     void cancelOpen(const QUuid &intent) { m_cancelled.insert(intent); }
     bool closeDocument(FileDocument *document);
     int documentCount() const { return int(m_documents.size()); }
     bool idle() const { return !m_running && m_jobs.empty(); }
 signals:
+    void documentsChanged();
     void opened(QUuid intent, xdnote::FileDocument *document, bool reused);
     void openFailed(QUuid intent, QString path, QString message);
 private:
     friend class FileDocument;
+    void openRequest(const QString &path, const QUuid &intent, std::shared_ptr<WorkspaceResourceReader> root = {}, QString relativePath = {}, QString sourcePath = {}, QString sourceIdentity = {});
     bool save(FileDocument *document, const QString &path, bool saveAs = false);
     bool reload(FileDocument *document);
     void check(FileDocument *document);

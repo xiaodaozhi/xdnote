@@ -4,6 +4,8 @@
 #include "WorkspaceTree.h"
 #include "SourceEditor.h"
 #include "InputModality.h"
+#include "WorkspaceResourceReader.h"
+#include "WorkspacePath.h"
 #include <QApplication>
 #include <QFileOpenEvent>
 #include <QFileDialog>
@@ -26,15 +28,29 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
     qApp->installEventFilter(this);
     connect(&m_manager, &FileManager::opened, this, [this](QUuid intent, FileDocument *document, bool reused) {
         auto placeholder = m_requests.take(intent);
+        const auto navigation = m_linkNavigations.take(intent);
+        if (navigation.root && !validLinkSource(navigation)) {
+            if (!reused) m_manager.closeDocument(document);
+            if (placeholder) { placeholder->finishOpen(); placeholder->close(); }
+            if (navigation.source) navigation.source->reportHostMessage(QStringLiteral("链接来源或工作区已变化，本次打开已取消。"));
+            return;
+        }
         if (!placeholder) { if (!reused) m_manager.closeDocument(document); return; }
         const auto id = document->session()->documentId(); auto pane = m_documents.value(id);
-        if (pane) { placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); return; }
+        if (pane) { placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); if (navigation.hasFragment) pane->navigateToHeading(navigation.fragment); return; }
         m_documents.insert(id, placeholder); placeholder->setDocument(document);
         connect(placeholder, &QObject::destroyed, this, [this, id] { m_documents.remove(id); });
         connect(document, &FileDocument::stateChanged, this, [this] { QTimer::singleShot(0, this, &FileApplication::retryTransfers); });
         connect(document->session(), &DocumentSession::stateChanged, this, [this] { QTimer::singleShot(0, this, &FileApplication::retryTransfers); }); activatePane(placeholder);
+        if (navigation.hasFragment) placeholder->navigateToHeading(navigation.fragment);
     });
-    connect(&m_manager, &FileManager::openFailed, this, [this](QUuid intent, const QString &path, const QString &message) { auto pane = m_requests.take(intent); if (pane) pane->showOpenError(path, message); });
+    connect(&m_manager, &FileManager::openFailed, this, [this](QUuid intent, const QString &path, const QString &message) {
+        auto pane = m_requests.take(intent); const auto navigation = m_linkNavigations.take(intent);
+        if (navigation.root) {
+            if (pane) { pane->finishOpen(); pane->close(); }
+            if (navigation.source) { navigation.source->reportHostMessage(QStringLiteral("无法打开文档链接：") + message); activatePane(navigation.source); }
+        } else if (pane) pane->showOpenError(path, message);
+    });
 }
 FileApplication::~FileApplication() {
     m_destroying = true; qApp->removeEventFilter(this);
@@ -51,12 +67,13 @@ SingleFileWindow *FileApplication::createWindow() {
     connect(pane, &SingleFileWindow::openRequested, this, [this, pane](const QString &path) { if (auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window())) openInWorkspace(path, workspace); else open(path, pane->document() ? nullptr : pane); });
     connect(pane, &SingleFileWindow::workspaceRequested, this, [this, pane] { transferToWorkspace(pane); });
     connect(pane, &SingleFileWindow::openDirectoryRequested, this, [this, pane] { chooseDirectory(qobject_cast<WorkspaceWindow *>(pane->window())); });
-    connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_manager.cancelOpen(intent); });
+    connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_linkNavigations.remove(intent); m_manager.cancelOpen(intent); });
+    connect(pane, &SingleFileWindow::documentLinkRequested, this, [this, pane](const QString &target, quint64 revision) { openDocumentLink(pane, target, revision); });
     connect(pane, &SingleFileWindow::quitRequested, this, &FileApplication::requestQuit); connect(pane, &SingleFileWindow::closeCancelled, this, [this] { m_quitting = false; });
     connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
 }
 WorkspaceWindow *FileApplication::createWorkspace() {
-    auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore); m_workspaces.insert(workspace);
+    auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_manager); m_workspaces.insert(workspace);
     connect(workspace, &WorkspaceWindow::openRequested, this, [this, workspace](const QString &path) { openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseFileRequested, this, [this, workspace] { const auto path = QFileDialog::getOpenFileName(workspace, QStringLiteral("打开 Markdown 文件"), workspace->rootPath(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)")); InputModality::forApplication()->clear(); if (!path.isEmpty()) openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseDirectoryRequested, this, [this, workspace] { chooseDirectory(workspace); });
@@ -86,6 +103,44 @@ void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *work
     m_requests.insert(intent, pane); m_manager.open(path, intent);
 }
 void FileApplication::activatePane(SingleFileWindow *pane) { if (auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window())) workspace->activatePane(pane->paneId()); else { if (pane->isMinimized()) pane->showNormal(); pane->show(); pane->raise(); pane->activateWindow(); } }
+bool FileApplication::validLinkSource(const LinkNavigation &navigation) const {
+    const auto source = navigation.source;
+    if (!source || !navigation.root || !navigation.root->active() || !source->document() || source->document()->closed()
+        || source->resourceRoot() != navigation.root || source->resourceDocumentPath() != navigation.sourcePath
+        || source->document()->identity() != navigation.sourceIdentity || source->embedded() != navigation.embedded) return false;
+    if (navigation.embedded && (!navigation.workspace || navigation.workspace->closingWorkspace()
+        || source->window() != navigation.workspace || navigation.workspace->resourceRoot() != navigation.root)) return false;
+    const auto snapshot = source->document()->session()->snapshot();
+    return snapshot.result == EditResult::Applied && snapshot.revision == navigation.revision;
+}
+void FileApplication::openDocumentLink(SingleFileWindow *source, const QString &target, quint64 revision) {
+    if (!source || !source->document() || source->document()->closed()) return;
+    LinkNavigation navigation; navigation.source = source; navigation.workspace = qobject_cast<WorkspaceWindow *>(source->window());
+    navigation.root = source->resourceRoot(); navigation.sourcePath = source->resourceDocumentPath();
+    navigation.sourceIdentity = source->document()->identity(); navigation.revision = revision; navigation.embedded = source->embedded();
+    if (!navigation.root) {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        source->reportHostMessage(QStringLiteral("此平台暂不支持受控跨文档链接打开。"));
+#else
+        source->reportHostMessage(QStringLiteral("此文档没有可用的目录授权，请先打开所属工作区或重新打开文档。"));
+#endif
+        return;
+    }
+    if (!validLinkSource(navigation)) { source->reportHostMessage(QStringLiteral("文档或目录授权不可用，请完成输入或重新打开目录后重试。")); return; }
+    const auto resolved = resolveWorkspaceTarget(navigation.sourcePath, target);
+    if (!resolved.success) { source->reportHostMessage(QStringLiteral("此文档链接超出当前授权范围，或不是支持的相对路径。")); return; }
+    const auto suffix = QFileInfo(resolved.path).suffix().toLower();
+    if (suffix != "md" && suffix != "markdown") { source->reportHostMessage(QStringLiteral("此入口仅打开 Markdown 文档，不执行其他文件。")); return; }
+    navigation.fragment = resolved.fragment; navigation.hasFragment = resolved.hasFragment && !resolved.fragment.isEmpty();
+    m_quitting = false;
+    auto *placeholder = createWindow(); const auto intent = QUuid::createUuid();
+    placeholder->setLoading(QDir(navigation.root->rootPath()).filePath(resolved.path), intent);
+    if (navigation.workspace) {
+        if (!navigation.workspace->addPane(placeholder)) { delete placeholder; source->reportHostMessage(QStringLiteral("无法准备目标文档标签。")); return; }
+    } else placeholder->show();
+    m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation);
+    m_manager.openWithin(navigation.root, resolved.path, intent, navigation.sourcePath, navigation.sourceIdentity);
+}
 bool FileApplication::transferToWorkspace(SingleFileWindow *pane, WorkspaceWindow *target) {
     if (!pane || !pane->document() || pane->document()->closed()) return false;
     if (pane->embedded()) { activatePane(pane); return true; }

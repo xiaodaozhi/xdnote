@@ -60,6 +60,21 @@ QVariant evaluatePreview(QWebEnginePage *page, const QString &script) {
 class DesktopTests final : public QObject {
     Q_OBJECT
 private slots:
+    void previewPendingHeadingRejectsContextAndRevisionChanges() {
+        DocumentSession session(QByteArray("paragraph\n\n").repeated(70) + "# target\n"); MarkdownPreview preview(&session);
+        preview.resize(640, 320); QSignalSpy ready(&preview, &MarkdownPreview::previewReady), moved(&preview, &MarkdownPreview::fragmentNavigated);
+        QSignalSpy messages(&preview, &MarkdownPreview::fragmentNavigationMessage);
+        preview.navigateToHeading("target", session.revision());
+        preview.setResourceContext({}, "changed.md", "changed-identity");
+        QVERIFY(!messages.isEmpty()); QVERIFY(messages.last().first().toString().contains(QStringLiteral("位置已变化")));
+        preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 15000); QVERIFY(moved.isEmpty());
+        preview.navigateToHeading("target", session.revision()); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000);
+        preview.refresh(); preview.navigateToHeading("target", session.revision());
+        QCOMPARE(session.replace(0, 0, "changed ", session.revision()), EditResult::Applied); preview.refresh();
+        QTRY_COMPARE_WITH_TIMEOUT(preview.displayedRevision(), session.revision(), 15000); QCOMPARE(moved.size(), 1);
+        bool rejected = false; for (const auto &message : messages) if (message.first().toString().contains(QStringLiteral("文档已变化"))) rejected = true;
+        QVERIFY(rejected);
+    }
     void resourcePreviewAcceptsMaximumDocumentWithOptionalBom_data() {
         QTest::addColumn<bool>("bom"); QTest::newRow("without-bom") << false; QTest::newRow("with-bom") << true;
     }

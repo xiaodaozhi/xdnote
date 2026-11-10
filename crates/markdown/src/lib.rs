@@ -52,6 +52,15 @@ fn render_with_resources(
     resources: Option<(&str, &[u8])>,
     link_prefix: Option<&str>,
 ) -> Result<Vec<u8>, RenderError> {
+    render_with_link_policy(source, resources, link_prefix, false)
+}
+
+fn render_with_link_policy(
+    source: &str,
+    resources: Option<(&str, &[u8])>,
+    link_prefix: Option<&str>,
+    local_documents: bool,
+) -> Result<Vec<u8>, RenderError> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(RenderError::SourceLimit);
     }
@@ -103,7 +112,8 @@ fn render_with_resources(
                 Event::Start(Tag::Link { dest_url, .. }) => {
                     let index = link_index;
                     link_index += 1;
-                    let active = link_prefix.is_some() && dest_url.starts_with('#') && image_stack.is_empty();
+                    let local = local_documents && !dest_url.starts_with('/') && !dest_url.contains(':') && !dest_url.contains('\\');
+                    let active = link_prefix.is_some() && (dest_url.starts_with('#') || local) && image_stack.is_empty();
                     link_stack.push(active);
                     if let Some(prefix) = link_prefix.filter(|_| active) {
                         Event::Html(CowStr::from(format!("<a class=\"link-placeholder\" href=\"{prefix}{index}\">")))
@@ -553,7 +563,7 @@ pub unsafe extern "C" fn xdnote_markdown_render_images(
             prefix_length,
             states,
             states_length,
-            false,
+            LinkActions::None,
         )
     }
 }
@@ -581,9 +591,44 @@ pub unsafe extern "C" fn xdnote_markdown_render_images_and_fragments(
             prefix_length,
             states,
             states_length,
-            true,
+            LinkActions::Fragments,
         )
     }
+}
+
+/// Render relative document actions as numeric tokens. The application must
+/// authorize every activation; document URLs are never emitted into HTML.
+///
+/// # Safety
+/// Each non-empty input must point to the indicated number of readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn xdnote_markdown_render_images_and_links(
+    data: *const u8,
+    length: usize,
+    prefix: *const u8,
+    prefix_length: usize,
+    states: *const u8,
+    states_length: usize,
+) -> RenderBuffer {
+    // SAFETY: forwards the documented buffers without changing ownership.
+    unsafe {
+        render_admitted(
+            data,
+            length,
+            prefix,
+            prefix_length,
+            states,
+            states_length,
+            LinkActions::Documents,
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+enum LinkActions {
+    None,
+    Fragments,
+    Documents,
 }
 
 unsafe fn render_admitted(
@@ -593,7 +638,7 @@ unsafe fn render_admitted(
     prefix_length: usize,
     states: *const u8,
     states_length: usize,
-    fragments: bool,
+    actions: LinkActions,
 ) -> RenderBuffer {
     if length > MAX_SOURCE_BYTES || states_length > MAX_SOURCE_BYTES || prefix_length > 160 {
         return RenderBuffer::error(2);
@@ -632,7 +677,7 @@ unsafe fn render_admitted(
         {
             return Err(1u32);
         }
-        let links = if fragments {
+        let links = if !matches!(actions, LinkActions::None) {
             Some(format!(
                 "{}/links/",
                 prefix.strip_suffix("/images/").ok_or(1u32)?
@@ -640,8 +685,13 @@ unsafe fn render_admitted(
         } else {
             None
         };
-        let output = render_with_resources(source, Some((prefix, states)), links.as_deref())
-            .map_err(|_| 2u32)?;
+        let output = render_with_link_policy(
+            source,
+            Some((prefix, states)),
+            links.as_deref(),
+            matches!(actions, LinkActions::Documents),
+        )
+        .map_err(|_| 2u32)?;
         let length = output.len();
         let data = Box::into_raw(output.into_boxed_slice()) as *mut u8;
         Ok::<_, u32>(RenderBuffer {
@@ -866,6 +916,33 @@ mod tests {
         assert!(!html.contains("https://bad.invalid"));
         assert!(!html.contains("#%E4%B8%AD%E6%96%87"));
         assert!(!html.contains("#section-1"));
+    }
+
+    #[test]
+    fn document_actions_never_expose_targets_or_activate_networks() {
+        let source = "[local](../notes/%E4%B8%AD%E6%96%87.md#title) [network](https://bad.invalid) [script](javascript:bad) [absolute](/private.md) [ref][r]\n\n[r]: sibling.md#title\n";
+        let html = String::from_utf8(
+            render_with_link_policy(source, None, Some("xdnote-preview:/test/links/"), true)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(html.matches("href=").count(), 2);
+        assert!(html.contains("href=\"xdnote-preview:/test/links/0\""));
+        assert!(html.contains("href=\"xdnote-preview:/test/links/4\""));
+        for target in [
+            "../notes/",
+            "https://",
+            "javascript:",
+            "/private.md",
+            "sibling.md",
+        ] {
+            assert!(!html.contains(target));
+        }
+        let inert = String::from_utf8(
+            render_with_resources(source, None, Some("xdnote-preview:/test/links/")).unwrap(),
+        )
+        .unwrap();
+        assert!(!inert.contains("href="));
     }
 
     #[test]

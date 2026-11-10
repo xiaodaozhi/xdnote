@@ -147,11 +147,9 @@ RenderResult renderSnapshot(QByteArray source, QUuid documentId, quint64 generat
     const QString &documentIdentity, const QByteArray &prefix) {
     const DocumentSnapshot snapshot{EditResult::Applied, source, revision, documentId};
     const auto prepared = preparePreviewImages(snapshot, root, documentPath, documentIdentity);
-    bool hasFragments = false;
-    for (const auto &target : prepared.linkTargets) if (target.startsWith('#')) { hasFragments = true; break; }
     QStringList headingIds;
     bool enableFragments = false;
-    if (prepared.analyzed && hasFragments) {
+    if (prepared.analyzed) {
         const auto headings = analyzeMarkdownHeadings(snapshot);
         if (headings.success) {
             for (const auto &heading : headings.headings) headingIds.append(heading.id);
@@ -160,6 +158,7 @@ RenderResult renderSnapshot(QByteArray source, QUuid documentId, quint64 generat
     }
     const auto pointer = reinterpret_cast<const unsigned char *>(source.constData());
     auto renderWithResources = enableFragments ? xdnote_markdown_render_images_and_fragments : xdnote_markdown_render_images;
+    if (enableFragments && root && root->active()) renderWithResources = xdnote_markdown_render_images_and_links;
     auto buffer = prepared.analyzed ? renderWithResources(pointer, std::size_t(source.size()), reinterpret_cast<const unsigned char *>(prefix.constData()), std::size_t(prefix.size()),
         reinterpret_cast<const unsigned char *>(prepared.states.constData()), std::size_t(prepared.states.size())) : xdnote_markdown_render(pointer, std::size_t(source.size()));
     const auto release = qScopeGuard([&] { xdnote_markdown_free(&buffer); });
@@ -249,28 +248,12 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
             || m_displayedRevision != m_presentingRevision || !currentRevision(m_session, m_displayedRevision)
             || index < 0 || index >= m_presentingLinkTargets.size()) return;
         const auto target = m_presentingLinkTargets.at(index);
-        if (!target.startsWith('#')) return;
+        if (!target.startsWith('#')) { emit documentLinkRequested(target, m_displayedRevision); return; }
         const auto resolved = resolveWorkspaceTarget(QStringLiteral("document.md"), target);
         if (!resolved.success || !resolved.hasFragment || resolved.fragment.isEmpty()) {
             emit fragmentNavigationMessage(QStringLiteral("链接中的标题标识无效。")); return;
         }
-        const int heading = m_presentingHeadingIds.indexOf(resolved.fragment);
-        if (heading < 0) {
-            const auto name = resolved.fragment.size() > 120 ? resolved.fragment.left(120) + QStringLiteral("…") : resolved.fragment;
-            emit fragmentNavigationMessage(QStringLiteral("未找到标题：%1").arg(name)); return;
-        }
-        const auto revision = m_displayedRevision;
-        const QPointer<MarkdownPreview> guard(this);
-        // Only a validated numeric position is passed to application-owned
-        // script. Document text and target URLs never enter the script.
-        const auto script = QStringLiteral("(()=>{const h=document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')[%1];if(!h)return false;h.scrollIntoView({block:'start'});return true;})()").arg(heading);
-        page->runJavaScript(script, QWebEngineScript::ApplicationWorld, [guard, generation, revision, fragment = resolved.fragment](const QVariant &value) {
-            if (!guard || guard->m_closed || generation != guard->m_generation || generation != guard->m_presentingGeneration
-                || guard->m_displayedRevision != revision || !currentRevision(guard->m_session, revision)) return;
-            if (!value.toBool()) { emit guard->fragmentNavigationMessage(QStringLiteral("无法定位标题，请重新打开链接。")); return; }
-            emit guard->fragmentNavigationMessage({});
-            if (guard) emit guard->fragmentNavigated(fragment);
-        });
+        navigateToHeading(resolved.fragment, m_displayedRevision);
     };
     page->setBackgroundColor(m_appearance->color("background"));
     connect(m_appearance, &Appearance::changed, this, [this, page] { page->setBackgroundColor(m_appearance->color("background")); refresh(); });
@@ -317,8 +300,10 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
             if (!guard || guard->m_closed || !guard->m_session || guard->m_session->isClosing()
                 || generation != guard->m_generation || !currentRevision(guard->m_session, revision) || !html.contains(marker)) return;
             guard->m_displayedRevision = revision;
+            guard->m_pageReady = true;
             guard->restoreReadingPosition(guard->m_scroll);
             emit guard->previewReady(revision);
+            if (guard && guard->m_navigationPending) guard->navigateToHeading(guard->m_pendingFragment, guard->m_navigationRevision);
         });
     });
     connect(page, &QWebEnginePage::loadingChanged, this, [this, page](const QWebEngineLoadingInfo &info) {
@@ -355,6 +340,24 @@ MarkdownPreview::~MarkdownPreview() {
     m_view = nullptr;
 }
 
+void MarkdownPreview::navigateToHeading(const QString &fragment, quint64 revision) {
+    if (m_closed || !currentRevision(m_session, revision)) {
+        m_navigationPending = false; emit fragmentNavigationMessage(QStringLiteral("文档已变化，请重新定位标题。")); return;
+    }
+    if (!m_pageReady || m_displayedRevision != revision || m_presentingGeneration != m_generation) {
+        m_pendingFragment = fragment; m_navigationRevision = revision; m_navigationPending = true; return;
+    }
+    m_navigationPending = false;
+    const int heading = m_presentingHeadingIds.indexOf(fragment);
+    if (heading < 0) { emit fragmentNavigationMessage(QStringLiteral("未找到标题：%1").arg(fragment.left(120))); return; }
+    const auto generation = m_generation; const QPointer<MarkdownPreview> guard(this);
+    const auto script = QStringLiteral("(()=>{const h=document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')[%1];if(!h)return false;h.scrollIntoView({block:'start'});return true;})()").arg(heading);
+    m_view->page()->runJavaScript(script, QWebEngineScript::ApplicationWorld, [guard, generation, revision, fragment](const QVariant &value) {
+        if (!guard || guard->m_closed || generation != guard->m_generation || !currentRevision(guard->m_session, revision)) return;
+        emit guard->fragmentNavigationMessage(value.toBool() ? QString() : QStringLiteral("无法定位标题，请重新打开链接。"));
+        if (guard && value.toBool()) emit guard->fragmentNavigated(fragment);
+    });
+}
 void MarkdownPreview::refresh() {
     if (m_closed || !m_session) return;
     const auto snapshot = m_session->snapshot();
@@ -364,6 +367,10 @@ void MarkdownPreview::refresh() {
     }
     if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
     ++m_generation;
+    m_pageReady = false;
+    if (m_navigationPending && snapshot.revision != m_navigationRevision) {
+        m_navigationPending = false; emit fragmentNavigationMessage(QStringLiteral("文档已变化，请重新定位标题。"));
+    }
     // A new source revision invalidates any image tokens still owned by the
     // previous render, even before the replacement worker finishes.
     static_cast<RestrictedPage *>(m_view->page())->clearImages();
@@ -376,11 +383,13 @@ void MarkdownPreview::refresh() {
 
 void MarkdownPreview::setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &documentPath, const QString &documentIdentity) {
     if (m_closed || (m_resourceRoot == root && m_resourceDocumentPath == documentPath && m_resourceDocumentIdentity == documentIdentity)) return;
+    const bool cancelledNavigation = m_navigationPending; m_navigationPending = false;
     m_resourceRoot = std::move(root); m_resourceDocumentPath = documentPath; m_resourceDocumentIdentity = documentIdentity;
     if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
     ++m_generation; m_hasPending = false;
     static_cast<RestrictedPage *>(m_view->page())->clearImages();
     refresh();
+    if (cancelledNavigation) emit fragmentNavigationMessage(QStringLiteral("文档位置已变化，请重新定位标题。"));
 }
 
 void MarkdownPreview::startPending() {
