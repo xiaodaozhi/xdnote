@@ -3,6 +3,7 @@
 #include "DocumentSession.h"
 #include "WorkspaceResourceReader.h"
 #include <QHash>
+#include <QStringList>
 #include <memory>
 
 namespace xdnote {
@@ -12,6 +13,7 @@ namespace xdnote {
 struct PreviewImages {
     QByteArray states;
     QHash<int, QByteArray> png;
+    QStringList linkTargets;
     bool analyzed = false;
 };
 
