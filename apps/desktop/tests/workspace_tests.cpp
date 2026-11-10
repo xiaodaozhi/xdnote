@@ -12,6 +12,7 @@
 #include "WindowGeometry.h"
 #include "file_fixtures.h"
 #include <QApplication>
+#include <QAction>
 #include <QBuffer>
 #include <QClipboard>
 #include <QMimeData>
@@ -21,11 +22,14 @@
 #include <QTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QTabBar>
 #include <QStackedWidget>
 #include <QInputMethodEvent>
 #include <QDialog>
+#include <QFileDialog>
 #include <QElapsedTimer>
+#include <QScopeGuard>
 #include <QWebEngineView>
 #include <QWebEnginePage>
 #include <QWebEngineScript>
@@ -202,6 +206,61 @@ private slots:
         QCOMPARE(QDir(dir.filePath("assets/images")).entryList(QDir::Files).size(), 2);
 #endif
     }
+    void workspaceDocumentLinkMenuKeyboardUsesFilePicker() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined workspace resources are not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        QVERIFY(QDir().mkpath(dir.filePath("notes"))); QVERIFY(QDir().mkpath(dir.filePath("docs")));
+        const auto documentPath = dir.filePath("notes/doc.md"), targetPath = dir.filePath("docs/target.md");
+        QVERIFY(fileFixtures::write(documentPath, "source")); QVERIFY(fileFixtures::write(targetPath, "# target"));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true);
+        auto *editor = pane->editor(); auto *session = pane->document()->session();
+        auto *button = pane->findChild<SharedButton *>("moreActions"); QVERIFY(button);
+        auto *menu = button->menu(); QVERIFY(menu);
+        auto *insert = menu->findChild<QAction *>("insertWorkspaceLinkAction"); QVERIFY(insert); QVERIFY(insert->isEnabled());
+        const bool previous = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+        const auto restore = qScopeGuard([previous] { QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, previous); });
+        QApplication::setActiveWindow(workspace); editor->setFocus(Qt::OtherFocusReason); editor->send(SCI_SETSEL, 0, 0);
+        QSignalSpy finished(pane, &SingleFileWindow::workspaceLinkFinished);
+        QSignalSpy triggered(insert, &QAction::triggered);
+        bool pickerSeen = false, timedOut = false;
+        QTimer pickerProbe, watchdog; pickerProbe.setInterval(20); watchdog.setSingleShot(true);
+        connect(&pickerProbe, &QTimer::timeout, this, [&] {
+            QFileDialog *dialog = nullptr;
+            for (auto *widget : QApplication::topLevelWidgets())
+                if ((dialog = qobject_cast<QFileDialog *>(widget)) && dialog->isVisible()) break;
+            if (!dialog) return;
+            pickerProbe.stop(); pickerSeen = true; dialog->selectFile(targetPath);
+            QMetaObject::invokeMethod(dialog, "accept", Qt::QueuedConnection);
+        });
+        connect(&watchdog, &QTimer::timeout, this, [&] {
+            timedOut = true; menu->close();
+            for (auto *widget : QApplication::topLevelWidgets())
+                if (auto *dialog = qobject_cast<QFileDialog *>(widget); dialog && dialog->isVisible()) dialog->reject();
+        });
+        // Qt's test picker is intentional: native chooser behavior and real
+        // mouse input require separate desktop verification.
+        menu->popup(button->mapToGlobal(button->rect().bottomLeft()));
+        QTRY_VERIFY(menu->isVisible());
+        QVERIFY(QTest::qWaitForWindowExposed(menu, 5000));
+        QApplication::setActiveWindow(menu);
+        menu->setActiveAction(insert); QCOMPARE(menu->activeAction(), insert);
+        pickerProbe.start(); watchdog.start(10000);
+        QTest::keyClick(menu, Qt::Key_Return);
+        QTRY_VERIFY_WITH_TIMEOUT(pickerSeen || timedOut, 12000);
+        QVERIFY2(!timedOut, "The Qt test file picker did not appear");
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); watchdog.stop();
+        QCOMPARE(triggered.size(), 1);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QCOMPARE(session->snapshot().utf8, QByteArray("[target.md](../docs/target.md)source"));
+        QCOMPARE(disk(documentPath), QByteArray("source")); QCOMPARE(disk(targetPath), QByteArray("# target"));
+        QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, QByteArray("source"));
+#endif
+    }
+
     void workspaceDocumentLinksUseVerifiedRelativePathsAndUndo() {
 #if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
         QSKIP("Confined workspace resources are not available on this platform");
