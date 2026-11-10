@@ -99,7 +99,7 @@ class FileWorkflowTests final : public QObject {
     Q_OBJECT
 private slots:
     void confinedOpenKeepsDirtySessionAndAllowsAtomicSave() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined document opens are not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid()); const auto path = dir.filePath("doc.md");
@@ -125,7 +125,7 @@ private slots:
 #endif
     }
     void confinedReadRejectsParentLinkReplacementAfterProbe() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined document opens are not available on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid());

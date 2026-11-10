@@ -3,6 +3,9 @@
 #include "FileService.h"
 #include "MarkdownReferences.h"
 #include "WorkspacePath.h"
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFileInfo>
 
 namespace xdnote {
 namespace {
@@ -26,7 +29,7 @@ bool verifiedDocument(const std::shared_ptr<WorkspaceResourceReader> &root,
 
 PreviewImages preparePreviewImages(const DocumentSnapshot &snapshot,
     const std::shared_ptr<WorkspaceResourceReader> &root,
-    const QString &documentPath, const QString &documentIdentity) {
+    const QString &documentPath, const QString &documentIdentity, const AuthorizedPreviewImages &authorizedImages) {
     PreviewImages result;
     const auto analysis = analyzeMarkdownReferences(snapshot);
     if (!analysis.success || !analysis.complete) return result;
@@ -48,10 +51,22 @@ PreviewImages preparePreviewImages(const DocumentSnapshot &snapshot,
         else if (index >= MaxImages) state = 3;
         else {
             const auto target = resolveWorkspaceTarget(documentPath, reference.target);
-            if (!target.success || target.hasFragment) state = 2;
+            const auto authorized = authorizedImages.constFind(reference.target);
+            if ((!target.success || target.hasFragment) && authorized == authorizedImages.cend()) state = 2;
             else {
-                const auto image = root->read(target.path, MaxImageSourceBytes);
+                const auto image = authorized != authorizedImages.cend() && authorized->root
+                    ? authorized->root->read(authorized->path, MaxImageSourceBytes) : root->read(target.path, MaxImageSourceBytes);
+                const auto imageRoot = authorized != authorizedImages.cend() ? authorized->root : root;
+                const auto imagePath = authorized != authorizedImages.cend() ? authorized->path : target.path;
+                if (imageRoot && imageRoot->active() && (image.ok() || image.error == WorkspaceReadError::Missing)) {
+                    const auto absolute = QDir(imageRoot->rootPath()).filePath(imagePath);
+                    if (image.ok()) result.watchedPaths.append(absolute);
+                    auto parent = QFileInfo(imagePath).path(); if (parent == ".") parent.clear();
+                    if (imageRoot->listDirectory(parent, 1).ok()) result.watchedPaths.append(QFileInfo(absolute).absolutePath());
+                }
                 if (!image.ok()) state = readFailure(image.error);
+                else if (authorized != authorizedImages.cend() && (image.identity != authorized->identity || !authorized->root->active()
+                    || QCryptographicHash::hash(image.bytes, QCryptographicHash::Sha256) != authorized->digest)) state = 5;
                 else if (image.bytes.size() > MaxBatchBytes - inputBytes) state = 3;
                 else {
                     inputBytes += image.bytes.size();
@@ -67,7 +82,12 @@ PreviewImages preparePreviewImages(const DocumentSnapshot &snapshot,
     if (documentAuthorized && !verifiedDocument(root, documentPath, documentIdentity)) {
         result.png.clear();
         result.states.fill(5);
+        result.watchedPaths.clear();
     }
+    for (auto it = authorizedImages.cbegin(); it != authorizedImages.cend(); ++it) if (!it->root || !it->root->active()) {
+        result.png.clear(); result.states.fill(5); result.watchedPaths.clear(); break;
+    }
+    result.watchedPaths.removeDuplicates();
     return result;
 }
 }

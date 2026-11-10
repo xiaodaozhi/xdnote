@@ -15,6 +15,8 @@ struct ReferenceScanLimits {
 struct ReferenceTargetState {
     WorkspaceReadError error = WorkspaceReadError::Unsupported;
     QString identity;
+    bool imageChecked = false;
+    QString diagnostic;
 };
 struct ReferenceScanResult {
     ReferenceIndexSnapshot index;

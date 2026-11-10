@@ -1,5 +1,6 @@
 #include "SingleFileWindow.h"
 #include <algorithm>
+#include <QUrl>
 #include "MarkdownReferences.h"
 #include "MarkdownHeadings.h"
 #include "Appearance.h"
@@ -344,7 +345,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     }
     tools->addStretch(); layout->addWidget(format);
     m_editor = new SourceEditor(document->session(), m_editorPage, m_appearance); m_editor->setObjectName("sourceEditor");
-    connect(m_editor, &SourceEditor::imagePasteRequested, this, &SingleFileWindow::importClipboardImage);
+    connect(m_editor, &SourceEditor::imagePasteRequested, this, [this](const QImage &image) { importClipboardImage(image); });
     m_editor->send(SCI_SETMARGINWIDTHN, 0, token("controls", "lineNumberWidth")); m_editor->send(SCI_SETMARGINTYPEN, 0, SC_MARGIN_NUMBER);
     const auto bytes = document->session()->snapshot().utf8; const int lf = int(bytes.indexOf('\n')), cr = int(bytes.indexOf('\r'));
     m_editor->send(SCI_SETEOLMODE, cr >= 0 && (lf < 0 || cr < lf) ? (lf == cr + 1 ? SC_EOL_CRLF : SC_EOL_CR) : SC_EOL_LF);
@@ -365,6 +366,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     m_documentUiReady = true; setEditing(false); updateState();
 }
 SingleFileWindow::~SingleFileWindow() {
+    for (const auto &image : m_importedImages) if (image.root) image.root->revoke();
     // QWidget's native close can deliver Hide from its base destructor. Stop
     // the controller while our UI members are still alive, before it can emit
     // geometryWarning back into an already destroyed derived object.
@@ -435,6 +437,10 @@ void SingleFileWindow::navigateToHeading(const QString &fragment) {
 }
 void SingleFileWindow::syncPreviewResources() {
     if (!m_preview || !m_document || m_document->closed()) return;
+    if (m_importedImageDocument != m_document->path()) {
+        for (const auto &image : m_importedImages) if (image.root) image.root->revoke();
+        m_importedImages.clear(); m_importedImageDocument = m_document->path();
+    }
     QString base;
     std::shared_ptr<WorkspaceResourceReader> root;
     if (m_embedded) { base = m_workspaceResourcePath; root = m_workspaceResourceRoot; }
@@ -448,7 +454,7 @@ void SingleFileWindow::syncPreviewResources() {
         root = m_localResourceRoot;
     }
     const auto relative = base.isEmpty() ? QString() : QDir(base).relativeFilePath(m_document->path());
-    m_preview->setResourceContext(std::move(root), relative, m_document->identity());
+    m_preview->setResourceContext(std::move(root), relative, m_document->identity(), m_importedImages);
 }
 void SingleFileWindow::activateDocument() { if (m_document) { m_dismissedNotice.clear(); m_document->checkExternal(); } if (m_editing && m_editor) m_editor->setFocus(Qt::OtherFocusReason); }
 void SingleFileWindow::reportHostMessage(const QString &message) { m_hostMessage = message; m_dismissedNotice.clear(); updateState(); }
@@ -485,7 +491,7 @@ void SingleFileWindow::updateState() {
     m_save->setProperty("primary", m_editing && ready && m_document->dirty()); m_save->setText(busy ? QStringLiteral("处理中…") : QStringLiteral("保存")); m_save->update();
     m_saveSpinner->setVisible(busy); m_saveSpinner->setRunning(busy); m_statusIcon->setVisible(!busy);
     m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy);
-    m_imageImportAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_imageImportPending);
+    m_imageImportAction->setEnabled(ready && m_editing && resourceRoot() && !m_document->readOnly() && !busy && !m_imageImportPending);
     m_linkInsertAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_linkInsertPending);
     m_openLinkAction->setEnabled(ready && m_editing && !busy);
     m_referencesMenu->menuAction()->setVisible(m_embedded);
@@ -663,14 +669,14 @@ void SingleFileWindow::chooseImage() {
         QStringLiteral("图片 (*.png *.jpg *.jpeg *.gif *.bmp *.webp);;所有文件 (*)"));
     if (!path.isEmpty()) importImageFile(path);
 }
-void SingleFileWindow::importImageFile(const QString &path) { if (!path.isEmpty()) beginImageImport(path, {}); }
-void SingleFileWindow::importClipboardImage(const QImage &image) { beginImageImport({}, image); }
+void SingleFileWindow::importImageFile(const QString &path, const QString &destinationDirectory) { if (!path.isEmpty()) beginImageImport(path, {}, destinationDirectory); }
+void SingleFileWindow::importClipboardImage(const QImage &image, const QString &destinationDirectory) { beginImageImport({}, image, destinationDirectory); }
 
-void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage &bitmap) {
+void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage &bitmap, const QString &destinationDirectory) {
     auto reject = [this](const QString &message) { reportHostMessage(message); emit imageImportFinished(false, message); };
     if (m_imageImportPending) { reject(QStringLiteral("图片正在导入，请等待完成。")); return; }
-    if (!m_document || !m_editor || !m_editing || !m_embedded || !m_workspaceResourceRoot || m_workspaceResourcePath.isEmpty()) {
-        reject(QStringLiteral("请先在工作区打开文档并切换到编辑模式，再插入图片。")); return;
+    if (!m_document || !m_editor || !m_editing || !resourceRoot()) {
+        reject(QStringLiteral("请先保存并打开文档，切换到编辑模式，再插入图片。")); return;
     }
     QPointer<FileDocument> document = m_document;
     QPointer<DocumentSession> session = document->session();
@@ -678,6 +684,21 @@ void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage 
         || session->isBusy() || session->isComposing() || session->isClosing()) {
         reject(QStringLiteral("文档当前无法编辑，请完成正在进行的操作后重试。")); return;
     }
+    const bool embedded = m_embedded;
+    const auto documentRoot = resourceRoot(); const auto documentPath = document->path();
+    auto root = documentRoot; QString rootPath = root->rootPath();
+    if (!embedded) {
+        const auto directory = destinationDirectory.isEmpty() ? QFileDialog::getExistingDirectory(this, QStringLiteral("选择图片保存目录"), QFileInfo(documentPath).absolutePath()) : destinationDirectory;
+        if (directory.isEmpty()) { reject(QStringLiteral("已取消图片导入。")); return; }
+        if (!QDir::isAbsolutePath(directory) || QDir::isAbsolutePath(QDir(QFileInfo(documentPath).absolutePath()).relativeFilePath(directory))) {
+            reject(QStringLiteral("请选择可相对当前文档引用的同卷目录。")); return;
+        }
+        root = WorkspaceResourceReader::open(directory).reader;
+        if (!root) { reject(QStringLiteral("无法核验所选图片目录。")); return; }
+        rootPath = root->rootPath();
+    }
+    if (!document || !session || document != m_document || document->path() != documentPath || m_embedded != embedded
+        || resourceRoot() != documentRoot || !documentRoot->active()) { reject(QStringLiteral("文档位置已变化，请重新导入图片。")); return; }
     const auto snapshot = session->snapshot();
     if (!document || !session || snapshot.result != EditResult::Applied || document != m_document) {
         reject(QStringLiteral("无法取得当前文档的编辑位置。")); return;
@@ -689,15 +710,13 @@ void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage 
     const auto before = snapshot.utf8.left(start), selected = snapshot.utf8.mid(start, end - start);
     const auto beforeText = decodeUtf8Literal(before), selectedText = decodeUtf8Literal(selected);
     if (beforeText.toUtf8() != before || selectedText.toUtf8() != selected) { reject(QStringLiteral("当前编辑位置无效。")); return; }
-    const auto root = m_workspaceResourceRoot;
-    const auto rootPath = m_workspaceResourcePath;
-    const auto relativeDocument = QDir(rootPath).relativeFilePath(document->path());
+    const auto relativeDocument = QDir(documentRoot->rootPath()).relativeFilePath(document->path());
     const auto identity = document->identity();
     const int first = int(beforeText.size()), last = int(beforeText.size() + selectedText.size());
     m_imageImportPending = true; m_hostMessage.clear(); updateState();
     auto *worker = new QFutureWatcher<ImageImportResult>(this);
     connect(worker, &QFutureWatcher<ImageImportResult>::finished, this,
-        [this, worker, document, session, snapshot, root, rootPath, relativeDocument, identity, anchor, caret, first, last] {
+        [this, worker, document, session, snapshot, root, rootPath, documentRoot, documentPath, embedded, relativeDocument, identity, anchor, caret, first, last] {
         auto result = worker->future().takeResult(); worker->deleteLater();
         m_imageImportPending = false;
         auto &publication = result.publication;
@@ -706,23 +725,35 @@ void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage 
         QString message = result.message;
         bool inserted = false;
         if (publication.status == WorkspaceWriteStatus::Committed || publication.status == WorkspaceWriteStatus::Reused) {
-            const auto target = relativeWorkspaceUrl(relativeDocument, publication.path);
+            WorkspacePathResult target;
+            if (embedded) target = relativeWorkspaceUrl(relativeDocument, publication.path);
+            else {
+                const auto relative = QDir(QFileInfo(documentPath).absolutePath()).relativeFilePath(actualPath);
+                QStringList parts; for (const auto &part : relative.split('/')) parts.append(part == ".." ? part : QString::fromLatin1(QUrl::toPercentEncoding(part)));
+                target.success = !QDir::isAbsolutePath(relative); target.path = parts.join('/');
+            }
             bool current = document && session && document == m_document && m_editor && m_editing
                 && !document->closed() && !document->saving() && !document->loading()
-                && document->identity() == identity && m_workspaceResourceRoot == root && m_workspaceResourcePath == rootPath
+                && document->identity() == identity && document->path() == documentPath && m_embedded == embedded && resourceRoot() == documentRoot
                 && root->active() && !session->isReadOnly() && !session->isBusy() && !session->isComposing() && !session->isClosing();
             if (current) {
                 const auto latest = session->snapshot();
                 current = document && session && document == m_document && m_editor && m_editing && !document->closed()
                     && !document->saving() && !document->loading() && document->identity() == identity
                     && !session->isReadOnly() && !session->isBusy() && !session->isComposing() && !session->isClosing()
-                    && root->active() && m_workspaceResourceRoot == root && m_workspaceResourcePath == rootPath && latest.result == EditResult::Applied
+                    && root->active() && documentRoot->active() && m_embedded == embedded && resourceRoot() == documentRoot && document->path() == documentPath && latest.result == EditResult::Applied
                     && latest.documentId == snapshot.documentId && latest.revision == snapshot.revision
                     && qsizetype(m_editor->send(SCI_GETANCHOR)) == anchor && qsizetype(m_editor->send(SCI_GETCURRENTPOS)) == caret;
             }
             if (current && target.success) {
                 const auto edit = session->replace(first, last, QStringLiteral("![图片](%1)").arg(target.path), snapshot.revision);
                 inserted = edit == EditResult::Applied;
+                publication.lease.reset();
+                if (inserted && !embedded) {
+                    m_importedImages.insert(target.path, {root, publication.path, result.imageIdentity, result.imageDigest}); m_importedImageDocument = documentPath;
+                    syncPreviewResources();
+                }
+                if (inserted && embedded && m_preview) m_preview->refresh();
             }
             message = inserted
                 ? QStringLiteral("图片已%1：%2。文档修改尚未保存。").arg(publication.status == WorkspaceWriteStatus::Reused ? QStringLiteral("复用") : QStringLiteral("导入"), actualPath)
@@ -735,8 +766,8 @@ void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage 
         publication.lease.reset();
         reportHostMessage(message); emit imageImportFinished(inserted, message);
     });
-    worker->setFuture(QtConcurrent::run([root, relativeDocument, identity, sourcePath, bitmap] {
-        return importWorkspaceImage(root, relativeDocument, identity, sourcePath, bitmap);
+    worker->setFuture(QtConcurrent::run([root, documentRoot, relativeDocument, identity, sourcePath, bitmap, embedded] {
+        return importWorkspaceImage(root, relativeDocument, identity, sourcePath, bitmap, embedded ? QStringLiteral("assets/images") : QString(), documentRoot);
     }));
 }
 

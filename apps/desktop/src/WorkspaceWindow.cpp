@@ -178,11 +178,11 @@ void WorkspaceWindow::populateReferences(QMenu *menu, SingleFileWindow *pane) {
     if (!shown) label(inbound, QStringLiteral("当前扫描中没有识别到入站引用"));
     auto *problems = submenu(QStringLiteral("缺失或受阻的目标"), "referenceProblemsMenu"); shown = 0;
     for (const auto &reference : result.index.references) {
-        const auto error = result.targets.value(reference.target.path).error;
-        if (reference.target.success && error == WorkspaceReadError::None) continue;
+        const auto state = result.targets.value(reference.target.path); const auto error = state.error;
+        if (reference.target.success && error == WorkspaceReadError::None && state.diagnostic.isEmpty()) continue;
         if (++shown > 200) { label(problems, QStringLiteral("问题较多，仅显示前 200 项")); break; }
         label(problems, QStringLiteral("%1，第 %2 行：%3 — %4").arg(reference.sourcePath).arg(reference.sourceLine)
-            .arg(reference.reference.target.left(80), reference.target.success ? targetStatus(error) : QStringLiteral("不支持的目标")));
+            .arg(reference.reference.target.left(80), !state.diagnostic.isEmpty() ? state.diagnostic : reference.target.success ? targetStatus(error) : QStringLiteral("不支持的目标")));
     }
     if (!shown) label(problems, QStringLiteral("当前扫描中没有发现缺失或受阻目标"));
     auto *candidates = submenu(QStringLiteral("未引用图片候选"), "unreferencedImagesMenu");
@@ -193,6 +193,25 @@ void WorkspaceWindow::populateReferences(QMenu *menu, SingleFileWindow *pane) {
         label(candidates, image);
     }
     if (!shown) label(candidates, QStringLiteral("当前扫描中没有识别到候选"));
+    auto *images = submenu(QStringLiteral("图片位置与引用"), "imageReferencesMenu");
+    QSet<QString> imagePaths;
+    for (const auto &reference : result.index.references) if (reference.reference.kind == MarkdownReference::Kind::Image && reference.target.success) imagePaths.insert(reference.target.path);
+    for (const auto &image : result.imageCandidates) imagePaths.insert(image);
+    auto imageList = imagePaths.values(); imageList.sort(); int imageCount = 0;
+    for (const auto &image : imageList) {
+        if (++imageCount > 32) { label(images, QStringLiteral("仅显示前 32 张图片；可在源文查看其他引用")); break; }
+        auto *details = new SharedMenu(windowAppearance(), images); details->setTitle(caption(image)); details->setToolTipsVisible(true); images->addMenu(details);
+        const auto state = result.targets.value(image);
+        label(details, image);
+        if (result.targets.contains(image)) label(details, state.diagnostic.isEmpty() ? targetStatus(state.error) : state.diagnostic);
+        int locations = 0;
+        for (const auto &reference : result.index.inbound(image)) {
+            if (++locations > 12) { label(details, QStringLiteral("引用较多，仅显示前 12 处")); break; }
+            label(details, QStringLiteral("%1，第 %2 行").arg(reference.sourcePath).arg(reference.sourceLine));
+        }
+        if (!locations) label(details, QStringLiteral("当前扫描未识别到引用；不表示可安全删除"));
+    }
+    if (!imageCount) label(images, QStringLiteral("当前扫描未识别到本地图片"));
     if (!result.index.gaps.isEmpty() || !result.excludedDirectories.isEmpty()) {
         auto *coverage = submenu(QStringLiteral("检查范围与限制"), "referenceCoverageMenu");
         for (const auto &excluded : result.excludedDirectories) label(coverage, QStringLiteral("未扫描版本管理目录：") + excluded);

@@ -19,14 +19,17 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix]", text)
         self.assertIn("default: full", text)
         matrices = [json.loads(value) for value in re.findall(r"'(\[\{[^\n]+?\}\])'", text)]
-        self.assertEqual(len(matrices), 2)
+        self.assertEqual(len(matrices), 3)
         self.assertEqual([entry['os'] for entry in matrices[0]], ['ubuntu-22.04'])
-        self.assertEqual(len(matrices[1]), 5)
-        self.assertEqual(sum(entry.get('profile') == 'msvc2019' for entry in matrices[1]), 1)
-        self.assertIn("runner.os == 'Linux' && inputs.scope != 'workspace-linux'", text)
+        self.assertEqual([entry['os'] for entry in matrices[1]], ['ubuntu-22.04', 'macos-15-intel', 'macos-15'])
+        self.assertIn("runner.os != 'Linux' && inputs.scope == 'full'", text)
+        self.assertIn('test --suite resources', text)
+        self.assertEqual(len(matrices[2]), 5)
+        self.assertEqual(sum(entry.get('profile') == 'msvc2019' for entry in matrices[2]), 1)
+        self.assertIn("runner.os == 'Linux' && inputs.scope == 'full'", text)
         self.assertIn("if: inputs.scope == 'workspace-linux'", text)
         self.assertIn("Workspace references (Linux)", text)
         self.assertIn("Fatal Qt diagnostic", text)

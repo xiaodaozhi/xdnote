@@ -60,6 +60,28 @@ QVariant evaluatePreview(QWebEnginePage *page, const QString &script) {
 class DesktopTests final : public QObject {
     Q_OBJECT
 private slots:
+    void posixImagePublicationPreservesCollisionsAndRejectsDirectoryLinks() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX helper policy; Windows handle leases have separate coverage");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "doc")); const auto document = FileService::probe(dir.filePath("doc.md")); QVERIFY(document.file);
+        auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+        auto first = root.reader->publishImage("doc.md", document.file->identity(), "original", "same.png", "png");
+        QVERIFY2(first.status == WorkspaceWriteStatus::Committed, qPrintable(QStringLiteral("status=%1 error=%2 native=%3").arg(int(first.status)).arg(int(first.error)).arg(first.nativeCode)));
+        QCOMPARE(root.reader->read(first.path, 100).bytes, QByteArray("original"));
+        const auto reused = root.reader->publishImage("doc.md", document.file->identity(), "original", "same.png", "png"); QCOMPARE(reused.status, WorkspaceWriteStatus::Reused);
+        const auto different = root.reader->publishImage("doc.md", document.file->identity(), "different", "same.png", "png"); QCOMPARE(different.status, WorkspaceWriteStatus::Committed); QVERIFY(different.path != first.path);
+        QCOMPARE(root.reader->read(first.path, 100).bytes, QByteArray("original"));
+        root.reader->revoke(); QCOMPARE(root.reader->publishImage("doc.md", document.file->identity(), "third", "same.png", "png").error, WorkspaceReadError::Revoked);
+        QTemporaryDir linked; QVERIFY(fileFixtures::write(linked.filePath("doc.md"), "doc"));
+        const auto linkedDocument = FileService::probe(linked.filePath("doc.md")); QVERIFY(linkedDocument.file);
+        QVERIFY(::symlink(outside.path().toUtf8().constData(), linked.filePath("assets").toUtf8().constData()) == 0);
+        root = WorkspaceResourceReader::open(linked.path()); QVERIFY(root.reader);
+        const auto blocked = root.reader->publishImage("doc.md", linkedDocument.file->identity(), "third", "x.png", "png"); QCOMPARE(blocked.status, WorkspaceWriteStatus::Failed);
+        QVERIFY(QDir(outside.path()).entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty());
+#endif
+    }
     void previewPendingHeadingRejectsContextAndRevisionChanges() {
         DocumentSession session(QByteArray("paragraph\n\n").repeated(70) + "# target\n"); MarkdownPreview preview(&session);
         preview.resize(640, 320); QSignalSpy ready(&preview, &MarkdownPreview::previewReady), moved(&preview, &MarkdownPreview::fragmentNavigated);
@@ -79,7 +101,7 @@ private slots:
         QTest::addColumn<bool>("bom"); QTest::newRow("without-bom") << false; QTest::newRow("with-bom") << true;
     }
     void resourcePreviewAcceptsMaximumDocumentWithOptionalBom() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource reads are unavailable on this platform");
 #else
         QFETCH(bool, bom); QTemporaryDir dir; QVERIFY(dir.isValid());
@@ -362,7 +384,7 @@ private slots:
         QVERIFY(fileFixtures::write(root + "/a.md", "inside"));
         QVERIFY(fileFixtures::write(outside + "/private.md", "outside"));
         const auto opened = WorkspaceResourceReader::open(root);
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QCOMPARE(opened.error, WorkspaceReadError::Unsupported); return;
 #else
         QVERIFY(opened.reader);
@@ -399,7 +421,7 @@ private slots:
     }
 
     void workspaceReferenceScanUsesDiskAndAuthoritativeLiveSnapshots() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource reads are unavailable on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid());
@@ -438,7 +460,7 @@ private slots:
     }
 
     void workspaceReferenceScanRetainsGapsAndDiscardsRevokedResults() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource reads are unavailable on this platform");
 #else
         QTemporaryDir dir; QVERIFY(dir.isValid());
@@ -489,7 +511,7 @@ private slots:
         QVERIFY(fileFixtures::write(root + QStringLiteral("/assets/图片.png"), "image-bytes"));
         QVERIFY(fileFixtures::write(outside + "/private.png", "secret"));
         auto opened = WorkspaceResourceReader::open(root);
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QCOMPARE(opened.error, WorkspaceReadError::Unsupported); QVERIFY(!opened.reader); return;
 #else
         QVERIFY(opened.reader); QCOMPARE(opened.error, WorkspaceReadError::None);
@@ -539,13 +561,7 @@ private slots:
         const auto file = FileService::probe(documentPath); QVERIFY(file.file);
         auto root = WorkspaceResourceReader::open(dir.path());
 #if !defined(Q_OS_WIN)
-#ifdef Q_OS_LINUX
-        QVERIFY(root.reader);
-        QCOMPARE(root.reader->publishImage("doc.md", file.file->identity(), "bytes", "a.png", "png").error, WorkspaceReadError::Unsupported);
-#else
-        QCOMPARE(root.error, WorkspaceReadError::Unsupported);
-#endif
-        QVERIFY(!QFileInfo::exists(dir.filePath("assets"))); return;
+        QSKIP("Windows handle lease semantics; POSIX publication has separate coverage");
 #else
         QVERIFY(root.reader);
         const QByteArray firstBytes("original-image-bytes"), secondBytes("different-image-bytes");
@@ -586,7 +602,7 @@ private slots:
     }
 
     void imageImportRejectsInvalidSourcesBeforeWriting() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined workspace resources are not available on this platform");
 #else
         QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
@@ -625,9 +641,6 @@ private slots:
     }
 
     void workspaceImagePublicationHonorsRevocationAroundCommit() {
-#ifndef Q_OS_WIN
-        QSKIP("Publication is currently implemented only for Windows");
-#else
         for (const auto stage : {WorkspaceWriteStage::BeforeCommit, WorkspaceWriteStage::AfterCommit}) {
             QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "doc"));
             const auto doc = FileService::probe(dir.filePath("doc.md")); QVERIFY(doc.file);
@@ -650,13 +663,9 @@ private slots:
             }
             const QDir images(dir.filePath("assets/images")); QVERIFY(images.entryList({".xdnote-*.tmp"}, QDir::Files | QDir::Hidden).isEmpty());
         }
-#endif
     }
 
     void workspaceImagePublicationSerializesCollisions() {
-#ifndef Q_OS_WIN
-        QSKIP("Publication is currently implemented only for Windows");
-#else
         QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(fileFixtures::write(dir.filePath("doc.md"), "doc"));
         const auto doc = FileService::probe(dir.filePath("doc.md")); QVERIFY(doc.file);
         const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
@@ -668,7 +677,6 @@ private slots:
         a.lease.reset(); b.lease.reset();
         QFile fileA(dir.filePath(a.path)), fileB(dir.filePath(b.path)); QVERIFY(fileA.open(QIODevice::ReadOnly)); QVERIFY(fileB.open(QIODevice::ReadOnly));
         QCOMPARE(fileA.readAll(), QByteArray("first")); QCOMPARE(fileB.readAll(), QByteArray("second"));
-#endif
     }
 
     void workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding() {
@@ -683,7 +691,7 @@ private slots:
         QVERIFY(fileFixtures::write(temp.filePath("assets/a.svg"), "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/>"));
         const auto file = FileService::probe(temp.filePath("doc.md")); QVERIFY(file.file);
         const auto root = WorkspaceResourceReader::open(temp.path());
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QCOMPARE(root.error, WorkspaceReadError::Unsupported); return;
 #else
         QVERIFY(root.reader);
@@ -707,7 +715,7 @@ private slots:
     }
 
     void previewLoadsOnlyVerifiedMemoryImages() {
-#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_MACOS)
         QSKIP("Confined resource reads are not available on this platform");
 #else
         QTemporaryDir temp; QVERIFY(temp.isValid());
