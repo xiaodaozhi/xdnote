@@ -1,5 +1,5 @@
 name: Desktop admission
-run-name: ${{ inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
+run-name: ${{ inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix]
+        options: [full, workspace-linux, resources-unix, resources-macos]
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   desktop:
-    name: ${{ inputs.scope == 'resources-unix' && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
+    name: ${{ startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     strategy:
@@ -28,6 +28,8 @@ jobs:
         include: >-
           ${{ fromJSON(inputs.scope == 'workspace-linux' &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
+          inputs.scope == 'resources-macos' &&
+          '[{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           inputs.scope == 'resources-unix' &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"},{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64","profile":"msvc2019","label":"windows-2022-msvc2019"}]') }}
@@ -75,7 +77,7 @@ jobs:
           QSG_INFO: '1'
         run: python scripts/desktop.py test --profile ${{ matrix.profile || 'default' }}
       - name: Test resource changes on Unix
-        if: inputs.scope == 'resources-unix'
+        if: startsWith(inputs.scope, 'resources-')
         run: |
           if [ "${{ runner.os }}" = "Linux" ]; then
             xvfb-run -a python scripts/desktop.py test --suite resources
@@ -131,7 +133,7 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: ${{ inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
+    name: ${{ inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop]
     if: always()
     runs-on: ubuntu-24.04

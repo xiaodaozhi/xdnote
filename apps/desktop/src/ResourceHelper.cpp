@@ -60,11 +60,13 @@ int openWithin(int root, const QString &path, bool directory, dev_t device, bool
 #endif
         const int child = ::openat(parent.value, name.constData(), access | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK | (dir ? O_DIRECTORY : 0));
         if (child < 0) {
+#ifdef Q_OS_MACOS
             const int code = errno; struct stat entry{};
             // Darwin may report ENOTDIR for O_DIRECTORY | O_NOFOLLOW on a
             // symbolic link. Preserve the blocked-link distinction in feedback.
             if (code == ENOTDIR && ::fstatat(parent.value, name.constData(), &entry, AT_SYMLINK_NOFOLLOW) == 0 && S_ISLNK(entry.st_mode)) errno = ELOOP;
             else errno = code;
+#endif
             return -1;
         }
         struct stat info{};
