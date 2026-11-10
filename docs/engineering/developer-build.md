@@ -21,9 +21,20 @@ python -m venv build/toolchain/desktop-tools
 
 使用该虚拟环境的 Python 执行上面的 pip 安装命令；Windows 可调用 `build/toolchain/desktop-tools/Scripts/python.exe`，Unix 可调用 `build/toolchain/desktop-tools/bin/python`。研发周期临时产物的安全清理见[产研流程](workflow.md#工具诊断与周期收尾)。
 
-## Windows 本机 MSVC 2019 配置
+## Windows 本机默认配置
 
-本机使用现有 MSVC 2019 v142／14.29 x64 工具，不要求另装 Visual Studio 2022。显式选择 `--profile msvc2019`，它只选择本机编译器兼容方式，Qt 与默认配置统一为 6.8.2，沿用同一源码、Rust 版本及全部回归。两个 Windows 配置共用同一 SDK；CMake 目录和 Rust 测试产物仍分开，不修改 Qt 头文件或伪装编译器版本。
+本机默认使用已安装的 Visual Studio 2022／MSVC v143 x64 工具与 `default` 配置。可在 x64 开发者终端使用下列命令；非开发者终端通过 `--vcvars` 指向该安装的 `VC/Auxiliary/Build/vcvars64.bat`。本机默认输出为 `build/desktop-admission/`，Qt 使用 `build/Qt/6.8.2/msvc2022_64/`。构建日志和 `native-toolchain.json` 记录 CMake 实际识别的编译器，不以 SDK 目录名代替版本证据。
+
+```text
+python scripts/desktop.py doctor --profile default
+python scripts/desktop.py build --profile default
+python scripts/desktop.py test --profile default
+python scripts/desktop.py run --profile default
+```
+
+## MSVC 2019 兼容配置
+
+如需验证已安装的 MSVC 2019 v142／14.29 工具，显式选择 `--profile msvc2019`。该配置与默认配置统一使用 Qt 6.8.2，并沿用同一源码、Rust 版本及测试。两个 Windows 配置共用同一 SDK；CMake 目录和 Rust 测试产物分别保存，不修改 Qt 头文件或伪装编译器版本。
 
 ```text
 python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64 --profile msvc2019
@@ -40,7 +51,7 @@ Qt 6.8.2 的[编译器检查](https://github.com/qt/qtbase/blob/v6.8.2/src/corel
 
 构建身份记录配置、SDK 前缀、Qt 版本及 CMake 实际编译器版本。测试和运行同时核对配置、SDK 和源码摘要，不能切换参数后直接启动另一个目录中的旧产物；变更入口或源码后先重新构建。
 
-入口合并 Windows 工具链环境时统一变量名，避免 `Path` 与 `PATH` 并存而使子进程找不到 Qt DLL。有控制台时，入口在命令期间把输入／输出代码页共同设为 UTF-8，结束后恢复，确保 CMake 对中文 `/showIncludes` 前缀的解码与 Ninja 收到的字节一致。已有配置若记录了乱码前缀，使用 `build --fresh --profile msvc2019` 重新探测；不会改变系统或应用语言。
+入口合并 Windows 工具链环境时统一变量名，避免 `Path` 与 `PATH` 并存而使子进程找不到 Qt DLL。有控制台时，入口在命令期间把输入／输出代码页共同设为 UTF-8，结束后恢复，确保 CMake 对中文 `/showIncludes` 前缀的解码与 Ninja 收到的字节一致。已有配置若记录了乱码前缀，可在选定的配置下使用 `build --fresh` 重新探测；不会改变系统或应用语言。
 
 ## 分阶段入口
 
@@ -66,7 +77,7 @@ python scripts/desktop.py run --admission
 
 可用 `--qt-prefix` 指定完整的同版本 SDK，`--cmake`、`--ninja` 指定已安装工具，`--build-dir` 指定本仓库 `build/` 下的专用目录。入口拒绝逃逸路径和链接目录。构建记录源文件摘要、平台、架构与依赖清单，测试前拒绝使用内容已变化的旧构建；报告与窗口自身截图只进入忽略的构建目录或有期限的 CI 工件。测试日志中的 `QCRITICAL`、`QFATAL` 与断言失败即使未导致测试进程失败，也视为失败。
 
-`--file` 可重复传入；本机命令追加 `--profile msvc2019`。不传文件时显示选择文件入口，也支持应用内打开和拖入本地文件。后续启动经用户级 IPC 转交打开意图，失败时明确报错，不另建独立可写实例。`run` 只核对构建身份并启动已有产物，不要求在 PATH 中重新发现 CMake、Ninja 或 Rust；先完成对应配置的构建。`--admission` 与 `--file` 互斥。
+`--file` 可重复传入；默认配置可省略 `--profile default`，使用 v142 时须显式追加 `--profile msvc2019`。不传文件时显示选择文件入口，也支持应用内打开和拖入本地文件。后续启动经用户级 IPC 转交打开意图，失败时明确报错，不另建独立可写实例。`run` 只核对构建身份并启动已有产物，不要求在 PATH 中重新发现 CMake、Ninja 或 Rust；先完成对应配置的构建。`--admission` 与 `--file` 互斥。
 
 ## 当前模块边界
 
@@ -74,8 +85,9 @@ python scripts/desktop.py run --admission
 - `FileService` 提供不依赖 GUI 的身份探测、严格读取和原位替换保存；`SessionRegistry` 管理打开登记与替换后的身份重绑定。`FileManager` 串行协调后台 I/O、冻结保存快照与 GUI 回执，编辑保持可用；`FileApplication` 与 `SingleInstance` 统一窗口、退出和跨进程打开意图。具体保证见[文件读取](file-read-baseline.md)和[保存闭环](file-save-workflow.md)。
 - `SourceEditor` 提供控件输入与基础 Qt 辅助功能文本接口；辅助功能写入使用可撤销会话命令，拒绝原因对界面与辅助功能描述可见。Qt 的无返回值 setter 尚不能完成原生失败状态映射，原生 UIA／屏幕阅读器准入继续跟踪。
 - `MarkdownPreview` 只把不可变 UTF-8 快照交给 Rust，单个解析任务配合最新待处理快照，过期代次不能成为展示完成结果。FFI 输出由 Rust 分配并释放，不跨线程传递控件或文档指针。解析期间的强制取消、时间／内存预算与独立进程隔离尚未完成。
-- 本阶段预览转义原始 HTML，图片和链接只有惰性文字占位，不生成文档控制的资源或导航 URL；WebEngine 禁用脚本、文件访问和远端访问，页面策略与请求拦截再次限制资源。尚未准入图片授权、工作区链接和外部导航，不将占位行为当作完整产品语义。
+- 本阶段预览转义原始 HTML。Windows 和 Linux 可在当前授权范围内读取受限本地图片，并以应用生成的内存资源提供预览；macOS 与受阻或不支持的图片仍显示占位。工作区已支持插入相对文档链接，但阅读预览中的链接仍为惰性文字占位，尚未接入链接激活或外部导航。文档不能控制资源 URL，也不能执行脚本或直接访问文件和网络；页面策略与请求拦截再次限制资源，详见[资源基础](workspace-resource-foundation.md)。
 - `AdmissionWindow` 采用 QWidget 容器，QQuickWidget 承载共享操作，Scintilla 与 WebEngine 保持各自公开 QWidget 端口。共享控件从同一视觉参数读取尺寸、字体、颜色与 Tab 焦点外框；此窗口只验证承载，原生装饰和主界面复刻另行验收。
+- 组件准入窗口的 QML 根节点通过公开辅助功能接口连接到 QQuickWidget，按钮继续使用 Qt 自身的辅助功能接口。自动测试检查父子导航、多窗口销毁和动作；Windows 另由独立 UI Automation 客户端检查控件树、文本读写、撤销／重做和只读保护。这些受控测试不代表真实读屏或其他平台的原生辅助技术验收，后续范围见 [Issue #87](https://github.com/xiaodaozhi/xdnote/issues/87)。
 
 运行器与测试共用图形和交互初始化。Windows 选择 D3D11，CI 显式偏好系统 WARP 软件适配器；Linux／macOS 当前使用 OpenGL。图形初始化发生在应用对象建立前，同一顶层窗口共享图形 API。应用对象建立后设置本应用的 `TabFocusAllControls` 策略，使按钮也可参与 Tab 循环，不修改系统偏好。Linux CI 安装 Noto CJK 作为镜像的系统字体，应用仍使用系统字体及回退，不随此工程分发该字体；测试检查常规与等宽字体的中文成形不存在缺字。不得以跳过截图、隐藏图形错误或只检查 QML 加载状态代替渲染验证；硬件 GPU、远程会话和其他图形后端仍须分别验证。
 

@@ -1,5 +1,6 @@
 #include "WorkspaceWindow.h"
 #include "WorkspaceTree.h"
+#include "WorkspaceResourceReader.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "Appearance.h"
@@ -157,6 +158,7 @@ void WorkspaceWindow::applyAppearance() {
 }
 WorkspaceWindow::~WorkspaceWindow() {
     m_tearingDown = true;
+    if (m_resourceRoot) m_resourceRoot->revoke();
     m_searchDelay.stop(); m_tree->cancelSearch(); m_search->removeEventFilter(this);
     // Native hide/focus notifications and child-model teardown can still emit
     // while QWidget's base destructor runs. Disconnect while our members live.
@@ -168,14 +170,29 @@ WorkspaceWindow::~WorkspaceWindow() {
     for (auto *pane : list) { disconnect(pane, nullptr, this, nullptr); delete pane; }
 }
 QString WorkspaceWindow::rootPath() const { return m_tree->rootPath(); }
-void WorkspaceWindow::setRootPath(const QString &path) { m_searchDelay.stop(); m_search->clear(); m_tree->setRootPath(path); auto title = QFileInfo(rootPath()).fileName(); if (title.isEmpty()) title = path.isEmpty() ? QStringLiteral("我的文档") : QDir::toNativeSeparators(rootPath()); m_rootLabel->setText(title); m_rootLabel->setAccessibleName(title + QStringLiteral("，选择工作区")); m_rootLabel->setToolTip(path); for (auto *pane : panes()) pane->setWorkspaceRoot(rootPath()); setWindowTitle(path.isEmpty() ? QStringLiteral("xdnote") : title + QStringLiteral(" — xdnote")); }
+void WorkspaceWindow::setRootPath(const QString &path) {
+    m_searchDelay.stop(); m_search->clear();
+    if (m_resourceRoot) m_resourceRoot->revoke();
+    m_tree->setRootPath(path);
+    m_resourceRoot = path.isEmpty() ? nullptr : WorkspaceResourceReader::open(m_tree->rootPath()).reader;
+    for (auto *pane : panes()) {
+        pane->setWorkspaceRoot(rootPath());
+        pane->setWorkspaceResourceRoot(m_resourceRoot, rootPath());
+    }
+    auto title = QFileInfo(rootPath()).fileName();
+    if (title.isEmpty()) title = path.isEmpty() ? QStringLiteral("我的文档") : QDir::toNativeSeparators(rootPath());
+    m_rootLabel->setText(title); m_rootLabel->setAccessibleName(title + QStringLiteral("，选择工作区"));
+    m_rootLabel->setToolTip(path); setWindowTitle(path.isEmpty() ? QStringLiteral("xdnote") : title + QStringLiteral(" — xdnote"));
+}
 void WorkspaceWindow::showNotice(const QString &message) { m_warning->setProperty("noticeSource", QVariant()); m_warning->setText(message); m_warning->setVisible(!message.isEmpty()); }
 int WorkspaceWindow::indexOf(const QUuid &id) const { for (int i = 0; i < m_tabs->count(); ++i) if (tabId(m_tabs, i) == id) return i; return -1; }
 SingleFileWindow *WorkspaceWindow::activePane() const { return m_panes.value(tabId(m_tabs, m_tabs->currentIndex())); }
 QList<SingleFileWindow *> WorkspaceWindow::panes() const { QList<SingleFileWindow *> result; for (int i = 0; i < m_tabs->count(); ++i) if (auto *pane = m_panes.value(tabId(m_tabs, i)).data()) result.append(pane); return result; }
 bool WorkspaceWindow::addPane(SingleFileWindow *pane) {
     if (!pane || m_closingAll || m_panes.contains(pane->paneId()) || !pane->embedIn(m_pages)) return false;
-    const auto id = pane->paneId(); pane->setWorkspaceRoot(rootPath()); m_panes.insert(id, pane); m_pages->addWidget(pane); auto *footer = pane->footer(); m_footers->addWidget(footer); footer->setStyleSheet(pane->styleSheet());
+    pane->setWorkspaceRoot(rootPath());
+    pane->setWorkspaceResourceRoot(m_resourceRoot, rootPath());
+    const auto id = pane->paneId(); m_panes.insert(id, pane); m_pages->addWidget(pane); auto *footer = pane->footer(); m_footers->addWidget(footer); footer->setStyleSheet(pane->styleSheet());
     if (auto *menu = pane->findChild<QMenu *>("documentMenu")) { auto *before = pane->findChild<QAction *>("closeAction"); menu->insertAction(before, m_favoriteAction); }
     const int index = m_tabs->addTab(QString()); m_tabs->setTabData(index, QVariantMap{{"id", id}});
     auto *close = new SharedButton({}, "tabClose", windowAppearance(), m_tabs); close->setSymbol("close"); close->setFixedSize(tabToken("closeHit"), tabToken("closeHit")); close->setAccessibleName(QStringLiteral("关闭文档")); m_tabs->setTabButton(index, QTabBar::RightSide, close); connect(close, &QPushButton::clicked, this, [this, id] { closePane(id); });

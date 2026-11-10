@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "rust": [
+    {
+      "name": "bitflags",
+      "version": "2.13.2",
+      "archiveSha256": "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06",
+      "upstreamLicense": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "licenseFile": "LICENSES/third-party/bitflags.txt",
+      "licenseSha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "archiveSha256": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+      "upstreamLicense": "Unlicense OR MIT",
+      "selectedLicense": "MIT",
+      "licenseFile": "LICENSES/third-party/memchr.txt",
+      "licenseSha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+    },
+    {
+      "name": "pulldown-cmark",
+      "version": "0.13.6",
+      "archiveSha256": "3db2be46835f013dd3f4fa7f5f7402c537787b54ebb6fe2b94bbdd7e2669bb7b",
+      "upstreamLicense": "MIT",
+      "selectedLicense": "MIT",
+      "licenseFile": "LICENSES/third-party/pulldown-cmark.txt",
+      "licenseSha256": "c4f10f55904bdb9f27d3fbf94c354926d6cfe8b982276e556238c258941b243b"
+    },
+    {
+      "name": "pulldown-cmark-escape",
+      "version": "0.11.0",
+      "archiveSha256": "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae",
+      "upstreamLicense": "MIT",
+      "selectedLicense": "MIT",
+      "licenseFile": "LICENSES/third-party/pulldown-cmark-escape.txt",
+      "licenseSha256": "c4f10f55904bdb9f27d3fbf94c354926d6cfe8b982276e556238c258941b243b"
+    },
+    {
+      "name": "unicase",
+      "version": "2.10.0",
+      "archiveSha256": "357cc3acc6a036009fd6c973ed009037c732d60d0b4f6c673e9041497482a28f",
+      "upstreamLicense": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "licenseFile": "LICENSES/third-party/unicase.txt",
+      "licenseSha256": "4f6bd11a0f17fe5b085ace1daaedb7b002a08316850dd9577c246c6a68a68e8c"
+    }
+  ],
+  "scintilla": {
+    "version": "5.6.7",
+    "sourceSha256": "ad31f6e89aefe9c4e2c48f64c720f311e6a43369288e7b109d90b507ca623198",
+    "licenseFile": "LICENSES/third-party/scintilla.txt",
+    "licenseSha256": "ac32743bd464c837e481beae20df65a9207f84d3ff1912f6003000343e9c753d"
+  }
+}

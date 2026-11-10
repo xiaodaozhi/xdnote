@@ -4,6 +4,7 @@
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "MarkdownPreview.h"
+#include "FileService.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
 #include "GuiRuntime.h"
@@ -14,6 +15,12 @@
 #include "WorkspaceNavigation.h"
 #include "file_fixtures.h"
 #include <QApplication>
+#include <QBuffer>
+#include <QClipboard>
+#include <QMimeData>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QEventLoop>
 #include <QTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -55,6 +62,28 @@ bool hasRuleAt(const QImage &image, QPoint logical, const QColor &color) {
     return false;
 }
 void chooseClose(int choice) { QTimer::singleShot(30, qApp, [choice] { for (auto *widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") { if (auto *button = widget->findChild<SharedButton *>(QStringLiteral("choice%1").arg(choice))) button->click(); } }); }
+int loadedImages(MarkdownPreview *preview) {
+    QEventLoop loop; QTimer timeout; timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    auto result = std::make_shared<int>(-1); const QPointer<QEventLoop> guarded(&loop);
+    preview->view()->page()->runJavaScript(QStringLiteral("Array.from(document.images).filter(i => i.naturalWidth > 0).length"), QWebEngineScript::ApplicationWorld,
+        [guarded, result](const QVariant &value) { *result = value.toInt(); if (guarded) guarded->quit(); });
+    timeout.start(10000); loop.exec(); return *result;
+}
+class InitializationWarning final : public QObject {
+public:
+    bool injected = false;
+protected:
+    bool eventFilter(QObject *target, QEvent *event) override {
+        if (injected || event->type() != QEvent::ChildAdded) return false;
+        auto *widget = qobject_cast<QWidget *>(target);
+        auto *pane = widget ? qobject_cast<SingleFileWindow *>(widget->window()) : nullptr;
+        if (!pane || !pane->document() || pane->preview() || !pane->windowGeometry()) return false;
+        injected = true;
+        pane->windowGeometry()->geometryWarning(QStringLiteral("初始化期间的窗口提示"));
+        return false;
+    }
+};
 }
 class WorkspaceTests final : public QObject {
     Q_OBJECT
@@ -165,6 +194,15 @@ private slots:
         auto *workspace = new WorkspaceWindow(&appearance, &store); workspace->show(); QTRY_VERIFY(workspace->windowGeometry()->initialized()); auto *header = workspace->findChild<QWidget *>("documentHeader"); QVERIFY(hasColorNear(header->grab().toImage(), QPointF(500, 47), appearance.color("border")));
         auto *pane = new SingleFileWindow(&manager, &appearance, &store); QVERIFY(workspace->addPane(pane)); auto *welcome = pane->findChild<SharedButton *>("welcomeWorkspace"); QTRY_VERIFY(welcome->width() >= QFontMetricsF(welcome->font(), welcome).horizontalAdvance(welcome->text()) + 48); QSignalSpy chooseTab(workspace, &WorkspaceWindow::chooseFileRequested); auto *addTab = workspace->findChild<SharedButton *>("workspaceAddTab"); QTest::mouseClick(addTab, Qt::LeftButton); QCOMPARE(chooseTab.size(), 1); QTest::keyClick(addTab, Qt::Key_Tab); QVERIFY(InputModality::forApplication()->keyboardNavigation()); QPointer<WindowGeometry> second = workspace->windowGeometry(); QPointer<SingleFileWindow> child = pane; delete workspace; QVERIFY(second.isNull()); QVERIFY(child.isNull()); QVERIFY(store.placement("main"));
     }
+    void documentInitializationToleratesSynchronousWindowWarning() {
+        QTemporaryDir dir; const auto path = dir.filePath("reentrant.md"); QVERIFY(fileFixtures::write(path, "hello"));
+        FileApplication desktop; InitializationWarning warning; qApp->installEventFilter(&warning);
+        desktop.open(path); auto *pane = waitStandalone(path);
+        qApp->removeEventFilter(&warning);
+        QVERIFY(pane); QVERIFY(warning.injected); QVERIFY(pane->preview()); QVERIFY(pane->editor());
+        QCOMPARE(pane->document()->session()->snapshot().utf8, QByteArray("hello"));
+        pane->setEditing(true); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Source);
+    }
     void unreadableDirectoryRecoversAfterPermissionRestored() {
         QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "retained"));
 #ifdef Q_OS_WIN
@@ -211,6 +249,175 @@ private slots:
         QVERIFY(desktop.transferToWorkspace(pane)); QVERIFY(pane->embedded()); auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window()); QVERIFY(workspace); QVERIFY(workspace->rootPath().isEmpty()); QCOMPARE(workspace->tree()->state(), WorkspaceTree::State::Unselected);
         QCOMPARE(pane->editor(), editor); QCOMPARE(pane->document()->session(), session); QCOMPARE(session->documentId(), id); QCOMPARE(editor->send(SCI_GETANCHOR), sptr_t(3)); QCOMPARE(editor->send(SCI_GETCURRENTPOS), sptr_t(9)); QCOMPARE(editor->send(SCI_GETFIRSTVISIBLELINE), line);
         QCOMPARE(session->snapshot().utf8, QByteArray("dirty\n") + original); QCOMPARE(disk(path), original); QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, original); QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
+    }
+    void imageAccessFollowsStandaloneAndWorkspaceAuthorization() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined resource reads are not available on this platform");
+#else
+        QTemporaryDir dir, replacement; QVERIFY(dir.isValid() && replacement.isValid());
+        QVERIFY(QDir().mkpath(dir.filePath("docs"))); QVERIFY(QDir().mkpath(dir.filePath("assets")));
+        const auto path = dir.filePath("docs/doc.md");
+        const auto source = QByteArray("![local](local.png) ![shared](../assets/shared.png)");
+        QVERIFY(fileFixtures::write(path, source));
+        QImage image(3, 2, QImage::Format_ARGB32); image.fill(Qt::red);
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG"));
+        QVERIFY(fileFixtures::write(dir.filePath("docs/local.png"), png)); QVERIFY(fileFixtures::write(dir.filePath("assets/shared.png"), png));
+        FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
+        QSignalSpy ready(pane->preview(), &MarkdownPreview::previewReady); pane->preview()->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 1, 10000);
+        auto *workspace = desktop.workspaceWindow(dir.path()); ready.clear();
+        QVERIFY(desktop.transferToWorkspace(pane, workspace));
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 2, 10000);
+        ready.clear(); workspace->setRootPath(replacement.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QTRY_COMPARE_WITH_TIMEOUT(loadedImages(pane->preview()), 0, 10000);
+        QCOMPARE(disk(path), source);
+#endif
+    }
+    void imageImportPreservesBytesUsesRelativeLinkAndUndo() {
+#ifndef Q_OS_WIN
+        QSKIP("Safe image publication is currently implemented on Windows");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        QVERIFY(QDir().mkpath(dir.filePath("notes")));
+        const auto documentPath = dir.filePath("notes/doc.md"), imagePath = outside.filePath(QStringLiteral("图 #%.png"));
+        const QByteArray original = QStringLiteral("前选择后").toUtf8(); QVERIFY(fileFixtures::write(documentPath, original));
+        QImage image(3, 2, QImage::Format_ARGB32); image.fill(Qt::blue); image.setText("description", "source metadata");
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG"));
+        QVERIFY(fileFixtures::write(imagePath, png));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true);
+        auto *session = pane->document()->session(); auto *editor = pane->editor();
+        const auto start = QStringLiteral("前").toUtf8().size(), end = QStringLiteral("前选择").toUtf8().size();
+        editor->send(SCI_SETSEL, uptr_t(start), sptr_t(end)); QSignalSpy finished(pane, &SingleFileWindow::imageImportFinished);
+        pane->importImageFile(imagePath); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        const auto asset = dir.filePath(QStringLiteral("assets/images/图 #%.png")); QCOMPARE(disk(asset), png); QCOMPARE(disk(imagePath), png);
+        QCOMPARE(session->snapshot().utf8, QStringLiteral("前![图片](../assets/images/%E5%9B%BE%20%23%25.png)后").toUtf8());
+        QCOMPARE(disk(documentPath), original); QVERIFY(session->isDirty());
+        QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, original); QCOMPARE(disk(asset), png);
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->importClipboardImage(image);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QVERIFY(session->snapshot().utf8.startsWith("!["));
+        QCOMPARE(QDir(dir.filePath("assets/images")).entryList(QDir::Files).size(), 2);
+#endif
+    }
+    void workspaceDocumentLinksUseVerifiedRelativePathsAndUndo() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined workspace resources are not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("notes"))); QVERIFY(QDir().mkpath(dir.filePath("docs")));
+        const auto documentPath = dir.filePath("notes/doc.md"), targetPath = dir.filePath(QStringLiteral("docs/目标 #%.md"));
+        const auto original = QStringLiteral("前选[择]后").toUtf8(); QVERIFY(fileFixtures::write(documentPath, original)); QVERIFY(fileFixtures::write(targetPath, "# target"));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true); auto *editor = pane->editor(); auto *session = pane->document()->session();
+        const auto start = QStringLiteral("前").toUtf8().size(), end = QStringLiteral("前选[择]").toUtf8().size();
+        editor->send(SCI_SETSEL, uptr_t(start), sptr_t(end)); QSignalSpy finished(pane, &SingleFileWindow::workspaceLinkFinished);
+        pane->insertWorkspaceDocumentLink(targetPath); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QCOMPARE(session->snapshot().utf8, QStringLiteral("前[选\\[择\\]](../docs/%E7%9B%AE%E6%A0%87%20%23%25.md)后").toUtf8());
+        QVERIFY(session->isDirty()); QCOMPARE(disk(documentPath), original); QCOMPARE(disk(targetPath), QByteArray("# target"));
+        QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, original);
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QVERIFY(session->snapshot().utf8.startsWith(QStringLiteral("[目标 #%.md](../docs/").toUtf8()));
+        const auto bom = QByteArray::fromHex("efbbbf");
+        QVERIFY(fileFixtures::write(targetPath, bom + QByteArray(FileService::SourceLimit, 'x')));
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        const auto beforeTooLarge = session->snapshot().utf8;
+        QVERIFY(fileFixtures::write(targetPath, bom + QByteArray(FileService::SourceLimit + 1, 'x')));
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QCOMPARE(session->snapshot().utf8, beforeTooLarge);
+#endif
+    }
+    void workspaceDocumentLinkRejectsOutsideAndStaleTargets() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined workspace resources are not available on this platform");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        const auto documentPath = dir.filePath("doc.md"), targetPath = dir.filePath("target.md"), outsidePath = outside.filePath("outside.md");
+        QVERIFY(fileFixtures::write(documentPath, "source")); QVERIFY(fileFixtures::write(targetPath, "target")); QVERIFY(fileFixtures::write(outsidePath, "outside"));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true); auto *editor = pane->editor(); auto *session = pane->document()->session();
+        QSignalSpy finished(pane, &SingleFileWindow::workspaceLinkFinished);
+        pane->insertWorkspaceDocumentLink(outsidePath); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QCOMPARE(session->snapshot().utf8, QByteArray("source")); QCOMPARE(disk(outsidePath), QByteArray("outside"));
+        const auto invalidPath = dir.filePath("invalid.md"); QVERIFY(fileFixtures::write(invalidPath, QByteArray::fromHex("fffe")));
+        finished.clear(); pane->insertWorkspaceDocumentLink(invalidPath); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000);
+        QVERIFY(!finished.first().first().toBool()); QVERIFY(finished.first().at(1).toString().contains("UTF-8"));
+        QCOMPARE(session->snapshot().utf8, QByteArray("source"));
+#ifdef Q_OS_WIN
+        fileFixtures::Junction junction; QVERIFY(junction.create(dir.filePath("linked"), outside.path()));
+#else
+        QVERIFY(::symlink(outside.path().toUtf8().constData(), dir.filePath("linked").toUtf8().constData()) == 0);
+#endif
+        finished.clear(); pane->insertWorkspaceDocumentLink(dir.filePath("linked/outside.md")); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000);
+        QVERIFY(!finished.first().first().toBool()); QCOMPARE(session->snapshot().utf8, QByteArray("source"));
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath); editor->send(SCI_SETSEL, 1, 1);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool()); QCOMPARE(session->snapshot().utf8, QByteArray("source"));
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QCOMPARE(session->replace(0, 0, "changed ", session->revision()), EditResult::Applied);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool()); QCOMPARE(session->snapshot().utf8, QByteArray("changed source"));
+        QCOMPARE(disk(documentPath), QByteArray("source")); QCOMPARE(disk(targetPath), QByteArray("target"));
+        const auto maximum = QString(FileService::SourceLimit, QLatin1Char('x'));
+        QCOMPARE(session->replace(0, 14, maximum, session->revision()), EditResult::Applied);
+        finished.clear(); editor->send(SCI_SETSEL, 0, 0); pane->insertWorkspaceDocumentLink(targetPath);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QVERIFY(finished.first().at(1).toString().contains(QStringLiteral("超过")));
+        QCOMPARE(session->snapshot().utf8.size(), FileService::SourceLimit);
+        QCOMPARE(disk(documentPath), QByteArray("source"));
+#endif
+    }
+    void imageImportDoesNotInsertIntoAChangedSession() {
+#ifndef Q_OS_WIN
+        QSKIP("Safe image publication is currently implemented on Windows");
+#else
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        const auto documentPath = dir.filePath("doc.md"), imagePath = outside.filePath("late.png");
+        QVERIFY(fileFixtures::write(documentPath, "old")); QImage image(2, 2, QImage::Format_ARGB32); image.fill(Qt::red);
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG")); QVERIFY(fileFixtures::write(imagePath, png));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true); auto *session = pane->document()->session();
+        QSignalSpy finished(pane, &SingleFileWindow::imageImportFinished); QSignalSpy cancelled(pane, &SingleFileWindow::closeCancelled);
+        pane->importImageFile(imagePath); pane->close(); QCOMPARE(cancelled.size(), 1); QVERIFY(pane->document());
+        QCOMPARE(session->replace(0, 0, "changed ", session->revision()), EditResult::Applied);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QCOMPARE(session->snapshot().utf8, QByteArray("changed old")); QCOMPARE(disk(dir.filePath("assets/images/late.png")), png);
+        QVERIFY(finished.first().at(1).toString().contains("late.png")); QCOMPARE(disk(documentPath), QByteArray("old"));
+        finished.clear(); pane->editor()->send(SCI_SETSEL, 0, 0); pane->importImageFile(imagePath);
+        pane->editor()->send(SCI_SETSEL, 1, 1);
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY(!finished.first().first().toBool());
+        QCOMPARE(session->snapshot().utf8, QByteArray("changed old")); QVERIFY(finished.first().at(1).toString().contains("late.png"));
+#endif
+    }
+    void imageDropAndClipboardUseTheImportService() {
+#ifndef Q_OS_WIN
+        QSKIP("Safe image publication is currently implemented on Windows");
+#else
+        // Avoid replacing the user's real clipboard during local native runs.
+        if (!qEnvironmentVariableIsSet("CI") && QGuiApplication::platformName() != "offscreen") QSKIP("Clipboard fixture requires CI or the offscreen platform");
+        QTemporaryDir dir, outside; QVERIFY(dir.isValid() && outside.isValid());
+        const auto documentPath = dir.filePath("doc.md"), imagePath = outside.filePath("dropped.png");
+        QVERIFY(fileFixtures::write(documentPath, "")); QImage image(3, 2, QImage::Format_ARGB32); image.fill(Qt::green);
+        QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(image.save(&buffer, "PNG")); QVERIFY(fileFixtures::write(imagePath, png));
+        FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(documentPath, workspace);
+        auto *pane = waitPane(workspace, documentPath); QVERIFY(pane); pane->setEditing(true); auto *editor = pane->editor(); auto *session = pane->document()->session();
+        QSignalSpy finished(pane, &SingleFileWindow::imageImportFinished);
+        QMimeData dropMime; dropMime.setUrls({QUrl::fromLocalFile(imagePath)});
+        QDragEnterEvent enter(QPoint(4, 4), Qt::CopyAction, &dropMime, Qt::LeftButton, Qt::NoModifier); QApplication::sendEvent(editor, &enter); QVERIFY(enter.isAccepted());
+        QDropEvent drop(QPointF(4, 4), Qt::CopyAction, &dropMime, Qt::LeftButton, Qt::NoModifier); QApplication::sendEvent(editor, &drop); QVERIFY(drop.isAccepted());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000); QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QCOMPARE(disk(dir.filePath("assets/images/dropped.png")), png); QCOMPARE(session->undo(), EditResult::Applied);
+        auto *textAndImage = new QMimeData; textAndImage->setText(QStringLiteral("https://example.invalid/image.png")); textAndImage->setImageData(image);
+        QApplication::clipboard()->setMimeData(textAndImage); finished.clear(); QTest::keySequence(editor, QKeySequence::Paste);
+        QTRY_COMPARE(session->snapshot().utf8, QByteArray("https://example.invalid/image.png")); QVERIFY(finished.isEmpty());
+        QCOMPARE(session->undo(), EditResult::Applied);
+        auto *bitmap = new QMimeData; bitmap->setImageData(image); QApplication::clipboard()->setMimeData(bitmap);
+        QTest::keySequence(editor, QKeySequence::Paste); QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 15000);
+        QVERIFY2(finished.first().first().toBool(), qPrintable(finished.first().at(1).toString()));
+        QVERIFY(session->snapshot().utf8.startsWith("![")); QCOMPARE(QDir(dir.filePath("assets/images")).entryList(QDir::Files).size(), 2);
+#endif
     }
     void saveShortcutFromTabAndFooterTargetsOnlyActiveDocument() {
         QTemporaryDir dir; const auto first = dir.filePath("active.md"), second = dir.filePath("inactive.md"); QVERIFY(fileFixtures::write(first, "one")); QVERIFY(fileFixtures::write(second, "two")); FileApplication desktop; auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(first, workspace); auto *one = waitPane(workspace, first); QVERIFY(one); desktop.openInWorkspace(second, workspace); auto *two = waitPane(workspace, second); QVERIFY(two);

@@ -2,7 +2,7 @@
 
 一款面向 Windows、macOS 和 Linux 的 Markdown 阅读与编辑桌面应用，让打开、阅读和修改本地文档保持简单。
 
-**当前阶段：工作区基础、单文件功能原型与组件准入。** `xdnote` 已接入真实本地 Markdown 文件的打开、阅读／编辑切换、保存、另存为、外部冲突和未保存关闭确认；同一文件跨入口共用会话。独立窗口支持跟随系统／浅色／深色与六种强调色，在文档操作菜单中选择并持久化，源文和阅读使用同一主题。首轮只接收不超过 2 MiB 的严格 UTF-8 普通文件；硬链接文件采用另存为保护。构建与运行见[开发构建](docs/engineering/developer-build.md)。工作区基础原型已接入显式目录、多标签、原会话接管和编辑／阅读／双栏，详见[工作区基础](docs/engineering/workspace-foundation.md)；完整设置窗口、图片与链接管理、系统文件关联安装和发行包尚未完成，下文产品方向不代表全部已经实现。
+**当前阶段：工作区基础、单文件功能原型与组件准入。** `xdnote` 已接入真实本地 Markdown 文件的打开、阅读／编辑切换、保存、另存为、外部冲突和未保存关闭确认；同一文件跨入口共用会话。独立窗口支持跟随系统／浅色／深色与六种强调色，在文档操作菜单中选择并持久化，源文和阅读使用同一主题。首轮只接收不超过 2 MiB 的严格 UTF-8 普通文件；硬链接文件采用另存为保护。构建与运行见[开发构建](docs/engineering/developer-build.md)。工作区基础原型已接入显式目录、多标签、原会话接管和编辑／阅读／双栏，详见[工作区基础](docs/engineering/workspace-foundation.md)。Windows 和 Linux 已接入[受限本地图片预览与工作区文档链接插入](docs/engineering/workspace-resource-foundation.md)，Windows 工作区已接入图片导入；Linux／macOS 图片写入、macOS 图片读取和链接激活仍待完成。完整设置窗口、系统文件关联安装和发行包尚未完成，下文产品方向不代表全部已经实现。
 
 ![xdnote 主要界面设计参考](design/hifi/v2/featured.png)
 
@@ -80,4 +80,4 @@ xdnote/
 
 ## 许可范围
 
-本仓库的自有软件代码（包括工具脚本和技术试验代码）采用 [Apache-2.0](LICENSE)；自有文档与原创设计素材采用 [CC BY 4.0](LICENSES/CC-BY-4.0.txt)。设计内容即使嵌入代码，仍按设计许可处理；第三方内容按其自身条款处理。适用范围、署名及品牌权利边界见[许可范围与依赖](docs/engineering/licensing.md)。
+本仓库的自有软件代码（包括工具脚本和技术试验代码）采用 [Apache-2.0](LICENSE)；自有文档与原创设计素材采用 [CC BY 4.0](LICENSES/CC-BY-4.0.txt)。设计内容即使嵌入代码，仍按设计许可处理；第三方内容按其自身条款处理。适用范围、署名及品牌权利边界见[许可范围与依赖](docs/engineering/licensing.md)，已核对的依赖与上游许可文本见[第三方许可记录](THIRD_PARTY_NOTICES.md)。

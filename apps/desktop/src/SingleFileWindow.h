@@ -1,6 +1,7 @@
 #pragma once
 #include "FileManager.h"
 #include "WindowChrome.h"
+#include <QImage>
 
 class QLabel;
 class QStackedWidget;
@@ -23,6 +24,7 @@ class WindowGeometryStore;
 class SharedSpinner;
 class DocumentBreadcrumb;
 class DocumentBody;
+class WorkspaceResourceReader;
 class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -47,6 +49,7 @@ public:
     void setLoading(const QString &path, const QUuid &intent);
     void showOpenError(const QString &path, const QString &message);
     void setDocument(FileDocument *document);
+    void setWorkspaceResourceRoot(std::shared_ptr<WorkspaceResourceReader> root, const QString &path);
     bool editing() const { return m_editing; }
     void finishOpen() { m_intent = {}; }
     void setEditing(bool editing);
@@ -55,6 +58,9 @@ public:
     Appearance *appearance() const { return m_appearance; }
     void setContentZoom(int percent);
     int contentZoom() const { return m_zoom; }
+    void importImageFile(const QString &path);
+    void importClipboardImage(const QImage &image);
+    void insertWorkspaceDocumentLink(const QString &targetPath);
 signals:
     void openRequested(QString path);
     void cancelOpenRequested(QUuid intent);
@@ -67,6 +73,8 @@ signals:
     void openDirectoryRequested();
     void sidebarRequested();
     void viewStateChanged();
+    void imageImportFinished(bool inserted, QString message);
+    void workspaceLinkFinished(bool inserted, QString message);
 protected:
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *target, QEvent *event) override;
@@ -78,11 +86,17 @@ private:
     void applyAppearance();
     void updateCaret();
     void showSaveError();
+    void syncPreviewResources();
+    void beginImageImport(const QString &path, const QImage &image);
+    void chooseImage();
+    void chooseWorkspaceDocumentLink();
     FileManager *m_manager;
     const QUuid m_paneId = QUuid::createUuid();
     Appearance *m_appearance;
     WindowGeometry *m_geometry = nullptr;
     QPointer<FileDocument> m_document;
+    std::shared_ptr<WorkspaceResourceReader> m_workspaceResourceRoot, m_localResourceRoot;
+    QString m_workspaceResourcePath, m_localResourcePath;
     QUuid m_intent;
     WindowTitleBar *m_header;
     ElidedLabel *m_path;
@@ -123,6 +137,8 @@ private:
     QAction *m_undoAction;
     QAction *m_redoAction;
     QAction *m_reloadAction;
+    QAction *m_imageImportAction;
+    QAction *m_linkInsertAction;
     SourceEditor *m_editor = nullptr;
     MarkdownPreview *m_preview = nullptr;
     bool m_editing = false, m_prompting = false, m_closeAfterOperation = false;
@@ -131,6 +147,9 @@ private:
     QString m_appearanceError, m_geometryError, m_dismissedNotice, m_openPath, m_openError;
     int m_zoom = 100;
     bool m_observedSave = false;
+    bool m_documentUiReady = false;
+    bool m_imageImportPending = false;
+    bool m_linkInsertPending = false;
     bool m_embedded = false;
     ViewMode m_mode = ViewMode::Reading;
 };

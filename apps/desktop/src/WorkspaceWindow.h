@@ -4,6 +4,7 @@
 #include <QPointer>
 #include <QUuid>
 #include <QTimer>
+#include <memory>
 
 class QTabBar;
 class QStackedWidget;
@@ -19,6 +20,7 @@ class ElidedLabel;
 class SharedButton;
 class NavigationStore;
 class WorkspaceNavigation;
+class WorkspaceResourceReader;
 class WorkspaceWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -57,6 +59,7 @@ private:
     void startSearch();
     int indexOf(const QUuid &id) const;
     QHash<QUuid, QPointer<SingleFileWindow>> m_panes;
+    std::shared_ptr<WorkspaceResourceReader> m_resourceRoot;
     WindowTitleBar *m_header;
     QTabBar *m_tabs;
     QWidget *m_sidebar = nullptr;

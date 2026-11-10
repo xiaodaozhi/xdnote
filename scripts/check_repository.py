@@ -2,6 +2,7 @@
 from pathlib import Path
 import subprocess
 import sys
+from check_third_party_licenses import audit
 
 ROOT = Path(__file__).resolve().parents[1]
 result = subprocess.run(
@@ -17,6 +18,7 @@ for name in paths:
         errors.append(f"Design delivery archive is tracked: {name}")
     if Path(name).name == ".env" or Path(name).name.startswith(".env.") and Path(name).name != ".env.example":
         errors.append(f"Local environment file is tracked: {name}")
+errors.extend(audit(ROOT))
 for message in errors:
     print(message, file=sys.stderr)
 print(f"Repository hygiene: {len(paths)} tracked paths, {len(errors)} errors")

@@ -1,4 +1,6 @@
 #include "MarkdownPreview.h"
+#include "MarkdownBridge.h"
+#include "WorkspaceImagePreview.h"
 #include "DocumentSession.h"
 #include "VisualTokens.h"
 #include "Appearance.h"
@@ -27,12 +29,6 @@
 #include <cmath>
 #include <limits>
 
-extern "C" {
-struct XdnoteRenderBuffer { unsigned char *data; std::size_t length; std::uint32_t status; };
-XdnoteRenderBuffer xdnote_markdown_render(const unsigned char *data, std::size_t length);
-void xdnote_markdown_free(XdnoteRenderBuffer *buffer);
-}
-
 namespace xdnote {
 namespace {
 bool currentRevision(DocumentSession *session, quint64 revision) {
@@ -46,31 +42,41 @@ class BlockResourceRequests final : public QWebEngineUrlRequestInterceptor {
 public:
     using QWebEngineUrlRequestInterceptor::QWebEngineUrlRequestInterceptor;
     void interceptRequest(QWebEngineUrlRequestInfo &request) override {
-        // Only the generated main document may use the private scheme. No file, network,
-        // subframe, image, font, stylesheet or other document-controlled request.
+        // Only generated documents and in-memory image tokens may use the
+        // private scheme. The handler independently matches exact image URLs.
         const bool bootstrap = request.resourceType() == QWebEngineUrlRequestInfo::ResourceTypeMainFrame
             && (request.requestUrl().scheme() == QStringLiteral("xdnote-preview")
                 || request.requestUrl() == QUrl(QStringLiteral("about:blank")));
-        request.block(!bootstrap);
+        const bool image = request.resourceType() == QWebEngineUrlRequestInfo::ResourceTypeImage
+            && request.requestUrl().scheme() == QStringLiteral("xdnote-preview");
+        request.block(!bootstrap && !image);
     }
 };
 
 class MemoryPage final : public QWebEngineUrlSchemeHandler {
 public:
     using QWebEngineUrlSchemeHandler::QWebEngineUrlSchemeHandler;
-    void setPage(const QUrl &url, QByteArray html) { m_url = url; m_html = std::move(html); }
+    void setPage(const QUrl &url, QByteArray html, QHash<QUrl, QByteArray> images) {
+        m_url = url; m_html = std::move(html); m_images = std::move(images);
+    }
+    void clearImages() { m_images.clear(); }
     void requestStarted(QWebEngineUrlRequestJob *request) override {
         // Runs on the owning GUI thread. No path is ever resolved on disk.
-        if (request->requestMethod() != "GET" || m_url.isEmpty() || request->requestUrl() != m_url) {
+        if (request->requestMethod() != "GET" || m_url.isEmpty()) {
             request->fail(QWebEngineUrlRequestJob::RequestDenied); return;
         }
         auto *buffer = new QBuffer(request);
-        buffer->setData(m_html); buffer->open(QIODevice::ReadOnly);
-        request->reply("text/html", buffer);
+        if (request->requestUrl() == m_url) {
+            buffer->setData(m_html); buffer->open(QIODevice::ReadOnly); request->reply("text/html", buffer); return;
+        }
+        const auto image = m_images.constFind(request->requestUrl());
+        if (image == m_images.cend()) { delete buffer; request->fail(QWebEngineUrlRequestJob::RequestDenied); return; }
+        buffer->setData(*image); buffer->open(QIODevice::ReadOnly); request->reply("image/png", buffer);
     }
 private:
     QUrl m_url;
     QByteArray m_html;
+    QHash<QUrl, QByteArray> m_images;
 };
 
 class RestrictedPage final : public QWebEnginePage {
@@ -89,9 +95,13 @@ public:
         scripts().insert(controls);
     }
     std::function<void(quint64, int)> copyRequested;
-    void present(const QString &html, quint64 generation) {
+    QString imagePrefix(quint64 generation) const { return QStringLiteral("xdnote-preview:/%1/%2/images/").arg(m_id).arg(generation); }
+    void clearImages() { m_memory->clearImages(); }
+    void present(const QString &html, quint64 generation, const QHash<int, QByteArray> &images) {
         m_expectedBase = QUrl(QStringLiteral("xdnote-preview:/%1/%2").arg(m_id).arg(generation));
-        m_memory->setPage(m_expectedBase, html.toUtf8());
+        QHash<QUrl, QByteArray> resources;
+        for (auto it = images.cbegin(); it != images.cend(); ++it) resources.insert(QUrl(imagePrefix(generation) + QString::number(it.key())), it.value());
+        m_memory->setPage(m_expectedBase, html.toUtf8(), std::move(resources));
         load(m_expectedBase);
     }
     QUrl expectedBase() const { return m_expectedBase; }
@@ -115,13 +125,19 @@ private:
     QUrl m_expectedBase;
 };
 
-RenderResult renderSnapshot(QByteArray source, quint64 generation, quint64 revision) {
+RenderResult renderSnapshot(QByteArray source, QUuid documentId, quint64 generation, quint64 revision,
+    const std::shared_ptr<WorkspaceResourceReader> &root, const QString &documentPath,
+    const QString &documentIdentity, const QByteArray &prefix) {
+    const auto prepared = preparePreviewImages({EditResult::Applied, source, revision, documentId}, root, documentPath, documentIdentity);
     const auto pointer = reinterpret_cast<const unsigned char *>(source.constData());
-    auto buffer = xdnote_markdown_render(pointer, std::size_t(source.size()));
+    auto buffer = prepared.analyzed
+        ? xdnote_markdown_render_images(pointer, std::size_t(source.size()), reinterpret_cast<const unsigned char *>(prefix.constData()), std::size_t(prefix.size()),
+              reinterpret_cast<const unsigned char *>(prepared.states.constData()), std::size_t(prepared.states.size()))
+        : xdnote_markdown_render(pointer, std::size_t(source.size()));
     const auto release = qScopeGuard([&] { xdnote_markdown_free(&buffer); });
     if (buffer.status != 0 || !buffer.data || buffer.length > 8 * 1024 * 1024)
-        return {{}, QStringLiteral("预览失败：无效源文或生成内容过大"), generation, revision};
-    return {QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), {}, generation, revision};
+        return {{}, {}, QStringLiteral("预览失败：无效源文或生成内容过大"), generation, revision};
+    return {QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), prepared.png, {}, generation, revision};
 }
 
 QString pageFor(const QByteArray &body, quint64 generation, int padding, Appearance *appearance) {
@@ -134,12 +150,12 @@ QString pageFor(const QByteArray &body, quint64 generation, int padding, Appeara
         "<!doctype html><html><head><meta charset=\"utf-8\">"
         "<meta name=\"xdnote-generation\" content=\"%1\">"
         "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'none'; "
-        "style-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; object-src 'none'; "
+        "style-src 'unsafe-inline'; img-src xdnote-preview:; connect-src 'none'; object-src 'none'; "
         "frame-src 'none'; form-action 'none'; base-uri 'none'\">"
         "<style>:root{color-scheme:%14}body{margin:%10px auto;padding:0 %10px;max-width:%2px;font:%3px/%4 system-ui,sans-serif;"
         "color:%5;background:%6;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:%7;padding:16px}"
         "code{font-family:monospace}table{border-collapse:collapse}td,th{border:1px solid %8;padding:6px 12px}"
-        ".link-placeholder{color:%9;text-decoration:underline}.image-placeholder{color:%9}"
+        ".link-placeholder{color:%9;text-decoration:underline}.image-placeholder{color:%9}img{max-width:100%;height:auto}"
         "h1{font-size:%11px}h2{font-size:%12px}h3{font-size:%13px}h1,h2,h3{line-height:1.4;margin:1.2em 0 .65em}"
         "body>:first-child{margin-top:0}pre{border:1px solid %8;border-radius:6px}"
         "input[type=checkbox]{accent-color:%15;pointer-events:none}::selection{background:%16;color:%17}"
@@ -204,20 +220,21 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     connect(m_appearance, &Appearance::changed, this, [this, page] { page->setBackgroundColor(m_appearance->color("background")); refresh(); });
     connect(page, &QWebEnginePage::scrollPositionChanged, this, [this](const QPointF &position) { if (!m_restoring) m_scroll = position; });
     auto *settings = page->settings();
-    for (auto option : {QWebEngineSettings::JavascriptEnabled, QWebEngineSettings::AutoLoadImages,
+    for (auto option : {QWebEngineSettings::JavascriptEnabled,
                        QWebEngineSettings::LocalStorageEnabled, QWebEngineSettings::PluginsEnabled,
                        QWebEngineSettings::LocalContentCanAccessFileUrls,
                        QWebEngineSettings::LocalContentCanAccessRemoteUrls,
                        QWebEngineSettings::JavascriptCanAccessClipboard, QWebEngineSettings::WebGLEnabled})
         settings->setAttribute(option, false);
+    settings->setAttribute(QWebEngineSettings::AutoLoadImages, true);
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_view);
     connect(session, &DocumentSession::changed, this, &MarkdownPreview::refresh, Qt::QueuedConnection);
-    connect(session, &DocumentSession::closed, this, [this] {
-        m_closed = true; ++m_generation; m_hasPending = false; m_view->stop();
+    connect(session, &DocumentSession::closed, this, [this, page] {
+        m_closed = true; ++m_generation; m_hasPending = false; m_view->stop(); page->clearImages();
     });
-    connect(session, &QObject::destroyed, this, [this] { m_closed = true; ++m_generation; m_hasPending = false; });
+    connect(session, &QObject::destroyed, this, [this, page] { m_closed = true; ++m_generation; m_hasPending = false; page->clearImages(); });
     connect(&m_worker, &QFutureWatcher<RenderResult>::finished, this, [this, page] {
         const auto result = m_worker.result();
         m_running = false;
@@ -227,7 +244,7 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
                 m_presentingGeneration = result.generation;
                 m_presentingRevision = result.revision;
                 m_restoring = true;
-                page->present(pageFor(result.html, result.generation, m_padding, m_appearance), result.generation);
+                page->present(pageFor(result.html, result.generation, m_padding, m_appearance), result.generation, result.images);
             }
         }
         startPending();
@@ -289,10 +306,23 @@ void MarkdownPreview::refresh() {
     }
     if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
     ++m_generation;
+    // A new source revision invalidates any image tokens still owned by the
+    // previous render, even before the replacement worker finishes.
+    static_cast<RestrictedPage *>(m_view->page())->clearImages();
     m_pending = snapshot.utf8;
+    m_pendingDocumentId = snapshot.documentId;
     m_pendingRevision = snapshot.revision;
     m_hasPending = true;
     startPending();
+}
+
+void MarkdownPreview::setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &documentPath, const QString &documentIdentity) {
+    if (m_closed || (m_resourceRoot == root && m_resourceDocumentPath == documentPath && m_resourceDocumentIdentity == documentIdentity)) return;
+    m_resourceRoot = std::move(root); m_resourceDocumentPath = documentPath; m_resourceDocumentIdentity = documentIdentity;
+    if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
+    ++m_generation; m_hasPending = false;
+    static_cast<RestrictedPage *>(m_view->page())->clearImages();
+    refresh();
 }
 
 void MarkdownPreview::startPending() {
@@ -302,8 +332,12 @@ void MarkdownPreview::startPending() {
     auto snapshot = std::move(m_pending);
     const auto generation = m_generation;
     const auto revision = m_pendingRevision;
-    m_worker.setFuture(QtConcurrent::run([snapshot = std::move(snapshot), generation, revision] {
-        return renderSnapshot(snapshot, generation, revision);
+    const auto documentId = m_pendingDocumentId;
+    const auto root = m_resourceRoot;
+    const auto documentPath = m_resourceDocumentPath, documentIdentity = m_resourceDocumentIdentity;
+    const auto prefix = static_cast<RestrictedPage *>(m_view->page())->imagePrefix(generation).toUtf8();
+    m_worker.setFuture(QtConcurrent::run([snapshot = std::move(snapshot), documentId, generation, revision, root, documentPath, documentIdentity, prefix] {
+        return renderSnapshot(snapshot, documentId, generation, revision, root, documentPath, documentIdentity, prefix);
     }));
 }
 }
