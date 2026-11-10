@@ -2,6 +2,8 @@
 #include "WorkspaceWindow.h"
 #include "WorkspaceTree.h"
 #include "WorkspaceReferenceController.h"
+#include "ResourceMaintenanceController.h"
+#include "ResourceMaintenance.h"
 #include "MarkdownHeadings.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
@@ -19,6 +21,7 @@
 #include <QtConcurrentRun>
 #include <QAction>
 #include <QBuffer>
+#include <QCryptographicHash>
 #include <QClipboard>
 #include <QMimeData>
 #include <QDragEnterEvent>
@@ -89,6 +92,134 @@ protected:
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void resourceMoveRewritesOnlyParsedTargetsAndRecovers() {
+        QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("old"))); QVERIFY(QDir().mkpath(dir.filePath("nested")));
+        const QByteArray a = "# A\r\n[B](../b.md \"keep title\")\r\n`[B](../b.md)`\r\n";
+        const QByteArray b = "[first][r] and [second][r]\r\n\r\n[r]: <old/a.md#A> \"unchanged\"\r\n\r\n![alt](old/image.png \"image title\")\r\n```md\r\n[x](old/a.md)\r\n```\r\n";
+        QImage image(2, 2, QImage::Format_ARGB32); image.fill(Qt::green); QVERIFY(image.save(dir.filePath("old/image.png"), "PNG"));
+        QVERIFY(fileFixtures::write(dir.filePath("old/a.md"), a)); QVERIFY(fileFixtures::write(dir.filePath("b.md"), QByteArray::fromHex("efbbbf") + b));
+        auto root = WorkspaceResourceReader::open(dir.path()).reader; QVERIFY(root);
+        ReferenceIndexInput input{QUuid::createUuid(), 1, 1, false, {}, {}};
+        const auto preview = prepareResourceMove(root, input, {"old", "nested/moved", {}, true});
+        QVERIFY2(preview.plan.valid(), qPrintable(preview.plan.problem)); QCOMPARE(preview.plan.documents.size(), 2);
+        const auto result = executeResourceMove(root, preview, true);
+        QVERIFY2(result.move.status == WorkspaceMoveStatus::Moved, qPrintable(result.problem));
+        QCOMPARE(result.rows.size(), 2); for (const auto &row : result.rows) QVERIFY2(row.status == ResourceMaintenanceRow::Saved, qPrintable(row.message));
+        QCOMPARE(disk(dir.filePath("nested/moved/a.md")), QByteArray("# A\r\n[B](../../b.md \"keep title\")\r\n`[B](../b.md)`\r\n"));
+        auto expected = b; expected.replace("<old/a.md#A>", "<nested/moved/a.md#A>");
+        expected.replace("(old/image.png", "(nested/moved/image.png");
+        QCOMPARE(disk(dir.filePath("b.md")), QByteArray::fromHex("efbbbf") + expected);
+        QVERIFY(!QFileInfo::exists(dir.filePath("old")));
+        const auto reverse = reverseResourceMove(preview, result, result.movedIdentity);
+        const auto recovered = executeResourceMove(root, reverse, true);
+        QVERIFY2(recovered.move.status == WorkspaceMoveStatus::Moved, qPrintable(recovered.problem));
+        for (const auto &row : recovered.rows) QVERIFY2(row.status == ResourceMaintenanceRow::Saved, qPrintable(row.message));
+        QCOMPARE(disk(dir.filePath("old/a.md")), a); QCOMPARE(disk(dir.filePath("b.md")), QByteArray::fromHex("efbbbf") + b);
+    }
+    void resourceMoveRejectsStaleSourcesCollisionAndHardLinkAlias() {
+        QTemporaryDir dir; QVERIFY(fileFixtures::write(dir.filePath("a.md"), "# a\n")); QVERIFY(fileFixtures::write(dir.filePath("b.md"), "[a](a.md)\n"));
+        auto root = WorkspaceResourceReader::open(dir.path()).reader; QVERIFY(root); ReferenceIndexInput input{QUuid::createUuid(), 1, 1, false, {}, {}};
+        const auto preview = prepareResourceMove(root, input, {"a.md", "new.md", {}, false}); QVERIFY(preview.plan.valid());
+        QVERIFY(fileFixtures::write(dir.filePath("b.md"), "later [a](a.md)\n"));
+        const auto stale = executeResourceMove(root, preview, true); QVERIFY(stale.move.status != WorkspaceMoveStatus::Moved); QVERIFY(!stale.problem.isEmpty());
+        QVERIFY(QFileInfo::exists(dir.filePath("a.md"))); QVERIFY(!QFileInfo::exists(dir.filePath("new.md")));
+        const auto collision = root->moveEntry("a.md", "b.md", root->inspect("a.md").identity, false); QVERIFY(collision.status == WorkspaceMoveStatus::Failed);
+        QCOMPARE(disk(dir.filePath("b.md")), QByteArray("later [a](a.md)\n"));
+        QVERIFY(fileFixtures::hardLink(dir.filePath("a.md"), dir.filePath("alias.md")));
+        QVERIFY(root->moveEntry("a.md", "alias.md", root->inspect("a.md").identity, false).status == WorkspaceMoveStatus::Failed);
+        QVERIFY(root->moveEntry("a.md", "A.md", root->inspect("a.md").identity, false).status == WorkspaceMoveStatus::Moved);
+        QCOMPARE(disk(dir.filePath("alias.md")), QByteArray("# a\n"));
+        root->revoke(); QVERIFY(root->moveEntry("A.md", "another.md", root->inspect("A.md").identity, false).status != WorkspaceMoveStatus::Moved);
+    }
+    void resourceMoveReportsPartialWritesAndPreservesLaterEditsOnRecovery() {
+        QTemporaryDir dir; QVERIFY(fileFixtures::write(dir.filePath("a.md"), "a")); QVERIFY(fileFixtures::write(dir.filePath("b.md"), "[a](a.md)"));
+        QVERIFY(fileFixtures::hardLink(dir.filePath("b.md"), dir.filePath("alias.txt")));
+        auto root = WorkspaceResourceReader::open(dir.path()).reader; QVERIFY(root); ReferenceIndexInput input{QUuid::createUuid(), 1, 1, false, {}, {}};
+        const auto preview = prepareResourceMove(root, input, {"a.md", "new.md", {}, false}); QVERIFY(preview.plan.valid());
+        const auto result = executeResourceMove(root, preview, true); QVERIFY(result.move.status == WorkspaceMoveStatus::Moved);
+        QVERIFY(std::any_of(result.rows.cbegin(), result.rows.cend(), [](const auto &row) { return row.from == "b.md" && row.status == ResourceMaintenanceRow::Failed; })); QCOMPARE(disk(dir.filePath("b.md")), QByteArray("[a](a.md)"));
+        QVERIFY(QFileInfo::exists(dir.filePath("new.md"))); QCOMPARE(disk(dir.filePath("alias.txt")), QByteArray("[a](a.md)"));
+        QVERIFY(QFile::remove(dir.filePath("alias.txt")));
+        const auto next = prepareResourceMove(root, input, {"new.md", "a.md", {}, false}); QVERIFY(next.plan.valid());
+        const auto restored = executeResourceMove(root, next, false); QVERIFY(restored.move.status == WorkspaceMoveStatus::Moved);
+        const auto valid = prepareResourceMove(root, input, {"a.md", "new.md", {}, false}); const auto success = executeResourceMove(root, valid, true);
+        QVERIFY(success.move.status == WorkspaceMoveStatus::Moved); QVERIFY(std::any_of(success.rows.cbegin(), success.rows.cend(), [](const auto &row) { return row.from == "b.md" && row.status == ResourceMaintenanceRow::Saved; }));
+        QVERIFY(fileFixtures::write(dir.filePath("b.md"), "user later content"));
+        const auto reverse = reverseResourceMove(valid, success, success.movedIdentity);
+        const auto blocked = executeResourceMove(root, reverse, true); QVERIFY(blocked.move.status != WorkspaceMoveStatus::Moved);
+        QCOMPARE(disk(dir.filePath("b.md")), QByteArray("user later content")); QVERIFY(QFileInfo::exists(dir.filePath("new.md")));
+    }
+    void resourceMoveKeepsDirtySessionUndoAndUniqueOpen() {
+        QTemporaryDir dir; QVERIFY(fileFixtures::write(dir.filePath("a.md"), "# a\n")); QVERIFY(fileFixtures::write(dir.filePath("b.md"), "[a](a.md)\n"));
+        FileApplication app(nullptr, dir.filePath("settings.ini")); auto *workspace = app.workspaceWindow(dir.path()); app.openInWorkspace(dir.filePath("b.md"), workspace);
+        auto *pane = waitPane(workspace, dir.filePath("b.md")); QVERIFY(pane); pane->setEditing(true);
+        auto *session = pane->document()->session(); auto before = session->snapshot(); QVERIFY(session->replace(0, 0, QStringLiteral("unsaved\n"), before.revision) == EditResult::Applied);
+        before = session->snapshot(); auto *maintenance = workspace->resourceMaintenance(); QSignalSpy ready(maintenance, &ResourceMaintenanceController::previewReady), done(maintenance, &ResourceMaintenanceController::completed);
+        QTRY_VERIFY_WITH_TIMEOUT(!workspace->references()->running(), 20000); QTest::qWait(300);
+        maintenance->prepare("a.md", "new.md"); QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 30000); QVERIFY(maintenance->preview().plan.valid());
+        bool started = false; QTRY_VERIFY2_WITH_TIMEOUT(started || (started = maintenance->apply()), qPrintable(maintenance->result().problem), 10000); QVERIFY(!workspace->close());
+        QCOMPARE(session->replace(0, 0, "bad", before.revision), EditResult::Busy);
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 30000); QCOMPARE(session->snapshot().utf8, QByteArray("unsaved\n[a](new.md)\n"));
+        QVERIFY(session->isDirty()); QCOMPARE(disk(dir.filePath("b.md")), QByteArray("[a](a.md)\n"));
+        app.openInWorkspace(dir.filePath("b.md"), workspace); QTest::qWait(300); QCOMPARE(workspace->panes().size(), 1);
+        QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, before.utf8);
+        QCOMPARE(session->redo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, QByteArray("unsaved\n[a](new.md)\n"));
+        QVERIFY(maintenance->recover()); QTRY_COMPARE_WITH_TIMEOUT(done.size(), 2, 30000); QCOMPARE(session->snapshot().utf8, before.utf8);
+        QVERIFY(session->isDirty()); QVERIFY(QFileInfo::exists(dir.filePath("a.md"))); QVERIFY(!QFileInfo::exists(dir.filePath("new.md")));
+    }
+    void acceptedFileCapabilitySurvivesSourceRootRevocation() {
+        QTemporaryDir dir; const auto path = dir.filePath("doc.md"); QVERIFY(fileFixtures::write(path, "original"));
+        auto root = WorkspaceResourceReader::open(dir.path()).reader; QVERIFY(root); const auto probe = FileService::probeWithin(root, "doc.md"); QVERIFY(probe.file);
+        const auto read = FileService::read({probe.file}); QVERIFY(read.baseline); root->revoke();
+        FileSaveRequest request; request.path = path; request.baseline = read.baseline; request.utf8 = "changed";
+        const auto saved = FileService::save(request); QVERIFY2(saved.status == SaveStatus::Committed, qPrintable(saved.problem.description())); QCOMPARE(disk(path), QByteArray("changed"));
+    }
+    void directoryMoveRebindsLiveDocumentAndRetainsUnsavedBaseline() {
+        QTemporaryDir dir; QVERIFY(QDir().mkpath(dir.filePath("old"))); const auto path = dir.filePath("old/doc.md"); QVERIFY(fileFixtures::write(path, "[root](../root.md)\n")); QVERIFY(fileFixtures::write(dir.filePath("root.md"), "# root\n"));
+        FileApplication app(nullptr, dir.filePath("settings.ini")); auto *workspace = app.workspaceWindow(dir.path()); app.openInWorkspace(path, workspace); auto *pane = waitPane(workspace, path); QVERIFY(pane); pane->setEditing(true);
+        auto *session = pane->document()->session(); auto before = session->snapshot(); QVERIFY(session->replace(0, 0, "dirty\n", before.revision) == EditResult::Applied); before = session->snapshot();
+        auto *maintenance = workspace->resourceMaintenance(); QSignalSpy ready(maintenance, &ResourceMaintenanceController::previewReady), done(maintenance, &ResourceMaintenanceController::completed);
+        maintenance->prepare("old", "renamed"); QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 30000); QVERIFY2(maintenance->preview().plan.valid(), qPrintable(maintenance->preview().plan.problem));
+        bool started = false; QTRY_VERIFY2_WITH_TIMEOUT(started || (started = maintenance->apply()), qPrintable(maintenance->result().problem), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 30000); QVERIFY2(maintenance->result().move.status == WorkspaceMoveStatus::Moved, qPrintable(maintenance->result().problem));
+        QCOMPARE(pane->document()->path(), dir.filePath("renamed/doc.md")); QCOMPARE(session->snapshot().utf8, before.utf8); QVERIFY(session->isDirty());
+        app.openInWorkspace(dir.filePath("renamed/doc.md"), workspace); QTest::qWait(300); QCOMPARE(workspace->panes().size(), 1);
+        QSignalSpy saved(pane->document(), &FileDocument::saveFinished); QVERIFY(pane->document()->save()); QTRY_COMPARE_WITH_TIMEOUT(saved.size(), 1, 20000); QVERIFY(saved.first().first().value<SaveStatus>() == SaveStatus::Committed);
+        QCOMPARE(disk(dir.filePath("renamed/doc.md")), before.utf8); QVERIFY(!session->isDirty());
+    }
+    void externalMoveRepairRequiresConfirmedTargetAndDoesNotGuessSourcePaths() {
+        QTemporaryDir dir; QVERIFY(fileFixtures::write(dir.filePath("target.md"), "# target\n")); QVERIFY(fileFixtures::write(dir.filePath("source.md"), "[a](missing.md#target)"));
+        auto root = WorkspaceResourceReader::open(dir.path()).reader; QVERIFY(root); ReferenceIndexInput input{QUuid::createUuid(), 1, 1, false, {}, {}};
+        const auto rejected = prepareResourceMove(root, input, {"missing.md", "absent.md", {}, false, true}); QVERIFY(!rejected.plan.valid());
+        const auto preview = prepareResourceMove(root, input, {"missing.md", "target.md", {}, false, true}); QVERIFY2(preview.plan.valid(), qPrintable(preview.plan.problem)); QVERIFY(!preview.plan.gaps.isEmpty());
+        const auto result = executeResourceMove(root, preview, true); QVERIFY(result.move.status == WorkspaceMoveStatus::Moved);
+        QCOMPARE(disk(dir.filePath("source.md")), QByteArray("[a](target.md#target)")); QCOMPARE(disk(dir.filePath("target.md")), QByteArray("# target\n")); QVERIFY(!QFileInfo::exists(dir.filePath("missing.md")));
+        const auto reverse = reverseResourceMove(preview, result, result.movedIdentity); const auto restored = executeResourceMove(root, reverse, true);
+        QVERIFY(restored.move.status == WorkspaceMoveStatus::Moved); QCOMPARE(disk(dir.filePath("source.md")), QByteArray("[a](missing.md#target)")); QVERIFY(QFileInfo::exists(dir.filePath("target.md")));
+    }
+    void headingPickerUsesDirtyTargetAndInboundLocationRejectsStaleOffsets() {
+        QTemporaryDir dir; const auto a = dir.filePath("a.md"), b = dir.filePath("b.md");
+        QVERIFY(fileFixtures::write(a, "# a\n")); QVERIFY(fileFixtures::write(b, "# disk\n"));
+        FileApplication app(nullptr, dir.filePath("settings.ini")); auto *workspace = app.workspaceWindow(dir.path()); app.openInWorkspace(a, workspace); auto *source = waitPane(workspace, a); QVERIFY(source);
+        app.openInWorkspace(b, workspace); auto *target = waitPane(workspace, b); QVERIFY(target); auto snapshot = target->document()->session()->snapshot();
+        QVERIFY(target->document()->session()->replace(0, int(QString::fromUtf8(snapshot.utf8).size()), QStringLiteral("# 当前标题\n\n# 当前标题\n"), snapshot.revision) == EditResult::Applied);
+        source->setEditing(true); source->editor()->send(SCI_GOTOPOS, uptr_t(4));
+        QTimer select; select.setInterval(20); connect(&select, &QTimer::timeout, qApp, [&] {
+            for (auto *widget : QApplication::topLevelWidgets()) if (widget->objectName() == "workspaceLinkHeadingMenu") {
+                auto *menu = qobject_cast<QMenu *>(widget); for (auto *action : menu->actions()) if (action->data().toString().endsWith("-1")) { menu->setActiveAction(action); QTest::keyClick(menu, Qt::Key_Return); select.stop(); return; }
+            }
+        }); select.start(); QSignalSpy inserted(source, &SingleFileWindow::workspaceLinkFinished);
+        source->insertWorkspaceDocumentLink(b, {}, true); QTRY_COMPARE_WITH_TIMEOUT(inserted.size(), 1, 20000); select.stop(); QVERIFY2(inserted.first().first().toBool(), qPrintable(inserted.first().last().toString()));
+        auto sourceSnapshot = source->document()->session()->snapshot(); QVERIFY(sourceSnapshot.utf8.contains("b.md#")); QVERIFY(sourceSnapshot.utf8.contains("-1")); QVERIFY(!sourceSnapshot.utf8.contains("#disk"));
+        QCOMPARE(disk(b), QByteArray("# disk\n")); const auto identity = source->document()->identity();
+        source->navigateToReference(identity, QCryptographicHash::hash(sourceSnapshot.utf8, QCryptographicHash::Sha256), 4, sourceSnapshot.utf8.size());
+        QCOMPARE(qsizetype(source->editor()->send(SCI_GETANCHOR)), qsizetype(4));
+        QVERIFY(source->document()->session()->replace(0, 0, "later", sourceSnapshot.revision) == EditResult::Applied);
+        source->editor()->send(SCI_GOTOPOS, uptr_t(0)); source->navigateToReference(identity, QCryptographicHash::hash(sourceSnapshot.utf8, QCryptographicHash::Sha256), 4, sourceSnapshot.utf8.size());
+        QCOMPARE(source->editor()->send(SCI_GETCURRENTPOS), sptr_t(0));
+        QTRY_VERIFY_WITH_TIMEOUT(workspace->references()->current(workspace->references()->generation()), 20000);
+        const auto diagnostics = workspace->references()->result().fragmentProblems; QVERIFY(diagnostics.isEmpty());
+    }
     void standaloneImageImportUsesExplicitDirectoryAndKeepsOriginalBytes() {
         QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("docs"))); QVERIFY(QDir().mkpath(dir.filePath("pictures")));
         const auto path = dir.filePath("docs/doc.md"), source = dir.filePath(QStringLiteral("图 #%.png"));
@@ -419,11 +550,15 @@ private slots:
         bool pickerSeen = false, timedOut = false;
         QTimer pickerProbe, watchdog; pickerProbe.setInterval(20); watchdog.setSingleShot(true);
         connect(&pickerProbe, &QTimer::timeout, this, [&] {
+            for (auto *widget : QApplication::topLevelWidgets()) if (widget->objectName() == "workspaceLinkHeadingMenu") {
+                auto *headings = qobject_cast<QMenu *>(widget); headings->setActiveAction(headings->actions().first()); QTest::keyClick(headings, Qt::Key_Return); pickerProbe.stop(); return;
+            }
             QFileDialog *dialog = nullptr;
             for (auto *widget : QApplication::topLevelWidgets())
                 if ((dialog = qobject_cast<QFileDialog *>(widget)) && dialog->isVisible()) break;
             if (!dialog) return;
-            pickerProbe.stop(); pickerSeen = true; dialog->selectFile(targetPath);
+            if (pickerSeen) return;
+            pickerSeen = true; dialog->selectFile(targetPath);
             QMetaObject::invokeMethod(dialog, "accept", Qt::QueuedConnection);
         });
         connect(&watchdog, &QTimer::timeout, this, [&] {

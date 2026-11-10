@@ -105,6 +105,9 @@ public:
     static ProbeResult probe(const QString &absolutePath);
     static ProbeResult probeWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &relativePath);
     static ReadResult read(const FileReadRequest &request);
+    // Rebind an already opened, identity-leased object after an authorized
+    // move. This neither opens new content nor grants a directory capability.
+    static std::shared_ptr<const FileBaseline> relocatedBaseline(const std::shared_ptr<const FileBaseline> &before, const QString &newAbsolutePath);
     // Explicitly selected source file; this does not grant workspace access.
     static BinaryReadResult readSelectedBinary(const QString &absolutePath, qsizetype maxBytes);
     // A diagnostic stage observer runs on the worker. It must not access GUI.

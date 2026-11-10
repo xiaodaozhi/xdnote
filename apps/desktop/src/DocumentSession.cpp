@@ -68,7 +68,7 @@ void DocumentSession::attach(SourceEditor *view) {
     m_views.append(view);
 }
 
-bool DocumentSession::isReadOnly() const { return m_closing || m_owner->send(SCI_GETREADONLY) != 0; }
+bool DocumentSession::isReadOnly() const { return m_closing || m_resourceBusy || m_owner->send(SCI_GETREADONLY) != 0; }
 bool DocumentSession::isDirty() const {
     Q_ASSERT(QThread::currentThread() == thread());
     return m_owner->send(SCI_GETLENGTH) > AdmissionSourceLimit || bytes() != m_savedUtf8;
@@ -80,7 +80,7 @@ bool DocumentSession::isComposing() const {
     return false;
 }
 bool DocumentSession::isBusy() const {
-    if (m_mutations || m_notifying || m_reporting) return true;
+    if (m_resourceBusy || m_mutations || m_notifying || m_reporting) return true;
     for (const auto &view : m_views) if (view && view->dispatching()) return true;
     return false;
 }
@@ -219,12 +219,45 @@ EditResult DocumentSession::setReadOnly(bool readOnly) {
 EditResult DocumentSession::requestClose() {
     if (QThread::currentThread() != thread()) return EditResult::WrongThread;
     if (m_closing) return EditResult::Closing;
+    if (m_resourceBusy) return complete(EditResult::Busy);
     if (isComposing()) return complete(EditResult::Composing);
     m_closing = true;
     // Defer state changes and notification until the active Scintilla callback
     // and application observer have returned. Closing never deletes this object.
     QTimer::singleShot(0, this, &DocumentSession::finishClose);
     return EditResult::Applied;
+}
+EditResult DocumentSession::beginResourceUpdate() {
+    if (QThread::currentThread() != thread()) return EditResult::WrongThread;
+    if (m_closing) return EditResult::Closing;
+    if (isBusy()) return EditResult::Busy;
+    if (isComposing()) return EditResult::Composing;
+    flush(); if (m_closing) return EditResult::Closing;
+    m_resourceReadOnly = m_owner->send(SCI_GETREADONLY) != 0;
+    m_resourceBusy = true; m_owner->send(SCI_SETREADONLY, true); emit stateChanged();
+    return EditResult::Applied;
+}
+EditResult DocumentSession::replaceResourceText(const DocumentSnapshot &before, const QByteArray &after) {
+    if (QThread::currentThread() != thread()) return EditResult::WrongThread;
+    if (!m_resourceBusy || m_closing) return EditResult::Busy;
+    if (m_resourceReadOnly) return EditResult::ReadOnly;
+    if (before.result != EditResult::Applied || before.documentId != m_documentId || before.revision != m_revision || bytes() != before.utf8)
+        return EditResult::StaleRevision;
+    bool valid = false; decodeUtf8Literal(after, &valid);
+    if (!valid || after.contains('\0') || after.size() > AdmissionSourceLimit) return EditResult::InvalidText;
+    if (after == before.utf8) return EditResult::Unchanged;
+    {
+        QScopedValueRollback<int> mutation(m_mutations, m_mutations + 1);
+        m_owner->send(SCI_SETREADONLY, false); m_owner->send(SCI_BEGINUNDOACTION);
+        m_owner->send(SCI_SETTARGETSTART, 0); m_owner->send(SCI_SETTARGETEND, uptr_t(before.utf8.size()));
+        m_owner->send(SCI_REPLACETARGET, uptr_t(after.size()), reinterpret_cast<sptr_t>(after.constData()));
+        m_owner->send(SCI_ENDUNDOACTION); m_owner->send(SCI_SETREADONLY, true);
+    }
+    flush(); return EditResult::Applied;
+}
+void DocumentSession::endResourceUpdate() {
+    if (QThread::currentThread() != thread() || !m_resourceBusy) return;
+    m_owner->send(SCI_SETREADONLY, m_resourceReadOnly); m_resourceBusy = false; flush(); emit stateChanged();
 }
 void DocumentSession::finishClose() {
     if (isBusy()) { QTimer::singleShot(1, this, &DocumentSession::finishClose); return; }

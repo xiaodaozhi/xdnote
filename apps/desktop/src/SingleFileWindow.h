@@ -58,9 +58,10 @@ public:
     int contentZoom() const { return m_zoom; }
     void importImageFile(const QString &path, const QString &destinationDirectory = {});
     void importClipboardImage(const QImage &image, const QString &destinationDirectory = {});
-    void insertWorkspaceDocumentLink(const QString &targetPath);
+    void insertWorkspaceDocumentLink(const QString &targetPath, const QString &heading = {}, bool chooseHeading = false);
     void activateDocumentLink(const QString &target, quint64 revision);
     void navigateToHeading(const QString &fragment);
+    void navigateToReference(const QString &identity, const QByteArray &sha256, qsizetype start, qsizetype end);
     std::shared_ptr<WorkspaceResourceReader> resourceRoot() const { return m_embedded ? m_workspaceResourceRoot : m_localResourceRoot; }
     QString resourceDocumentPath() const;
 signals:

@@ -22,6 +22,8 @@ public:
     bool conflict() const { return m_conflict; }
     bool readOnly() const { return m_readOnly; }
     bool closed() const { return m_closed; }
+    bool maintainingResources() const { return m_maintenance; }
+    const std::shared_ptr<const FileBaseline> &baseline() const { return m_baseline; }
     bool hasError() const { return m_error; }
     bool bom() const { return m_baseline->hasUtf8Bom(); }
     QString message() const { return m_message; }
@@ -44,6 +46,7 @@ private:
     std::shared_ptr<const FileBaseline> m_baseline;
     bool m_saving = false, m_loading = false, m_conflict = false, m_error = false;
     bool m_closed = false, m_readOnly = false, m_checkPending = false, m_savedOnce = false;
+    bool m_maintenance = false;
     QString m_message;
     QUuid m_operation;
     FileSaveResult m_lastSave;
@@ -63,8 +66,14 @@ public:
     bool closeDocument(FileDocument *document);
     int documentCount() const { return int(m_documents.size()); }
     bool idle() const { return !m_running && m_jobs.empty(); }
+    QUuid beginWorkspaceOperation();
+    bool protectWorkspaceDocument(FileDocument *document, const QUuid &operation, bool protect);
+    bool relocateWorkspaceDocument(FileDocument *document, const QString &path, const QUuid &operation);
+    void reportWorkspaceProblem(FileDocument *document, const QString &message, const QUuid &operation);
+    void endWorkspaceOperation(const QUuid &operation);
 signals:
     void documentsChanged();
+    void resourcesChanged();
     void opened(QUuid intent, xdnote::FileDocument *document, bool reused);
     void openFailed(QUuid intent, QString path, QString message);
 private:
@@ -92,6 +101,7 @@ private:
     QSet<QUuid> m_cancelled;
     std::deque<std::function<void()>> m_jobs;
     bool m_running = false;
+    QUuid m_workspaceOperation;
     QTimer m_poll;
     std::function<void(SaveStage)> m_observer;
 };

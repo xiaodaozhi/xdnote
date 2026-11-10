@@ -2,10 +2,12 @@
 #include "FileService.h"
 #include "Utf8Text.h"
 #include "ImageAdmission.h"
+#include "MarkdownHeadings.h"
 #include <QFileInfo>
 #include <QHash>
 #include <QSet>
 #include <utility>
+#include <algorithm>
 
 namespace xdnote {
 ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResourceReader> &root,
@@ -17,6 +19,10 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
         if (stopped()) { result.cancelled = true; input.sources.clear(); input.enumerationGaps.append(QStringLiteral("扫描已取消")); input.enumerationComplete = false; }
         if (!root || !root->active()) { input.sources.clear(); input.enumerationGaps.append(QStringLiteral("工作区授权已失效")); input.enumerationComplete = false; }
         result.index = buildWorkspaceReferenceIndex(input);
+        for (const auto &source : result.index.sources)
+            for (const auto &captured : input.sources)
+                if (captured.path == source.path && captured.snapshot.documentId == source.documentId
+                    && captured.snapshot.revision == source.revision) { result.sourceTexts.insert(source.path, captured.snapshot); break; }
         if (root && root->active() && !stopped()) {
             int images = 0; qsizetype imageBytes = 0; qint64 pixels = 0;
             for (const auto &reference : result.index.references) {
@@ -45,9 +51,34 @@ ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResou
                 }
             }
         }
+        if (root && root->active() && !stopped()) {
+            QHash<QString, MarkdownHeadingMap> maps;
+            for (const auto &reference : result.index.references) {
+                if (stopped()) break;
+                if (!reference.target.success || !reference.target.hasFragment || reference.target.fragment.isEmpty()
+                    || reference.reference.kind != MarkdownReference::Kind::Link) continue;
+                const auto state = result.targets.value(reference.target.path);
+                if (state.error != WorkspaceReadError::None) continue;
+                const auto key = referenceDiagnosticKey(reference);
+                if (!maps.contains(state.identity)) {
+                    if (maps.size() >= 1024) { result.fragmentProblems.insert(key, QStringLiteral("标题诊断达到本轮上限")); continue; }
+                    DocumentSnapshot text;
+                    for (const auto &source : result.index.sources) if (source.identity == state.identity) { text = result.sourceTexts.value(source.path); break; }
+                    // No disk fallback for reserved/ambiguous live sessions.
+                    if (text.result != EditResult::Applied) { result.fragmentProblems.insert(key, QStringLiteral("目标标题未覆盖，请重新检查或打开目标确认")); continue; }
+                    maps.insert(state.identity, analyzeMarkdownHeadings(text));
+                }
+                const auto &map = maps[state.identity];
+                if (!map.success) result.fragmentProblems.insert(key, QStringLiteral("目标标题暂时无法分析"));
+                else if (std::none_of(map.headings.cbegin(), map.headings.cend(), [&](const auto &heading) { return heading.id == reference.target.fragment; }))
+                    result.fragmentProblems.insert(key, QStringLiteral("标题不存在或已变化；可定位源文并重新选择目标标题"));
+            }
+        }
         if (stopped() || !root || !root->active()) {
             result.cancelled = stopped(); result.index.complete = false;
             result.index.sources.clear(); result.index.references.clear();
+            result.sourceTexts.clear();
+            result.fragmentProblems.clear();
             result.targets.clear(); result.imageCandidates.clear(); result.watchedDirectories.clear();
             result.index.gaps.append(result.cancelled ? QStringLiteral("扫描已取消") : QStringLiteral("工作区授权已失效"));
         }

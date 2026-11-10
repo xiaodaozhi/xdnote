@@ -40,6 +40,9 @@ public:
     EditResult requestClose();
     EditResult confirmSaved(const DocumentSnapshot &snapshot);
     EditResult reloadText(const QByteArray &utf8, quint64 expectedRevision);
+    EditResult beginResourceUpdate();
+    EditResult replaceResourceText(const DocumentSnapshot &before, const QByteArray &after);
+    void endResourceUpdate();
     bool isReadOnly() const;
     bool isDirty() const;
     QUuid documentId() const { return m_documentId; }
@@ -79,6 +82,7 @@ private:
     bool m_notifying = false;
     bool m_reporting = false;
     bool m_closing = false;
+    bool m_resourceBusy = false, m_resourceReadOnly = false;
     int m_mutations = 0;
     QString m_rejection;
 };

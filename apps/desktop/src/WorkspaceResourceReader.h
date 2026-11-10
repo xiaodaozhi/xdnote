@@ -36,6 +36,21 @@ struct WorkspaceDirectoryResult {
 };
 
 enum class WorkspaceWriteStatus { Committed, Reused, Failed, PublishedButUnverified };
+enum class WorkspaceMoveStatus { Moved, Failed, Uncertain };
+struct WorkspaceMoveResult {
+    WorkspaceMoveStatus status = WorkspaceMoveStatus::Failed;
+    WorkspaceReadError error = WorkspaceReadError::None;
+    qint64 nativeCode = 0;
+    QString actualPath, recoveryPath;
+    std::shared_ptr<const void> lease;
+};
+struct WorkspaceEntry {
+    WorkspaceReadError error = WorkspaceReadError::None;
+    QString identity, actualPath;
+    bool directory = false;
+    std::shared_ptr<const void> lease;
+    bool ok() const { return error == WorkspaceReadError::None && !identity.isEmpty() && !actualPath.isEmpty(); }
+};
 enum class WorkspaceWriteStage { BeforeCommit, AfterCommit };
 struct WorkspaceWriteResult {
     WorkspaceWriteStatus status = WorkspaceWriteStatus::Failed;
@@ -52,6 +67,9 @@ struct WorkspaceWriteResult {
 };
 
 class WorkspaceResourceReader;
+struct FileSaveRequest;
+struct FileSaveResult;
+enum class SaveStage;
 struct WorkspaceRootResult {
     std::shared_ptr<WorkspaceResourceReader> reader;
     WorkspaceReadError error = WorkspaceReadError::None;
@@ -71,6 +89,10 @@ public:
     WorkspaceReadResult read(const QString &rootRelativePath, qsizetype maxBytes) const;
     WorkspaceReadResult inspect(const QString &rootRelativePath) const;
     QString rootPath() const;
+    WorkspaceEntry entry(const QString &path) const;
+    WorkspaceMoveResult moveEntry(const QString &from, const QString &to, const QString &identity, bool directory) const;
+    FileSaveResult saveDocument(const QString &path, const FileSaveRequest &request,
+        const std::function<void(SaveStage)> &observer = {}) const;
     // Empty path means the selected root. Entries are only candidates: every
     // later read must still resolve from the current root, not a joined path.
     WorkspaceDirectoryResult listDirectory(const QString &rootRelativePath, int maxEntries = 10000) const;
