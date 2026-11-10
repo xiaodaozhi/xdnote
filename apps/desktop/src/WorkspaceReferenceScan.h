@@ -3,6 +3,7 @@
 #include "WorkspaceResourceReader.h"
 #include <atomic>
 #include <memory>
+#include <QHash>
 
 namespace xdnote {
 struct ReferenceScanLimits {
@@ -11,6 +12,10 @@ struct ReferenceScanLimits {
     int documents = 1024;
     qsizetype sourceBytes = 32 * 1024 * 1024;
 };
+struct ReferenceTargetState {
+    WorkspaceReadError error = WorkspaceReadError::Unsupported;
+    QString identity;
+};
 struct ReferenceScanResult {
     ReferenceIndexSnapshot index;
     int visitedEntries = 0;
@@ -18,6 +23,8 @@ struct ReferenceScanResult {
     int readDocuments = 0;
     qsizetype readBytes = 0;
     QStringList excludedDirectories;
+    QStringList watchedDirectories, imageCandidates;
+    QHash<QString, ReferenceTargetState> targets;
     bool cancelled = false;
 };
 

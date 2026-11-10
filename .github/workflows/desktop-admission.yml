@@ -1,7 +1,14 @@
 name: Desktop admission
+run-name: ${{ inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
+        type: choice
+        default: full
+        options: [full, workspace-linux]
 
 permissions:
   contents: read
@@ -12,30 +19,16 @@ concurrency:
 
 jobs:
   desktop:
-    name: Desktop (${{ matrix.label || matrix.os }})
+    name: ${{ inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-2022
-            host: windows
-            qt-arch: win64_msvc2022_64
-          - os: ubuntu-22.04
-            host: linux
-            qt-arch: linux_gcc_64
-          - os: macos-15-intel
-            host: mac
-            qt-arch: clang_64
-          - os: macos-15
-            host: mac
-            qt-arch: clang_64
-          - os: windows-2022
-            host: windows
-            qt-arch: win64_msvc2022_64
-            profile: msvc2019
-            label: windows-2022-msvc2019
+        include: >-
+          ${{ fromJSON(inputs.scope == 'workspace-linux' &&
+          '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
+          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"},{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64","profile":"msvc2019","label":"windows-2022-msvc2019"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,7 +64,7 @@ jobs:
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
       - name: Test admission on Linux virtual display
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && inputs.scope != 'workspace-linux'
         run: xvfb-run -a python scripts/desktop.py test
       - name: Test desktop admission
         if: runner.os != 'Linux'
@@ -79,6 +72,30 @@ jobs:
           QSG_RHI_PREFER_SOFTWARE_RENDERER: ${{ runner.os == 'Windows' && '1' || '' }}
           QSG_INFO: '1'
         run: python scripts/desktop.py test --profile ${{ matrix.profile || 'default' }}
+      - name: Test workspace references on Linux
+        if: inputs.scope == 'workspace-linux'
+        run: |
+          xdnote_qt_version=$(python -c "import json; print(json.load(open('tools/desktop-dependencies.json'))['qt']['version'])")
+          export LD_LIBRARY_PATH="$PWD/build/Qt/$xdnote_qt_version/gcc_64/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export QT_PLUGIN_PATH="$PWD/build/Qt/$xdnote_qt_version/gcc_64/plugins"
+          export QML_IMPORT_PATH="$PWD/build/Qt/$xdnote_qt_version/gcc_64/qml"
+          export CARGO_HOME="$PWD/build/cargo-home"
+          export CARGO_TARGET_DIR="$PWD/build/desktop-admission/cargo"
+          export RUSTUP_AUTO_INSTALL=0
+          rustup run 1.99.0 cargo fmt --all -- --check
+          rustup run 1.99.0 cargo clippy --locked --offline --workspace --all-targets -- -D warnings
+          rustup run 1.99.0 cargo test --locked --offline --workspace
+          xvfb-run -a build/desktop-admission/xdnote_file_tests -o -,txt -o build/desktop-admission/file-qtest.txt,txt
+          xvfb-run -a build/desktop-admission/xdnote_workspace_tests workspaceReferencesTrackSessionsFilesAndMenuCoverage workspaceReferencesCancelAndDiscardPreviousRoot workspaceReferencesDoNotUseDiskAliasesOfOutsideSessions documentLinksReuseDirtyTargetAndNavigateHeadings documentLinksRejectUnsafeTargetsAndStaleSource documentLinksPreviewClicksKeepStandaloneRouting -o -,txt -o build/desktop-admission/workspace-qtest.txt,txt
+          xvfb-run -a build/desktop-admission/xdnote_desktop_tests previewPendingHeadingRejectsContextAndRevisionChanges referenceIndexUsesLiveSnapshotsAndRetainsSourceVersions referenceIndexNeverFallsBackWhenCoverageOrSessionIsUncertain workspaceDirectoryEnumerationIsBoundedAndRootBound workspaceReferenceScanUsesDiskAndAuthoritativeLiveSnapshots workspaceReferenceScanRetainsGapsAndDiscardsRevokedResults workspaceResourcesRequireTheSelectedRootAndRejectLinks previewFragmentLinksNavigateOnlyTheDisplayedRevision previewFragmentLinksSupportKeyboardFocusAndActivation previewDoesNotActivateLinksWhenReferenceAnalysisMayBeIncomplete workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding -o -,txt -o build/desktop-admission/desktop-qtest.txt,txt
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          for name in ('file-qtest.txt', 'workspace-qtest.txt', 'desktop-qtest.txt'):
+              report = Path('build/desktop-admission', name).read_text(encoding='utf-8', errors='replace')
+              if re.search(r'\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:', report):
+                  raise RuntimeError(f'Fatal Qt diagnostic in {name}')
+          PY
       - name: Diagnose workspace crash on Linux
         if: failure() && runner.os == 'Linux'
         run: |
@@ -104,12 +121,12 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: Desktop admission
+    name: ${{ inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop]
     if: always()
     runs-on: ubuntu-24.04
     steps:
-      - name: Require every desktop matrix result
+      - name: Require every selected matrix result
         env:
           XDNOTE_DESKTOP_RESULT: ${{ needs.desktop.result }}
         run: test "$XDNOTE_DESKTOP_RESULT" = success

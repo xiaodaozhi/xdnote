@@ -1,4 +1,5 @@
 #include "FileManager.h"
+#include "WorkspaceResourceReader.h"
 #include "SingleFileWindow.h"
 #include "SingleInstance.h"
 #include "FileApplication.h"
@@ -97,6 +98,66 @@ void chooseDialog(const QString &name, int choice, const QString &screenshot = {
 class FileWorkflowTests final : public QObject {
     Q_OBJECT
 private slots:
+    void confinedOpenKeepsDirtySessionAndAllowsAtomicSave() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined document opens are not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid()); const auto path = dir.filePath("doc.md");
+        QVERIFY(fileFixtures::write(path, QByteArray::fromHex("efbbbf") + "# disk\r\n"));
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+#ifdef Q_OS_LINUX
+        if (root.reader->inspect("doc.md").error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
+#endif
+        const auto probe = FileService::probeWithin(root.reader, "doc.md"); QVERIFY(probe.file);
+        const auto loaded = FileService::read({probe.file}); QVERIFY(loaded.baseline); QVERIFY(loaded.baseline->hasUtf8Bom());
+        const auto saved = FileService::save(saveRequest(loaded, "# saved\n"));
+        QCOMPARE(saved.status, SaveStatus::Committed); QCOMPARE(disk(path), QByteArray::fromHex("efbbbf") + "# saved\n");
+        FileManager manager(nullptr, {}, false); QSignalSpy opened(&manager, &FileManager::opened);
+        manager.openWithin(root.reader, "doc.md", QUuid::createUuid()); QTRY_COMPARE(opened.size(), 1);
+        auto *document = qvariant_cast<FileDocument *>(opened.first().at(1)); QVERIFY(document);
+        auto *session = document->session(); QCOMPARE(session->replace(0, 0, "dirty ", session->revision()), EditResult::Applied);
+        const auto current = session->snapshot(); QVERIFY(fileFixtures::write(path, QByteArray::fromHex("ff")));
+        manager.openWithin(root.reader, "doc.md", QUuid::createUuid()); QTRY_COMPARE(opened.size(), 2);
+        QCOMPARE(qvariant_cast<FileDocument *>(opened.last().at(1)), document); QVERIFY(opened.last().at(2).toBool());
+        QCOMPARE(session->snapshot().utf8, current.utf8); QCOMPARE(manager.documentCount(), 1);
+        const auto pending = FileService::probeWithin(root.reader, "doc.md"); QVERIFY(pending.file);
+        root.reader->revoke(); QCOMPARE(FileService::read({pending.file}).problem.code, FileError::Denied);
+#endif
+    }
+    void confinedReadRejectsParentLinkReplacementAfterProbe() {
+#if !defined(Q_OS_WIN) && !defined(Q_OS_LINUX)
+        QSKIP("Confined document opens are not available on this platform");
+#else
+        QTemporaryDir dir; QVERIFY(dir.isValid());
+        const auto rootPath = dir.filePath("root"), outside = dir.filePath("outside");
+        QVERIFY(QDir().mkpath(rootPath + "/nested")); QVERIFY(QDir().mkpath(outside));
+        QVERIFY(fileFixtures::write(rootPath + "/nested/doc.md", "inside"));
+        const auto root = WorkspaceResourceReader::open(rootPath); QVERIFY(root.reader);
+        const auto probe = FileService::probeWithin(root.reader, "nested/doc.md");
+#ifdef Q_OS_LINUX
+        if (root.reader->inspect("nested/doc.md").error == WorkspaceReadError::Unsupported) QSKIP("Kernel does not offer confined openat2");
+#endif
+        QVERIFY(probe.file);
+        const bool moved = QDir().rename(rootPath + "/nested", outside + "/moved");
+#ifdef Q_OS_WIN
+        if (!moved) {
+            qInfo("Windows kept the ancestor stable while the file identity lease was held");
+            QVERIFY(FileService::read({probe.file}).baseline);
+            root.reader->revoke(); QCOMPARE(FileService::read({probe.file}).problem.code, FileError::Denied); return;
+        }
+#endif
+        QVERIFY(moved);
+        QVERIFY(fileFixtures::write(outside + "/moved/doc.md", "outside replacement with the same file identity"));
+#ifdef Q_OS_WIN
+        fileFixtures::Junction junction; QVERIFY(junction.create(rootPath + "/nested", outside + "/moved"));
+#else
+        QVERIFY(::symlink(QFile::encodeName(outside + "/moved").constData(), QFile::encodeName(rootPath + "/nested").constData()) == 0);
+#endif
+        const auto blocked = FileService::read({probe.file}); QVERIFY(!blocked.baseline); QCOMPARE(blocked.problem.code, FileError::UnsupportedFile);
+        QVERIFY(!FileService::probeWithin(root.reader, "../outside/moved/doc.md").file);
+        QCOMPARE(disk(outside + "/moved/doc.md"), QByteArray("outside replacement with the same file identity"));
+#endif
+    }
     void saveRoundTripAndCreateWithoutOverwrite() {
         QTemporaryDir directory; QVERIFY(directory.isValid()); const auto path = directory.filePath(QStringLiteral("真实 文档😀.md"));
         const auto original = QByteArray::fromHex("efbbbf") + QStringLiteral("# 中文😀\r\n正文\n尾\r\u2028\ufeff").toUtf8();

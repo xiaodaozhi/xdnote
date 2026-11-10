@@ -3,6 +3,7 @@
 #endif
 #include "FileService.h"
 #include "Utf8Text.h"
+#include "WorkspaceResourceReader.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -200,7 +201,7 @@ FileProblem readBytes(const NativeFile &file, QByteArray &bytes, qsizetype limit
 }
 }
 
-FileProbe::FileProbe(QString path, QString identity, std::shared_ptr<NativeFile> lease)
+FileProbe::FileProbe(QString path, QString identity, std::shared_ptr<const void> lease)
     : m_path(std::move(path)), m_identity(std::move(identity)), m_lease(std::move(lease)) {}
 
 FileBaseline::FileBaseline(std::shared_ptr<const FileProbe> file, QUuid requestId, QByteArray disk, QByteArray utf8, bool bom)
@@ -223,9 +224,43 @@ ProbeResult FileService::probe(const QString &absolutePath) {
     return {std::shared_ptr<const FileProbe>(new FileProbe(absolutePath, opened.info.identity, std::move(opened.file))), {}};
 }
 
+namespace {
+FileProblem resourceProblem(WorkspaceReadError error, qint64 nativeCode) {
+    switch (error) {
+    case WorkspaceReadError::None: return {};
+    case WorkspaceReadError::InvalidPath: return {FileError::InvalidPath, nativeCode};
+    case WorkspaceReadError::Missing: return {FileError::Missing, nativeCode};
+    case WorkspaceReadError::Denied: case WorkspaceReadError::Revoked: return {FileError::Denied, nativeCode};
+    case WorkspaceReadError::TooLarge: return {FileError::TooLarge, nativeCode};
+    case WorkspaceReadError::RootChanged: case WorkspaceReadError::Changed: return {FileError::Changed, nativeCode};
+    case WorkspaceReadError::OutsideOrLink: case WorkspaceReadError::Unsupported: return {FileError::UnsupportedFile, nativeCode};
+    default: return {FileError::Io, nativeCode};
+    }
+}
+}
+ProbeResult FileService::probeWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &path) {
+    if (!root) return {{}, {FileError::Denied}};
+    auto inspected = root->inspect(path);
+    if (!inspected.ok()) return {{}, resourceProblem(inspected.error, inspected.nativeCode)};
+    auto file = std::shared_ptr<FileProbe>(new FileProbe(QDir(root->rootPath()).filePath(path), inspected.identity, std::move(inspected.lease)));
+    file->m_root = root; file->m_relativePath = path;
+    return {std::move(file), {}};
+}
 ReadResult FileService::read(const FileReadRequest &request) {
     const auto &file = request.file;
     if (!file || request.requestId.isNull()) return {{}, {FileError::InvalidPath}};
+    if (file->m_root) {
+        auto read = file->m_root->read(file->m_relativePath, DiskByteLimit);
+        if (!read.ok()) return {{}, resourceProblem(read.error, read.nativeCode)};
+        if (read.identity != file->identity()) return {{}, {FileError::Changed}};
+        const bool bom = read.bytes.startsWith(QByteArray::fromHex("efbbbf"));
+        auto utf8 = bom ? read.bytes.mid(3) : read.bytes;
+        if (utf8.size() > SourceLimit) return {{}, {FileError::TooLarge}};
+        bool valid = false; decodeUtf8Literal(utf8, &valid);
+        if (!valid) return {{}, {FileError::InvalidUtf8}};
+        if (utf8.contains('\0')) return {{}, {FileError::UnsupportedContent}};
+        return {std::shared_ptr<const FileBaseline>(new FileBaseline(file, request.requestId, std::move(read.bytes), std::move(utf8), bom)), {}};
+    }
     auto opened = openFile(file->path(), true);
     if (!opened.file) return {{}, opened.problem};
     if (opened.info.identity != file->identity()) return {{}, {FileError::Changed}};

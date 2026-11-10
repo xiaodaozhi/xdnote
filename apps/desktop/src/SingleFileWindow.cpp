@@ -1,4 +1,7 @@
 #include "SingleFileWindow.h"
+#include <algorithm>
+#include "MarkdownReferences.h"
+#include "MarkdownHeadings.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
 #include "SourceEditor.h"
@@ -197,6 +200,19 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_redoAction = action(QStringLiteral("重做"), "redoAction", QKeySequence::Redo, [this] { if (m_document) m_document->session()->redo(); });
     m_imageImportAction = action(QStringLiteral("插入图片…"), "insertImageAction", {}, [this] { chooseImage(); });
     m_linkInsertAction = action(QStringLiteral("插入工作区文档链接…"), "insertWorkspaceLinkAction", {}, [this] { chooseWorkspaceDocumentLink(); });
+    m_openLinkAction = action(QStringLiteral("打开光标处的文档链接"), "openDocumentLinkAction", QKeySequence(Qt::CTRL | Qt::Key_Return), [this] {
+        if (!m_document || !m_editor) return;
+        const auto snapshot = m_document->session()->snapshot();
+        const auto analysis = analyzeMarkdownReferences(snapshot);
+        if (!analysis.success || !analysis.complete) { reportHostMessage(QStringLiteral("当前文档暂时无法完整分析，请稍后重试。")); return; }
+        const auto position = m_editor->send(SCI_GETCURRENTPOS);
+        for (const auto &reference : analysis.references) if (reference.kind == MarkdownReference::Kind::Link && position >= reference.usage.start && position <= reference.usage.end) {
+            activateDocumentLink(reference.target, snapshot.revision); return;
+        }
+        reportHostMessage(QStringLiteral("光标处没有可打开的文档链接。"));
+    });
+    m_referencesMenu = new SharedMenu(m_appearance, m_menu); m_referencesMenu->setTitle(QStringLiteral("工作区引用检查")); m_referencesMenu->setObjectName("workspaceReferencesMenu"); m_menu->addMenu(m_referencesMenu);
+    connect(m_referencesMenu, &QMenu::aboutToShow, this, [this] { emit referencesRequested(m_referencesMenu); });
     m_menu->addSeparator();
     auto *appearanceMenu = new SharedMenu(m_appearance, m_menu); appearanceMenu->setTitle(QStringLiteral("外观")); appearanceMenu->setObjectName("appearanceMenu"); m_menu->addMenu(appearanceMenu);
     auto *themes = new QActionGroup(this); themes->setExclusive(true);
@@ -341,7 +357,8 @@ void SingleFileWindow::setDocument(FileDocument *document) {
         if (!m_closeAfterOperation) return; m_closeAfterOperation = false; if (success) QTimer::singleShot(0, this, [this] { close(); }); else emit closeCancelled();
     });
     connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) { m_previewError = message; updateState(); });
-    connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); m_navigationMessage.clear(); updateState(); });
+    connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); updateState(); });
+    connect(m_preview, &MarkdownPreview::documentLinkRequested, this, &SingleFileWindow::activateDocumentLink);
     connect(m_preview, &MarkdownPreview::fragmentNavigationMessage, this, [this](const QString &message) {
         m_navigationMessage = message; if (!message.isEmpty()) m_dismissedNotice.clear(); updateState();
     });
@@ -387,6 +404,35 @@ void SingleFileWindow::setWorkspaceResourceRoot(std::shared_ptr<WorkspaceResourc
     updateState();
 }
 
+QString SingleFileWindow::resourceDocumentPath() const {
+    if (!m_document) return {};
+    const auto base = m_embedded ? m_workspaceResourcePath : m_localResourcePath;
+    return base.isEmpty() ? QString() : QDir(base).relativeFilePath(m_document->path());
+}
+void SingleFileWindow::activateDocumentLink(const QString &target, quint64 revision) {
+    if (!m_document || m_document->closed()) return;
+    const auto snapshot = m_document->session()->snapshot();
+    if (snapshot.result != EditResult::Applied || snapshot.revision != revision) {
+        reportHostMessage(QStringLiteral("文档已变化或正在输入，请重新打开链接。")); return;
+    }
+    m_navigationMessage.clear(); m_hostMessage.clear();
+    if (target.startsWith('#')) {
+        const auto resolved = resolveWorkspaceTarget(QStringLiteral("document.md"), target);
+        if (resolved.success && resolved.hasFragment && !resolved.fragment.isEmpty()) navigateToHeading(resolved.fragment);
+        else reportHostMessage(QStringLiteral("链接中的标题标识无效。"));
+    } else emit documentLinkRequested(target, revision);
+}
+void SingleFileWindow::navigateToHeading(const QString &fragment) {
+    if (!m_document || m_document->closed()) return;
+    const auto snapshot = m_document->session()->snapshot(); const auto headings = analyzeMarkdownHeadings(snapshot);
+    if (!headings.success) { reportHostMessage(QStringLiteral("当前输入或文档状态暂不支持标题定位，请稍后重试。")); return; }
+    auto found = std::find_if(headings.headings.cbegin(), headings.headings.cend(), [&](const MarkdownHeading &heading) { return heading.id == fragment; });
+    if (found == headings.headings.cend()) { m_navigationMessage = QStringLiteral("未找到标题：%1").arg(fragment.left(120)); m_dismissedNotice.clear(); updateState(); return; }
+    m_hostMessage.clear(); m_navigationMessage.clear();
+    if (m_editor) { m_editor->send(SCI_GOTOPOS, uptr_t(found->range.start)); m_editor->send(SCI_SCROLLCARET); }
+    if (m_preview && m_mode != ViewMode::Source) m_preview->navigateToHeading(fragment, snapshot.revision);
+    updateState();
+}
 void SingleFileWindow::syncPreviewResources() {
     if (!m_preview || !m_document || m_document->closed()) return;
     QString base;
@@ -441,6 +487,8 @@ void SingleFileWindow::updateState() {
     m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy);
     m_imageImportAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_imageImportPending);
     m_linkInsertAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_linkInsertPending);
+    m_openLinkAction->setEnabled(ready && m_editing && !busy);
+    m_referencesMenu->menuAction()->setVisible(m_embedded);
     m_undoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANUNDO)); m_redoAction->setEnabled(ready && m_editing && !m_document->readOnly() && m_editor && m_editor->send(SCI_CANREDO));
     for (auto *button : m_formats) button->setEnabled(ready && !m_document->readOnly()); updateCaret();
     if (!ready) {

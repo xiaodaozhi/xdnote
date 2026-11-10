@@ -27,6 +27,16 @@ private:
     void chooseDirectory(WorkspaceWindow *owner);
     void retryTransfers();
     void advanceQuit();
+    void openDocumentLink(SingleFileWindow *source, const QString &target, quint64 revision);
+    struct LinkNavigation {
+        QPointer<SingleFileWindow> source;
+        QPointer<WorkspaceWindow> workspace;
+        std::shared_ptr<WorkspaceResourceReader> root;
+        QString sourcePath, sourceIdentity, fragment;
+        quint64 revision = 0;
+        bool embedded = false, hasFragment = false;
+    };
+    bool validLinkSource(const LinkNavigation &navigation) const;
     Appearance m_appearance;
     WindowGeometryStore m_geometryStore;
     FileManager m_manager;
@@ -36,6 +46,7 @@ private:
     QHash<QUuid, Transfer> m_transfers;
     QHash<QUuid, QPointer<SingleFileWindow>> m_requests;
     QHash<QUuid, QPointer<SingleFileWindow>> m_documents;
+    QHash<QUuid, LinkNavigation> m_linkNavigations;
     bool m_quitting = false;
     bool m_destroying = false;
 };

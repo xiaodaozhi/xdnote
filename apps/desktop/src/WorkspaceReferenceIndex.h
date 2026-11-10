@@ -5,6 +5,7 @@
 #include <QList>
 #include <QStringList>
 #include <QUuid>
+#include <QSet>
 
 namespace xdnote {
 
@@ -26,6 +27,7 @@ struct ReferenceIndexInput {
     bool enumerationComplete = false;
     QStringList enumerationGaps;
     QList<ReferenceIndexSource> sources;
+    QSet<QString> sessionsOutsideRoot;
 };
 
 struct IndexedReference {
@@ -39,6 +41,7 @@ struct IndexedReference {
     // This is a lexical resolution only, not evidence of existence, identity,
     // authorization, or a safe edit location.
     WorkspacePathResult target;
+    int sourceLine = 1;
 };
 
 // Present even when a successfully analyzed document has no references. The

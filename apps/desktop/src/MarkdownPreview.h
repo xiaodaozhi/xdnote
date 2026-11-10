@@ -37,12 +37,14 @@ public:
     void setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &documentPath, const QString &documentIdentity);
     QPointF readingPosition() const { return m_scroll; }
     void restoreReadingPosition(const QPointF &position);
+    void navigateToHeading(const QString &fragment, quint64 revision);
 signals:
     void previewReady(quint64 revision);
     void previewError(const QString &message);
     void copyTextRequested(const QString &text);
     void fragmentNavigationMessage(const QString &message);
     void fragmentNavigated(const QString &fragment);
+    void documentLinkRequested(QString target, quint64 revision);
 private:
     void startPending();
     QPointer<DocumentSession> m_session;
@@ -65,5 +67,9 @@ private:
     QPointer<Appearance> m_appearance;
     QPointF m_scroll;
     bool m_restoring = false;
+    QString m_pendingFragment;
+    quint64 m_navigationRevision = 0;
+    bool m_navigationPending = false;
+    bool m_pageReady = false;
 };
 }
