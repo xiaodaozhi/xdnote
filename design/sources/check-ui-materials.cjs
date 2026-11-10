@@ -71,7 +71,7 @@ async function main() {
       await fs.access(path.join(ROOT, w.implementationSource));
     }
     if (workspacePrototype) {
-      assert(w.implementationSource === 'apps/desktop/src/WorkspaceWindow.cpp' && w.implementedStates?.includes('session-transfer') && w.deferredStates?.includes('resources-and-links'), 'Workspace prototype scope');
+      assert(w.implementationSource === 'apps/desktop/src/WorkspaceWindow.cpp' && w.implementedStates?.includes('session-transfer') && w.implementedStates?.includes('resources-and-links'), 'Workspace prototype scope');
       assert(w.sizeToken === 'windows.main' && w.purpose && w.sizeRationale, 'Workspace window geometry');
       await fs.access(path.join(ROOT, w.implementationSource));
     }

@@ -2,6 +2,7 @@
 #include "FileManager.h"
 #include "Appearance.h"
 #include "WindowGeometry.h"
+#include "NavigationStore.h"
 #include <QSet>
 namespace xdnote {
 class SingleFileWindow;
@@ -43,6 +44,7 @@ private:
     bool validLinkSource(const LinkNavigation &navigation) const;
     Appearance m_appearance;
     WindowGeometryStore m_geometryStore;
+    NavigationStore m_navigation;
     FileManager m_manager;
     QSet<SingleFileWindow *> m_windows;
     QSet<WorkspaceWindow *> m_workspaces;

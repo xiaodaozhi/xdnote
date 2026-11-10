@@ -1265,8 +1265,8 @@
       "path": "sources/check-ui-materials.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 14368,
-      "sha256": "15b8b3da596d7f397cdb61c19ba4ea22b401201fbb290982b61e8e60f33c33c1",
+      "bytes": 14371,
+      "sha256": "cc345892e3a19817a45c04492e141f465434613e2c95fc01894365c4fef157e8",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1569,8 +1569,8 @@
   "authoritySnapshots": [
     {
       "path": "docs/visual/tokens.json",
-      "bytes": 8086,
-      "sha256": "1663b5dd193cf3f7a63dae97e6f6e7cdaefc793998aca6fbf85fa9c1e642448f"
+      "bytes": 8458,
+      "sha256": "d957fad8603349a06c86bbf276b9d50f46d3fade8705ffae498e4083fe7b8d7d"
     },
     {
       "path": "docs/visual/asset-geometry.json",
@@ -1579,8 +1579,8 @@
     },
     {
       "path": "docs/visual/window-registry.json",
-      "bytes": 8451,
-      "sha256": "212f15cc56781c002e43621eb2cd34f6c61bb8eab36a18081f6c55ea1c0b9556"
+      "bytes": 8566,
+      "sha256": "9ef450f59598b1805f789b06075c4c0b8f6c6ba8d2177b72ecb326bb4919afd7"
     },
     {
       "path": "docs/visual/surface-registry-v2.json",

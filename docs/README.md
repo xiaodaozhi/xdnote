@@ -25,6 +25,7 @@
 | 平台 | [平台目标与验证基线](engineering/platform-support.md) | 最低系统、64 位架构、Linux 图形环境及实际验收边界 |
 | 计划 | [开发路线](planning/roadmap.md) | 阶段顺序、产物和退出条件 |
 | 验收 | [验收规格](qa/acceptance.md) | 需求映射、真实文件与平台验证方法 |
+| 工作区界面 | [工作区界面核对](qa/workspace-visual.md) | 标签边界、侧栏、面包屑及导航页的明暗状态检查 |
 | 覆盖 | [界面清单](visual/screen-inventory.md) | 33 张图板、89 个页面与状态 |
 | 素材 | [交付说明](visual/asset-handoff.md)、[素材几何](visual/asset-geometry.json) | 原图切片、SVG、透明 PNG 与使用约定 |
 | 原稿 | [设计材料索引](../design/README.md)、[静态画廊](../design/index.html) | 当前图组、品牌候选、精确样张与提示词 |
