@@ -18,6 +18,44 @@ BUILD = ROOT / "build"
 DEPS = json.loads((ROOT / "tools/desktop-dependencies.json").read_text(encoding="utf-8"))
 
 
+def repository_owner(path):
+    """Return the nearest checkout and its common Git identity, including worktrees."""
+    path = Path(path).resolve(strict=True)
+    for directory in (path, *path.parents):
+        marker = directory / ".git"
+        if marker.is_dir():
+            return directory, marker.resolve()
+        if marker.is_file():
+            value = marker.read_text(encoding="utf-8").strip()
+            if not value.startswith("gitdir: "):
+                raise ValueError("Invalid Git checkout marker in a tool path")
+            gitdir = (directory / value[8:]).resolve(strict=True)
+            common = gitdir / "commondir"
+            identity = (gitdir / common.read_text(encoding="utf-8").strip()).resolve(strict=True) if common.is_file() else gitdir
+            return directory, identity
+    return None
+
+
+def checked_tool_path(value, label, sdk=False):
+    path = Path(value).resolve(strict=True)
+    owner, current = repository_owner(path), repository_owner(ROOT)
+    if owner and (not current or owner[1] != current[1]):
+        raise ValueError(f"{label} belongs to another Git repository; prepare tools in this project's build/toolchain")
+    if sdk and not path.is_relative_to((owner[0] if owner else ROOT) / "build"):
+        raise ValueError(f"{label} must be inside this project's build tree")
+    return path
+
+
+def prepared_tool(value, env):
+    # A virtual environment's own launchers take priority over inherited PATH.
+    sibling = Path(sys.executable).parent / (value + (".exe" if platform.system() == "Windows" else ""))
+    candidate = str(sibling) if value in ("cmake", "ninja") and sibling.is_file() else str(value)
+    found = shutil.which(candidate, path=env.get("PATH"))
+    if not found:
+        raise RuntimeError(f"Missing prepared tool: {value}")
+    return str(checked_tool_path(found, str(value)))
+
+
 @contextlib.contextmanager
 def utf8_console():
     if platform.system() != "Windows":
@@ -93,7 +131,7 @@ def environment(vcvars, toolset=None):
     env = ({name.upper(): value for name, value in os.environ.items()}
            if platform.system() == "Windows" else os.environ.copy())
     if vcvars:
-        path = Path(vcvars).resolve(strict=True)
+        path = checked_tool_path(vcvars, "MSVC environment script")
         if platform.system() != "Windows" or '"' in str(path):
             raise ValueError("--vcvars requires an ordinary Windows vcvars64.bat path")
         # Import toolchain variables without printing the machine environment.
@@ -156,6 +194,8 @@ def main():
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
     args = parser.parse_args()
+    checked_tool_path(sys.executable, "Python interpreter")
+    checked_tool_path(getattr(sys, "_base_executable", sys.executable), "Python base interpreter")
     if args.fresh and args.command != "build":
         parser.error("--fresh is supported by build only")
     if (args.file or args.admission) and args.command != "run":
@@ -168,6 +208,8 @@ def main():
     if args.profile == "msvc2019" and args.command != "prepare" and not args.vcvars:
         args.vcvars = find_msvc2019()
     env = environment(args.vcvars, args.vcvars_version or ("14.29" if args.profile == "msvc2019" else None))
+    if args.command != "run":
+        prepared_tool("rustup", env)
     if args.profile != "default":
         env["CARGO_TARGET_DIR"] = str(BUILD / f"cargo-{args.profile}")
     if args.command == "prepare":
@@ -181,15 +223,14 @@ def main():
     if args.download:
         parser.error("--download is supported by prepare only")
     if args.command != "run":
-        for tool in (args.cmake, args.ninja, "rustup"):
-            if not shutil.which(str(tool), path=env.get("PATH")):
-                raise RuntimeError(f"Missing prepared tool: {tool}")
+        args.cmake = prepared_tool(args.cmake, env)
+        args.ninja = prepared_tool(args.ninja, env)
         run([args.cmake, "--version"], env)
         run(["rustup", "run", DEPS["rust"]["toolchain"], "rustc", "-vV"], env)
     if not args.qt_prefix:
         arch = {"Windows": "msvc2022_64", "Darwin": "macos", "Linux": "gcc_64"}[platform.system()]
         args.qt_prefix = BUILD / "Qt" / settings["qtVersion"] / arch
-    qt = args.qt_prefix.resolve(strict=True)
+    qt = checked_tool_path(args.qt_prefix, "Qt SDK", sdk=True)
     if not (qt / "lib/cmake/Qt6WebEngineWidgets/Qt6WebEngineWidgetsConfig.cmake").is_file():
         raise RuntimeError("Qt WebEngine SDK missing; run the explicit SDK preparation first")
     env["PATH"] = str(qt / "bin") + os.pathsep + env["PATH"]

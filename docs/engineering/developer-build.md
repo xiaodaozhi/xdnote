@@ -6,20 +6,22 @@
 
 [依赖清单](../../tools/desktop-dependencies.json)、[Cargo.lock](../../Cargo.lock)和 [rust-toolchain.toml](../../rust-toolchain.toml)锁定本阶段输入。Qt 6.8.2、Scintilla 5.6.7、pulldown-cmark 0.13.6 与 Rust 1.99.0 构成本阶段组合；本机、按需桌面 CI、MSVC 2019 兼容配置和 Qt／Scintilla 试验 CI 都读取同一个 `qt.version`，不在配置中另设 Qt 版本。试验仍使用独立构建目录，不混用产物。Qt 采用动态库，Scintilla 从公开 Qt 端口源码构建，Rust 服务为静态库。默认编译器以 Qt 6.8 的[支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)为准：Windows CI 使用 MSVC 2022，macOS 按主机分别构建 x86_64／arm64，Linux 最低参考构建主机使用 Ubuntu 22.04 x86_64。宿主构建通过不能替代最低系统运行验收。
 
-需要 Python 3.12、CMake 4.4.4、Ninja 1.13.0、Rust 1.99.0（含 rustfmt、clippy）及本机 C++ 工具链。下列准备命令允许联网；普通构建和测试不下载 Qt、源码或 Cargo 依赖。工具可安装在独立虚拟环境，不修改全局 Rust 默认版本。Windows 在 x64 开发者终端运行，或给入口提供 `--vcvars`，指向已安装的 `vcvars64.bat`。Linux 还需 Qt WebEngine 所用桌面运行库及图形环境，具体 CI 安装列表见[工作流](../../.github/workflows/desktop-admission.yml)。
-
-```text
-python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
-```
-
-本机优先复用 `build/Qt/6.8.2/<平台子目录>/` 下现有 SDK，Windows 的 `qmllint.exe` 和 `qmake.exe` 位于 `msvc2022_64/bin/`；macOS 和 Linux 使用对应 SDK 的 `bin/`。工具可放在项目内固定虚拟环境 `build/toolchain/desktop-tools/`，创建及安装由开发者显式执行；不要为每个研发周期重复安装。已有环境先核对版本与实际可执行文件，CI 仍使用独立 runner。系统 Rust、MSVC 和其他宿主编译器沿用本机安装；目录约定不改变锁定版本或构建入口。
+需要 Python 3.12 或更新版本（CI 使用 3.12）、CMake 4.4.4、Ninja 1.13.0、Rust 1.99.0（含 rustfmt、clippy）及本机 C++ 工具链。下列准备命令允许联网；普通构建和测试不下载 Qt、源码或 Cargo 依赖。使用系统 Python 创建本项目虚拟环境，不修改全局 Rust 默认版本。Windows 在 x64 开发者终端运行，或给入口提供 `--vcvars`，指向已安装的 `vcvars64.bat`。Linux 还需 Qt WebEngine 所用桌面运行库及图形环境，具体 CI 安装列表见[工作流](../../.github/workflows/desktop-admission.yml)。
 
 ```text
 python -m venv build/toolchain/desktop-tools
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 ```
 
-使用该虚拟环境的 Python 执行上面的 pip 安装命令；Windows 可调用 `build/toolchain/desktop-tools/Scripts/python.exe`，Unix 可调用 `build/toolchain/desktop-tools/bin/python`。研发周期临时产物的安全清理见[产研流程](workflow.md#工具诊断与周期收尾)。
+项目专用工具、SDK、虚拟环境和缓存必须放在本项目 `build/`；禁止使用其他项目目录中的文件或链接作为构建依赖，也不复制其他项目的虚拟环境。缺失时显式准备。同项目 worktree 可共享主工作区的工具与 SDK；系统 Python、Rust、Node、MSVC 和其他宿主编译器可以使用。构建入口会核验 Python 及其基解释器、CMake、Ninja、Rust 入口和 MSVC 脚本的真实归属，拒绝其他 Git 仓库中的工具；Qt SDK 必须在本项目构建树内。由虚拟环境 Python 调用时，优先采用其同目录 CMake／Ninja，不借继承的 PATH 回退至其他项目。
+
+本机复用 `build/Qt/6.8.2/<平台子目录>/` 下现有 SDK，Windows 的 `qmllint.exe` 和 `qmake.exe` 位于 `msvc2022_64/bin/`；macOS 和 Linux 使用对应 SDK 的 `bin/`。项目工具环境固定为 `build/toolchain/desktop-tools/`，创建及安装由开发者显式执行，不为每个研发周期重复安装。已有环境先核对版本与实际可执行文件，CI 使用独立 runner，目录约定不改变锁定版本。
+
+```text
+build/toolchain/desktop-tools/Scripts/python.exe -m pip install --cache-dir build/toolchain/pip-cache aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+```
+
+上面安装命令使用 Windows 路径；Unix 将 Python 替换为 `build/toolchain/desktop-tools/bin/python`。后续 `python scripts/desktop.py ...` 均指该虚拟环境的 Python，可激活环境后使用短命令，或显式写出完整路径。迁移既有构建时执行 `build --fresh`，清除缓存中的旧工具路径后重新验证。研发周期临时产物的安全清理见[产研流程](workflow.md#工具诊断与周期收尾)。
 
 ## Windows 本机默认配置
 
