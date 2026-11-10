@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QPointer>
 #include <QPointF>
+#include <QStringList>
 #include <QUuid>
 #include <QWidget>
 #include <memory>
@@ -15,7 +16,14 @@ namespace xdnote {
 class DocumentSession;
 class Appearance;
 class WorkspaceResourceReader;
-struct RenderResult { QByteArray html; QHash<int, QByteArray> images; QString error; quint64 generation = 0; quint64 revision = 0; };
+struct RenderResult {
+    QByteArray html;
+    QHash<int, QByteArray> images;
+    QString error;
+    quint64 generation = 0;
+    quint64 revision = 0;
+    QStringList linkTargets, headingIds;
+};
 
 class MarkdownPreview final : public QWidget {
     Q_OBJECT
@@ -33,6 +41,8 @@ signals:
     void previewReady(quint64 revision);
     void previewError(const QString &message);
     void copyTextRequested(const QString &text);
+    void fragmentNavigationMessage(const QString &message);
+    void fragmentNavigated(const QString &fragment);
 private:
     void startPending();
     QPointer<DocumentSession> m_session;
@@ -42,6 +52,7 @@ private:
     QUuid m_pendingDocumentId;
     std::shared_ptr<WorkspaceResourceReader> m_resourceRoot;
     QString m_resourceDocumentPath, m_resourceDocumentIdentity;
+    QStringList m_presentingLinkTargets, m_presentingHeadingIds;
     quint64 m_pendingRevision = 0;
     quint64 m_generation = 0;
     quint64 m_presentingGeneration = 0;

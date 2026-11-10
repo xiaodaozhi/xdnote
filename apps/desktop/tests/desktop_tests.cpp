@@ -34,6 +34,7 @@
 #include <QQuickWidget>
 #include <QQuickWindow>
 #include <QSignalSpy>
+#include <QSignalBlocker>
 #include <QTest>
 #include <QWebEnginePage>
 #include <QWebEngineScript>
@@ -43,6 +44,17 @@
 #include <atomic>
 
 using namespace xdnote;
+
+namespace {
+QVariant evaluatePreview(QWebEnginePage *page, const QString &script) {
+    struct Result { QVariant value; bool ready = false; };
+    const auto result = std::make_shared<Result>();
+    page->runJavaScript(script, QWebEngineScript::ApplicationWorld, [result](const QVariant &value) { result->value = value; result->ready = true; });
+    QElapsedTimer timer; timer.start();
+    while (!result->ready && timer.elapsed() < 10000) QTest::qWait(10);
+    return result->value;
+}
+}
 
 class DesktopTests final : public QObject {
     Q_OBJECT
@@ -159,6 +171,79 @@ private slots:
         preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
         QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
         for (const auto &heading : result.headings) QVERIFY2(html.contains(QStringLiteral("id=\"%1\"").arg(heading.id)), qPrintable(heading.id));
+    }
+    void previewFragmentLinksNavigateOnlyTheDisplayedRevision() {
+        const auto source = (QStringLiteral("[中文](#%E4%B8%AD%E6%96%87) ![图](missing.png) [重复](#重复-1) [缺失](#missing) [坏](#%GG) [外部](https://bad.invalid) [引用][r]\n\n[r]: #中文\n\n")
+            + QStringLiteral("A paragraph for scrolling.\n\n").repeated(45) + QStringLiteral("# 中文\n\n")
+            + QStringLiteral("More content.\n\n").repeated(35) + QStringLiteral("# 重复\n\n")
+            + QStringLiteral("More content.\n\n").repeated(35) + QStringLiteral("# 重复\n")).toUtf8();
+        DocumentSession session(source); MarkdownPreview preview(&session); preview.resize(640, 320);
+        QSignalSpy ready(&preview, &MarkdownPreview::previewReady), moved(&preview, &MarkdownPreview::fragmentNavigated);
+        QSignalSpy messages(&preview, &MarkdownPreview::fragmentNavigationMessage);
+        preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
+        auto *page = preview.view()->page();
+        QCOMPARE(evaluatePreview(page, QStringLiteral("document.querySelectorAll('a.link-placeholder').length")).toInt(), 5);
+        QCOMPARE(evaluatePreview(page, QStringLiteral("document.querySelectorAll('span.link-placeholder').length")).toInt(), 1);
+        QString html; bool htmlReady = false; page->toHtml([&](const QString &value) { html = value; htmlReady = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(htmlReady, 10000); QVERIFY(!html.contains("https://bad.invalid"));
+        const auto pageUrl = page->url();
+        const auto actionUrl = evaluatePreview(page, QStringLiteral("document.querySelector('a.link-placeholder').href")).toString();
+        QVERIFY(actionUrl.startsWith(QStringLiteral("xdnote-preview:")));
+        page->load(QUrl(actionUrl)); QTest::qWait(300);
+        QCOMPARE(page->url(), pageUrl); QVERIFY(moved.isEmpty());
+        const auto click = [&](int index) {
+            const auto point = evaluatePreview(page, QStringLiteral("(()=>{const a=document.querySelectorAll('a.link-placeholder')[%1];if(!a)return null;const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").arg(index)).toMap();
+            if (point.isEmpty()) return false;
+            QTest::mouseClick(preview.view()->focusProxy() ? preview.view()->focusProxy() : preview.view(), Qt::LeftButton, Qt::NoModifier,
+                QPoint(qRound(point.value("x").toDouble()), qRound(point.value("y").toDouble())));
+            return true;
+        };
+        QVERIFY(click(0)); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000); QCOMPARE(moved.first().first().toString(), QStringLiteral("中文"));
+        QVERIFY(!evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool());
+        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toDouble() > 0, 10000);
+        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toInt(), 0, 10000);
+        QVERIFY(click(1)); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 2, 10000); QCOMPARE(moved.last().first().toString(), QStringLiteral("重复-1"));
+        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toInt(), 0, 10000);
+        messages.clear(); QVERIFY(click(2)); QTRY_VERIFY_WITH_TIMEOUT(!messages.isEmpty(), 10000);
+        QVERIFY(messages.last().first().toString().contains(QStringLiteral("未找到标题"))); QCOMPARE(moved.size(), 2);
+        messages.clear(); QVERIFY(click(3)); QTRY_VERIFY_WITH_TIMEOUT(!messages.isEmpty(), 10000);
+        QVERIFY(messages.last().first().toString().contains(QStringLiteral("无效"))); QCOMPARE(moved.size(), 2);
+        QVERIFY(click(4)); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 3, 10000); QCOMPARE(moved.last().first().toString(), QStringLiteral("中文"));
+        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toInt(), 0, 10000);
+        QCOMPARE(session.snapshot().utf8, source); QVERIFY(!session.isDirty());
+        {
+            const QSignalBlocker block(&session);
+            QCOMPARE(session.replace(0, 0, QStringLiteral("changed "), session.revision()), EditResult::Applied);
+        }
+        QVERIFY(click(0)); QTest::qWait(300); QCOMPARE(moved.size(), 3);
+        QCOMPARE(preview.displayedRevision() + 1, session.revision());
+    }
+    void previewDoesNotActivateLinksWhenReferenceAnalysisMayBeIncomplete() {
+        const auto source = QByteArray("[r] ").repeated(99) + "\n\n[r]: #" + QByteArray(999, 'a') + "\n\n# heading\n";
+        DocumentSession session(source); const auto analysis = analyzeMarkdownReferences(session.snapshot());
+        QVERIFY(analysis.success); QVERIFY(!analysis.complete);
+        MarkdownPreview preview(&session); QSignalSpy ready(&preview, &MarkdownPreview::previewReady);
+        preview.resize(640, 320); preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
+        QCOMPARE(evaluatePreview(preview.view()->page(), QStringLiteral("document.querySelectorAll('a.link-placeholder').length")).toInt(), 0);
+    }
+    void previewFragmentLinksSupportKeyboardFocusAndActivation() {
+        const auto source = (QStringLiteral("[跳转](#target)\n\n") + QStringLiteral("Text for scrolling.\n\n").repeated(50) + QStringLiteral("# target\n")).toUtf8();
+        DocumentSession session(source); MarkdownPreview preview(&session); preview.resize(640, 320);
+        QSignalSpy ready(&preview, &MarkdownPreview::previewReady), moved(&preview, &MarkdownPreview::fragmentNavigated);
+        preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
+        auto *page = preview.view()->page(); auto *surface = preview.view()->focusProxy() ? preview.view()->focusProxy() : preview.view();
+        // Xvfb has no window manager. Establish Qt activation and verify both
+        // the widget and page have focus before testing keyboard traversal.
+        QApplication::setActiveWindow(&preview); surface->setFocus(Qt::OtherFocusReason);
+        QTRY_VERIFY(surface->hasFocus());
+        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.hasFocus()")).toBool(), 10000);
+        QTest::keyClick(surface, Qt::Key_Tab);
+        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.activeElement === document.querySelector('a.link-placeholder')")).toBool(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool(), 10000);
+        QTest::keyClick(surface, Qt::Key_Return);
+        QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000); QCOMPARE(moved.first().first().toString(), QStringLiteral("target"));
+        QVERIFY(!evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool());
+        QCOMPARE(session.snapshot().utf8, source); QVERIFY(!session.isDirty());
     }
     void markdownReferencesKeepSnapshotIdentityAndIncompleteStatus() {
         const auto source = QStringLiteral("中文😀 ![图](../assets/a%23b.png) [甲][ref] [乙][ref]\n\n[ref]: notes/说明.md\n\n`[伪](ignored.md)`\n").toUtf8();
