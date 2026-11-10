@@ -226,6 +226,11 @@ private slots:
         index = buildWorkspaceReferenceIndex(input);
         QVERIFY(!index.complete); QVERIFY(index.references.isEmpty());
 
+        live.path = QStringLiteral("alias.md"); input.sources = {disk, live};
+        index = buildWorkspaceReferenceIndex(input);
+        QVERIFY(!index.complete); QCOMPARE(index.inbound("new.md").size(), 1); QVERIFY(index.inbound("old.md").isEmpty());
+        QCOMPARE(index.sources.size(), 1); QCOMPARE(index.sources.first().path, QStringLiteral("alias.md"));
+
         input.sources = {disk}; input.enumerationComplete = false;
         index = buildWorkspaceReferenceIndex(input);
         QVERIFY(!index.complete); QCOMPARE(index.inbound("old.md").size(), 1);

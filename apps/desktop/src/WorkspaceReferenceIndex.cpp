@@ -1,7 +1,9 @@
 #include "WorkspaceReferenceIndex.h"
 
 #include <QCryptographicHash>
+#include <QHash>
 #include <QMap>
+#include <QSet>
 #include <utility>
 
 namespace xdnote {
@@ -38,10 +40,18 @@ ReferenceIndexSnapshot buildWorkspaceReferenceIndex(const ReferenceIndexInput &i
         result.gaps.append(QStringLiteral("工作区文件枚举尚未完成"));
 
     QMap<QString, SourceGroup> groups;
+    QHash<QString, QString> identityPaths;
+    QSet<QString> aliases, sessionIdentities;
     for (const auto &source : input.sources) {
         if (!resolveWorkspaceTarget(source.path, QStringLiteral("#")).success) {
             result.gaps.append(QStringLiteral("来源路径无效"));
             continue;
+        }
+        if (!source.identity.isEmpty()) {
+            const auto previous = identityPaths.constFind(source.identity);
+            if (previous != identityPaths.cend() && previous.value() != source.path) aliases.insert(source.identity);
+            else identityPaths.insert(source.identity, source.path);
+            if (source.origin == ReferenceIndexSource::Origin::Session) sessionIdentities.insert(source.identity);
         }
         auto &group = groups[source.path];
         (source.origin == ReferenceIndexSource::Origin::Session ? group.sessions : group.disks).append(&source);
@@ -57,6 +67,13 @@ ReferenceIndexSnapshot buildWorkspaceReferenceIndex(const ReferenceIndexInput &i
         if (source->identity.isEmpty() || source->pathGeneration == 0 || source->snapshot.documentId.isNull()) {
             result.gaps.append(QStringLiteral("来源身份或代次无效：%1").arg(it.key()));
             continue;
+        }
+        if (aliases.contains(source->identity)) {
+            result.gaps.append(QStringLiteral("同一文件身份存在多个来源路径：%1").arg(it.key()));
+            // An open session may contain unsaved text for every hard-link or
+            // case alias of the same file. Do not report its disk alias as
+            // current until the caller can map the live snapshot to each path.
+            if (group.sessions.isEmpty() && sessionIdentities.contains(source->identity)) continue;
         }
         if (!group.sessions.isEmpty() && !group.disks.isEmpty()
             && (group.sessions.first()->identity != group.disks.first()->identity
