@@ -55,6 +55,13 @@ MarkdownReferenceAnalysis analyzeMarkdownReferences(const DocumentSnapshot &snap
             result.reason = QStringLiteral("引用范围或目标无效"); return result;
         }
         item.target = entry.value("target").toString(); item.title = entry.value("title").toString();
+        const auto destination = entry.value("destination");
+        if (!destination.isNull() && !destination.isUndefined()) {
+            const auto span = destination.toArray();
+            if (!destination.isArray() || span.size() != 2 || !validRange(snapshot.utf8, span.at(0), span.at(1), item.destination)) {
+                result.reason = QStringLiteral("引用目标的位置无效"); return result;
+            }
+        }
         const auto label = entry.value("reference"), definition = entry.value("definition");
         if (label.isString()) {
             item.referenceStyle = true; item.referenceLabel = label.toString();
@@ -64,6 +71,10 @@ MarkdownReferenceAnalysis analyzeMarkdownReferences(const DocumentSnapshot &snap
             }
         } else if (!label.isNull() || !definition.isNull()) {
             result.reason = QStringLiteral("引用定义无效"); return result;
+        }
+        const auto container = item.referenceStyle ? item.definition : item.usage;
+        if (item.destination.valid() && (item.destination.start < container.start || item.destination.end > container.end)) {
+            result.reason = QStringLiteral("引用目标超出语法范围"); return result;
         }
         items.append(std::move(item));
     }

@@ -72,12 +72,13 @@ if(WIN32)
 else()
     set(XDNOTE_RUST_LIBRARY "${CMAKE_BINARY_DIR}/cargo/${XDNOTE_RUST_TARGET}/release/libxdnote_markdown.a")
 endif()
+file(GLOB_RECURSE XDNOTE_RUST_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/crates/*.rs")
 add_custom_command(OUTPUT "${XDNOTE_RUST_LIBRARY}"
     COMMAND "${CMAKE_COMMAND}" -E env "CARGO_HOME=${XDNOTE_CARGO_HOME}" "CARGO_NET_OFFLINE=true"
         "RUSTUP_AUTO_INSTALL=0" "${XDNOTE_RUSTUP}" run "${XDNOTE_RUST_VERSION}" cargo build
         --manifest-path "${PROJECT_SOURCE_DIR}/Cargo.toml" --locked --offline --release
         --target "${XDNOTE_RUST_TARGET}" --target-dir "${CMAKE_BINARY_DIR}/cargo"
-    DEPENDS Cargo.toml Cargo.lock rust-toolchain.toml crates/markdown/Cargo.toml crates/markdown/src/lib.rs crates/markdown/src/workspace_path.rs
+    DEPENDS Cargo.toml Cargo.lock rust-toolchain.toml crates/markdown/Cargo.toml ${XDNOTE_RUST_SOURCES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
 add_custom_target(xdnote_rust_build DEPENDS "${XDNOTE_RUST_LIBRARY}")
 add_library(xdnote_markdown STATIC IMPORTED GLOBAL)
@@ -85,7 +86,8 @@ set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUS
 add_dependencies(xdnote_markdown xdnote_rust_build)
 
 if(UNIX)
-    add_executable(xdnote_resource_helper apps/desktop/src/ResourceHelper.cpp)
+    add_executable(xdnote_resource_helper apps/desktop/src/ResourceHelper.cpp
+        apps/desktop/src/FileService.cpp apps/desktop/src/WorkspaceResourceReader.cpp)
     set_target_properties(xdnote_resource_helper PROPERTIES OUTPUT_NAME "xdnote-resource-helper")
     target_link_libraries(xdnote_resource_helper PRIVATE Qt6::Core)
     if(APPLE)
@@ -116,6 +118,9 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/MarkdownHeadings.cpp apps/desktop/src/MarkdownHeadings.h
     apps/desktop/src/WorkspacePath.cpp apps/desktop/src/WorkspacePath.h
     apps/desktop/src/WorkspaceReferenceIndex.cpp apps/desktop/src/WorkspaceReferenceIndex.h
+    apps/desktop/src/ReferenceMovePlan.cpp apps/desktop/src/ReferenceMovePlan.h
+    apps/desktop/src/ResourceMaintenance.cpp apps/desktop/src/ResourceMaintenance.h
+    apps/desktop/src/ResourceMaintenanceController.cpp apps/desktop/src/ResourceMaintenanceController.h
     apps/desktop/src/WorkspaceReferenceScan.cpp apps/desktop/src/WorkspaceReferenceScan.h
     apps/desktop/src/WorkspaceReferenceController.cpp apps/desktop/src/WorkspaceReferenceController.h
     apps/desktop/src/WorkspaceResourceReader.cpp apps/desktop/src/WorkspaceResourceReader.h

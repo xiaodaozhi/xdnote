@@ -19,6 +19,7 @@ class ElidedLabel;
 class WorkspaceResourceReader;
 class WorkspaceReferenceController;
 class FileManager;
+class ResourceMaintenanceController;
 class WorkspaceWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -36,8 +37,10 @@ public:
     WindowGeometry *windowGeometry() const { return m_geometry; }
     void showNotice(const QString &message);
     WorkspaceReferenceController *references() const { return m_references; }
+    ResourceMaintenanceController *resourceMaintenance() const { return m_maintenance; }
     std::shared_ptr<WorkspaceResourceReader> resourceRoot() const { return m_resourceRoot; }
 signals:
+    void referenceSourceRequested(QString path, QString identity, QByteArray sha256, qsizetype start, qsizetype end);
     void openRequested(QString path);
     void chooseFileRequested();
     void chooseDirectoryRequested();
@@ -58,6 +61,7 @@ private:
     QHash<QUuid, QPointer<SingleFileWindow>> m_panes;
     std::shared_ptr<WorkspaceResourceReader> m_resourceRoot;
     WorkspaceReferenceController *m_references;
+    ResourceMaintenanceController *m_maintenance;
     WindowTitleBar *m_header;
     QTabBar *m_tabs;
     QWidget *m_sidebar = nullptr;

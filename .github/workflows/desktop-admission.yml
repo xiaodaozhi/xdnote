@@ -1,5 +1,5 @@
 name: Desktop admission
-run-name: ${{ inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
+run-name: ${{ inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux]
 
 permissions:
   contents: read
@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         include: >-
-          ${{ fromJSON(inputs.scope == 'workspace-linux' &&
+          ${{ fromJSON((inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
           inputs.scope == 'resources-macos' &&
           '[{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
@@ -109,7 +109,7 @@ jobs:
                   raise RuntimeError(f'Fatal Qt diagnostic in {name}')
           PY
       - name: Diagnose workspace crash on Linux
-        if: failure() && runner.os == 'Linux'
+        if: failure() && runner.os == 'Linux' && inputs.scope == 'workspace-linux'
         run: |
           if [ -f build/desktop-admission/xdnote_workspace_tests ]; then
             xdnote_qt_version=$(python -c "import json; print(json.load(open('tools/desktop-dependencies.json'))['qt']['version'])")
@@ -133,7 +133,7 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: ${{ inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
+    name: ${{ inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop]
     if: always()
     runs-on: ubuntu-24.04

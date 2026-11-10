@@ -175,6 +175,22 @@ NativeOpen openFile(const QString &path, bool contents, bool denyConcurrentWrite
     NativeInfo info;
     auto problem = inspect(*file, info);
     if (problem.code != FileError::None) return {{}, {}, problem};
+#ifdef Q_OS_WIN
+    if (!contents) {
+        FILE_ID_INFO id{};
+        if (GetFileInformationByHandleEx(file->handle, FileIdInfo, &id, sizeof(id))) {
+            FILE_ID_DESCRIPTOR description{}; description.dwSize = sizeof(description); description.Type = ExtendedFileIdType; description.ExtendedFileId = id.FileId;
+            auto identityLease = std::make_shared<NativeFile>();
+            identityLease->handle = OpenFileById(file->handle, &description, FILE_READ_ATTRIBUTES,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
+            NativeInfo confirmed;
+            if (identityLease->handle != INVALID_HANDLE_VALUE && inspect(*identityLease, confirmed).code == FileError::None && confirmed.identity == info.identity)
+                file = std::move(identityLease);
+        }
+        // If unsupported, retain the original object lease. A directory move
+        // may then be refused; never drop identity protection to force it.
+    }
+#endif
     return {std::move(file), info, {}};
 }
 
@@ -246,6 +262,12 @@ ProbeResult FileService::probeWithin(const std::shared_ptr<WorkspaceResourceRead
     file->m_root = root; file->m_relativePath = path;
     return {std::move(file), {}};
 }
+std::shared_ptr<const FileBaseline> FileService::relocatedBaseline(const std::shared_ptr<const FileBaseline> &before, const QString &path) {
+    if (!before || !QDir::isAbsolutePath(path) || path.contains(QChar::Null)) return {};
+    const auto &previous = before->m_file;
+    auto file = std::shared_ptr<const FileProbe>(new FileProbe(path, previous->m_identity, previous->m_lease));
+    return std::shared_ptr<const FileBaseline>(new FileBaseline(std::move(file), QUuid::createUuid(), before->m_diskBytes, before->m_utf8, before->m_bom));
+}
 ReadResult FileService::read(const FileReadRequest &request) {
     const auto &file = request.file;
     if (!file || request.requestId.isNull()) return {{}, {FileError::InvalidPath}};
@@ -259,7 +281,10 @@ ReadResult FileService::read(const FileReadRequest &request) {
         bool valid = false; decodeUtf8Literal(utf8, &valid);
         if (!valid) return {{}, {FileError::InvalidUtf8}};
         if (utf8.contains('\0')) return {{}, {FileError::UnsupportedContent}};
-        return {std::shared_ptr<const FileBaseline>(new FileBaseline(file, request.requestId, std::move(read.bytes), std::move(utf8), bom)), {}};
+        // Admission used the directory capability; the accepted session owns
+        // this individual object independently of the initiating window.
+        auto accepted = std::shared_ptr<const FileProbe>(new FileProbe(file->m_path, file->m_identity, file->m_lease));
+        return {std::shared_ptr<const FileBaseline>(new FileBaseline(std::move(accepted), request.requestId, std::move(read.bytes), std::move(utf8), bom)), {}};
     }
     auto opened = openFile(file->path(), true);
     if (!opened.file) return {{}, opened.problem};

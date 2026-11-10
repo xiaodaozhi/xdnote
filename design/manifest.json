@@ -1265,8 +1265,8 @@
       "path": "sources/check-ui-materials.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 13815,
-      "sha256": "ebb1a71f3c873e23fb33e93d6bb966d44255c82a5f23ca1a900cc8d4256a5646",
+      "bytes": 14368,
+      "sha256": "15b8b3da596d7f397cdb61c19ba4ea22b401201fbb290982b61e8e60f33c33c1",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1579,8 +1579,8 @@
     },
     {
       "path": "docs/visual/window-registry.json",
-      "bytes": 7783,
-      "sha256": "fee29952d3601eb8d44b50f04462ea5e0f1b7794a3f3ebad287a3e6059742742"
+      "bytes": 8451,
+      "sha256": "212f15cc56781c002e43621eb2cd34f6c61bb8eab36a18081f6c55ea1c0b9556"
     },
     {
       "path": "docs/visual/surface-registry-v2.json",

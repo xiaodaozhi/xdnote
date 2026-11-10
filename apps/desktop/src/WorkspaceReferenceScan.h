@@ -27,9 +27,14 @@ struct ReferenceScanResult {
     QStringList excludedDirectories;
     QStringList watchedDirectories, imageCandidates;
     QHash<QString, ReferenceTargetState> targets;
+    QHash<QString, DocumentSnapshot> sourceTexts;
+    QHash<QString, QString> fragmentProblems;
     bool cancelled = false;
 };
 
+inline QString referenceDiagnosticKey(const IndexedReference &reference) {
+    return reference.sourcePath + '\n' + QString::number(reference.reference.usage.start);
+}
 // Blocking worker operation. Live snapshots must be captured by the caller on
 // the session thread. The result remains derived data, never a write permit.
 ReferenceScanResult scanWorkspaceReferences(const std::shared_ptr<WorkspaceResourceReader> &root,
