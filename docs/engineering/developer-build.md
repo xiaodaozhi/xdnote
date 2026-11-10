@@ -15,6 +15,8 @@ rustup toolchain install 1.99.0 --profile minimal --component rustfmt --componen
 
 项目专用工具、SDK、虚拟环境和缓存必须放在本项目 `build/`；禁止使用其他项目目录中的文件或链接作为构建依赖，也不复制其他项目的虚拟环境。缺失时显式准备。同项目 worktree 可共享主工作区的工具与 SDK；系统 Python、Rust、Node、MSVC 和其他宿主编译器可以使用。构建入口会核验 Python 及其基解释器、CMake、Ninja、Rust 入口和 MSVC 脚本的真实归属，拒绝其他 Git 仓库中的工具；Qt SDK 必须在本项目构建树内。由虚拟环境 Python 调用时，优先采用其同目录 CMake／Ninja，不借继承的 PATH 回退至其他项目。
 
+系统包管理器安装属于宿主工具：Homebrew 自身使用 Git，入口仅识别默认系统前缀中具有安装收据的 Cellar 软件包，不将整个目录或其中的其他源码仓库列为例外。其安装布局见 [Homebrew 官方说明](https://docs.brew.sh/Manpage.html)；项目 Qt SDK 仍必须位于本项目构建树。
+
 本机复用 `build/Qt/6.8.2/<平台子目录>/` 下现有 SDK，Windows 的 `qmllint.exe` 和 `qmake.exe` 位于 `msvc2022_64/bin/`；macOS 和 Linux 使用对应 SDK 的 `bin/`。项目工具环境固定为 `build/toolchain/desktop-tools/`，创建及安装由开发者显式执行，不为每个研发周期重复安装。已有环境先核对版本与实际可执行文件，CI 使用独立 runner，目录约定不改变锁定版本。
 
 ```text

@@ -18,6 +18,32 @@ SPEC.loader.exec_module(desktop)
 
 
 class DesktopToolTests(unittest.TestCase):
+    def test_system_package_receipt_does_not_exempt_arbitrary_checkouts(self):
+        desktop.BUILD.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="system-package-", dir=desktop.BUILD) as directory:
+            prefix = Path(directory)
+            (prefix / ".git").mkdir()
+            (prefix / "Library/Homebrew").mkdir(parents=True)
+            (prefix / "Library/Homebrew/brew.sh").touch()
+            package = prefix / "Cellar/rustup/1.0"
+            (package / "bin").mkdir(parents=True)
+            tool = package / "bin/rustup"
+            tool.touch()
+            with patch.object(desktop, "SYSTEM_BREW_PREFIXES", (prefix,)):
+                with self.assertRaises(ValueError):
+                    desktop.checked_tool_path(tool, "rustup")
+                (package / "INSTALL_RECEIPT.json").write_text("{}", encoding="utf-8")
+                self.assertEqual(desktop.checked_tool_path(tool, "rustup"), tool.resolve())
+                source = prefix / "source/tool"
+                source.parent.mkdir()
+                source.touch()
+                with self.assertRaises(ValueError):
+                    desktop.checked_tool_path(source, "CMake")
+                # A nested foreign checkout remains foreign even inside a package.
+                (package / ".git").mkdir()
+                with self.assertRaises(ValueError):
+                    desktop.checked_tool_path(tool, "rustup")
+
     def test_tools_reject_foreign_checkout_and_allow_same_project_worktree(self):
         desktop.BUILD.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="tool-owner-", dir=desktop.BUILD) as directory:

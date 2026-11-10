@@ -16,6 +16,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
 DEPS = json.loads((ROOT / "tools/desktop-dependencies.json").read_text(encoding="utf-8"))
+SYSTEM_BREW_PREFIXES = tuple(Path(value) for value in ("/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew"))
 
 
 def repository_owner(path):
@@ -36,10 +37,23 @@ def repository_owner(path):
     return None
 
 
+def system_package_tool(path, owner):
+    # Homebrew itself is a Git checkout. Only installed Cellar packages with a
+    # receipt are system tools; its arbitrary source checkouts are not exempt.
+    prefix = owner[0]
+    if prefix not in SYSTEM_BREW_PREFIXES or not (prefix / "Library/Homebrew/brew.sh").is_file():
+        return False
+    cellar = prefix / "Cellar"
+    if not path.is_relative_to(cellar):
+        return False
+    parts = path.relative_to(cellar).parts
+    return len(parts) >= 3 and (cellar / parts[0] / parts[1] / "INSTALL_RECEIPT.json").is_file()
+
+
 def checked_tool_path(value, label, sdk=False):
     path = Path(value).resolve(strict=True)
     owner, current = repository_owner(path), repository_owner(ROOT)
-    if owner and (not current or owner[1] != current[1]):
+    if owner and (not current or owner[1] != current[1]) and (sdk or not system_package_tool(path, owner)):
         raise ValueError(f"{label} belongs to another Git repository; prepare tools in this project's build/toolchain")
     if sdk and not path.is_relative_to((owner[0] if owner else ROOT) / "build"):
         raise ValueError(f"{label} must be inside this project's build tree")
