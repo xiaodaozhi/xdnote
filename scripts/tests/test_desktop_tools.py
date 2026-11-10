@@ -18,6 +18,84 @@ SPEC.loader.exec_module(desktop)
 
 
 class DesktopToolTests(unittest.TestCase):
+    def test_system_package_receipt_does_not_exempt_arbitrary_checkouts(self):
+        desktop.BUILD.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="system-package-", dir=desktop.BUILD) as directory:
+            prefix = Path(directory)
+            (prefix / ".git").mkdir()
+            (prefix / "Library/Homebrew").mkdir(parents=True)
+            (prefix / "Library/Homebrew/brew.sh").touch()
+            package = prefix / "Cellar/rustup/1.0"
+            (package / "bin").mkdir(parents=True)
+            tool = package / "bin/rustup"
+            tool.touch()
+            with patch.object(desktop, "SYSTEM_BREW_PREFIXES", (prefix,)):
+                with self.assertRaises(ValueError):
+                    desktop.checked_tool_path(tool, "rustup")
+                (package / "INSTALL_RECEIPT.json").write_text("{}", encoding="utf-8")
+                self.assertEqual(desktop.checked_tool_path(tool, "rustup"), tool.resolve())
+                source = prefix / "source/tool"
+                source.parent.mkdir()
+                source.touch()
+                with self.assertRaises(ValueError):
+                    desktop.checked_tool_path(source, "CMake")
+                # A nested foreign checkout remains foreign even inside a package.
+                (package / ".git").mkdir()
+                with self.assertRaises(ValueError):
+                    desktop.checked_tool_path(tool, "rustup")
+
+    def test_tools_reject_foreign_checkout_and_allow_same_project_worktree(self):
+        desktop.BUILD.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="tool-owner-", dir=desktop.BUILD) as directory:
+            fixture = Path(directory)
+            project, foreign, worktree = (fixture / name for name in ("project", "foreign", "worktree"))
+            for checkout in (project, foreign):
+                (checkout / ".git").mkdir(parents=True)
+                (checkout / "build").mkdir()
+            foreign_tool = foreign / "build/tool.exe"
+            foreign_tool.touch()
+            with patch.object(desktop, "ROOT", project):
+                with self.assertRaisesRegex(ValueError, "another Git repository"):
+                    desktop.checked_tool_path(foreign_tool, "CMake")
+                with patch.object(desktop.shutil, "which", return_value=str(foreign_tool)):
+                    with self.assertRaisesRegex(ValueError, "another Git repository"):
+                        desktop.prepared_tool("foreign-cmake", {"PATH": str(foreign_tool.parent)})
+                # A linked worktree may share this project's tools, not another project's.
+                worktree.mkdir()
+                gitdir = project / ".git/worktrees/task"
+                gitdir.mkdir(parents=True)
+                (gitdir / "commondir").write_text("../..", encoding="utf-8")
+                (worktree / ".git").write_text("gitdir: " + str(gitdir), encoding="utf-8")
+                own_tool = project / "build/tool.exe"
+                own_tool.touch()
+                with patch.object(desktop, "ROOT", worktree):
+                    self.assertEqual(desktop.checked_tool_path(own_tool, "CMake"), own_tool.resolve())
+                    self.assertEqual(desktop.checked_tool_path(project / "build", "Qt", sdk=True), (project / "build").resolve())
+                outside_sdk = project / "external-sdk"
+                outside_sdk.mkdir()
+                with self.assertRaisesRegex(ValueError, "build tree"):
+                    desktop.checked_tool_path(outside_sdk, "Qt", sdk=True)
+                # Resolving a path link must not conceal foreign ownership.
+                link = project / "build/foreign-link"
+                try:
+                    link.symlink_to(foreign_tool)
+                except OSError:
+                    pass  # The existing cleanup test separately reports unavailable symlink creation.
+                else:
+                    with self.assertRaisesRegex(ValueError, "another Git repository"):
+                        desktop.checked_tool_path(link, "CMake")
+
+    def test_virtual_environment_tools_precede_inherited_path(self):
+        desktop.BUILD.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="tool-launcher-", dir=desktop.BUILD) as directory:
+            folder = Path(directory)
+            tool = folder / ("cmake.exe" if desktop.platform.system() == "Windows" else "cmake")
+            tool.touch()
+            with patch.object(desktop.sys, "executable", str(folder / "python")), \
+                 patch.object(desktop.shutil, "which", return_value=str(tool)) as which:
+                self.assertEqual(desktop.prepared_tool("cmake", {"PATH": "inherited"}), str(tool.resolve()))
+                which.assert_called_once_with(str(tool), path="inherited")
+
     def test_vcvars_import_keeps_one_case_insensitive_windows_path(self):
         with patch.object(desktop.platform, "system", return_value="Windows"), \
              patch.object(desktop.os, "environ", {"PATH": "before", "SystemRoot": "C:/Windows"}), \
