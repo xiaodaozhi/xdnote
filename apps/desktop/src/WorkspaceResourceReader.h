@@ -2,6 +2,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QList>
 #include <memory>
 #include <functional>
 
@@ -16,6 +17,20 @@ struct WorkspaceReadResult {
     QByteArray bytes;
     qint64 nativeCode = 0;
     QString identity;
+    bool ok() const { return error == WorkspaceReadError::None; }
+};
+
+struct WorkspaceDirectoryEntry {
+    enum class Kind { File, Directory, Unsupported };
+    QString name;
+    Kind kind = Kind::Unsupported;
+};
+struct WorkspaceDirectoryResult {
+    WorkspaceReadError error = WorkspaceReadError::None;
+    qint64 nativeCode = 0;
+    QString identity;
+    QList<WorkspaceDirectoryEntry> entries;
+    bool complete = false;
     bool ok() const { return error == WorkspaceReadError::None; }
 };
 
@@ -52,6 +67,9 @@ public:
     WorkspaceResourceReader(const WorkspaceResourceReader &) = delete;
     WorkspaceResourceReader &operator=(const WorkspaceResourceReader &) = delete;
     WorkspaceReadResult read(const QString &rootRelativePath, qsizetype maxBytes) const;
+    // Empty path means the selected root. Entries are only candidates: every
+    // later read must still resolve from the current root, not a joined path.
+    WorkspaceDirectoryResult listDirectory(const QString &rootRelativePath, int maxEntries = 10000) const;
     // Publishes an already validated, bounded byte snapshot under assets/images.
     // This method does not decode images or edit a Markdown document. A caller
     // must recheck the document session/revision before inserting a reference.
