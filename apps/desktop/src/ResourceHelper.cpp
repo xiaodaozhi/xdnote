@@ -22,6 +22,7 @@
 #ifdef Q_OS_LINUX
 #include <linux/landlock.h>
 #include <linux/fs.h>
+#include <linux/openat2.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #ifndef LANDLOCK_ACCESS_FS_REFER
@@ -56,6 +57,19 @@ QStringList components(const QString &path) {
 int openWithin(int root, const QString &path, bool directory, dev_t device, bool metadata = false) {
     if (path.isEmpty() && directory) return ::dup(root);
     const auto parts = components(path); if (parts.isEmpty()) { errno = EINVAL; return -1; }
+#ifdef Q_OS_LINUX
+    open_how how{};
+    how.flags = (metadata ? O_PATH : O_RDONLY) | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK | (directory ? O_DIRECTORY : 0);
+    how.resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV;
+    const auto bytes = path.toUtf8();
+    const int result = int(::syscall(SYS_openat2, root, bytes.constData(), &how, sizeof(how)));
+    if (result < 0) return -1;
+    struct stat info{};
+    if (::fstat(result, &info) != 0 || info.st_dev != device || (directory ? !S_ISDIR(info.st_mode) : !S_ISREG(info.st_mode))) {
+        ::close(result); errno = EXDEV; return -1;
+    }
+    return result;
+#else
     Fd parent; parent.value = ::dup(root); if (parent.value < 0) return -1;
     for (qsizetype i = 0; i < parts.size(); ++i) {
         const bool dir = directory || i + 1 < parts.size();
@@ -84,6 +98,7 @@ int openWithin(int root, const QString &path, bool directory, dev_t device, bool
         ::close(parent.value); parent.value = child;
     }
     const int result = parent.value; parent.value = -1; return result;
+#endif
 }
 bool restrictFilesystem(int root, const QString &path, bool writing, bool moving) {
 #ifdef Q_OS_LINUX
