@@ -13,7 +13,7 @@
 - 组件使用逻辑像素与共享参数，不把 PNG 物理尺寸、DPR 或系统缩放写入组件几何。正文、菜单、独立窗口和设置窗口共同核对字号与密度。
 - 跨屏缩放、原生约束和几何恢复遵循 `docs/engineering/window-geometry.md`。普通窗口高缩放移至低缩放不放大，往返不累积增长；正常逻辑客户区与原生设备外框分别处理，目标可用区不足只收敛，物理拖动验收独立记录。
 - 文件打开、文档会话、保存、外部冲突与退出遵守产品契约。同一文件不能因不同入口而产生彼此独立、可相互覆盖的编辑缓冲区。
-- 技术方向与模块契约遵循 `docs/engineering/architecture.md`：Qt 桌面、会话持有唯一原文与撤销、Rust 独立服务；Scintilla、具体界面承载和受限 Web 预览仍须准入验证。依赖版本、字体、许可与发布要求按本项目实际内容核验。
+- 技术方向与模块契约遵循 `docs/engineering/architecture.md`：Qt 桌面、会话持有唯一原文与撤销、Rust 独立服务。产品不得使用 Chromium，包括 Qt WebEngine、CEF、Electron 和基于 Chromium 的系统 WebView；现存旧预览依赖待迁移，不继续作为已确定路线开发或部署。非 Chromium 预览、具体界面承载和 Scintilla 仍按各自准入验证，依赖版本、字体、许可与发布要求按实际内容核验。
 - 本机、桌面 CI 与 Qt 试验统一使用 `tools/desktop-dependencies.json` 锁定的 Qt 6.8.2。本机 Windows 默认使用已安装的 Visual Studio 2022／MSVC v143，选择 `python scripts/desktop.py build --profile default`；v142／14.29 保留为按需兼容配置与 CI 检查，见 `docs/engineering/developer-build.md`。
 - 启动本机构建必须使用 `python scripts/desktop.py run` 并指定对应的 `--build-dir`、`--qt-prefix` 和配置，使用该入口临时设置 DLL、插件和 WebEngine 子进程路径；禁止直接裸启动构建目录的 exe，也不为启动修改系统 PATH 或反复尝试启动。入口检查失败先修复构建或运行环境。
 - 工作区图片默认集中在 `assets/images/`，正文使用相对当前文档的标准 Markdown 链接；导入、引用索引、移动与重命名遵循 `docs/product/workspace-resources.md`，不自动删除图片或绕过会话改写正文。

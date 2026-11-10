@@ -13,6 +13,7 @@
 | 参数 | [tokens.json](visual/tokens.json) | 精确颜色、逻辑尺寸和字体参数 |
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
+| 预览选型 | [非 Chromium 预览方案评估](engineering/preview-alternatives.md) | 约束、候选、成本边界与后续准入 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
 | 文件基础 | [文件读取与会话登记](engineering/file-read-baseline.md) | 原生身份、严格字节基线、请求失效与当前限制 |
 | 文件闭环 | [真实文件保存与冲突](engineering/file-save-workflow.md) | 冻结快照、替换保存、硬链接保护、冲突和关闭 |

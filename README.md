@@ -38,6 +38,8 @@
 
 完整索引见 [docs/README.md](docs/README.md)。
 
+产品预览明确不使用 Chromium。[替代方案评估](docs/engineering/preview-alternatives.md)区分原生富文本、有界布局和轻量排版库；当前原型仍含待迁移的 Qt WebEngine，尚未完成产品替换，不能将现有构建描述为已满足这一约束。
+
 ## 仓库结构
 
 ```text
