@@ -143,6 +143,7 @@ private:
     MarkdownPreview *m_preview = nullptr;
     bool m_editing = false, m_prompting = false, m_closeAfterOperation = false;
     QString m_previewError;
+    QString m_navigationMessage;
     QString m_hostMessage;
     QString m_appearanceError, m_geometryError, m_dismissedNotice, m_openPath, m_openError;
     int m_zoom = 100;

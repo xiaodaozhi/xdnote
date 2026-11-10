@@ -32,8 +32,10 @@ PreviewImages preparePreviewImages(const DocumentSnapshot &snapshot,
     if (!analysis.success || !analysis.complete) return result;
     result.analyzed = true;
     bool hasImages = false;
-    for (const auto &reference : analysis.references)
-        if (reference.kind == MarkdownReference::Kind::Image) { hasImages = true; break; }
+    for (const auto &reference : analysis.references) {
+        if (reference.kind == MarkdownReference::Kind::Image) hasImages = true;
+        else result.linkTargets.append(reference.target);
+    }
     if (!hasImages) return result;
     const bool documentAuthorized = verifiedDocument(root, documentPath, documentIdentity);
     qsizetype inputBytes = 0, outputBytes = 0;

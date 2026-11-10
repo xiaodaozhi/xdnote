@@ -231,7 +231,12 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_resolve = new SharedButton(QStringLiteral("处理"), "resolveConflict", m_appearance, m_banner); m_retry = new SharedButton(QStringLiteral("重试"), "retrySave", m_appearance, m_banner); m_later = new SharedButton(QStringLiteral("稍后"), "dismissNotice", m_appearance, m_banner);
     banner->addWidget(m_retry); banner->addWidget(m_resolve); banner->addWidget(m_later);
     m_noticeClose = new SharedButton({}, "closeNotice", m_appearance, m_banner); m_noticeClose->setSymbol("close"); m_noticeClose->setFixedWidth(32); m_noticeClose->setAccessibleName(QStringLiteral("关闭提示")); banner->addWidget(m_noticeClose);
-    connect(m_noticeClose, &QPushButton::clicked, this, [this] { m_dismissedNotice = m_notice->text(); m_banner->hide(); });
+    connect(m_noticeClose, &QPushButton::clicked, this, [this] {
+        if (!m_navigationMessage.isEmpty() && m_notice->text() == m_navigationMessage) {
+            m_navigationMessage.clear(); m_dismissedNotice.clear(); updateState(); return;
+        }
+        m_dismissedNotice = m_notice->text(); m_banner->hide();
+    });
     connect(m_resolve, &QPushButton::clicked, this, [this] { if (m_document && m_document->conflict()) { if (m_document->dirty()) resolveConflict(); else reloadDisk(); } else if (!m_previewError.isEmpty() && m_document && !m_document->hasError()) m_preview->refresh(); else chooseSaveAs(); });
     connect(m_retry, &QPushButton::clicked, m_saveAction, &QAction::trigger);
     connect(m_later, &QPushButton::clicked, this, [this] { m_dismissedNotice = m_notice->text(); m_banner->hide(); }); layout->addWidget(m_banner);
@@ -348,7 +353,10 @@ void SingleFileWindow::setDocument(FileDocument *document) {
         if (!m_closeAfterOperation) return; m_closeAfterOperation = false; if (success) QTimer::singleShot(0, this, [this] { close(); }); else emit closeCancelled();
     });
     connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) { m_previewError = message; updateState(); });
-    connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); updateState(); });
+    connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); m_navigationMessage.clear(); updateState(); });
+    connect(m_preview, &MarkdownPreview::fragmentNavigationMessage, this, [this](const QString &message) {
+        m_navigationMessage = message; if (!message.isEmpty()) m_dismissedNotice.clear(); updateState();
+    });
     m_documentUiReady = true; setEditing(false); updateState();
 }
 SingleFileWindow::~SingleFileWindow() {
@@ -470,6 +478,7 @@ void SingleFileWindow::updateState() {
     auto message = m_document->message(); if (message.isEmpty()) message = m_document->session()->rejection();
     if (message.isEmpty()) message = m_appearanceError;
     if (message.isEmpty()) message = m_geometryError;
+    if (message.isEmpty()) message = m_navigationMessage;
     if (message.isEmpty()) message = m_hostMessage;
     if (message.isEmpty() && m_document->readOnly()) message = QStringLiteral("此文件为只读，阅读不受影响。");
     m_notice->setText(message); const bool previewOnly = !m_previewError.isEmpty() && message == m_previewError;

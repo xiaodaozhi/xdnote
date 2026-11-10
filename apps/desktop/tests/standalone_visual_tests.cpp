@@ -343,6 +343,31 @@ private slots:
         QTest::keyClick(accents, Qt::Key_Escape); QTRY_VERIFY(!accents->isVisible()); if (appearanceMenu->isVisible()) QTest::keyClick(appearanceMenu, Qt::Key_Escape); QTRY_VERIFY(!appearanceMenu->isVisible()); if (root->isVisible()) QTest::keyClick(root, Qt::Key_Escape); QTRY_VERIFY(!root->isVisible());
         for (const auto &name : {"pathMenu", "contentZoom"}) { auto *menu = QString::fromLatin1(name) == "pathMenu" ? owned.value->findChild<SharedMenu *>(name) : static_cast<SharedMenu *>(owned.value->findChild<SharedButton *>(name)->menu()); QVERIFY(menu); menu->popup(owned.value->screen()->availableGeometry().bottomRight()); QTRY_VERIFY(menu->isVisible()); inspect(menu, name); QTest::keyClick(menu, Qt::Key_Escape); }
     }
+    void missingFragmentShowsNoticeWithoutReplacingThePreview() {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid()); const auto path = temporary.filePath("fragments.md");
+        const QByteArray source("[missing](#missing) [ok](#ok)\n\n# ok\n"); QVERIFY(fileFixtures::write(path, source));
+        Appearance appearance; FileManager manager(nullptr, {}, false); auto *document = open(manager, path); QVERIFY(document);
+        Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->setDocument(document); owned.value->resize(800, 600); owned.value->show();
+        auto *preview = owned.value->preview(); QSignalSpy ready(preview, &MarkdownPreview::previewReady), moved(preview, &MarkdownPreview::fragmentNavigated);
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 20000); auto *page = preview->view()->page();
+        owned.value->reportHostMessage(QStringLiteral("之前的提示"));
+        const auto click = [&](int index) {
+            const auto point = evaluate(page, QStringLiteral("(()=>{const a=document.querySelectorAll('a.link-placeholder')[%1];if(!a)return null;const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").arg(index)).toMap();
+            if (point.isEmpty()) return false;
+            QTest::mouseClick(preview->view()->focusProxy() ? preview->view()->focusProxy() : preview->view(), Qt::LeftButton, Qt::NoModifier,
+                QPoint(qRound(point.value("x").toDouble()), qRound(point.value("y").toDouble())));
+            return true;
+        };
+        QVERIFY(click(0)); auto *notice = owned.value->findChild<QLabel *>("documentNotice"); QVERIFY(notice);
+        QTRY_VERIFY_WITH_TIMEOUT(notice->isVisible() && notice->text().contains(QStringLiteral("未找到标题")), 10000);
+        QVERIFY(preview->isVisible()); auto *close = owned.value->findChild<SharedButton *>("closeNotice"); QVERIFY(close);
+        QTest::mouseClick(close, Qt::LeftButton); QTRY_COMPARE(notice->text(), QStringLiteral("之前的提示"));
+        QVERIFY(click(0)); QTRY_VERIFY_WITH_TIMEOUT(notice->text().contains(QStringLiteral("未找到标题")), 10000);
+        QVERIFY(click(1)); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000);
+        QTRY_COMPARE(notice->text(), QStringLiteral("之前的提示"));
+        owned.value->reportHostMessage({}); QTRY_VERIFY(!notice->isVisible());
+        QCOMPARE(document->session()->snapshot().utf8, source); QVERIFY(!document->dirty());
+    }
     void readerComponentsCopyAndHorizontalScroll() {
         QTemporaryDir temporary; const auto path = temporary.filePath("components.md");
         const auto code = QStringLiteral("const text = '<script>中文😀</script>';\n") + QString(240, 'x') + '\n';
