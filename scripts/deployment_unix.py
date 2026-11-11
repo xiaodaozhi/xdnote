@@ -14,11 +14,11 @@ import shutil
 import subprocess
 
 import desktop
-from background_validation import execute, offscreen_environment
+from background_validation import check_report, execute, offscreen_environment
 from check_third_party_licenses import audit
 from deployment_inventory import collect_qt_notices, digest
 
-PROGRAMS = ("xdnote", "xdnote_background_probe", "xdnote_preview_product_probe", "xdnote-resource-helper")
+PROGRAMS = ("xdnote", "xdnote_background_probe", "xdnote_preview_product_probe", "xdnote-resource-helper", "xdnote_desktop_tests")
 FORBIDDEN = ("webengine", "chromium", "chrome_elf", "libcef", "electron", "webview2")
 MACH_MAGICS = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"}
 
@@ -163,6 +163,13 @@ def mac_stage(build, qt, destination, evidence):
     command += ["-qmldir=" + str(desktop.ROOT / "apps/desktop/ui")]
     execute(command, env, evidence / "macdeployqt.log", 240)
     plugins, frameworks = contents / "PlugIns", contents / "Frameworks"
+    # macdeployqt scans all SDK SQL drivers, including commercial database
+    # clients absent from the SDK. The product has no Qt SQL/database feature.
+    sql = plugins / "sqldrivers"
+    if sql.exists():
+        if sql.is_symlink() or not sql.resolve().is_relative_to(destination):
+            raise ValueError("Unexpected SQL plugin directory")
+        shutil.rmtree(sql)
     # macdeployqt may not infer the offscreen backend from GUI dependencies.
     offscreen = plugins / "platforms/libqoffscreen.dylib"
     if not offscreen.is_file():
@@ -237,7 +244,10 @@ def unix_closure(root, bindir, system):
                 if not expanded.resolve().is_relative_to(root):
                     raise RuntimeError("Mach-O search path escapes staging: " + entry)
             for name in needed:
-                kind, resolved = resolve_macho(name, path, bindir, rpaths, root)
+                try:
+                    kind, resolved = resolve_macho(name, path, bindir, rpaths, root)
+                except RuntimeError as error:
+                    raise RuntimeError(path.relative_to(root).as_posix() + ": " + str(error)) from error
                 imports.append({"file": path.relative_to(root).as_posix(), "import": name, "resolution": kind, "resolved": resolved})
     return imports, names
 
@@ -259,6 +269,10 @@ def smoke(bindir, plugins, libraries, evidence, system):
         if len(result) != 1 or result[0].get("ok") is not True:
             raise RuntimeError("Staged diagnostic did not return success: " + label)
         records.append({"case": label, "result": result[0]})
+    report = evidence / "resource-qtest.txt"
+    execute([bindir / "xdnote_desktop_tests", "workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding",
+             "-o", "-,txt", "-o", str(report) + ",txt"], env, evidence / "smoke-resource.log", 90)
+    records.append({"case": "resource-helper", "passedIncludingFixtures": check_report(report.read_text(encoding="utf-8"))})
     return records
 
 
@@ -296,6 +310,7 @@ def prepare(build, qt, destination):
         result.update(imports=imports, missingImports=[], browserRuntimeFiles=forbidden,
                       offscreenSmoke=smoke(bindir, plugins, libraries, evidence, system),
                       signing="ad-hoc local integrity only; no identity or notarization" if system == "Darwin" else "none")
+        result["excludedOptionalPlugins"] = {"sqldrivers": "No Qt SQL database feature; do not admit external database clients"} if system == "Darwin" else {}
         result["files"] = [{"path": path.relative_to(destination).as_posix(), "link": os.readlink(path)} if path.is_symlink()
                            else {"path": path.relative_to(destination).as_posix(), "bytes": path.stat().st_size, "sha256": digest(path)}
                            for path in staged_files(destination)]

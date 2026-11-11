@@ -26,11 +26,13 @@ python scripts/deployment_unix.py --build-dir build/desktop-admission --qt-prefi
 
 上例为 Linux；macOS 的 SDK 子目录使用 `macos`。Linux 需要系统 `readelf`、`patchelf` 和 `ldconfig`；macOS 使用系统 `otool`、`install_name_tool`、`codesign` 与该 SDK 的 `macdeployqt`。源码／构建身份、SDK 归属和已有目录守卫与 Windows 入口一致。
 
-Linux 按 ELF 的 `NEEDED` 递归复制当前 SDK 动态库，保留版本文件及相对 SONAME 链接，将每份已部署 ELF 的搜索路径改为目录内 `$ORIGIN`。候选包含 offscreen、xcb、Wayland 及其图形集成插件；宿主系统库单独记录，不复制 glibc 或声称无需系统依赖。依赖核对读取动态表，不执行 `ldd`。未解析依赖、外部库路径或 SDK／构建搜索路径均导致失败。
+Linux 的 SDK 准备显式包含独立 `qtwayland` 归档；按 ELF 的 `NEEDED` 递归复制当前 SDK 动态库，保留版本文件及相对 SONAME 链接，将每份已部署 ELF 的搜索路径改为目录内 `$ORIGIN`。候选包含 offscreen、xcb、Wayland 及其图形集成插件；宿主系统库单独记录，不复制 glibc 或声称无需系统依赖。依赖核对读取动态表，不执行 `ldd`。未解析依赖、外部库路径或 SDK／构建搜索路径均导致失败。
 
-macOS 创建诊断 `xdnote.app`，产品、两个探针和资源助手均进入 `Contents/MacOS`；`macdeployqt` 部署 frameworks／插件与 QML 输入，随后清除构建／SDK 搜索路径，核对每份 Mach-O 导入。framework 链接只允许指向诊断目录内。为允许重定位后的 ARM64 二进制执行，使用本机 ad-hoc 完整性封印；它不含发布者身份、不公证、不生成 DMG，也不是发行签名。系统 dyld 共享缓存库按系统依赖记录，不能用磁盘单文件缺失来判为丢库。
+macOS 创建诊断 `xdnote.app`，产品、两个探针、资源助手及资源定向测试程序均进入 `Contents/MacOS`；`macdeployqt` 部署 frameworks／插件与 QML 输入，随后清除构建／SDK 搜索路径，核对每份 Mach-O 导入。framework 链接只允许指向诊断目录内。为允许重定位后的 ARM64 二进制执行，使用本机 ad-hoc 完整性封印；它不含发布者身份、不公证、不生成 DMG，也不是发行签名。系统 dyld 共享缓存库按系统依赖记录，不能用磁盘单文件缺失来判为丢库。
 
 两平台均清除继承的 Qt／QML、动态库预加载与 SDK 路径，只使用诊断目录内的库／插件及系统目录运行自有样本：明暗阅读、真实临时 Markdown 的文件／会话入口，以及经资源助手读取的自生成图片。固定离屏，不激活用户窗口。旁边的 `<目标名>-evidence/` 保留日志、三张截图及 `inventory.json`；失败也写入错误与已完成元数据。清单记录实际文件摘要、内部链接、依赖定位、宿主、源码／构建身份、工具摘要和许可输入。宿主仍可能有开发环境，静态路径闭包和隔离搜索验证不等同于干净系统安装验收。
+
+产品没有 Qt SQL 数据库功能。macOS 部署工具扫描带入的 `sqldrivers` 不进入诊断候选，避免无关数据库客户端成为隐含依赖；排除原因写入报告，不以开发机器上另行安装数据库库来掩盖外部依赖。
 
 手动选择桌面工作流的 `scope=deployment-unix`，仅在 Linux x86_64、macOS Intel／ARM 构建并执行本项诊断，不运行完整桌面测试矩阵。CI 仅上传诊断证据，不上传安装包或发布产品。
 

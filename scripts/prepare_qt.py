@@ -43,7 +43,8 @@ def main():
     if args.host == "linux":
         # Official Linux Qt binaries require the SDK's matching ICU libraries.
         # The minimum reference system ships an older incompatible ICU SONAME.
-        archives_to_install.append("icu")
+        # Wayland is a separate SDK archive; keep both supported native backends.
+        archives_to_install.extend(("icu", "qtwayland"))
     return Cli().run([
         "install-qt", args.host, "desktop", version, args.arch,
         "-O", str(build / "Qt"), "-m", *qt["modules"],

@@ -36,7 +36,7 @@ CI 使用只读仓库权限和固定依赖；不打包、签名、发布或安�
 
 `scope=ui-unix` 仅补验 Linux、macOS Intel／ARM 的原生阅读与共享界面回归，使用 `test --suite ui` 的固定离屏环境；Windows 原生系统命令与动画设置以独立本机证据记录。界面截图与几何回归不替代用户要求的视觉验收，也不因定向范围新增而重复完整桌面 CI。
 
-`scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入和四项自有离屏样本，保留证据而不发布软件。其通过不代表完整桌面回归、最低系统、安装或发行许可验收。
+`scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入、四项自有离屏探针和资源助手定向用例，保留证据而不发布软件。其通过不代表完整桌面回归、最低系统、安装或发行许可验收。
 
 ## 工具、诊断与周期收尾
 

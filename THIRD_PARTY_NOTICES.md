@@ -24,9 +24,11 @@
 
 当前 CMake 入口使用 Qt 6.8.2 的 Widgets、QML、Quick、Quick Widgets、Quick Controls 2、Concurrent、Network、SVG 及其传递模块；本机 SDK 使用共享 Qt 库。这些构建依赖不等于未来某个平台的实际交付文件清单。Qt 模块可用许可和其中的第三方组件须按[Qt 许可说明](https://doc.qt.io/qt-6.8/licensing.html)、固定版本源码、构建配置及实际包逐项核对。
 
+Linux 诊断候选另使用同版本 Qt Wayland 客户端平台插件及其传递库；SDK 准备显式包含 `qtwayland` 归档。诊断目录按实际部署文件匹配 Qt 模块 SBOM，系统 Wayland／X11 等动态库单独列为宿主依赖，不把它们标为已随包交付或已完成最低系统验收。
+
 产品不链接或部署 Qt WebEngine／Chromium。本机 Qt 6.8.2 SDK 的 `sbom/` 包含各模块 SPDX 文档，其中部分包的许可字段为 `NOASSERTION`；这些文档有助于清点，但不能单独证明许可文本和随包义务已齐备。不同平台的插件、QML 模块、系统库和 MSVC 运行库也须根据实际交付内容核对。
 
-Qt 6.8.2 的 [LGPL-3.0 原文](LICENSES/third-party/Qt-LGPL-3.0-only.txt)及其引用的 [GPL-3.0 原文](LICENSES/third-party/Qt-GPL-3.0-only.txt)以[来源和摘要](tools/deployment-notices.json)固定并由日常检查核对。实际 Windows 诊断目录生成与匹配 Qt 模块 SPDX／声明的收集见[部署诊断](docs/engineering/deployment.md)；模块 SBOM 的未确定字段、源码提供／用户替换等要求及最终发行核验仍须独立完成。
+Qt 6.8.2 的 [LGPL-3.0 原文](LICENSES/third-party/Qt-LGPL-3.0-only.txt)及其引用的 [GPL-3.0 原文](LICENSES/third-party/Qt-GPL-3.0-only.txt)以[来源和摘要](tools/deployment-notices.json)固定并由日常检查核对。各平台诊断目录生成与匹配 Qt 模块 SPDX／声明的收集见[部署诊断](docs/engineering/deployment.md)；模块 SBOM 的未确定字段、源码提供／用户替换等要求及最终发行核验仍须独立完成。
 
 ## 字体、设计与研发工具
 
