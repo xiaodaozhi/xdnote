@@ -84,6 +84,7 @@ add_custom_target(xdnote_rust_build DEPENDS "${XDNOTE_RUST_LIBRARY}")
 add_library(xdnote_markdown STATIC IMPORTED GLOBAL)
 set_target_properties(xdnote_markdown PROPERTIES IMPORTED_LOCATION "${XDNOTE_RUST_LIBRARY}")
 add_dependencies(xdnote_markdown xdnote_rust_build)
+include(cmake/NativePreviewModel.cmake)
 
 if(UNIX)
     add_executable(xdnote_resource_helper apps/desktop/src/ResourceHelper.cpp
