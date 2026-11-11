@@ -37,23 +37,19 @@
 #include <QSignalSpy>
 #include <QSignalBlocker>
 #include <QTest>
-#include <QWebEnginePage>
-#include <QWebEngineScript>
-#include <QWebEngineSettings>
-#include <QWebEngineView>
 #include <future>
 #include <atomic>
 
 using namespace xdnote;
 
 namespace {
-QVariant evaluatePreview(QWebEnginePage *page, const QString &script) {
-    struct Result { QVariant value; bool ready = false; };
-    const auto result = std::make_shared<Result>();
-    page->runJavaScript(script, QWebEngineScript::ApplicationWorld, [result](const QVariant &value) { result->value = value; result->ready = true; });
-    QElapsedTimer timer; timer.start();
-    while (!result->ready && timer.elapsed() < 10000) QTest::qWait(10);
-    return result->value;
+bool clickPreviewLink(NativePreviewView *view, int action) {
+    QElapsedTimer timer; timer.start(); while (!view->ready() && timer.elapsed() < 10000) QTest::qWait(1);
+    if (!view->ready()) return false;
+    if (!view->content() || action >= view->content()->actions.size()) return false;
+    const auto &entry = view->content()->actions[action]; view->scrollToText(entry.start);
+    const auto point = view->viewport()->mapFromGlobal(view->characterRect(entry.start).center());
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, point); return true;
 }
 }
 
@@ -205,10 +201,9 @@ private slots:
         QVERIFY(!analyzeMarkdownHeadings(invalid).success);
         MarkdownPreview preview(&session); QSignalSpy ready(&preview, &MarkdownPreview::previewReady);
         preview.resize(600, 400); preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
-        QString html; bool received = false;
-        preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
-        for (const auto &heading : result.headings) QVERIFY2(html.contains(QStringLiteral("id=\"%1\"").arg(heading.id)), qPrintable(heading.id));
+        const auto *content = preview.view()->content(); QVERIFY(content);
+        QCOMPARE(content->headings.size(), result.headings.size());
+        for (int i = 0; i < result.headings.size(); ++i) QCOMPARE(QString::fromUtf8(content->model.text(content->model.node(content->headings[i].node))), result.headings[i].id);
     }
     void previewFragmentLinksNavigateOnlyTheDisplayedRevision() {
         const auto source = (QStringLiteral("[中文](#%E4%B8%AD%E6%96%87) ![图](missing.png) [重复](#重复-1) [缺失](#missing) [坏](#%GG) [外部](https://bad.invalid) [引用][r]\n\n[r]: #中文\n\n")
@@ -219,35 +214,20 @@ private slots:
         QSignalSpy ready(&preview, &MarkdownPreview::previewReady), moved(&preview, &MarkdownPreview::fragmentNavigated);
         QSignalSpy messages(&preview, &MarkdownPreview::fragmentNavigationMessage);
         preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
-        auto *page = preview.view()->page();
-        QCOMPARE(evaluatePreview(page, QStringLiteral("document.querySelectorAll('a.link-placeholder').length")).toInt(), 5);
-        QCOMPARE(evaluatePreview(page, QStringLiteral("document.querySelectorAll('span.link-placeholder').length")).toInt(), 1);
-        QString html; bool htmlReady = false; page->toHtml([&](const QString &value) { html = value; htmlReady = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(htmlReady, 10000); QVERIFY(!html.contains("https://bad.invalid"));
-        const auto pageUrl = page->url();
-        const auto actionUrl = evaluatePreview(page, QStringLiteral("document.querySelector('a.link-placeholder').href")).toString();
-        QVERIFY(actionUrl.startsWith(QStringLiteral("xdnote-preview:")));
-        page->load(QUrl(actionUrl)); QTest::qWait(300);
-        QCOMPARE(page->url(), pageUrl); QVERIFY(moved.isEmpty());
-        const auto click = [&](int index) {
-            const auto point = evaluatePreview(page, QStringLiteral("(()=>{const a=document.querySelectorAll('a.link-placeholder')[%1];if(!a)return null;const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").arg(index)).toMap();
-            if (point.isEmpty()) return false;
-            QTest::mouseClick(preview.view()->focusProxy() ? preview.view()->focusProxy() : preview.view(), Qt::LeftButton, Qt::NoModifier,
-                QPoint(qRound(point.value("x").toDouble()), qRound(point.value("y").toDouble())));
-            return true;
-        };
+        auto *view = preview.view(); QVERIFY(view->content()); QCOMPARE(view->content()->actions.size(), 6);
+        const auto click = [&](int index) { return clickPreviewLink(view, index == 4 ? 5 : index); };
         QVERIFY(click(0)); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000); QCOMPARE(moved.first().first().toString(), QStringLiteral("中文"));
-        QVERIFY(!evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool());
-        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toDouble() > 0, 10000);
-        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toInt(), 0, 10000);
+        QVERIFY(!view->keyboardOutlineVisible());
+        QTRY_VERIFY_WITH_TIMEOUT(view->readingPosition().y() > 0, 10000);
+        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(int(view->readingPosition().y()), 0, 10000);
         QVERIFY(click(1)); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 2, 10000); QCOMPARE(moved.last().first().toString(), QStringLiteral("重复-1"));
-        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toInt(), 0, 10000);
+        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(int(view->readingPosition().y()), 0, 10000);
         messages.clear(); QVERIFY(click(2)); QTRY_VERIFY_WITH_TIMEOUT(!messages.isEmpty(), 10000);
         QVERIFY(messages.last().first().toString().contains(QStringLiteral("未找到标题"))); QCOMPARE(moved.size(), 2);
         messages.clear(); QVERIFY(click(3)); QTRY_VERIFY_WITH_TIMEOUT(!messages.isEmpty(), 10000);
         QVERIFY(messages.last().first().toString().contains(QStringLiteral("无效"))); QCOMPARE(moved.size(), 2);
         QVERIFY(click(4)); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 3, 10000); QCOMPARE(moved.last().first().toString(), QStringLiteral("中文"));
-        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("window.scrollY")).toInt(), 0, 10000);
+        preview.restoreReadingPosition(QPointF()); QTRY_COMPARE_WITH_TIMEOUT(int(view->readingPosition().y()), 0, 10000);
         QCOMPARE(session.snapshot().utf8, source); QVERIFY(!session.isDirty());
         {
             const QSignalBlocker block(&session);
@@ -262,25 +242,21 @@ private slots:
         QVERIFY(analysis.success); QVERIFY(!analysis.complete);
         MarkdownPreview preview(&session); QSignalSpy ready(&preview, &MarkdownPreview::previewReady);
         preview.resize(640, 320); preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
-        QCOMPARE(evaluatePreview(preview.view()->page(), QStringLiteral("document.querySelectorAll('a.link-placeholder').length")).toInt(), 0);
+        QVERIFY(preview.view()->content()); QVERIFY(!preview.view()->content()->navigationAvailable);
+        for (int i = 0; i < preview.view()->content()->actions.size(); ++i) QVERIFY(!preview.view()->activateAction(i));
     }
     void previewFragmentLinksSupportKeyboardFocusAndActivation() {
         const auto source = (QStringLiteral("[跳转](#target)\n\n") + QStringLiteral("Text for scrolling.\n\n").repeated(50) + QStringLiteral("# target\n")).toUtf8();
         DocumentSession session(source); MarkdownPreview preview(&session); preview.resize(640, 320);
         QSignalSpy ready(&preview, &MarkdownPreview::previewReady), moved(&preview, &MarkdownPreview::fragmentNavigated);
         preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
-        auto *page = preview.view()->page(); auto *surface = preview.view()->focusProxy() ? preview.view()->focusProxy() : preview.view();
-        // Xvfb has no window manager. Establish Qt activation and verify both
-        // the widget and page have focus before testing keyboard traversal.
+        auto *view = preview.view(); auto *surface = view;
         QApplication::setActiveWindow(&preview); surface->setFocus(Qt::OtherFocusReason);
-        QTRY_VERIFY(surface->hasFocus());
-        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.hasFocus()")).toBool(), 10000);
-        QTest::keyClick(surface, Qt::Key_Tab);
-        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.activeElement === document.querySelector('a.link-placeholder')")).toBool(), 10000);
-        QTRY_VERIFY_WITH_TIMEOUT(evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool(), 10000);
+        QTRY_VERIFY(surface->hasFocus()); QTest::keyClick(surface, Qt::Key_Tab);
+        QTRY_VERIFY(view->keyboardOutlineVisible());
         QTest::keyClick(surface, Qt::Key_Return);
         QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000); QCOMPARE(moved.first().first().toString(), QStringLiteral("target"));
-        QVERIFY(!evaluatePreview(page, QStringLiteral("document.activeElement.classList.contains('xdnote-keyboard-focus')")).toBool());
+        QVERIFY(!view->keyboardOutlineVisible());
         QCOMPARE(session.snapshot().utf8, source); QVERIFY(!session.isDirty());
     }
     void markdownReferencesKeepSnapshotIdentityAndIncompleteStatus() {
@@ -734,21 +710,13 @@ private slots:
         preview.resize(600, 400); preview.show();
         QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty() || !errors.isEmpty(), 30000);
         QVERIFY2(errors.isEmpty(), errors.isEmpty() ? "" : qPrintable(errors.first().first().toString()));
-        QString html; bool received = false;
-        preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
-        QVERIFY(!html.contains(remote)); QVERIFY(!html.contains("<img src=\"file:///private"));
-        QVERIFY(html.contains("src=\"xdnote-preview:"));
-        QVariant size; bool checked = false;
-        preview.view()->page()->runJavaScript(QStringLiteral("document.images.length ? document.images[0].naturalWidth : -1"), QWebEngineScript::ApplicationWorld,
-            [&](const QVariant &value) { size = value; checked = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(checked, 10000); QCOMPARE(size.toInt(), 3);
+        QCOMPARE(preview.view()->admittedImageCount(), 1);
+        preview.view()->grab(); QVERIFY(preview.view()->statistics().resourceLoads > 0);
+        QVERIFY(preview.view()->content()->text.contains(QStringLiteral("<img src='file:///private'>")));
         QTest::qWait(200); QCOMPARE(incoming.count(), 0);
         root.reader->revoke(); ready.clear(); preview.refresh();
         QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000);
-        received = false;
-        preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(received, 10000); QVERIFY(!html.contains("<img src=\"xdnote-preview:"));
+        QCOMPARE(preview.view()->admittedImageCount(), 0);
 #endif
     }
     void fileBaselinePreservesUtf8BomAndMixedNewlines() {
@@ -1249,17 +1217,11 @@ private slots:
         preview.resize(700, 500); preview.show();
         QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0 || errors.count() > 0, 30000);
         QVERIFY2(ready.count() > 0, errors.isEmpty() ? "preview did not complete" : qPrintable(errors.first().first().toString()));
-        QVERIFY(!preview.view()->settings()->testAttribute(QWebEngineSettings::JavascriptEnabled));
-        QVERIFY(!preview.view()->settings()->testAttribute(QWebEngineSettings::LocalContentCanAccessFileUrls));
-        QString html;
-        bool received = false;
-        preview.view()->page()->toHtml([&](const QString &value) { html = value; received = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
-        QVERIFY(html.contains("&lt;script&gt;"));
-        QVERIFY(!html.contains("<script>"));
-        QVERIFY(!html.contains("file:///private"));
-        QVERIFY(!html.contains("href=\"https://"));
-        QVERIFY(html.contains("default-src 'none'"));
+        QVERIFY(preview.view()->content()); QVERIFY(preview.view()->content()->text.contains("<script>alert(1)</script>"));
+        QCOMPARE(preview.view()->admittedImageCount(), 0);
+        QSignalSpy opened(&preview, &MarkdownPreview::documentLinkRequested);
+        for (int i = 0; i < preview.view()->content()->actions.size(); ++i) QVERIFY(!preview.view()->activateAction(i));
+        QVERIFY(opened.isEmpty());
         preview.refresh(); // an older snapshot may complete before queued refreshes
         for (int i = 0; i < 8; ++i) {
             const auto snap = session.snapshot();
@@ -1269,12 +1231,6 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(preview.displayedRevision(), latest, 30000);
         QCOMPARE(errors.count(), 0);
         QCOMPARE(staleReady, 0);
-        QSignalSpy navigation(preview.view()->page(), &QWebEnginePage::loadFinished);
-        for (const auto &url : {QUrl(QStringLiteral("xdnote-preview:/foreign-document")), QUrl(QStringLiteral("data:text/html,<h1>untrusted</h1>"))}) {
-            navigation.clear(); preview.view()->page()->load(url);
-            QTRY_VERIFY_WITH_TIMEOUT(!navigation.isEmpty(), 10000);
-            QVERIFY(!navigation.last().first().toBool());
-        }
         ready.clear();
         session.requestClose();
         QTRY_VERIFY(session.isClosing());
@@ -1336,11 +1292,8 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0 || errors.count() > 0, 30000);
         QVERIFY2(!ready.isEmpty(), errors.isEmpty() ? "large preview did not finish" : qUtf8Printable(errors.first().first().toString()));
         QCOMPARE(errors.count(), 0);
-        QCOMPARE(preview->view()->url().scheme(), QStringLiteral("xdnote-preview"));
-        QString text; bool received = false;
-        preview->view()->page()->toPlainText([&](const QString &value) { text = value; received = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(received, 10000);
-        QCOMPARE(text.count(QChar(0x7532)), 300000);
+        QVERIFY(preview->view()->content());
+        QCOMPARE(preview->view()->content()->text.count(QChar(0x7532)), 300000);
         preview->refresh();
         window.reset(); // a running Rust task owns no widget or session pointer
         QTest::qWait(100);

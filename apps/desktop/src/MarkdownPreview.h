@@ -12,21 +12,22 @@
 #include <QTimer>
 #include <memory>
 #include "WorkspaceImagePreview.h"
-
-class QWebEngineView;
+#include "NativePreviewView.h"
 
 namespace xdnote {
 class DocumentSession;
 class Appearance;
 class WorkspaceResourceReader;
 struct RenderResult {
-    QByteArray html;
+    std::shared_ptr<const NativePreviewContent> content;
     QHash<int, QByteArray> images;
     QString error;
     quint64 generation = 0;
     quint64 revision = 0;
-    QStringList linkTargets, headingIds;
+    QStringList linkTargets;
     QStringList imageWatchPaths;
+    NativePreviewStamp stamp;
+    bool localDocumentsAdmitted = false;
 };
 
 class MarkdownPreview final : public QWidget {
@@ -34,7 +35,7 @@ class MarkdownPreview final : public QWidget {
 public:
     explicit MarkdownPreview(DocumentSession *session, QWidget *parent = nullptr, int padding = 24, Appearance *appearance = nullptr);
     ~MarkdownPreview() override;
-    QWebEngineView *view() const { return m_view; }
+    NativePreviewView *view() const { return m_view; }
     quint64 requestedGeneration() const { return m_generation; }
     quint64 displayedRevision() const { return m_displayedRevision; }
     void refresh();
@@ -53,7 +54,7 @@ signals:
 private:
     void startPending();
     QPointer<DocumentSession> m_session;
-    QWebEngineView *m_view = nullptr;
+    NativePreviewView *m_view = nullptr;
     QFutureWatcher<RenderResult> m_worker;
     QByteArray m_pending;
     QUuid m_pendingDocumentId;
@@ -62,16 +63,15 @@ private:
     QFileSystemWatcher m_imageWatch;
     QTimer m_imageDelay;
     QString m_resourceDocumentPath, m_resourceDocumentIdentity;
-    QStringList m_presentingLinkTargets, m_presentingHeadingIds;
+    QStringList m_presentingLinkTargets;
     quint64 m_pendingRevision = 0;
     quint64 m_generation = 0;
+    quint64 m_contextGeneration = 0, m_resourceGeneration = 0;
     quint64 m_presentingGeneration = 0;
-    quint64 m_presentingRevision = 0;
     quint64 m_displayedRevision = 0;
     bool m_hasPending = false;
     bool m_running = false;
     bool m_closed = false;
-    int m_padding = 24;
     QPointer<Appearance> m_appearance;
     QPointF m_scroll;
     bool m_restoring = false;

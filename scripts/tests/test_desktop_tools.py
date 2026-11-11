@@ -26,12 +26,12 @@ class DesktopToolTests(unittest.TestCase):
             original = {"PATH": "existing", "QT_PLUGIN_PATH": "foreign", "QTWEBENGINEPROCESS_PATH": "foreign", "QTWEBENGINE_RESOURCES_PATH": "foreign"}
             with self.assertRaisesRegex(RuntimeError, "Qt runtime is incomplete"):
                 desktop.runtime_environment(original, qt, "Windows")
-            for name in ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6WebEngineCore.dll", "QtWebEngineProcess.exe"):
+            for name in ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll"):
                 (qt / "bin" / name).touch()
             result = desktop.runtime_environment(original, qt, "Windows")
             self.assertEqual(result["PATH"], str(qt / "bin") + os.pathsep + "existing")
             self.assertEqual(result["QT_PLUGIN_PATH"], str(qt / "plugins"))
-            self.assertEqual(result["QTWEBENGINEPROCESS_PATH"], str(qt / "bin/QtWebEngineProcess.exe"))
+            self.assertNotIn("QTWEBENGINEPROCESS_PATH", result)
             self.assertNotIn("QTWEBENGINE_RESOURCES_PATH", result)
             self.assertEqual(original["PATH"], "existing")
             self.assertEqual(original["QT_PLUGIN_PATH"], "foreign")

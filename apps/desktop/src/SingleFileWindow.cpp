@@ -42,7 +42,6 @@
 #include <QStackedWidget>
 #include <QSvgRenderer>
 #include <QVBoxLayout>
-#include <QWebEngineView>
 #include <QWindow>
 #include <QShowEvent>
 #include <QProgressBar>

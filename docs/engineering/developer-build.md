@@ -1,14 +1,14 @@
 # 桌面工程与本地构建
 
-产品已明确禁止 Chromium，主路线为 Rust 全局语义模型＋Qt 原生按需布局。以下默认工程仍描述尚待迁移的旧原型，其中 Qt WebEngine 的链接和运行配置尚未移除，不能作为已符合该约束的交付。[语义模型验证](../../experiments/native-model-admission/README.md)只构建 Core／Test，不启动 GUI；[原生阅读控件准入](../../experiments/native-preview-admission/README.md)使用 Widgets／Svg 和实际共享控件，独立于旧的[受控分节试验](../../experiments/native-preview-spike/README.md)。这些入口不运行旧产品预览；迁移门槛见[预览方案评估](preview-alternatives.md)与[原生控件](native-preview-view.md)。
+产品预览使用 Rust 全局语义模型＋Qt 原生按需布局，不链接或运行 Chromium。[语义模型验证](../../experiments/native-model-admission/README.md)只构建 Core／Test；[原生阅读控件验证](../../experiments/native-preview-admission/README.md)使用 Widgets／Svg／Concurrent 和共享控件，实际产品统一使用同一控件。架构、资源和容量边界见[原生控件](native-preview-view.md)。
 
-`apps/desktop` 和 `crates/markdown` 包含工作区／单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；使用系统外框与共享逻辑尺寸。独立窗口支持系统／浅色／深色主题、六种强调色和正文缩放；外观菜单选择通过用户级设置持久化并同步已打开窗口。无文件启动显示工作区欢迎页，可显式打开目录、使用多标签和三种视图，并接管独立窗口原会话，详见[工作区基础](workspace-foundation.md)。完整设置、资源与链接、文件关联注册、安装和发行尚未完成。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和 Qt WebEngine 混合承载，不接收文件或读写用户文档。
+`apps/desktop` 和 `crates/markdown` 包含工作区／单文件功能原型与组件准入代码。默认目标 `xdnote` 可打开、阅读、编辑、保存和另存为真实 Markdown 文件，处理外部冲突及未保存关闭；使用系统外框与共享逻辑尺寸。独立窗口支持系统／浅色／深色主题、六种强调色和正文缩放；外观菜单选择通过用户级设置持久化并同步已打开窗口。无文件启动显示工作区欢迎页，可显式打开目录、使用多标签和三种视图，并接管独立窗口原会话，详见[工作区基础](workspace-foundation.md)。完整设置、资源与链接、文件关联注册、安装和发行尚未完成。`xdnote-admission` 仍为独立的内存样本窗口，只验证 QWidget、QML、Scintilla 和原生阅读控件混合承载，不接收文件或读写用户文档。
 
 ## 工具与依赖
 
 [依赖清单](../../tools/desktop-dependencies.json)、[Cargo.lock](../../Cargo.lock)和 [rust-toolchain.toml](../../rust-toolchain.toml)锁定本阶段输入。Qt 6.8.2、Scintilla 5.6.7、pulldown-cmark 0.13.6 与 Rust 1.99.0 构成本阶段组合；本机、按需桌面 CI、MSVC 2019 兼容配置和 Qt／Scintilla 试验 CI 都读取同一个 `qt.version`，不在配置中另设 Qt 版本。试验仍使用独立构建目录，不混用产物。Qt 采用动态库，Scintilla 从公开 Qt 端口源码构建，Rust 服务为静态库。默认编译器以 Qt 6.8 的[支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)为准：Windows CI 使用 MSVC 2022，macOS 按主机分别构建 x86_64／arm64，Linux 最低参考构建主机使用 Ubuntu 22.04 x86_64。宿主构建通过不能替代最低系统运行验收。
 
-需要 Python 3.12 或更新版本（CI 使用 3.12）、CMake 4.4.4、Ninja 1.13.0、Rust 1.99.0（含 rustfmt、clippy）及本机 C++ 工具链。下列准备命令允许联网；普通构建和测试不下载 Qt、源码或 Cargo 依赖。使用系统 Python 创建本项目虚拟环境，不修改全局 Rust 默认版本。Windows 在 x64 开发者终端运行，或给入口提供 `--vcvars`，指向已安装的 `vcvars64.bat`。Linux 还需 Qt WebEngine 所用桌面运行库及图形环境，具体 CI 安装列表见[工作流](../../.github/workflows/desktop-admission.yml)。
+需要 Python 3.12 或更新版本（CI 使用 3.12）、CMake 4.4.4、Ninja 1.13.0、Rust 1.99.0（含 rustfmt、clippy）及本机 C++ 工具链。下列准备命令允许联网；普通构建和测试不下载 Qt、源码或 Cargo 依赖。使用系统 Python 创建本项目虚拟环境，不修改全局 Rust 默认版本。Windows 在 x64 开发者终端运行，或给入口提供 `--vcvars`，指向已安装的 `vcvars64.bat`。Linux 还需 Qt 桌面运行库及图形环境，具体 CI 安装列表见[工作流](../../.github/workflows/desktop-admission.yml)。
 
 ```text
 python -m venv build/toolchain/desktop-tools
@@ -38,7 +38,7 @@ python scripts/desktop.py test --profile default
 python scripts/desktop.py run --profile default
 ```
 
-启动本机构建统一使用 `run` 入口；自定义构建目录同时传入对应的 `--build-dir` 和 `--qt-prefix`。入口只为子进程设置 Qt DLL、插件、QML 和 WebEngine 路径，检查关键 DLL 与 WebEngine 进程文件后才启动；不修改系统 PATH。不要从文件管理器、桌面自动化工具或 `Start-Process` 裸启动 exe，也不通过复制运行库来掩盖漏传运行环境的问题。
+启动本机构建统一使用 `run` 入口；自定义构建目录同时传入对应的 `--build-dir` 和 `--qt-prefix`。入口只为子进程设置 Qt DLL、插件、QML 路径，检查关键 DLL 与插件目录后才启动；不修改系统 PATH。不要从文件管理器、桌面自动化工具或 `Start-Process` 裸启动 exe，也不通过复制运行库来掩盖漏传运行环境的问题。
 
 ## MSVC 2019 兼容配置
 
@@ -93,12 +93,16 @@ python scripts/desktop.py run --admission
 - `FileService` 提供不依赖 GUI 的身份探测、严格读取和原位替换保存；`SessionRegistry` 管理打开登记与替换后的身份重绑定。`FileManager` 串行协调后台 I/O、冻结保存快照与 GUI 回执，编辑保持可用；`FileApplication` 与 `SingleInstance` 统一窗口、退出和跨进程打开意图。具体保证见[文件读取](file-read-baseline.md)和[保存闭环](file-save-workflow.md)。
 - `SourceEditor` 提供控件输入与基础 Qt 辅助功能文本接口；辅助功能写入使用可撤销会话命令，拒绝原因对界面与辅助功能描述可见。Qt 的无返回值 setter 尚不能完成原生失败状态映射，原生 UIA／屏幕阅读器准入继续跟踪。
 - `MarkdownPreview` 只把不可变 UTF-8 快照交给 Rust，单个解析任务配合最新待处理快照，过期代次不能成为展示完成结果。FFI 输出由 Rust 分配并释放，不跨线程传递控件或文档指针。解析期间的强制取消、时间／内存预算与独立进程隔离尚未完成。
-- 本阶段预览转义原始 HTML。Windows、Linux 和 macOS 可在当前授权范围内读取受限本地图片，并以应用生成的内存资源提供预览；受阻或不支持的图片显示占位。工作区支持插入相对文档链接及选择标题；当前文档片段按当前版本定位，跨文档链接进入统一文件路由，外部导航仍为惰性占位。文档不能控制资源 URL，也不能执行脚本或直接访问文件和网络；页面策略与请求拦截再次限制资源，详见[资源基础](workspace-resource-foundation.md)。
-- `AdmissionWindow` 采用 QWidget 容器，QQuickWidget 承载共享操作，Scintilla 与 WebEngine 保持各自公开 QWidget 端口。共享控件从同一视觉参数读取尺寸、字体、颜色与 Tab 焦点外框；此窗口只验证承载，原生装饰和主界面复刻另行验收。
+- 本阶段预览转义原始 HTML。Windows、Linux 和 macOS 可在当前授权范围内读取受限本地图片，并以应用生成的内存资源提供预览；受阻或不支持的图片显示占位。工作区支持插入相对文档链接及选择标题；当前文档片段按当前版本定位，跨文档链接进入统一文件路由，外部导航仍为惰性占位。文档不能控制资源 URL，也不能执行脚本或直接访问文件和网络；资源加载器只接受应用传入的静态内存数据，详见[资源基础](workspace-resource-foundation.md)。
+- `AdmissionWindow` 采用 QWidget 容器，QQuickWidget 承载共享操作，Scintilla 与原生阅读控件保持各自公开 QWidget 端口。共享控件从同一视觉参数读取尺寸、字体、颜色与 Tab 焦点外框；此窗口只验证承载，原生装饰和主界面复刻另行验收。
 - 组件准入窗口的 QML 根节点通过公开辅助功能接口连接到 QQuickWidget，按钮继续使用 Qt 自身的辅助功能接口。自动测试检查父子导航、多窗口销毁和动作；Windows 另由独立 UI Automation 客户端检查控件树、文本读写、撤销／重做和只读保护。这些受控测试不代表真实读屏或其他平台的原生辅助技术验收，后续范围见 [Issue #87](https://github.com/xiaodaozhi/xdnote/issues/87)。
 
 运行器与测试共用图形和交互初始化。Windows 选择 D3D11，CI 显式偏好系统 WARP 软件适配器；Linux／macOS 当前使用 OpenGL。图形初始化发生在应用对象建立前，同一顶层窗口共享图形 API。应用对象建立后设置本应用的 `TabFocusAllControls` 策略，使按钮也可参与 Tab 循环，不修改系统偏好。Linux CI 安装 Noto CJK 作为镜像的系统字体，应用仍使用系统字体及回退，不随此工程分发该字体；测试检查常规与等宽字体的中文成形不存在缺字。不得以跳过截图、隐藏图形错误或只检查 QML 加载状态代替渲染验证；硬件 GPU、远程会话和其他图形后端仍须分别验证。
 
-首轮真实文件只接受 2 MiB 以内的严格 UTF-8 正文，编码 BOM 另计三字节，含 NUL 或无效 UTF-8 的文件明确拒绝。保留混合换行与字符，不猜测编码。预览输出上限 8 MiB，以应用私有内存页面传输，不经过 `setHtml` 的编码后数据地址限制；每页使用独立临时 profile、不可预测地址与精确导航校验，不读取磁盘或开放网络。控件原生输入可能暂时超过快照额度，此时保存／预览明确拒绝，当前内容和撤销仍保留，须缩小后重试。这是当前原型的明确容量边界，不是任意长文承诺。
+首轮真实文件只接受 2 MiB 以内的严格 UTF-8 正文，编码 BOM 另计三字节，含 NUL 或无效 UTF-8 的文件明确拒绝。保留混合换行与字符，不猜测编码。预览使用只读语义模型与原生局部文档；派生内容、图片和缓存保护见[原生控件](native-preview-view.md)。控件原生输入可能暂时超过快照额度，此时保存／预览明确拒绝，当前内容和撤销仍保留，须缩小后重试。这是当前原型的明确容量边界，不是任意长文承诺。
 
-`desktop_admission` 检查原有会话、辅助功能、混合承载和预览隔离；`file_workflow` 使用自身创建的真实临时文件，覆盖替换竞争、失败恢复、保存期间编辑、原生窗口按钮与关闭确认、IPC 和子进程应用路由；`standalone_visual` 检查独立窗口的十二种主题／配色组合、字形对齐、控件密度、焦点、菜单／确认框、只读反馈、阅读位置和多倍率几何；`window_geometry` 检查 DPI 算术、待处理缩放量、跟踪约束、可用区、正常偏好与临时收敛、持久化及自身窗口的 Windows 消息。`workspace_workflow` 另覆盖目录、标签、接管、组合输入延后、双栏与批量关闭；`native_preview_model` 验证 Rust 全局语义与 Qt Core 契约，不创建界面。native_preview_view 另验证独立原生控件的布局、交互与失效代次；完整测试入口要求七份 QtTest 报告齐全，专项范围见[独立窗口](standalone-window.md)、[窗口几何](window-geometry.md)和[原生模型](native-preview-model.md)。当前窗口截图和测量只进入构建目录中的 `evidence/`。自动化窗口操作不等于人工原生文件选择器、文件管理器关联或真实输入法验收。屏幕阅读器、混合 DPI 物理拖动与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。
+`desktop_admission` 检查原有会话、辅助功能、混合承载和原生预览失效；`file_workflow` 使用自身创建的真实临时文件，覆盖替换竞争、失败恢复、保存期间编辑、原生窗口按钮与关闭确认、IPC 和子进程应用路由；`standalone_visual` 检查独立窗口的十二种主题／配色组合、字形对齐、控件密度、焦点、菜单／确认框、只读反馈、阅读位置和多倍率几何；`window_geometry` 检查 DPI 算术、待处理缩放量、跟踪约束、可用区、正常偏好与临时收敛、持久化及自身窗口的 Windows 消息。`workspace_workflow` 另覆盖目录、标签、接管、组合输入延后、双栏与批量关闭；`native_preview_model` 验证 Rust 全局语义与 Qt Core 契约，不创建界面。native_preview_view 另验证独立原生控件的布局、交互与失效代次；完整测试入口要求七份 QtTest 报告齐全，专项范围见[独立窗口](standalone-window.md)、[窗口几何](window-geometry.md)和[原生模型](native-preview-model.md)。当前窗口截图和测量只进入构建目录中的 `evidence/`。自动化窗口操作不等于人工原生文件选择器、文件管理器关联或真实输入法验收。屏幕阅读器、混合 DPI 物理拖动与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。
+
+定向预览回归使用 `python scripts/desktop.py test --suite preview`；只执行受影响的五组测试，不运行文件／几何等完整套件。离屏运行须显式设置 `QT_QPA_PLATFORM=offscreen`，Windows 使用系统字体目录。
+
+Windows 可用 `python scripts/measure_preview.py --build-dir <本项目构建目录> --qt-prefix <本项目Qt目录> --vcvars <系统vcvars64.bat>` 测量自建真实文件的独立窗口进程，并核对产品 Qt DLL 闭包；报告区分空文档、普通文档和极密样本，不代表发行预算。该入口只启动诊断目标，不读取用户文件。

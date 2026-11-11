@@ -2,7 +2,7 @@
 
 ## 决策边界
 
-产品不得使用 Chromium，包括 Qt WebEngine、CEF、Electron 或 Chromium 系统 WebView。Microsoft 明确说明 [WebView2 使用 Chromium 版 Edge](https://learn.microsoft.com/en-us/microsoft-edge/webview2/webview2-api-reference)，因此不能把它当作规避约束的轻量替代。现有原型中的 WebEngine 仍待迁移；本页完成约束和候选评估，不宣称产品已经移除该依赖。
+产品不得使用 Chromium，包括 Qt WebEngine、CEF、Electron 或 Chromium 系统 WebView。Microsoft 明确说明 [WebView2 使用 Chromium 版 Edge](https://learn.microsoft.com/en-us/microsoft-edge/webview2/webview2-api-reference)，因此不能把它当作规避约束的轻量替代。产品已迁移到[原生阅读控件](native-preview-view.md)，并移除 WebEngine 的构建与运行依赖；本页保留选型依据，实际平台结果以 Issue／PR 为准。
 
 保留 Qt 桌面、C++ 唯一原文／撤销、Scintilla 编辑器与 Rust pulldown-cmark 解析。不切换 Markdown 方言，不将预览文档变为第二份可编辑原文。首版需要基础语法、表格、任务列表、删除线、受控图片、正文选择／复制和跨文档标题定位，不要求网页兼容、JavaScript、任意 HTML 或所见即所得编辑。
 
@@ -11,7 +11,7 @@
 | 方案 | 可行性与复用 | 主要代价和限制 | 当前判断 |
 | --- | --- | --- | --- |
 | Qt `QTextBrowser`／`QTextDocument` 全量富文本 | 没有新增浏览器内核；Qt 已有文本选择、复制、基础富文本及辅助接口，可承接受控派生内容 | 全量布局随复杂长文增长；只支持 HTML／CSS 子集，任务框、代码复制、图片授权及部分标签需适配。标准接口存在不代表真实读屏已通过 | 适合作为功能基线或受限内容承载，不宜未经长文预算验证就作为最终方案 |
-| Rust 全局块模型＋Qt 有界布局／绘制 | 不增加排版引擎；普通行内文本可用 `QTextLayout`，复杂块可用受限局部文档；只保留可见区及有上限的缓存 | 需实现块／行高映射、稳定滚动、跨块选区、可访问文本、表格及超大块内部布局；节数缓存不足以限制图片和单块内存 | **建议优先完成准入原型**；本轮受控分节试验支持其资源优势，尚非完整产品控件 |
+| Rust 全局块模型＋Qt 有界布局／绘制 | 不增加排版引擎；普通行内文本可用 `QTextLayout`，复杂块可用受限局部文档；只保留可见区及有上限的缓存 | 需实现块／行高映射、稳定滚动、跨块选区、可访问文本、表格及超大块内部布局；节数缓存不足以限制图片和单块内存 | **当前产品路线**；完整全局模型与原生控件已接入产品，受控分节试验仅作为早期依据 |
 | litehtml 核心＋自有 Qt 容器 | 非 Chromium 的 C++ HTML／CSS 排版核心，较多现有 HTML／CSS 有机会复用，绘制可继续走 Qt | 需验证 Qt 文本塑形、选区／复制、资源回调、可访问树；完整 HTML 树也可能随长文增长。三平台、包体积和实际内存尚未实测 | 保留为第二候选；不能只凭上游“轻量”描述认定通过预算 |
 | Qt Quick `Text`／`TextEdit`，或 `ListView` 分块委托 | 与 Qt Quick 承载一致；使用已有 Qt 文本能力；列表委托有机会限制可见项目 | 单个巨型 RichText 控件不等于虚拟化；富文本能力仍受 Qt 子集限制。分块后仍要处理跨委托选区、位置和辅助功能 | 是原生方案的界面承载变体，不是独立解决长文内存的内核选择；当前 QWidget 产品宜先用共享原生协调 |
 | WebKit／平台系统 WebKit | 不依赖 Chromium，保留较完整 HTML 能力；WebKit 有 Windows、Apple 和 GTK／WPE 等端口 | 仍需浏览器内核、不同平台集成、资源隔离和发行维护。Windows 端口有独立工具链与依赖；未测得本项目内存和包体积 | 技术上可行，但本轮不优先于原生／轻量排版；不能假设它自然满足轻量目标 |

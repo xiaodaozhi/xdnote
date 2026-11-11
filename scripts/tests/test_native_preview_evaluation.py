@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import json
 import unittest
 from unittest.mock import patch
 
@@ -43,6 +44,14 @@ class NativePreviewEvaluationTests(unittest.TestCase):
         self.assertIn("REQUIRED COMPONENTS Widgets", content)
         for token in ("WebEngine", "WebView", "Chromium", "CEF"):
             self.assertNotIn(token, content)
+
+    def test_product_build_and_sdk_exclude_browser_modules(self):
+        for path in (ROOT / "CMakeLists.txt", ROOT / "cmake/NativePreviewView.cmake"):
+            text = path.read_text(encoding="utf-8")
+            for token in ("WebEngine", "WebView", "CEF", "Chromium"):
+                self.assertNotIn(token, text, str(path))
+        modules = json.loads((ROOT / "tools/desktop-dependencies.json").read_text(encoding="utf-8"))["qt"]["modules"]
+        self.assertFalse(any("webengine" in name.lower() or "webview" in name.lower() for name in modules))
 
 
 if __name__ == "__main__":

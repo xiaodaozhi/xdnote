@@ -4,7 +4,7 @@ add_library(xdnote_native_preview STATIC
     "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewContent.h"
     "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewView.cpp"
     "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewView.h")
-target_link_libraries(xdnote_native_preview PUBLIC xdnote_native_model Qt6::Widgets)
+target_link_libraries(xdnote_native_preview PUBLIC xdnote_native_model Qt6::Widgets Qt6::Concurrent)
 if(MSVC)
     target_compile_options(xdnote_native_preview PRIVATE /utf-8 /EHsc)
 endif()

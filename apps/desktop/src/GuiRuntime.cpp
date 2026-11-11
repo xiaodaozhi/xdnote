@@ -5,14 +5,9 @@
 #include <QQuickWindow>
 #include <QGuiApplication>
 #include <QStyleHints>
-#include <QWebEngineUrlScheme>
 
 namespace xdnote {
 void initializeGuiRuntime() {
-    QWebEngineUrlScheme preview("xdnote-preview");
-    preview.setSyntax(QWebEngineUrlScheme::Syntax::Path);
-    preview.setFlags(QWebEngineUrlScheme::SecureScheme | QWebEngineUrlScheme::NoAccessAllowed);
-    QWebEngineUrlScheme::registerScheme(preview);
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 #ifdef Q_OS_WIN
     // D3D11 can use the system WARP adapter on hosts without a hardware GPU.

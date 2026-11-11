@@ -19,8 +19,6 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
-#include <QWebEnginePage>
-#include <QWebEngineView>
 #include <cstdio>
 #include <QSemaphore>
 #include <atomic>

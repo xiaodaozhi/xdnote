@@ -4,6 +4,7 @@
 #include <QAbstractScrollArea>
 #include <QHash>
 #include <memory>
+#include <functional>
 
 namespace xdnote {
 class Appearance;
@@ -22,8 +23,15 @@ public:
     // A new request revokes old resources and actions immediately. Only a result
     // for the exact document/revision/request/path/resource stamp can be shown.
     void expect(const NativePreviewStamp &stamp);
+    void setActionValidator(std::function<bool(const NativePreviewStamp &)> validator);
     bool present(NativePreviewStamp stamp, std::shared_ptr<const NativePreviewContent> content,
                  QHash<int, QByteArray> admittedPng = {}, bool localDocumentsAdmitted = false);
+    bool presentAsync(NativePreviewStamp stamp, std::shared_ptr<const NativePreviewContent> content,
+                 QHash<int, QByteArray> admittedPng = {}, bool localDocumentsAdmitted = false);
+    void showError(const NativePreviewStamp &stamp, const QString &message);
+    QSizeF contentsSize() const;
+    bool ready() const;
+    int admittedImageCount() const;
     void setZoomFactor(qreal factor);
     qreal zoomFactor() const;
     const NativePreviewContent *content() const;
@@ -50,6 +58,8 @@ signals:
     void navigationMessage(const QString &message);
     void selectionChanged();
     void layoutFailed(const QString &message);
+    void layoutStarted();
+    void layoutReady(const xdnote::NativePreviewStamp &stamp);
 protected:
     void paintEvent(QPaintEvent *) override;
     void resizeEvent(QResizeEvent *) override;
@@ -69,6 +79,8 @@ private:
     std::unique_ptr<State> d;
     void rebuild(bool keepPosition);
     void updateControls();
+    void scheduleLayout();
+    void finishLayout(int offset, bool restore);
     int actionAtPoint(const QPoint &point);
 };
 }

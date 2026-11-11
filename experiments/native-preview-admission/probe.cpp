@@ -1,6 +1,7 @@
 #include "NativePreviewView.h"
 #include "Appearance.h"
 #include "UiFonts.h"
+#include "../../apps/desktop/tests/preview_fixtures.h"
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QElapsedTimer>
@@ -9,28 +10,14 @@
 #include <QJsonObject>
 #include <QScrollBar>
 #include <QTimer>
+#include <QThread>
 #include <cstdio>
 #include <stdexcept>
 
 using namespace xdnote;
 namespace {
 void require(bool value, const char *message) { if (!value) throw std::runtime_error(message); }
-QByteArray fixture(int bytes, const QString &flavor) {
-    if (flavor == "idle") return {};
-    if (flavor == "paragraph") return QByteArray(bytes, 'x');
-    if (flavor == "code") return "```cpp\n" + QByteArray(bytes - 11, 'x') + "\n```";
-    QByteArray source;
-    if (flavor == "table") {
-        source = "|a|b|\n|--|--|\n";
-        while (source.size() + 6 <= bytes) source += "|x|y|\n";
-        return source;
-    }
-    const auto unit = flavor == "many" ? QByteArray("a b\n\n") :
-        QStringLiteral("# 中文标题\n\n中文与 Latin 😀，**粗体** *斜体* ~~删除~~。\n\n[文档引用][shared]\n\n- [x] 完成\n- [ ] 待办\n\n|列|状态|\n|:--|--:|\n|甲|乙|\n\n```cpp\nconst char *text = \"<script>literal</script>\";\n```\n\n").toUtf8();
-    const QByteArray definition("\n\n[shared]: nested/target.md\n");
-    while (source.size() + unit.size() + definition.size() <= bytes) source += unit;
-    source += QByteArray(bytes - source.size() - definition.size(), 'x'); return source + definition;
-}
+
 }
 int main(int argc, char **argv) {
     QApplication application(argc, argv); installFontFallbacks(); application.setQuitOnLastWindowClosed(false);
@@ -39,7 +26,7 @@ int main(int argc, char **argv) {
         const auto args = application.arguments(); require(args.size() == 4, "expected bytes, fixture, screenshot");
         bool valid = false; const int bytes = args[1].toInt(&valid);
         require(valid && bytes >= 10240 && bytes <= 2 * 1024 * 1024, "fixture size outside existing source scope");
-        const auto source = fixture(bytes, args[2]);
+        const auto source = previewFixtures::fixture(bytes, args[2]);
         const auto digest = QCryptographicHash::hash(source, QCryptographicHash::Sha256);
         QElapsedTimer timer; timer.start(); QString error;
         auto model = NativePreviewModel::parse(source, &error); require(bool(model), qPrintable(error));
@@ -51,9 +38,20 @@ int main(int argc, char **argv) {
         NativePreviewView view(&appearance); view.resize(800, 600);
         view.show(); QApplication::processEvents();
         const NativePreviewStamp stamp{QUuid::createUuid(), 1, 1, 1, 1}; view.expect(stamp);
-        require(view.present(stamp, content), qPrintable(view.error()));
+        int ticks = 0; QTimer heartbeat; heartbeat.setInterval(1);
+        QObject::connect(&heartbeat, &QTimer::timeout, &view, [&] { ++ticks; }); heartbeat.start();
+        require(view.presentAsync(stamp, content), qPrintable(view.error()));
+        const auto settle = [&] {
+            while (view.error().isEmpty() && timer.elapsed() < 60000) {
+                QApplication::processEvents(); QThread::msleep(1);
+                if (!view.ready()) continue;
+                QApplication::processEvents(); if (view.ready()) break;
+            }
+            require(view.ready(), "background layout did not finish");
+        };
+        settle();
         const qreal plan = timer.nsecsElapsed() / 1e6;
-        QApplication::processEvents(); const auto image = view.grab().toImage();
+        QApplication::processEvents(); settle(); const auto image = view.grab().toImage();
         require(image.save(args[3]), "cannot save native first frame");
         const qreal frame = timer.nsecsElapsed() / 1e6;
         view.selectAll(); QString copied;
@@ -70,11 +68,11 @@ int main(int argc, char **argv) {
         result = {{"ok", true}, {"fixture", args[2]}, {"sourceBytes", source.size()}, {"modelEncodedBytes", encoded},
                   {"retainedContentBytesEstimate", content->estimatedBytes()}, {"parseMs", parsed}, {"projectionCompleteMs", projection},
                   {"geometryCompleteMs", plan}, {"firstObservedFrameMs", frame}, {"tourCompleteMs", timer.nsecsElapsed() / 1e6},
-                  {"flows", stats.flows}, {"chunks", stats.chunks}, {"layouts", stats.layouts},
+                  {"backgroundHeartbeatTicks", ticks}, {"flows", stats.flows}, {"chunks", stats.chunks}, {"layouts", stats.layouts},
                   {"peakCachedDocuments", stats.peakCachedDocuments}, {"peakCachedEstimatedBytes", stats.peakCachedEstimatedBytes},
                   {"sourceUnchanged", true}, {"globalSelectionPreserved", true}, {"sourceSha256", QString::fromLatin1(digest.toHex())},
                   {"sourceFontFamily", QFontInfo(sourceFont()).family()}, {"sourceFontFixedPitch", QFontInfo(sourceFont()).fixedPitch()},
-                  {"scope", "offscreen native admission; global geometry pass, lazy short text and bounded long fragments, not final incremental product admission"}};
+                  {"scope", "offscreen native admission; background geometry, lazy text; component evidence separate from product process"}};
         auto revoked = stamp; ++revoked.resources; view.expect(revoked);
         require(view.statistics().decodedImageBytes == 0 && view.statistics().cachedDocuments == 0, "revoke retained resource/layout cache");
         result.insert("revokeClearedCache", true);

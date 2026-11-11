@@ -19,7 +19,7 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix]", text)
         self.assertIn("(inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux')", text)
         self.assertIn("Workspace resources - Linux only", text)
         self.assertIn("failure() && runner.os == 'Linux' && inputs.scope == 'workspace-linux'", text)
@@ -37,6 +37,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: inputs.scope == 'workspace-linux'", text)
         self.assertIn("Workspace references (Linux)", text)
         self.assertIn("Fatal Qt diagnostic", text)
+        self.assertIn("if: inputs.scope == 'preview-unix'", text)
+        self.assertIn("test --suite preview", text)
 
     def test_routine_workflow_is_single_linux_job(self):
         path = WORKFLOWS / "materials.yml"

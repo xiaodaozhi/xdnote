@@ -20,11 +20,11 @@
 
 桌面构建从项目准备目录中的 Scintilla 5.6.7 源码构建静态库，版本和原始下载摘要锁定在[桌面依赖清单](tools/desktop-dependencies.json)。其[许可及版权原文](LICENSES/third-party/scintilla.txt)来自所用源码目录，并与 [Scintilla 官方许可](https://www.scintilla.org/License.txt)的内容核对。该许可要求保留上游版权与许可声明，具体条件以原文为准。`xdnote` 没有将其改标为项目自有代码。
 
-## Qt、WebEngine 与运行库
+## Qt 与运行库
 
-当前 CMake 入口使用 Qt 6.8.2 的 Widgets、QML、Quick、Quick Widgets、Quick Controls 2、WebEngine Widgets、Concurrent、Network、SVG 及其传递模块；本机 SDK 使用共享 Qt 库。这些构建依赖不等于未来某个平台的实际交付文件清单。Qt 模块可用许可和其中的第三方组件须按[Qt 许可说明](https://doc.qt.io/qt-6.8/licensing.html)、固定版本源码、构建配置及实际包逐项核对。
+当前 CMake 入口使用 Qt 6.8.2 的 Widgets、QML、Quick、Quick Widgets、Quick Controls 2、Concurrent、Network、SVG 及其传递模块；本机 SDK 使用共享 Qt 库。这些构建依赖不等于未来某个平台的实际交付文件清单。Qt 模块可用许可和其中的第三方组件须按[Qt 许可说明](https://doc.qt.io/qt-6.8/licensing.html)、固定版本源码、构建配置及实际包逐项核对。
 
-Qt WebEngine 包含 Chromium 相关代码，不能只记录 Qt 自身的许可；应同时核对 [Qt WebEngine 许可与第三方清单](https://doc.qt.io/qt-6.8/qtwebengine-licensing.html)。本机 Qt 6.8.2 SDK 的 `sbom/` 包含各模块 SPDX 文档，其中部分包的许可字段为 `NOASSERTION`；这些文档有助于清点，但不能单独证明许可文本和随包义务已齐备。不同平台的插件、QML 模块、WebEngine 资源、系统库和 MSVC 运行库也须根据实际交付内容核对。
+产品不链接或部署 Qt WebEngine／Chromium。本机 Qt 6.8.2 SDK 的 `sbom/` 包含各模块 SPDX 文档，其中部分包的许可字段为 `NOASSERTION`；这些文档有助于清点，但不能单独证明许可文本和随包义务已齐备。不同平台的插件、QML 模块、系统库和 MSVC 运行库也须根据实际交付内容核对。
 
 ## 字体、设计与研发工具
 
@@ -34,4 +34,4 @@ Qt WebEngine 包含 Chromium 相关代码，不能只记录 Qt 自身的许可�
 
 ## 发行前仍需完成
 
-针对每个实际包生成文件和依赖清单，核对 Qt／Chromium 第三方声明、所选 Qt 许可及其源码提供和用户替换等适用条件、平台运行库、字体和设计素材署名；将所需文本与对应内容一并交付，并在最终构建配置或依赖变化时重新检查。具体交付义务以所选许可、实际内容及适用发行方式为准。
+针对每个实际包生成文件和依赖清单，核对 Qt 第三方声明、所选 Qt 许可及其源码提供和用户替换等适用条件、平台运行库、字体和设计素材署名；将所需文本与对应内容一并交付，并在最终构建配置或依赖变化时重新检查。具体交付义务以所选许可、实际内容及适用发行方式为准。

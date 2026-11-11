@@ -12,6 +12,7 @@
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QDialog>
+#include <QContextMenuEvent>
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -26,9 +27,6 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
-#include <QWebEnginePage>
-#include <QWebEngineSettings>
-#include <QWebEngineScript>
 #include <QScreen>
 #include <QTextLayout>
 #include <QGlyphRun>
@@ -38,7 +36,6 @@
 #ifdef Q_OS_WIN
 #include <dwmapi.h>
 #endif
-#include <QWebEngineView>
 #include <memory>
 
 using namespace xdnote;
@@ -68,17 +65,13 @@ void capture(QWidget *widget, const QString &name) {
     const auto root = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (root.isEmpty()) return;
     QCoreApplication::processEvents(); QDir().mkpath(root + "/standalone"); widget->grab().save(root + "/standalone/" + name + ".png");
 }
-QString html(MarkdownPreview *preview) {
-    struct Result { QString text; bool finished = false; };
-    const auto result = std::make_shared<Result>();
-    preview->view()->page()->toHtml([result](const QString &value) { result->text = value; result->finished = true; });
-    QElapsedTimer timer; timer.start(); while (!result->finished && timer.elapsed() < 10000) QTest::qWait(10);
-    return result->text;
-}
-QVariant evaluate(QWebEnginePage *page, const QString &script) {
-    struct Result { QVariant value; bool ready = false; }; auto result = std::make_shared<Result>();
-    page->runJavaScript(script, QWebEngineScript::ApplicationWorld, [result](const QVariant &value) { result->value = value; result->ready = true; });
-    QElapsedTimer timer; timer.start(); while (!result->ready && timer.elapsed() < 10000) QTest::qWait(10); return result->value;
+QString previewText(MarkdownPreview *preview) { return preview->view()->content() ? preview->view()->content()->text : QString(); }
+bool clickLink(NativePreviewView *view, int index) {
+    QElapsedTimer timer; timer.start(); while (!view->ready() && timer.elapsed() < 10000) QTest::qWait(1);
+    if (!view->ready()) return false;
+    if (!view->content() || index >= view->content()->actions.size()) return false;
+    const auto &action = view->content()->actions[index]; view->scrollToText(action.start);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, view->viewport()->mapFromGlobal(view->characterRect(action.start).center())); return true;
 }
 bool contained(SingleFileWindow *window, QWidget *child) { return child && window->rect().contains(QRect(child->mapTo(window, QPoint()), child->size())); }
 bool noOuterRing(QWidget *owner, QWidget *button, QColor background) {
@@ -179,8 +172,7 @@ private slots:
         QCOMPARE(window->findChild<QWidget *>("documentFooter")->height(), 26); QCOMPARE(window->findChild<QWidget *>("modeSwitch")->height(), 32);
         auto *modes = window->findChild<QWidget *>("modeSwitch"); auto *toolbar = window->findChild<QWidget *>("documentToolbar");
         QVERIFY(qAbs(modes->mapTo(toolbar, modes->rect().center()).x() - toolbar->rect().center().x()) <= 1);
-        const auto rendered = html(window->preview()); QVERIFY(rendered.contains(appearance.color("background").name(), Qt::CaseInsensitive)); QVERIFY(rendered.contains(QStringLiteral("写作")));
-        QVERIFY(!window->preview()->view()->settings()->testAttribute(QWebEngineSettings::JavascriptEnabled));
+        const auto rendered = previewText(window->preview()); QVERIFY(rendered.contains(QStringLiteral("写作")));
         capture(window, "reading-" + theme + '-' + accent);
         const auto initial = document->session()->snapshot(); window->setEditing(true); QCOMPARE(window->findChild<QWidget *>("formatToolbar")->height(), 36);
         QCOMPARE(document->session()->replace(0, 0, QStringLiteral("新内容\n"), document->session()->revision()), EditResult::Applied);
@@ -209,17 +201,17 @@ private slots:
         Window first{new SingleFileWindow(&manager, &appearance)}, next{new SingleFileWindow(&manager, &appearance)};
         first.value->setDocument(document); first.value->show(); next.value->setDocument(second); next.value->show();
         QTRY_VERIFY_WITH_TIMEOUT(painted(first.value->preview(), &appearance), 20000);
-        first.value->preview()->restoreReadingPosition({0, 1000}); QTRY_VERIFY_WITH_TIMEOUT(first.value->preview()->view()->page()->scrollPosition().y() > 900, 10000);
-        const auto original = document->session()->snapshot(); const auto position = first.value->preview()->view()->page()->scrollPosition().y();
+        first.value->preview()->restoreReadingPosition({0, 1000}); QTRY_VERIFY_WITH_TIMEOUT(first.value->preview()->view()->readingPosition().y() > 900, 10000);
+        const auto original = document->session()->snapshot(); const auto position = first.value->preview()->view()->readingPosition().y();
         QCOMPARE(second->session()->replace(0, 0, "keep\n", second->session()->revision()), EditResult::Applied); const auto otherEdited = second->session()->snapshot();
         QVERIFY(appearance.setPreferences("dark", "cobalt")); QTRY_VERIFY_WITH_TIMEOUT(painted(first.value->preview(), &appearance), 20000);
-        QTRY_VERIFY_WITH_TIMEOUT(qAbs(first.value->preview()->view()->page()->scrollPosition().y() - position) < 5, 10000);
-        QCOMPARE(next.value->appearance()->accent(), QString("cobalt")); QTRY_VERIFY_WITH_TIMEOUT(painted(next.value->preview(), &appearance), 20000); QVERIFY(html(next.value->preview()).contains(appearance.color("background").name(), Qt::CaseInsensitive));
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(first.value->preview()->view()->readingPosition().y() - position) < 5, 10000);
+        QCOMPARE(next.value->appearance()->accent(), QString("cobalt")); QTRY_VERIFY_WITH_TIMEOUT(painted(next.value->preview(), &appearance), 20000); QVERIFY(previewText(next.value->preview()).contains(QStringLiteral("写作")));
         QCOMPARE(document->session()->snapshot().utf8, original.utf8); QCOMPARE(document->session()->revision(), original.revision); QVERIFY(!document->dirty());
         QCOMPARE(second->session()->snapshot().utf8, otherEdited.utf8); QVERIFY(second->dirty()); QCOMPARE(second->session()->undo(), EditResult::Applied); QCOMPARE(second->session()->snapshot().utf8, sample());
         QVERIFY(fileFixtures::write(path, text + "external append\n")); document->checkExternal(); QTRY_VERIFY(document->conflict());
         auto *reload = first.value->findChild<QPushButton *>("resolveConflict"); QCOMPARE(reload->text(), QStringLiteral("重新载入")); reload->click();
-        QTRY_VERIFY(!document->loading()); QTRY_VERIFY(!document->conflict()); QTRY_COMPARE_WITH_TIMEOUT(first.value->preview()->displayedRevision(), document->session()->revision(), 20000); QTRY_VERIFY_WITH_TIMEOUT(qAbs(first.value->preview()->view()->page()->scrollPosition().y() - position) < 5, 10000);
+        QTRY_VERIFY(!document->loading()); QTRY_VERIFY(!document->conflict()); QTRY_COMPARE_WITH_TIMEOUT(first.value->preview()->displayedRevision(), document->session()->revision(), 20000); QTRY_VERIFY_WITH_TIMEOUT(qAbs(first.value->preview()->view()->readingPosition().y() - position) < 5, 10000);
         QCOMPARE(document->session()->snapshot().utf8, text + "external append\n"); QCOMPARE(document->session()->undo(), EditResult::Applied); QCOMPARE(document->session()->snapshot().utf8, original.utf8); QVERIFY(document->dirty());
     }
     void tabOutlineActivationCancelAndWindowDeactivation() {
@@ -349,15 +341,9 @@ private slots:
         Appearance appearance; FileManager manager(nullptr, {}, false); auto *document = open(manager, path); QVERIFY(document);
         Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->setDocument(document); owned.value->resize(800, 600); owned.value->show();
         auto *preview = owned.value->preview(); QSignalSpy ready(preview, &MarkdownPreview::previewReady), moved(preview, &MarkdownPreview::fragmentNavigated);
-        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 20000); auto *page = preview->view()->page();
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 20000); auto *view = preview->view();
         owned.value->reportHostMessage(QStringLiteral("之前的提示"));
-        const auto click = [&](int index) {
-            const auto point = evaluate(page, QStringLiteral("(()=>{const a=document.querySelectorAll('a.link-placeholder')[%1];if(!a)return null;const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").arg(index)).toMap();
-            if (point.isEmpty()) return false;
-            QTest::mouseClick(preview->view()->focusProxy() ? preview->view()->focusProxy() : preview->view(), Qt::LeftButton, Qt::NoModifier,
-                QPoint(qRound(point.value("x").toDouble()), qRound(point.value("y").toDouble())));
-            return true;
-        };
+        const auto click = [&](int index) { return clickLink(view, index); };
         QVERIFY(click(0)); auto *notice = owned.value->findChild<QLabel *>("documentNotice"); QVERIFY(notice);
         QTRY_VERIFY_WITH_TIMEOUT(notice->isVisible() && notice->text().contains(QStringLiteral("未找到标题")), 10000);
         QVERIFY(preview->isVisible()); auto *close = owned.value->findChild<SharedButton *>("closeNotice"); QVERIFY(close);
@@ -374,20 +360,24 @@ private slots:
         const auto text = "# Components\n\n- [x] 完成\n- [ ] 待办\n\n```js\n" + code.toUtf8() + "```\n\n|列|" + QByteArray(180, 'y') + "|\n|--|--|\n|一|二|\n";
         QVERIFY(fileFixtures::write(path, text)); Appearance appearance; FileManager manager(nullptr, {}, false); auto *document = open(manager, path); QVERIFY(document);
         Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->setDocument(document); owned.value->show(); auto *preview = owned.value->preview(); QSignalSpy ready(preview, &MarkdownPreview::previewReady); QSignalSpy copied(preview, &MarkdownPreview::copyTextRequested);
-        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 20000); auto *page = preview->view()->page();
-        qInfo() << "reader-font=" << evaluate(page, "getComputedStyle(document.body).fontFamily").toString();
-        QVERIFY(evaluate(page, "(()=>{let e=document.querySelector('pre');return e.scrollWidth>e.clientWidth&&getComputedStyle(e).whiteSpace==='pre'})()").toBool());
-        QVERIFY(evaluate(page, "(()=>{let e=document.querySelector('.table-scroll');return e.scrollWidth>e.clientWidth})()").toBool());
-        QVERIFY(evaluate(page, "(()=>{let e=document.querySelector('input[type=checkbox]');return getComputedStyle(e.parentElement).listStyleType==='none'&&getComputedStyle(e).width==='16px'})()").toBool());
-        QCOMPARE(evaluate(page, "document.querySelector('pre code').textContent").toString(), code);
-        QVERIFY(evaluate(page, "document.querySelectorAll('.syntax-keyword').length>0").toBool());
-        const auto point = evaluate(page, "(()=>{const r=document.querySelector('button[data-xdnote-code]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()").toMap();
-        QVERIFY(!point.isEmpty()); QTest::mouseClick(preview->view()->focusProxy() ? preview->view()->focusProxy() : preview->view(), Qt::LeftButton, Qt::NoModifier, QPoint(qRound(point["x"].toDouble()), qRound(point["y"].toDouble())));
-        QTRY_COMPARE_WITH_TIMEOUT(copied.count(), 1, 10000); QCOMPARE(copied.first().first().toString(), code); QCOMPARE(document->session()->snapshot().utf8, text); QVERIFY(!document->dirty());
-        QVERIFY(!page->settings()->testAttribute(QWebEngineSettings::JavascriptEnabled)); QVERIFY(!page->settings()->testAttribute(QWebEngineSettings::JavascriptCanAccessClipboard));
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 20000); auto *view = preview->view(); QVERIFY(view->content());
+        const auto *content = view->content(); QVERIFY(!content->highlights.isEmpty());
+        int codeAction = -1; for (int i = 0; i < content->actions.size(); ++i) if (content->actions[i].copyCode) codeAction = i;
+        QVERIFY(codeAction >= 0); const auto &action = content->actions[codeAction]; QCOMPARE(content->text.mid(action.start, action.length), code);
+        QVERIFY(content->text.contains(QChar(0x2611))); QVERIFY(content->text.contains(QChar(0x2610)));
+        view->scrollToText(action.start); QCoreApplication::processEvents();
+        auto *button = view->findChild<SharedButton *>("nativeCodeCopy"); QVERIFY(button && button->isVisible());
+        QTest::mouseClick(button, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(copied.count(), 1, 10000); QCOMPARE(copied.first().first().toString(), code);
+        QCOMPARE(document->session()->snapshot().utf8, text); QVERIFY(!document->dirty());
+        int horizontal = 0;
+        for (const auto &owner : content->owners) { view->scrollToText(owner.start + qMax(0, owner.length - 1)); view->grab(); for (auto *bar : view->findChildren<QScrollBar *>()) if (bar->orientation() == Qt::Horizontal && bar->maximum() > 0) { ++horizontal; bar->setValue(bar->maximum()); } }
+        QVERIFY(horizontal >= 2);
+        for (auto *bar : view->findChildren<QScrollBar *>()) if (bar->orientation() == Qt::Horizontal) bar->setValue(0);
+        view->restoreReadingPosition({});
         capture(owned.value, "reader-code-tasks-table");
         QTimer timer; timer.setInterval(50); bool inspected = false; connect(&timer, &QTimer::timeout, this, [&] { auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget()); if (!menu) return; timer.stop(); inspected = true; QCOMPARE(menu->objectName(), QString("readingContextMenu")); QCOMPARE(menu->actions().size(), 2); QCOMPARE(menu->actions()[0]->text(), QStringLiteral("复制")); QCOMPARE(menu->actions()[1]->text(), QStringLiteral("全选")); capture(menu, "reading-context-menu"); menu->close(); }); timer.start();
-        emit preview->view()->customContextMenuRequested(QPoint(80, 80)); QVERIFY(inspected);
+        QContextMenuEvent event(QContextMenuEvent::Mouse, QPoint(80, 80), preview->view()->viewport()->mapToGlobal(QPoint(80, 80))); QApplication::sendEvent(preview->view()->viewport(), &event); QVERIFY(inspected);
     }
     void headingsLoadingErrorsAndSaveState() {
         FileManager manager(nullptr, {}, false); Appearance appearance; Window empty{new SingleFileWindow(&manager, &appearance)}; empty.value->show();
