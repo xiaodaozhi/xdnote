@@ -21,6 +21,7 @@ signals:
     void clearSearchRequested();
 private:
     void refresh();
+    void refreshContent();
     void applyAppearance();
     Appearance *m_appearance;
     NavigationStore *m_store;
@@ -28,6 +29,7 @@ private:
     QString m_root, m_query, m_searchWarning;
     QStringList m_searchPaths;
     bool m_loading = false;
+    bool m_refreshing = false, m_refreshAgain = false;
     QLabel *m_heading, *m_summary, *m_empty, *m_emptyDetails, *m_emptyIcon;
     QWidget *m_emptyPane;
     SharedSpinner *m_spinner;

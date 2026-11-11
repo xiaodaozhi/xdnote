@@ -12,11 +12,13 @@ class QWidget;
 class QScreen;
 class QWindow;
 namespace xdnote {
+inline bool normalWindowState(Qt::WindowStates state) { return !(state & (Qt::WindowMinimized | Qt::WindowMaximized | Qt::WindowFullScreen)); }
 // Sizes in this section are logical client sizes, never native outer sizes.
 struct WindowPlacement {
     QRect normal;
     QRect available;
     bool maximized = false;
+    int normalVersion = 2;
     QJsonObject toJson() const;
     static std::optional<WindowPlacement> fromJson(const QJsonObject &value);
 };

@@ -25,6 +25,7 @@ private:
     SingleFileWindow *createWindow();
     WorkspaceWindow *createWorkspace();
     void activatePane(SingleFileWindow *pane);
+    void trackWorkspaceRequest(const QUuid &intent, SingleFileWindow *pane, WorkspaceWindow *workspace);
     void chooseDirectory(WorkspaceWindow *owner);
     void retryTransfers();
     void advanceQuit();
@@ -51,6 +52,7 @@ private:
     struct Transfer { QPointer<SingleFileWindow> pane; QPointer<WorkspaceWindow> target; bool explicitTarget; };
     QHash<QUuid, Transfer> m_transfers;
     QHash<QUuid, QPointer<SingleFileWindow>> m_requests;
+    QHash<QUuid, QPointer<WorkspaceWindow>> m_workspaceRequests;
     QHash<QUuid, QPointer<SingleFileWindow>> m_documents;
     QHash<QUuid, LinkNavigation> m_linkNavigations;
     bool m_quitting = false;

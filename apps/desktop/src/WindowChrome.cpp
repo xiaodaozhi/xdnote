@@ -1,4 +1,5 @@
 #include "WindowChrome.h"
+#include "WindowGeometry.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
 #include "VisualTokens.h"
@@ -140,7 +141,7 @@ bool ApplicationWindow::nativeEvent(const QByteArray &type, void *message, qintp
     auto *msg = static_cast<MSG *>(message); const auto hwnd = reinterpret_cast<HWND>(internalWinId());
     if (msg->hwnd != hwnd) return QWidget::nativeEvent(type, message, result);
     if ((msg->message == WM_SYSCOMMAND && ((msg->wParam & 0xfff0) == SC_MAXIMIZE || (msg->wParam & 0xfff0) == SC_RESTORE || (msg->wParam & 0xfff0) == SC_MINIMIZE))
-        || (msg->message == WM_SIZE && (msg->wParam != SIZE_RESTORED || windowState() != Qt::WindowNoState)))
+        || (msg->message == WM_SIZE && (msg->wParam != SIZE_RESTORED || !normalWindowState(windowState()))))
         emit nativeStateChangeStarting();
     if (msg->message == WM_NCCALCSIZE && msg->wParam) {
         auto *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(msg->lParam);

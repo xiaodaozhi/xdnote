@@ -207,7 +207,7 @@ void SharedButton::paintEvent(QPaintEvent *) {
     QPainter painter(this); painter.setRenderHint(QPainter::Antialiasing);
     painter.setBrush(background); painter.setPen(m_outlined ? QPen(appearance->color("border"), control("borderWidth")) : QPen(Qt::NoPen));
     const bool tabClose = property("tabClose").toBool();
-    const int radius = tabClose ? visualTokens()["tabs"].toObject()["closeRadius"].toInt() : visualTokens().value("radius").toObject().value("control").toInt();
+    const int radius = tabClose ? visualTokens()["tabs"].toObject()["closeRadius"].toInt() : property("footerControl").toBool() ? control("footerControlRadius") : visualTokens().value("radius").toObject().value("control").toInt();
     if (caption) painter.fillRect(rect(), background); else painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
     if (navigation && selected) { painter.setPen(Qt::NoPen); painter.setBrush(appearance->accentColor()); painter.drawRoundedRect(QRectF(0, 5, 3, height() - 10), 1.5, 1.5); }
     const int icon = m_symbol.isEmpty() ? 0 : tabClose ? visualTokens()["tabs"].toObject()["closeIcon"].toInt() : control("iconSize");

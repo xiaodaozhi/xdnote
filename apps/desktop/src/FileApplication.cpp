@@ -34,6 +34,7 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
     connect(&m_manager, &FileManager::opened, this, [this](QUuid intent, FileDocument *document, bool reused) {
         auto placeholder = m_requests.take(intent);
         const auto navigation = m_linkNavigations.take(intent);
+        const bool workspaceRequested = m_workspaceRequests.contains(intent); const auto workspace = m_workspaceRequests.take(intent);
         if (navigation.root && !validLinkSource(navigation)) {
             if (!reused) m_manager.closeDocument(document);
             if (placeholder) { placeholder->finishOpen(); placeholder->close(); }
@@ -41,9 +42,11 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
             return;
         }
         if (!placeholder) { if (!reused) m_manager.closeDocument(document); return; }
+        if (workspaceRequested && (!workspace || workspace->closingWorkspace())) { if (!reused) m_manager.closeDocument(document); placeholder->finishOpen(); placeholder->close(); return; }
         m_navigation.recordOpen(document->path());
         const auto id = document->session()->documentId(); auto pane = m_documents.value(id);
         if (pane) { placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); if (navigation.hasFragment) pane->navigateToHeading(navigation.fragment); if (navigation.sourceLocation) pane->navigateToReference(navigation.locationIdentity, navigation.sourceSha256, navigation.locationStart, navigation.locationEnd); return; }
+        if (workspaceRequested && !workspace->addPane(placeholder)) { if (!reused) m_manager.closeDocument(document); placeholder->finishOpen(); placeholder->close(); workspace->showNotice(QStringLiteral("无法准备文档标签，原有文档保持不变。")); return; }
         m_documents.insert(id, placeholder); placeholder->setDocument(document);
         connect(placeholder, &QObject::destroyed, this, [this, id] { m_documents.remove(id); });
         connect(document, &FileDocument::stateChanged, this, [this, document, path = document->path()]() mutable { if (path != document->path()) { path = document->path(); m_navigation.recordOpen(path); } QTimer::singleShot(0, this, &FileApplication::retryTransfers); });
@@ -53,10 +56,14 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
     });
     connect(&m_manager, &FileManager::openFailed, this, [this](QUuid intent, const QString &path, const QString &message) {
         auto pane = m_requests.take(intent); const auto navigation = m_linkNavigations.take(intent);
+        const bool workspaceRequested = m_workspaceRequests.contains(intent); const auto workspace = m_workspaceRequests.take(intent);
         if (navigation.root) {
             if (pane) { pane->finishOpen(); pane->close(); }
             if (navigation.source) { navigation.source->reportHostMessage(QStringLiteral("无法打开文档链接：") + message); activatePane(navigation.source); }
-        } else if (pane) pane->showOpenError(path, message);
+        } else if (pane) {
+            if (workspaceRequested && (!workspace || workspace->closingWorkspace() || !workspace->addPane(pane))) { pane->finishOpen(); pane->close(); return; }
+            pane->showOpenError(path, message);
+        }
     });
 }
 FileApplication::~FileApplication() {
@@ -74,7 +81,7 @@ SingleFileWindow *FileApplication::createWindow() {
     connect(pane, &SingleFileWindow::openRequested, this, [this, pane](const QString &path) { if (auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window())) openInWorkspace(path, workspace); else open(path, pane->document() ? nullptr : pane); });
     connect(pane, &SingleFileWindow::workspaceRequested, this, [this, pane] { transferToWorkspace(pane); });
     connect(pane, &SingleFileWindow::openDirectoryRequested, this, [this, pane] { chooseDirectory(qobject_cast<WorkspaceWindow *>(pane->window())); });
-    connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_linkNavigations.remove(intent); m_manager.cancelOpen(intent); });
+    connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_linkNavigations.remove(intent); m_workspaceRequests.remove(intent); m_manager.cancelOpen(intent); });
     connect(pane, &SingleFileWindow::documentLinkRequested, this, [this, pane](const QString &target, quint64 revision) { openDocumentLink(pane, target, revision); });
     connect(pane, &SingleFileWindow::quitRequested, this, &FileApplication::requestQuit); connect(pane, &SingleFileWindow::closeCancelled, this, [this] { m_quitting = false; });
     connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
@@ -86,7 +93,7 @@ WorkspaceWindow *FileApplication::createWorkspace() {
         navigation.source = workspace->activePane(); navigation.sourceSha256 = sha; navigation.locationIdentity = identity; navigation.locationStart = start; navigation.locationEnd = end;
         if (!validLinkSource(navigation)) return;
         auto *placeholder = createWindow(); const auto intent = QUuid::createUuid(); placeholder->setLoading(QDir(navigation.root->rootPath()).filePath(path), intent);
-        if (!workspace->addPane(placeholder)) { delete placeholder; return; }
+        trackWorkspaceRequest(intent, placeholder, workspace);
         m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation); m_manager.openWithin(navigation.root, path, intent);
     });
     connect(workspace, &WorkspaceWindow::openRequested, this, [this, workspace](const QString &path) { openInWorkspace(path, workspace); });
@@ -114,10 +121,18 @@ void FileApplication::open(const QString &path, SingleFileWindow *empty) {
 void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *workspace) {
     if (!workspace || workspace->closingWorkspace()) return; m_quitting = false;
     auto *pane = createWindow(); const auto intent = QUuid::createUuid(); pane->setLoading(path, intent);
-    if (!workspace->addPane(pane)) { delete pane; workspace->showNotice(QStringLiteral("无法准备文档标签，原有文档保持不变。")); return; }
+    trackWorkspaceRequest(intent, pane, workspace);
     m_requests.insert(intent, pane); m_manager.open(path, intent);
 }
 void FileApplication::activatePane(SingleFileWindow *pane) { if (auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window())) workspace->activatePane(pane->paneId()); else { if (pane->isMinimized()) pane->showNormal(); pane->show(); pane->raise(); pane->activateWindow(); } }
+void FileApplication::trackWorkspaceRequest(const QUuid &intent, SingleFileWindow *pane, WorkspaceWindow *workspace) {
+    m_workspaceRequests.insert(intent, workspace);
+    connect(workspace, &QObject::destroyed, pane, [this, pane, intent] {
+        // The unshown request belongs to its destination, even before it is a tab.
+        if (!m_workspaceRequests.remove(intent)) return;
+        m_requests.remove(intent); m_linkNavigations.remove(intent); m_manager.cancelOpen(intent); pane->finishOpen(); pane->close();
+    });
+}
 bool FileApplication::validLinkSource(const LinkNavigation &navigation) const {
     if (navigation.sourceLocation) return navigation.workspace && !navigation.workspace->closingWorkspace()
         && navigation.root && navigation.root->active() && navigation.workspace->resourceRoot() == navigation.root;
@@ -153,7 +168,7 @@ void FileApplication::openDocumentLink(SingleFileWindow *source, const QString &
     auto *placeholder = createWindow(); const auto intent = QUuid::createUuid();
     placeholder->setLoading(QDir(navigation.root->rootPath()).filePath(resolved.path), intent);
     if (navigation.workspace) {
-        if (!navigation.workspace->addPane(placeholder)) { delete placeholder; source->reportHostMessage(QStringLiteral("无法准备目标文档标签。")); return; }
+        trackWorkspaceRequest(intent, placeholder, navigation.workspace);
     } else placeholder->show();
     m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation);
     m_manager.openWithin(navigation.root, resolved.path, intent, navigation.sourcePath, navigation.sourceIdentity);
