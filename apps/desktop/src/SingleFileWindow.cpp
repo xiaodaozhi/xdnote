@@ -494,8 +494,9 @@ void SingleFileWindow::reportHostMessage(const QString &message) { m_hostMessage
 void SingleFileWindow::setEditing(bool editing) { setViewMode(editing ? ViewMode::Source : ViewMode::Reading); }
 void SingleFileWindow::setViewMode(ViewMode mode) {
     if (!m_document || (!m_embedded && mode == ViewMode::Split) || (mode == ViewMode::Source && m_document->readOnly())) { updateState(); return; }
+    const bool fromReading = m_mode == ViewMode::Reading;
     m_mode = mode; m_editing = mode != ViewMode::Reading;
-    if (m_scrollSync) m_scrollSync->setEnabled(mode == ViewMode::Split);
+    if (m_scrollSync) m_scrollSync->setEnabled(mode == ViewMode::Split, fromReading);
     m_body->setCurrentWidget(m_splitter); m_editorPage->setVisible(mode != ViewMode::Reading); m_previewPane->setVisible(mode != ViewMode::Source); m_previewHeading->setVisible(mode == ViewMode::Split); m_body->setFormatRuleVisible(mode != ViewMode::Reading);
     if (m_editing) m_editor->setFocus(Qt::OtherFocusReason); updateState();
 }

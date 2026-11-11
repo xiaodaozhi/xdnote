@@ -14,25 +14,30 @@ ScrollSyncController::ScrollSyncController(SourceEditor *source, MarkdownPreview
     connect(&m_scroll, &QTimer::timeout, this, &ScrollSyncController::synchronize);
     connect(&m_resize, &QTimer::timeout, this, [this] { m_resizing = false; queue(Side::Restore); });
     connect(source->verticalScrollBar(), &QScrollBar::valueChanged, this, &ScrollSyncController::sourceScrolled);
-    connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { queue(Side::Preview); });
+    connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { queue(m_driver == Side::Source ? Side::Restore : Side::Preview); });
+    connect(source, &SourceEditor::verticalNavigationRequested, this, &ScrollSyncController::requestSource);
+    connect(source->verticalScrollBar(), &QScrollBar::actionTriggered, this, [this] { requestSource(); });
+    connect(m_view, &NativePreviewView::verticalNavigationRequested, this, [this] { requestReader(m_view->verticalScrollBar()->value()); });
+    connect(m_view->verticalScrollBar(), &QScrollBar::actionTriggered, this, [this] { requestReader(m_view->verticalScrollBar()->sliderPosition()); });
     connect(source->verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] { reflow(); });
     connect(m_view->verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] { reflow(); });
     connect(m_view, &NativePreviewView::layoutStarted, this, [this] { m_layoutPending = true; m_scroll.stop(); m_pending = Side::None; });
     connect(m_view, &NativePreviewView::layoutFailed, this, [this] { m_layoutPending = true; m_scroll.stop(); });
-    connect(m_session, &DocumentSession::changed, this, [this] { m_layoutPending = true; m_readerAnchor = false; m_scroll.stop(); m_pending = Side::None; });
+    connect(m_session, &DocumentSession::changed, this, [this] { m_layoutPending = true; m_driver = Side::Source; m_readerAnchor = false; m_scroll.stop(); m_pending = Side::None; });
     connect(m_session, &DocumentSession::closed, this, [this] { setEnabled(false); });
     connect(m_session, &DocumentSession::stateChanged, this, [this] { queue(Side::Restore); });
     connect(preview, &MarkdownPreview::previewReady, this, [this] { m_layoutPending = false; queue(Side::Restore); });
-    connect(preview, &MarkdownPreview::fragmentNavigated, this, [this] { m_readerAnchor = false; m_headingPending = true; queue(Side::Preview); });
+    connect(preview, &MarkdownPreview::fragmentNavigated, this, [this] { requestReader(m_view->verticalScrollBar()->value()); });
     for (auto *widget : {static_cast<QWidget *>(source), source->viewport(), static_cast<QWidget *>(m_view.data()), m_view->viewport()}) widget->installEventFilter(this);
 }
-void ScrollSyncController::setEnabled(bool enabled) {
+void ScrollSyncController::setEnabled(bool enabled, bool preferPreview) {
     if (m_enabled == enabled) return;
-    m_enabled = enabled; m_readerAnchor = false; m_headingPending = false; m_scroll.stop(); m_pending = Side::None;
-    if (enabled) queue(Side::Source);
+    m_enabled = enabled; m_driver = Side::Source; m_readerAnchor = false; m_scroll.stop(); m_pending = Side::None;
+    if (enabled && preferPreview && m_view) requestReader(m_view->verticalScrollBar()->value(), true);
+    if (enabled && m_driver != Side::Preview) queue(Side::Source);
 }
 void ScrollSyncController::sourceScrolled() {
-    if (m_sourceBookmark && !m_applying && !m_resizing && m_source && m_source->isVisible()) {
+    if (m_sourceBookmark && m_driver == Side::Source && !m_applying && !m_resizing && m_source && m_source->isVisible()) {
         // Once the public wrap bookmark has been used, later native/user
         // scrolling must also advance it, including in source-only mode.
         const QPointer<ScrollSyncController> alive(this); m_applying = true;
@@ -43,12 +48,32 @@ void ScrollSyncController::sourceScrolled() {
         if (!alive) return;
         m_applying = false;
     }
-    queue(Side::Source);
+    queue(m_driver == Side::Preview ? Side::Restore : Side::Source);
+}
+void ScrollSyncController::requestSource() {
+    if (!m_enabled || m_applying || !m_source || !m_source->isVisible()) return;
+    m_driver = Side::Source; m_readerAnchor = false; m_pending = Side::Source; queue(Side::Source);
+}
+void ScrollSyncController::requestReader(int pixel, bool entering) {
+    if (!m_enabled || m_applying || !m_source || !m_view || !m_preview || (!entering && !m_source->isVisible()) || !m_view->isVisible()) return;
+    const QPointer<ScrollSyncController> alive(this); const bool current = m_preview->mappingCurrent();
+    if (!alive || !current) return;
+    auto *bar = m_view->verticalScrollBar(); pixel = qBound(0, pixel, bar->maximum());
+    const auto stamp = m_view->displayedStamp(); const auto span = m_view->scrollSpanAtY(pixel, stamp);
+    if (!span) return;
+    // Selection notifications from an earlier source interaction can arrive
+    // after this newer reader command. Baseline them before changing drivers.
+    m_source->acknowledgeNavigation();
+    m_driver = Side::Preview; m_readerAnchor = true; m_anchorDocument = stamp.document; m_anchorRevision = stamp.revision;
+    m_anchorStart = span->sourceStart; m_anchorEnd = span->sourceEnd;
+    m_anchorFraction = qBound(0.0, (pixel - span->top) / (span->bottom - span->top), 1.0);
+    m_anchorAtStart = pixel == 0; m_anchorAtEnd = bar->maximum() > 0 && pixel == bar->maximum();
+    m_pending = Side::Preview; queue(Side::Preview);
 }
 void ScrollSyncController::queue(Side side) {
     if (!m_enabled || m_applying || m_layoutPending || m_resizing || !m_source || !m_view
         || !m_source->isVisible() || !m_view->isVisible()) return;
-    if (side == Side::Restore && m_headingPending) side = Side::Preview;
+    if (side != Side::Restore && side != m_driver) return;
     if (side != Side::Restore || m_pending == Side::None) m_pending = side;
     if (side == Side::Source) m_readerAnchor = false;
     m_scroll.start(0);
@@ -92,14 +117,14 @@ void ScrollSyncController::synchronize() {
         const auto anchor = m_readerAnchor && m_anchorDocument == stamp.document && m_anchorRevision == stamp.revision
             ? m_view->scrollSpanForSource(m_anchorStart, stamp) : std::nullopt;
         if (anchor && anchor->sourceStart == m_anchorStart && anchor->sourceEnd == m_anchorEnd) {
-            readerBar->setValue(m_anchorAtEnd ? readerBar->maximum() : qRound(anchor->top + m_anchorFraction * (anchor->bottom - anchor->top)));
+            readerBar->setValue(m_anchorAtStart ? 0 : m_anchorAtEnd ? readerBar->maximum() : qRound(anchor->top + m_anchorFraction * (anchor->bottom - anchor->top)));
             if (!alive) return;
             if (!m_source || !m_preview || !m_view || !m_preview->mappingCurrent()) { finish(); return; }
             side = Side::Preview;
-        } else side = Side::Source;
+        } else { side = Side::Source; m_driver = Side::Source; }
     }
     if (side == Side::Source) {
-        m_readerAnchor = false; m_headingPending = false;
+        m_readerAnchor = false;
         const auto line = m_source->send(SCI_DOCLINEFROMVISIBLE, uptr_t(first));
         const auto byte = m_source->send(SCI_POSITIONFROMLINE, uptr_t(line));
         const auto span = m_view->scrollSpanForSource(quint32(qMax(sptr_t(0), byte)), stamp);
@@ -114,7 +139,7 @@ void ScrollSyncController::synchronize() {
         const auto part = fraction(readerBar->value(), span->top, span->bottom);
         m_readerAnchor = true; m_anchorDocument = stamp.document; m_anchorRevision = stamp.revision;
         m_anchorStart = span->sourceStart; m_anchorEnd = span->sourceEnd; m_anchorFraction = part;
-        m_anchorAtEnd = readerBar->maximum() > 0 && readerBar->value() == readerBar->maximum(); m_headingPending = false;
+        m_anchorAtStart = readerBar->value() == 0; m_anchorAtEnd = readerBar->maximum() > 0 && readerBar->value() == readerBar->maximum();
         const auto y = sourceY(span->sourceStart) + part * (sourceY(span->sourceEnd) - sourceY(span->sourceStart));
         const int target = readerBar->value() == 0 ? 0 : readerBar->maximum() > 0 && readerBar->value() >= readerBar->maximum() ? sourceBar->maximum()
             : qBound(0, qRound(y / lineHeight), sourceBar->maximum());

@@ -494,7 +494,7 @@ public:
     void doAction(const QString &name) override {
         if (!isValid()) return;
         if (name == QAccessibleActionInterface::pressAction()) { m_view->activateAction(m_index); return; }
-        if (name == QAccessibleActionInterface::setFocusAction()) { m_view->scrollToText(m_view->content()->actions[m_index].start); m_view->setFocus(Qt::OtherFocusReason); }
+        if (name == QAccessibleActionInterface::setFocusAction()) { m_view->scrollToText(m_view->content()->actions[m_index].start, true); m_view->setFocus(Qt::OtherFocusReason); }
     }
     QStringList keyBindingsForAction(const QString &) const override { return {}; }
 };
@@ -563,7 +563,7 @@ public:
         return view()->offsetAtPoint(view()->viewport()->mapFromGlobal(point));
     }
     void scrollToSubstring(int start, int end) override {
-        const auto value = contents(); if (view() && boundary(value, start) && boundary(value, end) && start <= end) view()->scrollToText(start);
+        const auto value = contents(); if (view() && boundary(value, start) && boundary(value, end) && start <= end) view()->scrollToText(start, true);
     }
     QString attributes(int offset, int *start, int *end) const override {
         if (!boundary(contents(), offset)) { *start = *end = -1; return {}; }
@@ -1146,10 +1146,12 @@ int NativePreviewView::offsetAtPoint(const QPoint &point) {
     }
     return flow.start;
 }
-void NativePreviewView::scrollToText(int offset) {
+void NativePreviewView::scrollToText(int offset, bool navigation) {
     if (!d->content || d->geometry.isEmpty() || !boundary(d->content->text, offset)) return;
     const auto rectangle = characterRect(offset); const int relative = rectangle.y() - viewport()->mapToGlobal(QPoint()).y();
+    const QPointer<NativePreviewView> alive(this);
     verticalScrollBar()->setValue(verticalScrollBar()->value() + relative);
+    if (alive && navigation && ready()) emit verticalNavigationRequested();
 }
 QPointF NativePreviewView::readingPosition() const { return {0, qreal(verticalScrollBar()->value())}; }
 void NativePreviewView::restoreReadingPosition(const QPointF &position) { verticalScrollBar()->setValue(qRound(position.y())); }
@@ -1186,9 +1188,12 @@ void NativePreviewView::mousePressEvent(QMouseEvent *event) {
 void NativePreviewView::mouseMoveEvent(QMouseEvent *event) {
     if (!d->current()) return;
     if (d->dragging && (event->buttons() & Qt::LeftButton)) {
+        const QPointer<NativePreviewView> alive(this); const auto before = verticalScrollBar()->value();
         if (event->position().y() < 0) verticalScrollBar()->setValue(verticalScrollBar()->value() - verticalScrollBar()->singleStep());
         else if (event->position().y() > viewport()->height()) verticalScrollBar()->setValue(verticalScrollBar()->value() + verticalScrollBar()->singleStep());
+        if (!alive) return;
         setSelection(d->anchor, offsetAtPoint(event->position().toPoint()));
+        if (alive && verticalScrollBar()->value() != before) emit verticalNavigationRequested();
     } else {
         viewport()->setCursor(actionAtPoint(event->position().toPoint()) >= 0 ? Qt::PointingHandCursor : Qt::IBeamCursor);
         const int offset = offsetAtPoint(event->position().toPoint());
@@ -1242,7 +1247,10 @@ bool NativePreviewView::focusNextPrevChild(bool next) {
             verticalScrollBar()->setValue(qRound(d->groups[owner].y)); break;
         }
     } else scrollToText(action.start);
-    setFocus(next ? Qt::TabFocusReason : Qt::BacktabFocusReason); viewport()->update(); return true;
+    const QPointer<NativePreviewView> alive(this);
+    setFocus(next ? Qt::TabFocusReason : Qt::BacktabFocusReason);
+    if (!alive) return true;
+    viewport()->update(); emit verticalNavigationRequested(); return true;
 }
 void NativePreviewView::keyPressEvent(QKeyEvent *event) {
     if (!d->current()) { QAbstractScrollArea::keyPressEvent(event); return; }
@@ -1262,7 +1270,7 @@ void NativePreviewView::keyPressEvent(QKeyEvent *event) {
     else if (event->key() == Qt::Key_End) { const auto &flow = d->flow(d->flowAt(position)); position = control ? int(d->content->text.size()) : flow.start + flow.length; }
     else { QAbstractScrollArea::keyPressEvent(event); return; }
     const QPointer<NativePreviewView> alive(this);
-    setSelection(shift ? d->anchor : position, position); if (alive) scrollToText(position); event->accept();
+    setSelection(shift ? d->anchor : position, position); if (alive) scrollToText(position, true); event->accept();
 }
 void NativePreviewView::focusOutEvent(QFocusEvent *event) { d->keyboardOutline = false; d->dragging = false; d->pressedAction = -1; viewport()->update(); QAbstractScrollArea::focusOutEvent(event); }
 void NativePreviewView::wheelEvent(QWheelEvent *event) {
@@ -1277,6 +1285,7 @@ void NativePreviewView::wheelEvent(QWheelEvent *event) {
         }
     }
     QAbstractScrollArea::wheelEvent(event);
+    if (ready()) emit verticalNavigationRequested();
 }
 void NativePreviewView::contextMenuEvent(QContextMenuEvent *event) {
     const QPointer<NativePreviewView> alive(this);
