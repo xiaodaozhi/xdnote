@@ -1,4 +1,5 @@
 #include "WindowChrome.h"
+#include "WindowGeometry.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
 #include "VisualTokens.h"
@@ -33,7 +34,7 @@ WindowTitleBar::WindowTitleBar(Appearance *appearance, QWidget *parent) : QWidge
         auto *button = new SharedButton({}, name, appearance, this); button->setProperty("captionButton", true); button->setFixedSize(height(), height()); button->setSymbol(icon); button->setAccessibleName(label); button->setToolTip(label); m_row->addWidget(button); connect(button, &QPushButton::clicked, this, callback); return button;
     };
     add("captionMinimize", QStringLiteral("最小化"), "minimize", [this] { window()->showMinimized(); });
-    m_maximize = add("captionMaximize", QStringLiteral("最大化或还原"), "maximize", [this] { window()->isMaximized() ? window()->showNormal() : window()->showMaximized(); });
+    m_maximize = add("captionMaximize", QStringLiteral("最大化或还原"), "maximize", [this] { static_cast<ApplicationWindow *>(window())->toggleMaximized(); });
     auto *close = add("captionClose", QStringLiteral("关闭窗口"), "close", [this] { window()->close(); }); close->setProperty("danger", true);
 #endif
 }
@@ -71,12 +72,25 @@ void WindowTitleBar::paintEvent(QPaintEvent *) {
     const int border = visualTokens().value("controls").toObject().value("borderWidth").toInt(); painter.fillRect(QRect(0, this->height() - border, this->width(), border), m_appearance->color("border"));
 }
 void WindowTitleBar::mousePressEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton && window()->windowHandle()) window()->windowHandle()->startSystemMove(); }
-void WindowTitleBar::mouseDoubleClickEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton) window()->isMaximized() ? window()->showNormal() : window()->showMaximized(); }
+void WindowTitleBar::mouseDoubleClickEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton) static_cast<ApplicationWindow *>(window())->toggleMaximized(); }
 void WindowTitleBar::changeEvent(QEvent *event) { QWidget::changeEvent(event); updateWindowState(); }
 ApplicationWindow::ApplicationWindow(Appearance *appearance) : m_chromeAppearance(appearance ? appearance : new Appearance(this)) {
 #ifdef Q_OS_WIN
+    // Qt Widgets keeps zero client margins; Win32 receives the native caption
+    // style at attachment so system commands retain DWM transition behavior.
     setWindowFlag(Qt::FramelessWindowHint);
 #endif
+}
+void ApplicationWindow::toggleMaximized() {
+#ifdef Q_OS_WIN
+    if (isWindow() && internalWinId() && QGuiApplication::platformName() == "windows") {
+        emit nativeStateChangeStarting();
+        const auto hwnd = reinterpret_cast<HWND>(internalWinId());
+        SendMessageW(hwnd, WM_SYSCOMMAND, IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE, 0);
+        return;
+    }
+#endif
+    isMaximized() ? showNormal() : showMaximized();
 }
 void ApplicationWindow::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
@@ -126,6 +140,9 @@ bool ApplicationWindow::nativeEvent(const QByteArray &type, void *message, qintp
 #ifdef Q_OS_WIN
     auto *msg = static_cast<MSG *>(message); const auto hwnd = reinterpret_cast<HWND>(internalWinId());
     if (msg->hwnd != hwnd) return QWidget::nativeEvent(type, message, result);
+    if ((msg->message == WM_SYSCOMMAND && ((msg->wParam & 0xfff0) == SC_MAXIMIZE || (msg->wParam & 0xfff0) == SC_RESTORE || (msg->wParam & 0xfff0) == SC_MINIMIZE))
+        || (msg->message == WM_SIZE && (msg->wParam != SIZE_RESTORED || !normalWindowState(windowState()))))
+        emit nativeStateChangeStarting();
     if (msg->message == WM_NCCALCSIZE && msg->wParam) {
         auto *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(msg->lParam);
         if (IsZoomed(hwnd)) {
@@ -168,7 +185,7 @@ bool ApplicationWindow::nativeEvent(const QByteArray &type, void *message, qintp
     }
     if ((msg->message == WM_NCLBUTTONUP || msg->message == WM_LBUTTONUP) && m_nativeMaxPressed) {
         m_nativeMaxPressed = false; if (auto *button = findChild<SharedButton *>("captionMaximize")) { button->setDown(false); button->update(); }
-        if (msg->message == WM_NCLBUTTONUP && msg->wParam == HTMAXBUTTON) isMaximized() ? showNormal() : showMaximized();
+        if (msg->message == WM_NCLBUTTONUP && msg->wParam == HTMAXBUTTON) toggleMaximized();
         *result = 0; return true;
     }
 #endif

@@ -33,6 +33,55 @@ class NativePreviewViewTests final : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() { installFontFallbacks(); InputModality::forApplication(); qRegisterMetaType<NativePreviewStamp>(); }
+    void cachedImagesRemainStableAcrossRepaints_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
+    void cachedImagesRemainStableAcrossRepaints() {
+        QFETCH(QString, theme); Appearance appearance; QVERIFY(appearance.setPreferences(theme, "graphite"));
+        const auto data = content("![loaded](one.png)\n\ninline ![badge](missing.svg)\n\n![block](missing.png)\n\n" + QByteArray("paragraph\n\n").repeated(100), QByteArray::fromHex("010505")); QVERIFY(data); QCOMPARE(data->images.size(), 3);
+        QImage source(64, 32, QImage::Format_ARGB32); source.fill(Qt::red); QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(source.save(&buffer, "PNG"));
+        NativePreviewView view(&appearance); view.resize(640, 420); view.expect(stamp()); QVERIFY(view.presentAsync(stamp(), data, {{0, png}})); view.show(); QTRY_VERIFY(view.ready());
+        for (const qreal zoom : {1.0, 1.5}) {
+            view.setZoomFactor(zoom); QTRY_VERIFY(view.ready()); view.verticalScrollBar()->setValue(0); QApplication::processEvents();
+            const auto before = view.grab().toImage(); const auto bytes = view.statistics().decodedImageBytes; const auto loads = view.statistics().resourceLoads;
+            QVERIFY(bytes > 0); QVERIFY(loads > 0);
+            bool visuallyStable = true;
+            for (int turn = 0; turn < 80; ++turn) {
+                view.viewport()->update(); QApplication::processEvents(); const auto image = view.grab().toImage();
+                visuallyStable &= image == before;
+            }
+            const auto evidence = qEnvironmentVariable("XDNOTE_NATIVE_EVIDENCE");
+            if (!evidence.isEmpty()) { QVERIFY(QDir().mkpath(evidence)); const auto label = evidence + "/image-repaint-" + theme + "-" + QString::number(zoom); QVERIFY(before.save(label + "-before.png")); QVERIFY(view.grab().save(label + "-after.png")); }
+            QCOMPARE(view.statistics().decodedImageBytes, bytes); QCOMPARE(view.statistics().resourceLoads, loads); QCOMPARE(view.statistics().deniedResources, 0); QVERIFY(visuallyStable);
+            view.verticalScrollBar()->setValue(view.verticalScrollBar()->maximum()); view.grab();
+            view.verticalScrollBar()->setValue(0); QApplication::processEvents(); QCOMPARE(view.grab().toImage(), before);
+            QVERIFY(view.statistics().peakCachedEstimatedBytes <= 8 * 1024 * 1024);
+        }
+        view.expect(stamp(2)); QCOMPARE(view.statistics().decodedImageBytes, qsizetype(0));
+    }
+    void readerStyleEvidence_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
+    void readerStyleEvidence() {
+        QFETCH(QString, theme);
+        const auto source = QStringLiteral("# 写作，让思考清晰\n\n一个安静的 **Markdown 阅读空间**，保持文字层级与舒适的节奏。支持 `inline code` 与 [文档链接](guide.md)。\n\n![Downloads](missing-download.svg) ![License MIT](missing-license.svg)\n\n## 列表与引用\n\n- %1\n- [x] 保留源文与撤销，不在阅读模式写入文件。\n\n> 留一点时间，自由写作。\n>\n> 阅读界面保持克制，信息自然呈现。\n\n## 清晰的代码与表格\n\n```cpp\n// Native preview, one source of truth.\nconst QString title = \"写作，从这里开始\";\nreturn document;\n```\n\n| 项目 | 状态 |\n| :--- | :--- |\n| 原生阅读 | 已接入 |\n| 相对链接 | 复用文档会话 |\n| 图片资源 | 保留明确诊断 |\n\n![阅读示意图](missing-preview.png)\n\n### 继续你的记录\n\nGood typography gives long paragraphs a comfortable measure, clear hierarchy, and enough breathing room. 中文与 Latin、数字 123 和 emoji 😀 可以一起阅读。\n").arg(QStringLiteral("这一段用于检查列表自动换行后的悬挂缩进，正文应与第一行文字对齐，而不是退回项目符号的位置。").repeated(5)).toUtf8();
+        const auto data = content(source, QByteArray(3, char(5))); QVERIFY(data); QCOMPARE(data->images.size(), 3);
+        Appearance appearance; QVERIFY(appearance.setPreferences(theme, "graphite"));
+        NativePreviewView view(&appearance); view.resize(840, 1080); view.expect(stamp()); QVERIFY(view.present(stamp(), data)); view.show(); QApplication::processEvents(); view.grab();
+        QCOMPARE(view.admittedImageCount(), 0); const auto before = data->text;
+        const auto firstImage = view.characterRect(data->images[0].start); QVERIFY(firstImage.width() <= 241); QVERIFY(firstImage.height() < 80);
+        const auto flow = std::find_if(data->flows.cbegin(), data->flows.cend(), [](const auto &value) { return value.markerLength && value.length > 150; }); QVERIFY(flow != data->flows.cend());
+        view.scrollToText(flow->start); const auto first = view.characterRect(flow->start + flow->markerLength);
+        bool wrapped = false;
+        for (int i = flow->markerLength + 1; i < flow->length; ++i) {
+            const auto next = view.characterRect(flow->start + i);
+            if (next.y() > first.y() + 2) { QVERIFY(qAbs(next.x() - first.x()) <= 2); wrapped = true; break; }
+        }
+        QVERIFY(wrapped); view.verticalScrollBar()->setValue(0); view.grab();
+        const auto evidence = qEnvironmentVariable("XDNOTE_NATIVE_EVIDENCE");
+        if (!evidence.isEmpty()) {
+            QVERIFY(QDir().mkpath(evidence)); QVERIFY(view.grab().save(evidence + "/reader-" + theme + "-top.png"));
+            view.verticalScrollBar()->setValue(view.verticalScrollBar()->maximum()); QVERIFY(view.grab().save(evidence + "/reader-" + theme + "-details.png"));
+        }
+        QSignalSpy copy(&view, &NativePreviewView::copyTextRequested); view.selectAll(); view.copy(); QCOMPARE(copy.size(), 1); QCOMPARE(copy.first().first().toString(), before);
+        QCOMPARE(data->text, before); QCOMPARE(view.statistics().deniedResources, 0); QVERIFY(view.statistics().peakCachedEstimatedBytes <= 8 * 1024 * 1024);
+    }
     void sourceFontIsMonospacedAndEmojiHasGlyphFallback() {
         QVERIFY2(QFontInfo(sourceFont()).fixedPitch(), qPrintable(QFontInfo(sourceFont()).family()));
         const auto emoji = QString::fromUcs4(U"😀");
@@ -305,7 +354,7 @@ private slots:
             auto textRect = view.characterRect(cell.start); textRect.translate(-view.viewport()->mapToGlobal(QPoint()));
             const int maximumWidth = visualTokens()["typography"].toObject()["reader"].toObject()["maxContentWidth"].toInt();
             const int tableWidth = qMin(maximumWidth, view.viewport()->width() - 48);
-            const int tableLeft = (view.viewport()->width() - tableWidth) / 2;
+            const qreal tableLeft = (view.viewport()->width() - tableWidth) / 2.0;
             const qreal ratio = image.devicePixelRatio(); bool bottomBorder = false;
             for (int y = textRect.top() + 1; y < qMin(view.viewport()->height(), textRect.top() + 60); ++y) {
                 int border = 0;
@@ -314,7 +363,11 @@ private slots:
                 if (border > tableWidth * .95) { bottomBorder = true; break; }
             }
             QVERIFY(bottomBorder);
-            QCOMPARE(image.pixelColor(qFloor((tableLeft + tableWidth - 1) * ratio), qFloor(textRect.center().y() * ratio)), appearance.color("border"));
+            // An odd viewport width puts the logical inset on a half pixel.
+            const int right = qFloor((tableLeft + tableWidth - .5) * ratio), centerY = qFloor(textRect.center().y() * ratio);
+            bool rightBorder = false;
+            for (int x = qMax(0, right - 1); x <= qMin(image.width() - 1, right + 1); ++x) rightBorder |= image.pixelColor(x, centerY) == appearance.color("border");
+            QVERIFY(rightBorder);
             if (!directory.isEmpty()) { QVERIFY(QDir().mkpath(directory)); QVERIFY(image.save(directory + "/native-preview-" + theme + ".png")); }
         }
     }

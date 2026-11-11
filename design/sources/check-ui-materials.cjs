@@ -87,7 +87,7 @@ async function main() {
     for (const ref of w.designAssetIds) assert(material.assets.some(a => a.id === ref && ['baseline', 'current'].includes(a.status)), 'Window reference ' + w.id + '/' + ref);
   }
   assert(Object.keys(tokens.accents).length === 6 && geometry.unit === 'logical-pixel', 'Shared parameter contract');
-  assert(tokens.tabs.minWidth <= tokens.tabs.maxWidth && tokens.tabs.closeHit === tokens.controls.iconButtonHit, 'Shared tab parameter contract');
+  assert(tokens.tabs.minWidth <= tokens.tabs.maxWidth && tokens.tabs.closeHit >= 24 && tokens.tabs.closeHit <= tokens.controls.iconButtonHit && tokens.tabs.closeIcon + 8 <= tokens.tabs.closeHit && tokens.tabs.closeInset >= 4, 'Shared tab parameter contract');
   const frames = catalog.boards.flatMap(b => b.frames);
   assert(frames.length === catalog.surfaceCount && frames.length === surfaces.surfaces.length, 'Surface coverage count');
   assert(new Set(frames.map(f => f.id)).size === frames.length, 'Duplicate surface IDs');

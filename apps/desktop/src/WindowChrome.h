@@ -32,7 +32,10 @@ class ApplicationWindow : public QWidget {
     Q_OBJECT
 public:
     explicit ApplicationWindow(Appearance *appearance = nullptr);
+    void toggleMaximized();
     Appearance *windowAppearance() const { return m_chromeAppearance; }
+signals:
+    void nativeStateChangeStarting();
 protected:
     void setTitleBar(WindowTitleBar *header) { m_windowHeader = header; }
     void resetNativeFrame() { m_frameInitialized = false; m_nativeMaxPressed = false; }

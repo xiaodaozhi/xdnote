@@ -1,4 +1,5 @@
 #include "WindowGeometry.h"
+#include "WindowChrome.h"
 #include <QApplication>
 #include <QDir>
 #include <QEvent>
@@ -46,7 +47,7 @@ bool wayland() { return QGuiApplication::platformName().startsWith("wayland"); }
 bool nativeMapping(HWND hwnd, QWidget *window) {
     DWORD process = 0;
     if (!hwnd || GetWindowThreadProcessId(hwnd, &process) != GetCurrentThreadId() || process != GetCurrentProcessId()
-        || !window || window->windowState() != Qt::WindowNoState || IsZoomed(hwnd) || IsIconic(hwnd)
+        || !window || !normalWindowState(window->windowState()) || IsZoomed(hwnd) || IsIconic(hwnd)
         || !AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(hwnd), DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
         || !AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(), DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
         || QGuiApplication::highDpiScaleFactorRoundingPolicy() != Qt::HighDpiScaleFactorRoundingPolicy::PassThrough
@@ -63,8 +64,8 @@ bool nativeMapping(HWND hwnd, QWidget *window) {
 }
 bool nativeFrame(HWND hwnd, QWidget *window, UINT dpi, QSize *result) {
     if (!dpi) return false;
-    // The application's frameless Windows shell uses the whole normal HWND as
-    // client area. Standard decorated QWidget windows retain all native insets.
+    // Qt Widgets owns a zero-margin client area for the custom application
+    // frame. Native WS_CAPTION is retained for system commands and animation.
     if (window->windowFlags().testFlag(Qt::FramelessWindowHint)) { *result = QSize(0, 0); return true; }
     RECT rect{};
     if (!AdjustWindowRectExForDpi(&rect, DWORD(GetWindowLongPtrW(hwnd, GWL_STYLE)), FALSE,
@@ -75,11 +76,13 @@ bool nativeFrame(HWND hwnd, QWidget *window, UINT dpi, QSize *result) {
 }
 #endif
 }
-QJsonObject WindowPlacement::toJson() const { return {{"normal", rectangle(normal)}, {"available", rectangle(available)}, {"maximized", maximized}}; }
+QJsonObject WindowPlacement::toJson() const { return {{"normal", rectangle(normal)}, {"available", rectangle(available)}, {"maximized", maximized}, {"normalVersion", normalVersion}}; }
 std::optional<WindowPlacement> WindowPlacement::fromJson(const QJsonObject &value) {
     const auto normal = rectangle(value.value("normal").toObject()), available = rectangle(value.value("available").toObject());
-    if (!normal || !available || !value.value("maximized").isBool()) return {};
-    return WindowPlacement{*normal, *available, value.value("maximized").toBool()};
+    const auto revision = value.value("normalVersion"); const int version = revision.isUndefined() ? 1 : revision.toInt(0);
+    if (!normal || !available || !value.value("maximized").isBool() || version < 1 || version > 2
+        || (!revision.isUndefined() && (!revision.isDouble() || revision.toDouble() != version))) return {};
+    return WindowPlacement{*normal, *available, value.value("maximized").toBool(), version};
 }
 GeometryFit fitWindowClient(const QRect &requested, const QRect &available, const QMargins &frame, const QSize &minimum, const QSize &maximum) {
     if (!validRect(requested) || !validRect(available) || frame.left() < 0 || frame.top() < 0 || frame.right() < 0 || frame.bottom() < 0
@@ -161,12 +164,20 @@ bool WindowGeometryStore::save(const QString &kind, const WindowPlacement &place
 
 WindowGeometry::WindowGeometry(QWidget *window, WindowGeometryStore *store, QString kind)
     : QObject(window), m_window(window), m_store(store), m_kind(std::move(kind)), m_minimum(window->minimumSize()), m_maximum(window->maximumSize()) {
-    m_placement.normal = window->geometry();
+    const auto initial = window->geometry(); m_placement.normal = initial;
     if (store) if (const auto saved = store->placement(m_kind)) { m_placement = *saved; m_restoreMaximized = saved->maximized; m_hasSaved = true; }
+#ifdef Q_OS_WIN
+    // Old active-window handling could save the work-area size as normal.
+    // Recover that legacy case once; modern intentional work-area sizes stay.
+    if (m_placement.normalVersion < 2 && m_placement.maximized && m_placement.normal.size() == m_placement.available.size()) m_placement.normal.setSize(initial.size());
+#endif
+    m_placement.normalVersion = 2;
     m_fit.setSingleShot(true); m_save.setSingleShot(true); m_save.setInterval(250);
     connect(&m_fit, &QTimer::timeout, this, &WindowGeometry::fitToScreen);
     connect(&m_save, &QTimer::timeout, this, [this] { flush(); });
     window->installEventFilter(this); qApp->installNativeEventFilter(this);
+    if (auto *shell = qobject_cast<ApplicationWindow *>(window))
+        connect(shell, &ApplicationWindow::nativeStateChangeStarting, this, [this] { m_nativeStateTransition = true; });
     connect(qApp, &QGuiApplication::screenRemoved, this, [this](QScreen *) { scheduleFit(); });
     if (window->isVisible()) QTimer::singleShot(0, this, &WindowGeometry::initialize);
 }
@@ -221,8 +232,14 @@ void WindowGeometry::fitToScreen() {
         }
         return;
     }
+#ifdef Q_OS_WIN
+    if (QGuiApplication::platformName() == "windows" && m_window->internalWinId()) {
+        const auto hwnd = reinterpret_cast<HWND>(m_window->internalWinId());
+        if (IsZoomed(hwnd) || IsIconic(hwnd)) { m_pendingUserResize = false; return; }
+    }
+#endif
     m_transition = false;
-    if (m_window->windowState() != Qt::WindowNoState || !m_window->windowHandle()) { m_pendingUserResize = false; return; }
+    if (!normalWindowState(m_window->windowState()) || !m_window->windowHandle()) { m_pendingUserResize = false; return; }
     m_returningToNormal = false;
     // A later screen notification may invalidate the queued end-of-resize
     // callback. Keep its intent until the final fitting pass consumes it.
@@ -239,7 +256,7 @@ void WindowGeometry::fitToScreen() {
     m_constrained = fit.client.size() != m_placement.normal.size();
     m_window->resize(fit.client.size());
     if (!wayland()) m_window->move(fit.client.topLeft() - QPoint(frame.left(), frame.top()));
-    m_restorePosition = false; m_restoreNormal = false; m_fittedOnce = true;
+    m_restorePosition = false; m_restoreNormal = false; m_nativeStateTransition = false; m_fittedOnce = true;
     if (m_explicitSizePending) m_placement.maximized = false;
     m_explicitSizePending = false;
     m_placement.available = available;
@@ -257,7 +274,7 @@ void WindowGeometry::rememberUserGeometry(const QRect &normal) {
     m_explicitSizePending = m_constrained; m_save.start();
 }
 void WindowGeometry::rememberPosition() {
-    if (!m_window || !m_initialized || m_applying || m_transition || m_nativeMove || m_window->windowState() != Qt::WindowNoState || wayland()) return;
+    if (!m_window || !m_initialized || m_applying || m_transition || m_nativeMove || !normalWindowState(m_window->windowState()) || wayland()) return;
     m_placement.normal.moveTopLeft(m_window->geometry().topLeft());
     if (m_window->screen()) m_placement.available = m_window->screen()->availableGeometry();
     m_save.start();
@@ -275,12 +292,13 @@ bool WindowGeometry::eventFilter(QObject *target, QEvent *event) {
         m_placement.normal.setSize(static_cast<QResizeEvent *>(event)->size());
     if (event->type() == QEvent::ScreenChangeInternal || event->type() == QEvent::DevicePixelRatioChange) scheduleFit();
     if (event->type() == QEvent::Move) rememberPosition();
-    if (event->type() == QEvent::Resize && event->spontaneous() && m_initialized && !m_applying && !m_transition && !m_nativeMove
-        && m_window->windowState() == Qt::WindowNoState && m_window->screen()
+    if (event->type() == QEvent::Resize && event->spontaneous() && m_initialized && !m_applying && !m_transition && !m_nativeStateTransition && !m_restoreNormal && !m_nativeMove
+        && normalWindowState(m_window->windowState()) && m_window->screen()
         && !resemblesWindowTile(m_window->frameGeometry(), m_window->screen()->availableGeometry())) rememberUserGeometry(m_window->geometry());
-    if (event->type() == QEvent::WindowStateChange && !m_window->isMinimized() && !m_window->isFullScreen()) {
+    if (event->type() == QEvent::WindowStateChange && !m_window->isMinimized() && !m_window->isFullScreen()
+        && (static_cast<QWindowStateChangeEvent *>(event)->oldState() & ~Qt::WindowActive) != (m_window->windowState() & ~Qt::WindowActive)) {
         if (!m_applying && !m_returningToNormal) { m_placement.maximized = m_window->isMaximized(); m_save.start(); }
-        if (m_window->windowState() == Qt::WindowNoState) { m_restoreNormal = true; scheduleFit(); }
+        if (normalWindowState(m_window->windowState())) { m_restoreNormal = true; scheduleFit(); }
     }
     if (event->type() == QEvent::Hide && !m_window->isMinimized()) flush();
     return false;
@@ -291,6 +309,9 @@ bool WindowGeometry::nativeEventFilter(const QByteArray &, void *message, qintpt
     if (!msg || !m_window || !m_window->internalWinId() || msg->hwnd != reinterpret_cast<HWND>(m_window->internalWinId())) return false;
     const auto hwnd = msg->hwnd;
     DWORD process = 0; if (GetWindowThreadProcessId(hwnd, &process) != GetCurrentThreadId() || process != GetCurrentProcessId()) return false;
+    if ((msg->message == WM_SYSCOMMAND && ((msg->wParam & 0xfff0) == SC_MAXIMIZE || (msg->wParam & 0xfff0) == SC_RESTORE || (msg->wParam & 0xfff0) == SC_MINIMIZE))
+        || (msg->message == WM_SIZE && (msg->wParam != SIZE_RESTORED || !normalWindowState(m_window->windowState()))))
+        m_nativeStateTransition = true;
     if (msg->message == WM_ENTERSIZEMOVE) { m_nativeMove = true; m_nativeResize = false; }
     if (msg->message == WM_SIZING) m_nativeResize = true;
     if (msg->message == WM_DPICHANGED) scheduleFit(); // Qt owns the suggested rectangle and DPI lifecycle.
@@ -299,7 +320,7 @@ bool WindowGeometry::nativeEventFilter(const QByteArray &, void *message, qintpt
         const auto generation = ++m_generation;
         QTimer::singleShot(0, this, [this, generation] {
             if (!m_window || generation != m_generation) return;
-            if (m_pendingUserResize && m_window->windowState() == Qt::WindowNoState) rememberUserGeometry(m_window->geometry());
+            if (m_pendingUserResize && normalWindowState(m_window->windowState())) rememberUserGeometry(m_window->geometry());
             m_pendingUserResize = false;
             if (m_transition) fitToScreen(); else rememberPosition();
         });

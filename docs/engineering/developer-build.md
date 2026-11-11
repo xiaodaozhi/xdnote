@@ -109,4 +109,6 @@ Windows 可用 `python scripts/measure_preview.py --build-dir <本项目构建�
 
 ## 无交互验证与部署诊断
 
+界面细节修改可使用 `test --suite ui` 运行固定离屏的窗口尺寸、导航标签、共享控件、源文／阅读和排版回归；证据保存在所选构建目录的 `evidence/ui-polish/`。它不覆盖真实桌面动画或物理拖动。Windows 原生命令与普通尺寸往返须另用自有测试窗口记录，不操作用户文档。Unix 定向工作流使用 `scope=ui-unix`，范围与该入口一致，不运行完整桌面矩阵。
+
 锁屏或没有交互桌面时使用 `test --suite background`，见[后台验证](../qa/background-validation.md)。入口固定离屏环境，不执行 UIA、真实输入或原生选择器，生成确定性回归与自有样本性能报告。Windows 独立诊断目录的准备、隔离运行及实际依赖清单见[部署诊断](deployment.md)；诊断不创建安装器或发行包，不代表最低系统及最终许可验收。

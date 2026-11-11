@@ -2,6 +2,7 @@ set(XDNOTE_PREVIEW_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
 add_library(xdnote_native_preview STATIC
     "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewContent.cpp"
     "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewContent.h"
+    "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewPlaceholders.h"
     "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewView.cpp"
     "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/NativePreviewView.h")
 target_link_libraries(xdnote_native_preview PUBLIC xdnote_native_model Qt6::Widgets Qt6::Concurrent)

@@ -1265,8 +1265,8 @@
       "path": "sources/check-ui-materials.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 14371,
-      "sha256": "cc345892e3a19817a45c04492e141f465434613e2c95fc01894365c4fef157e8",
+      "bytes": 14484,
+      "sha256": "5886c4b48ce7dbd64fb074e89120a9757097ffb839daa35f31ab21de002d1518",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1569,8 +1569,8 @@
   "authoritySnapshots": [
     {
       "path": "docs/visual/tokens.json",
-      "bytes": 8458,
-      "sha256": "d957fad8603349a06c86bbf276b9d50f46d3fade8705ffae498e4083fe7b8d7d"
+      "bytes": 9397,
+      "sha256": "a09d921faf538403b422c1c755b3151e0a5f3a3ad84fc1bec00b3a7fab311d63"
     },
     {
       "path": "docs/visual/asset-geometry.json",

@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QScrollBar>
+#include <QScopedValueRollback>
 #include <functional>
 
 namespace xdnote {
@@ -81,6 +82,11 @@ void WorkspaceNavigation::toggleSelectedFavorite() { const auto path = selectedP
 void WorkspaceNavigation::showPage(Page page, const QString &root) { m_page = page; m_root = root; refresh(); }
 void WorkspaceNavigation::showSearch(const QString &query, const QStringList &paths, const QString &warning, bool loading) { m_page = Page::Search; m_query = query; m_searchPaths = paths; m_searchWarning = warning; m_loading = loading; refresh(); }
 void WorkspaceNavigation::refresh() {
+    if (m_refreshing) { m_refreshAgain = true; return; }
+    QScopedValueRollback<bool> refreshing(m_refreshing, true);
+    do { m_refreshAgain = false; refreshContent(); } while (m_refreshAgain);
+}
+void WorkspaceNavigation::refreshContent() {
     const auto selection = selectedPath(); const int scroll = m_list->verticalScrollBar()->value(); m_list->clear();
     m_heading->setText(m_page == Page::Recent ? QStringLiteral("最近打开") : m_page == Page::Favorites ? QStringLiteral("收藏") : QStringLiteral("搜索文档"));
     QStringList paths; const auto recent = m_store->recent();
@@ -99,6 +105,6 @@ void WorkspaceNavigation::refresh() {
     m_list->verticalScrollBar()->setValue(scroll); const bool empty = paths.isEmpty(), searching = m_page == Page::Search && m_loading, incomplete = m_page == Page::Search && !m_searchWarning.isEmpty(); m_list->setVisible(!empty); m_emptyPane->setVisible(empty);
     m_empty->setText(m_page == Page::Recent ? QStringLiteral("还没有最近打开的文档") : m_page == Page::Favorites ? QStringLiteral("还没有收藏的文档") : searching ? QStringLiteral("正在按文件名搜索…") : incomplete ? QStringLiteral("搜索未完整完成") : QStringLiteral("没有找到匹配的文档"));
     m_emptyDetails->setText(m_page == Page::Recent ? QStringLiteral("打开一篇 Markdown 文档，稍后可以在这里继续。") : m_page == Page::Favorites ? QStringLiteral("在最近打开或文档菜单中添加收藏。") : searching ? QStringLiteral("正在检查工作区中的 Markdown 文件名。") : incomplete ? m_searchWarning : QStringLiteral("试试其他关键词。")); m_spinner->setVisible(searching); m_spinner->setRunning(searching); m_emptyIcon->setVisible(!searching); m_emptyIcon->setPixmap(themedIcon(m_page == Page::Recent ? "clock" : m_page == Page::Favorites ? "star" : "document-search", m_appearance->color("textSecondary")).pixmap(QSize(nav("emptyIconSize"), nav("emptyIconSize")), devicePixelRatioF()));
-    m_summary->setText(m_page == Page::Search ? (!m_searchWarning.isEmpty() ? m_searchWarning : QStringLiteral("文件名包含“%1” · %2 项").arg(m_query).arg(paths.size())) : QStringLiteral("%1 篇文档").arg(paths.size())); m_clear->setVisible(m_page == Page::Search && !m_loading);
+    m_summary->setText(m_page == Page::Search ? (!m_searchWarning.isEmpty() ? m_searchWarning : QStringLiteral("文件名包含“%1” · %2 项").arg(m_query).arg(paths.size())) : QStringLiteral("%1 篇文档").arg(paths.size())); m_clear->setVisible(m_page == Page::Search && !m_loading); m_list->viewport()->update();
 }
 }

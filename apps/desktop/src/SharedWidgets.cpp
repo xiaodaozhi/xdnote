@@ -165,8 +165,8 @@ QSize SharedButton::sizeHint() const {
 QSize SharedButton::minimumSizeHint() const { return property("navigationRow").toBool() ? QSize(control("iconButtonHit"), control("height")) : sizeHint(); }
 void SharedButton::focusInEvent(QFocusEvent *event) { m_tab = event->reason() == Qt::TabFocusReason || event->reason() == Qt::BacktabFocusReason; QPushButton::focusInEvent(event); update(); }
 void SharedButton::focusOutEvent(QFocusEvent *event) { m_tab = false; QPushButton::focusOutEvent(event); update(); }
-void SharedButton::enterEvent(QEnterEvent *event) { QPushButton::enterEvent(event); update(); }
-void SharedButton::leaveEvent(QEvent *event) { m_nativeHover = false; QPushButton::leaveEvent(event); update(); }
+void SharedButton::enterEvent(QEnterEvent *event) { m_hover = true; QPushButton::enterEvent(event); update(); }
+void SharedButton::leaveEvent(QEvent *event) { m_hover = false; m_nativeHover = false; QPushButton::leaveEvent(event); update(); }
 void SharedButton::keyPressEvent(QKeyEvent *event) {
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space || event->key() == Qt::Key_Escape) {
         m_tab = false; InputModality::forApplication()->clear(); update();
@@ -186,18 +186,19 @@ void SharedButton::keyPressEvent(QKeyEvent *event) {
 void SharedButton::paintEvent(QPaintEvent *) {
     if (!m_appearance) return;
     auto *appearance = m_appearance.data();
+    const bool hovered = isEnabled() && (m_hover || underMouse() || m_nativeHover);
     const bool solid = property("primary").toBool() || isChecked();
-    QColor background = solid ? appearance->accentColor(isDown() ? "pressed" : underMouse() ? "hover" : "solid")
-        : isDown() ? appearance->accentColor("soft") : underMouse() ? appearance->color("codeSurface") : QColor(Qt::transparent);
+    QColor background = solid ? appearance->accentColor(isDown() ? "pressed" : hovered ? "hover" : "solid")
+        : isDown() ? appearance->color("controlPressed") : hovered ? appearance->color("controlHover") : QColor(Qt::transparent);
     QColor foreground = solid ? appearance->accentColor("foreground") : appearance->color("text");
     if (!isEnabled()) { background = solid ? appearance->color("border") : QColor(Qt::transparent); foreground = appearance->color("textSecondary"); }
     if (property("danger").toBool() && isEnabled()) {
         foreground = solid ? appearance->accentColor("foreground") : appearance->semantic("error");
-        background = solid ? appearance->semantic("error") : underMouse() ? appearance->color("codeSurface") : QColor(Qt::transparent);
+        background = solid ? appearance->semantic("error") : hovered ? appearance->color("controlHover") : QColor(Qt::transparent);
     }
-    const bool caption = property("captionButton").toBool(), hovered = underMouse() || m_nativeHover;
+    const bool caption = property("captionButton").toBool();
     const bool navigation = property("navigationRow").toBool(), selected = property("navigationSelected").toBool();
-    if (navigation && selected) { background = appearance->accentColor("soft"); foreground = appearance->color("text"); }
+    if (navigation && selected) { background = isDown() ? appearance->color("controlPressed") : hovered ? appearance->color("controlHover") : appearance->accentColor("soft"); foreground = appearance->color("text"); }
     if (caption && isEnabled()) {
         const bool close = objectName() == "captionClose";
         background = isDown() ? (close ? QColor("#A12317") : appearance->color("border")) : hovered ? (close ? QColor("#C42B1C") : appearance->color("border")) : QColor(Qt::transparent);
@@ -205,10 +206,11 @@ void SharedButton::paintEvent(QPaintEvent *) {
     }
     QPainter painter(this); painter.setRenderHint(QPainter::Antialiasing);
     painter.setBrush(background); painter.setPen(m_outlined ? QPen(appearance->color("border"), control("borderWidth")) : QPen(Qt::NoPen));
-    const int radius = visualTokens().value("radius").toObject().value("control").toInt();
+    const bool tabClose = property("tabClose").toBool();
+    const int radius = tabClose ? visualTokens()["tabs"].toObject()["closeRadius"].toInt() : property("footerControl").toBool() ? control("footerControlRadius") : visualTokens().value("radius").toObject().value("control").toInt();
     if (caption) painter.fillRect(rect(), background); else painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
     if (navigation && selected) { painter.setPen(Qt::NoPen); painter.setBrush(appearance->accentColor()); painter.drawRoundedRect(QRectF(0, 5, 3, height() - 10), 1.5, 1.5); }
-    const int icon = m_symbol.isEmpty() ? 0 : control("iconSize");
+    const int icon = m_symbol.isEmpty() ? 0 : tabClose ? visualTokens()["tabs"].toObject()["closeIcon"].toInt() : control("iconSize");
     const auto labelText = fontMetrics().elidedText(text(), Qt::ElideMiddle, qMax(0, width() - (icon ? icon + 8 : 0) - (menu() ? 16 : 0) - 24));
     const int label = qCeil(QFontMetricsF(font(), this).horizontalAdvance(labelText));
     const int dropdown = menu() && (label || property("showMenuIndicator").toBool()) ? 16 : 0;

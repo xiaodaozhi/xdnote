@@ -1,4 +1,7 @@
 #include "WindowGeometry.h"
+#include "WindowChrome.h"
+#include "SharedWidgets.h"
+#include <QVBoxLayout>
 #include "GuiRuntime.h"
 #include <QApplication>
 #include <QDir>
@@ -44,6 +47,66 @@ BOOL CALLBACK collectMonitor(HMONITOR handle, HDC, LPRECT, LPARAM context) {
 class GeometryTests final : public QObject {
     Q_OBJECT
 private slots:
+    void captionTogglePreservesNormalClientSize() {
+        class Probe final : public ApplicationWindow {
+        public:
+            WindowTitleBar *title;
+            int maximizeCommands = 0, restoreCommands = 0;
+            Probe() {
+                auto *row = new QVBoxLayout(this); row->setContentsMargins(0, 0, 0, 0);
+                title = new WindowTitleBar(windowAppearance(), this); setTitleBar(title); row->addWidget(title); row->addStretch();
+            }
+        protected:
+            bool nativeEvent(const QByteArray &type, void *message, qintptr *result) override {
+#ifdef Q_OS_WIN
+                const auto *msg = static_cast<MSG *>(message);
+                if (msg->message == WM_SYSCOMMAND) {
+                    if ((msg->wParam & 0xfff0) == SC_MAXIMIZE) ++maximizeCommands;
+                    if ((msg->wParam & 0xfff0) == SC_RESTORE) ++restoreCommands;
+                }
+#endif
+                return ApplicationWindow::nativeEvent(type, message, result);
+            }
+        } window;
+        window.setMinimumSize(400, 300); window.resize(640, 480);
+        WindowGeometry geometry(&window); window.show(); QTRY_VERIFY(geometry.initialized());
+        geometry.rememberUserGeometry(window.geometry()); const auto normal = geometry.preferredClientSize();
+        for (int turn = 0; turn < 3; ++turn) {
+            bool nativeDoubleClick = false;
+#ifdef Q_OS_WIN
+            if (turn == 2 && QGuiApplication::platformName() == "windows") {
+                const auto hwnd = reinterpret_cast<HWND>(window.winId()); RECT bounds{}; QVERIFY(GetWindowRect(hwnd, &bounds));
+                SendMessageW(hwnd, WM_NCLBUTTONDBLCLK, HTCAPTION, MAKELPARAM(bounds.left + 180, bounds.top + 30)); nativeDoubleClick = true;
+            }
+#endif
+            if (!nativeDoubleClick) {
+                if (turn == 1) QTest::mouseDClick(window.title, Qt::LeftButton, {}, QPoint(160, 24));
+                else if (auto *button = window.findChild<SharedButton *>("captionMaximize")) button->click();
+                else window.toggleMaximized();
+            }
+            QTRY_VERIFY(window.isMaximized()); QCOMPARE(geometry.preferredClientSize(), normal);
+#ifdef Q_OS_WIN
+            if (nativeDoubleClick) {
+                const auto hwnd = reinterpret_cast<HWND>(window.winId());
+                SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTMAXBUTTON, 0); SendMessageW(hwnd, WM_NCLBUTTONUP, HTMAXBUTTON, 0);
+            } else
+#endif
+            if (auto *button = window.findChild<SharedButton *>("captionMaximize")) button->click(); else window.toggleMaximized();
+            QTRY_VERIFY(!window.isMaximized()); QTRY_COMPARE(window.size(), normal); QCOMPARE(geometry.preferredClientSize(), normal);
+        }
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() == "windows") {
+            QCOMPARE(window.maximizeCommands, 3); QCOMPARE(window.restoreCommands, 3);
+            ANIMATIONINFO animation{sizeof(ANIMATIONINFO)}; SystemParametersInfoW(SPI_GETANIMATION, sizeof(animation), &animation, 0);
+            const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
+            if (!evidence.isEmpty()) {
+                QVERIFY(QDir().mkpath(evidence + "/geometry"));
+                const QJsonObject result{{"scope", "owned native commands; not physical mouse or visual animation acceptance"}, {"normalWidth", normal.width()}, {"normalHeight", normal.height()}, {"maximizeCommands", window.maximizeCommands}, {"restoreCommands", window.restoreCommands}, {"systemAnimationEnabled", bool(animation.iMinAnimate)}};
+                write(evidence + "/geometry/caption-restore.json", QJsonDocument(result).toJson());
+            }
+        }
+#endif
+    }
     void pendingResizeIsPreservedAcrossDpi() {
         QSize result;
         QVERIFY(nativeDpiSize({1500, 900}, {1516, 939}, {1666, 1014}, 144, 96, {16, 39}, &result));

@@ -14,11 +14,15 @@
 #include "GuiRuntime.h"
 #include "InputModality.h"
 #include "WindowGeometry.h"
+#include "VisualTokens.h"
 #include "DocumentBreadcrumb.h"
 #include "NavigationStore.h"
 #include "WorkspaceNavigation.h"
 #include "file_fixtures.h"
 #include <QApplication>
+#include <QScreen>
+#include <QEnterEvent>
+#include <QMoveEvent>
 #include <QThreadPool>
 #include <QSemaphore>
 #include <QtConcurrentRun>
@@ -461,6 +465,157 @@ private slots:
         QVERIFY(QFile::remove(navigationPath)); QVERIFY(QDir().mkdir(navigationPath)); QVERIFY(!navigation.setFavorite(document, true)); QVERIFY(notice->isVisible()); QVERIFY(notice->text().contains(QStringLiteral("无法保存导航记录"))); QVERIFY(!navigation.favorite(document)); QVERIFY(QDir().rmdir(navigationPath)); QVERIFY(navigation.setFavorite(document, true)); QVERIFY(!notice->isVisible());
         QVERIFY(QFile::remove(appearancePath)); QVERIFY(QDir().mkdir(appearancePath)); auto *settings = workspace->findChild<SharedButton *>("workspaceSettings"); auto *dark = settings->menu()->findChild<QAction *>("theme-dark"); dark->trigger(); QCOMPARE(appearance.theme(), QString("light")); QVERIFY(notice->isVisible()); QVERIFY(settings->menu()->findChild<QAction *>("theme-light")->isChecked()); QVERIFY(QDir().rmdir(appearancePath)); dark->trigger(); QCOMPARE(appearance.theme(), QString("dark")); QVERIFY(!notice->isVisible()); QCOMPARE(disk(document), QByteArray("# retained")); delete workspace;
     }
+    void navigationTabsAreUniqueClosableAndPreserveDirtyDocument() {
+        QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "original"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace);
+        auto *pane = waitPane(workspace, path); QVERIFY(pane); auto *session = pane->document()->session();
+        QCOMPARE(session->replace(0, 0, "dirty ", session->revision()), EditResult::Applied); const auto snapshot = session->snapshot();
+        auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); QCOMPARE(tabs->count(), 1);
+        auto *recent = workspace->findChild<SharedButton *>("workspaceRecent"); auto *favorites = workspace->findChild<SharedButton *>("workspaceFavorites");
+        recent->click(); QCOMPARE(tabs->count(), 2); const auto recentId = tabs->tabData(tabs->currentIndex()).toMap().value("id").toUuid(); QVERIFY(!workspace->activePane());
+        recent->click(); QCOMPARE(tabs->count(), 2); QCOMPARE(tabs->tabData(tabs->currentIndex()).toMap().value("id").toUuid(), recentId);
+        favorites->click(); QCOMPARE(tabs->count(), 3); const auto favoriteId = tabs->tabData(tabs->currentIndex()).toMap().value("id").toUuid();
+        tabs->moveTab(2, 0); favorites->click(); QCOMPARE(tabs->count(), 3); QCOMPARE(tabs->tabData(tabs->currentIndex()).toMap().value("id").toUuid(), favoriteId);
+        workspace->activatePane(pane->paneId()); QVERIFY(pane->isVisible()); QCOMPARE(workspace->activePane(), pane); QCOMPARE(session->snapshot().utf8, snapshot.utf8); QCOMPARE(session->revision(), snapshot.revision);
+        workspace->closePane(recentId); QCOMPARE(tabs->count(), 2); QCOMPARE(workspace->panes().size(), 1); QVERIFY(pane->document()->dirty());
+        workspace->closePane(favoriteId); QCOMPARE(tabs->count(), 1); QCOMPARE(workspace->activePane(), pane); QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, QByteArray("original")); QCOMPARE(disk(path), QByteArray("original"));
+    }
+    void favoritesRemainUniqueWhileReopeningDocuments() {
+        QTemporaryDir dir; const auto path = dir.filePath("favorite.md"); QVERIFY(fileFixtures::write(path, "favorite"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace); QVERIFY(waitPane(workspace, path));
+        auto *store = desktop.findChild<NavigationStore *>(); auto *manager = desktop.findChild<FileManager *>(); QVERIFY(store); QVERIFY(manager);
+        auto *favorites = workspace->findChild<SharedButton *>("workspaceFavorites"); auto *list = workspace->findChild<QListWidget *>("navigationResults");
+        favorites->click(); QCOMPARE(list->count(), 0); QVERIFY(store->setFavorite(path, true)); QCOMPARE(list->count(), 1);
+        for (int turn = 0; turn < 6; ++turn) {
+            desktop.openInWorkspace(path, workspace); QTRY_VERIFY(manager->idle()); favorites->click();
+            QCOMPARE(store->favorites().size(), 1); QCOMPARE(list->count(), 1); QCOMPARE(list->item(0)->data(Qt::UserRole).toString(), QFileInfo(path).canonicalFilePath());
+        }
+        QVERIFY(store->setFavorite(path, false)); QCOMPARE(list->count(), 0); QVERIFY(store->favorites().isEmpty());
+        for (int turn = 0; turn < 3; ++turn) { QVERIFY(store->recordOpen(path)); QCOMPARE(list->count(), 0); }
+    }
+    void favoritesRefreshIsAtomicDuringOpenNotification() {
+        QTemporaryDir dir; const auto first = dir.filePath("first.md"), second = dir.filePath("second.md"); QVERIFY(fileFixtures::write(first, "first")); QVERIFY(fileFixtures::write(second, "second"));
+        NavigationStore store(nullptr, dir.filePath("navigation.json")); QVERIFY(store.setFavorite(first, true)); QVERIFY(store.setFavorite(second, true)); Appearance appearance;
+        WorkspaceNavigation page(&appearance, &store, nullptr); page.showPage(WorkspaceNavigation::Page::Favorites, dir.path()); auto *list = page.findChild<QListWidget *>("navigationResults"); list->setCurrentRow(0);
+        bool reopened = false; connect(list, &QListWidget::currentRowChanged, &page, [&](int row) { if (row == 0 && !reopened) { reopened = true; store.recordOpen(first); } });
+        QVERIFY(store.recordOpen(first)); QVERIFY(reopened); QCOMPARE(store.favorites().size(), 2); QCOMPARE(list->count(), 2); QCOMPARE(list->item(0)->data(Qt::UserRole).toString(), first); QCOMPARE(list->item(1)->data(Qt::UserRole).toString(), second);
+    }
+    void reopeningDocumentNeverPublishesDuplicateTabs() {
+        QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "retained"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace);
+        auto *pane = waitPane(workspace, path); QVERIFY(pane); auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); auto *manager = desktop.findChild<FileManager *>(); QVERIFY(manager);
+        auto *session = pane->document()->session(); QCOMPARE(session->replace(0, 0, "dirty ", session->revision()), EditResult::Applied); const auto snapshot = session->snapshot();
+        int peak = tabs->count(); connect(tabs, &QTabBar::currentChanged, this, [&] { peak = qMax(peak, tabs->count()); });
+        for (const auto &alias : QStringList{path, dir.path() + "/./retained.md", QDir::toNativeSeparators(path)}) {
+            desktop.openInWorkspace(alias, workspace); QCOMPARE(tabs->count(), 1); QTRY_VERIFY(manager->idle()); QCOMPARE(peak, 1); QCOMPARE(workspace->activePane(), pane);
+        }
+        QCOMPARE(session->snapshot().utf8, snapshot.utf8); QCOMPARE(session->revision(), snapshot.revision); QCOMPARE(disk(path), QByteArray("retained"));
+    }
+    void footerControlsShareTypographyAndSpacing() {
+        QTemporaryDir dir; const auto path = dir.filePath("footer.md"); QVERIFY(fileFixtures::write(path, "footer"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
+        const auto check = [&] {
+            auto *footer = pane->footer(); auto *zoom = footer->findChild<SharedButton *>("contentZoom");
+            if (!zoom || zoom->font().pixelSize() != 12) return false;
+            for (auto *label : footer->findChildren<QLabel *>()) if (!label->text().isEmpty() && label->font().pixelSize() != zoom->font().pixelSize()) return false;
+            return zoom->geometry().top() >= 3 && footer->height() - zoom->geometry().bottom() - 1 >= 3;
+        };
+        QApplication::processEvents(); QVERIFY(check()); QVERIFY(desktop.transferToWorkspace(pane)); QApplication::processEvents(); QVERIFY(check()); capture(pane->window(), "footer-compact");
+    }
+    void windowsWorkspaceNativeResizeAndRestoreKeepPreference() {
+#ifdef Q_OS_WIN
+        if (QGuiApplication::platformName() != "windows") QSKIP("Requires the Windows platform plugin");
+        QTemporaryDir dir; const auto settings = dir.filePath("settings.json"); const QSize normal(1040, 700);
+        {
+            FileApplication desktop(nullptr, settings); auto *workspace = desktop.workspaceWindow(dir.path()); QTRY_VERIFY(workspace->windowGeometry()->initialized());
+            workspace->setWindowState(Qt::WindowActive); const auto hwnd = reinterpret_cast<HWND>(workspace->winId()); const auto ratio = workspace->devicePixelRatioF();
+            QVERIFY(SetWindowPos(hwnd, nullptr, 0, 0, qRound(normal.width() * ratio), qRound(normal.height() * ratio), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE));
+            QTRY_COMPARE(workspace->size(), normal);
+            qInfo() << "native workspace normal" << workspace->size() << "preferred" << workspace->windowGeometry()->preferredClientSize() << "state" << workspace->windowState();
+            QTRY_COMPARE(workspace->windowGeometry()->preferredClientSize(), normal);
+            auto *button = workspace->findChild<SharedButton *>("captionMaximize"); QVERIFY(button);
+            for (int turn = 0; turn < 3; ++turn) {
+                button->click(); QTRY_VERIFY(workspace->isMaximized()); button->click(); QTRY_VERIFY(!workspace->isMaximized()); QTRY_COMPARE(workspace->size(), normal); QCOMPARE(workspace->windowGeometry()->preferredClientSize(), normal);
+            }
+            QVERIFY(workspace->windowGeometry()->flush());
+        }
+        WindowGeometryStore persisted(nullptr, settings + ".windows"); const auto saved = persisted.placement("main"); QVERIFY(saved); QCOMPARE(saved->normal.size(), normal); QVERIFY(!saved->maximized);
+#else
+        QSKIP("Windows native workspace regression");
+#endif
+    }
+    void tabCloseAndSidebarBorderShareGeometryAndHover() {
+        QTemporaryDir dir; const auto path = dir.filePath("a-long-document-title-that-needs-elision.md"); QVERIFY(fileFixtures::write(path, "# title"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace);
+        auto *pane = waitPane(workspace, path); QVERIFY(pane);
+        auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); auto *border = workspace->findChild<QWidget *>("workspaceSidebarBorder");
+        workspace->resize(1280, 820); QApplication::processEvents();
+        QCOMPARE(tabs->mapTo(workspace, QPoint()).x(), border->mapTo(workspace, QPoint()).x());
+        auto *button = qobject_cast<SharedButton *>(tabs->tabButton(0, QTabBar::RightSide)); QVERIFY(button); QCOMPARE(button->size(), QSize(24, 24));
+        const auto tab = tabs->tabRect(0); QVERIFY(tab.contains(button->geometry()));
+        QCOMPARE(button->geometry().center().y(), QRect(0, 6, tab.width(), tabs->height() - 6).center().y());
+        QVERIFY(button->geometry().right() <= tab.right() - 7);
+        for (const auto *theme : {"light", "dark"}) {
+            QVERIFY(pane->appearance()->setPreferences(theme, "graphite"));
+            QEvent leave(QEvent::Leave); QApplication::sendEvent(button, &leave); const auto normal = button->grab().toImage();
+            QEnterEvent enter(QPointF(3, 12), QPointF(3, 12), QPointF(3, 12)); QApplication::sendEvent(button, &enter); const auto hover = button->grab().toImage();
+            QVERIFY(normal != hover); QVERIFY(!button->keyboardOutline()); capture(workspace, QString::fromLatin1(theme) + "-tab-alignment");
+            auto *nav = workspace->findChild<SharedButton *>("workspaceRecent"); QApplication::sendEvent(nav, &leave); const auto navNormal = nav->grab().toImage(); QApplication::sendEvent(nav, &enter); QVERIFY(navNormal != nav->grab().toImage());
+        }
+    }
+    void pendingWorkspaceCloseCancelsUnpublishedTab() {
+        QTemporaryDir dir; const auto path = dir.filePath("pending.md"); QVERIFY(fileFixtures::write(path, "pending")); FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        auto *pool = QThreadPool::globalInstance(); const int previous = pool->maxThreadCount(); pool->setMaxThreadCount(1); QSemaphore entered, release; auto worker = QtConcurrent::run([&] { entered.release(); release.acquire(); });
+        bool released = false; const auto restore = qScopeGuard([&] { if (!released) release.release(); worker.waitForFinished(); pool->setMaxThreadCount(previous); }); QVERIFY(entered.tryAcquire(1, 5000));
+        desktop.openInWorkspace(path, workspace); QCOMPARE(workspace->findChild<QTabBar *>("workspaceTabs")->count(), 0); delete workspace; release.release(); released = true; worker.waitForFinished();
+        auto *manager = desktop.findChild<FileManager *>(); QVERIFY(manager); QTRY_VERIFY(manager->idle()); QCOMPARE(manager->documentCount(), 0);
+    }
+    void windowsLegacyMaximizedBoundsRecoverOnlyOnce() {
+#ifdef Q_OS_WIN
+        QTemporaryDir dir; const auto settings = dir.filePath("settings.json"), state = settings + ".windows"; const auto available = QGuiApplication::primaryScreen()->availableGeometry();
+        WindowGeometryStore store(nullptr, state); WindowPlacement legacy{available, available, true, 1}; QVERIFY(store.save("main", legacy));
+        const auto defaults = visualTokens()["windows"].toObject()["main"].toObject(); const QSize normal(defaults["defaultWidth"].toInt(), defaults["defaultHeight"].toInt());
+        { FileApplication desktop(nullptr, settings); auto *workspace = desktop.workspaceWindow(dir.path()); QTRY_VERIFY(workspace->windowGeometry()->initialized()); QCOMPARE(workspace->windowGeometry()->preferredClientSize(), normal); QVERIFY(workspace->windowGeometry()->flush()); }
+        WindowGeometryStore migrated(nullptr, state); QVERIFY(migrated.placement("main")); QCOMPARE(migrated.placement("main")->normalVersion, 2); QCOMPARE(migrated.placement("main")->normal.size(), normal);
+        legacy.normalVersion = 2; QVERIFY(migrated.save("main", legacy));
+        { FileApplication desktop(nullptr, settings); auto *workspace = desktop.workspaceWindow(dir.path()); QTRY_VERIFY(workspace->windowGeometry()->initialized()); QCOMPARE(workspace->windowGeometry()->preferredClientSize(), available.size()); }
+#else
+        QSKIP("Windows legacy preference migration");
+#endif
+    }
+    void tabControlsStayAlignedThroughoutChanges() {
+        QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "original"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace);
+        auto *pane = waitPane(workspace, path); QVERIFY(pane); workspace->resize(1280, 820);
+        workspace->findChild<SharedButton *>("workspaceRecent")->click(); workspace->findChild<SharedButton *>("workspaceFavorites")->click();
+        auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); auto *add = workspace->findChild<SharedButton *>("workspaceAddTab"); QVERIFY(tabs); QVERIFY(add); QApplication::processEvents();
+        class Moves final : public QObject {
+        public:
+            int expectedY = 0, samples = 0; bool displaced = false;
+            bool eventFilter(QObject *, QEvent *event) override {
+                if (event->type() == QEvent::Move) { ++samples; displaced |= static_cast<QMoveEvent *>(event)->pos().y() != expectedY; }
+                return false;
+            }
+        } moves;
+        moves.expectedY = (tabs->height() + 6 - 24) / 2;
+        for (int i = 0; i < tabs->count(); ++i) tabs->tabButton(i, QTabBar::RightSide)->installEventFilter(&moves);
+        const auto check = [&] {
+            for (int i = 0; i < tabs->count(); ++i) {
+                const auto *button = tabs->tabButton(i, QTabBar::RightSide); const auto rect = tabs->tabRect(i);
+                if (button->geometry().top() != moves.expectedY || button->geometry().right() != rect.right() - 8) return false;
+                const auto center = button->mapTo(workspace, button->rect().center());
+                if (center.y() != add->mapTo(workspace, add->rect().center()).y()) return false;
+            }
+            return !moves.displaced;
+        };
+        for (int turn = 0; turn < 3; ++turn) for (int i = 0; i < tabs->count(); ++i) { tabs->setCurrentIndex(i); QVERIFY2(check(), "Tab controls moved before the next event loop"); QApplication::processEvents(); QVERIFY(check()); }
+        tabs->moveTab(2, 0); QVERIFY(check()); tabs->setTabText(1, "changed title"); QVERIFY(check());
+        const auto otherPath = dir.filePath("other.md"); QVERIFY(fileFixtures::write(otherPath, "other")); desktop.openInWorkspace(otherPath, workspace);
+        auto *other = waitPane(workspace, otherPath); QVERIFY(other); QVERIFY(check()); workspace->closePane(other->paneId()); QTRY_COMPARE(tabs->count(), 3); QVERIFY(check());
+        workspace->resize(960, 640); QApplication::processEvents(); QVERIFY(check()); workspace->resize(1280, 820); QApplication::processEvents(); QVERIFY(check());
+        workspace->activatePane(pane->paneId()); QVERIFY(check());
+        capture(workspace, "stable-tab-controls");
+    }
     void sidebarSearchRecentFavoritesAndTabsKeepTheSameBuffer() {
         QTemporaryDir dir; QVERIFY(QDir().mkpath(dir.filePath(QStringLiteral("笔记/子目录")))); const auto path = dir.filePath(QStringLiteral("笔记/子目录/中文会议.md")); QVERIFY(fileFixtures::write(path, "# unchanged")); QVERIFY(fileFixtures::write(dir.filePath("other.md"), "中文会议 appears only in content"));
         FileApplication desktop(nullptr, dir.filePath("user-preferences.json")); auto *workspace = desktop.workspaceWindow(dir.path()); QTRY_VERIFY(workspace->windowGeometry()->initialized()); workspace->windowGeometry()->rememberUserGeometry(QRect(workspace->geometry().topLeft(), QSize(960, 640))); workspace->windowGeometry()->fitToScreen(); desktop.openInWorkspace(path, workspace); auto *pane = waitPane(workspace, path); QVERIFY(pane); auto *sidebar = workspace->findChild<QWidget *>("workspaceSidebar"); QTRY_VERIFY(!sidebar->isVisible()); QTest::mouseClick(pane->findChild<SharedButton *>("fileLocation"), Qt::LeftButton); QTRY_VERIFY(sidebar->isVisible()); auto *session = pane->document()->session(); QCOMPARE(session->replace(0, 0, "dirty\n", session->revision()), EditResult::Applied);
@@ -470,7 +625,7 @@ private slots:
         QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceFavorites"), Qt::LeftButton); QCOMPARE(results->count(), 1); QCOMPARE(results->item(0)->text(), QStringLiteral("中文会议.md")); capture(workspace, "favorites");
         search->setText(QStringLiteral("中文会议")); QTRY_COMPARE(results->count(), 1); QCOMPARE(results->item(0)->text(), QStringLiteral("中文会议.md")); QVERIFY(!workspace->findChild<QLabel *>("navigationSummary")->text().contains(QStringLiteral("不完整")));
         search->setText(QStringLiteral("无匹配文件名")); QTRY_VERIFY(workspace->findChild<QLabel *>("navigationEmpty")->isVisible()); QTRY_COMPARE(workspace->findChild<QLabel *>("navigationEmpty")->text(), QStringLiteral("没有找到匹配的文档")); QCOMPARE(results->count(), 0); capture(workspace, "search-empty");
-        QTest::mouseClick(workspace->findChild<SharedButton *>("clearWorkspaceSearch"), Qt::LeftButton); QVERIFY(pane->isVisible()); QCOMPARE(pane->document()->session(), session); QCOMPARE(session->snapshot().utf8, QByteArray("dirty\n# unchanged"));
+        QTest::mouseClick(workspace->findChild<SharedButton *>("clearWorkspaceSearch"), Qt::LeftButton); QVERIFY(!workspace->activePane()); workspace->activatePane(pane->paneId()); QVERIFY(pane->isVisible()); QCOMPARE(pane->document()->session(), session); QCOMPARE(session->snapshot().utf8, QByteArray("dirty\n# unchanged"));
         QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceRecent"), Qt::LeftButton); auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); QTest::mouseClick(tabs, Qt::LeftButton, {}, tabs->tabRect(0).center()); QVERIFY(pane->isVisible());
         QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceRecent"), Qt::LeftButton); QTest::mouseClick(results->viewport(), Qt::LeftButton, {}, QPoint(90, results->visualItemRect(results->item(1)).center().y())); QTRY_VERIFY(pane->isVisible()); QTRY_COMPARE(workspace->panes().size(), 1); QCOMPARE(pane->document()->session(), session);
         auto *settings = workspace->findChild<SharedButton *>("workspaceSettings"); QVERIFY(settings && settings->menu()); QCOMPARE(settings->menu()->findChild<QMenu *>("accentMenu")->actions().size(), 6); settings->menu()->findChild<QAction *>("theme-dark")->trigger(); QVERIFY(pane->appearance()->dark()); QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceTheme"), Qt::LeftButton); QVERIFY(!pane->appearance()->dark());
@@ -878,12 +1033,12 @@ private slots:
         const auto divider = handle->grab().toImage(); const auto ratio = divider.devicePixelRatio(); QCOMPARE(divider.pixelColor(int((handle->width() / 2.0) * ratio), qRound(60 * ratio)), pane->appearance()->color("border")); QCOMPARE(divider.pixelColor(0, qRound(60 * ratio)), pane->appearance()->color("background"));
         const auto original = splitter->sizes(); QTest::mousePress(handle, Qt::LeftButton); QTest::mouseMove(handle, handle->rect().center() + QPoint(40, 0), 30); QTest::mouseRelease(handle, Qt::LeftButton); QVERIFY(splitter->sizes().first() != original.first()); splitter->setSizes(original);
         auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); const auto tabImage = tabs->grab().toImage(); const auto active = tabs->tabRect(tabs->currentIndex()), inactive = tabs->tabRect(1 - tabs->currentIndex()); const auto border = pane->appearance()->color("border"), background = pane->appearance()->color("background");
-        QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), 6), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.left() + 2.5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.right() - 2.5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), background)); QVERIFY(!hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), border));
+        QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), 6), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.left() + .5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.right() - .5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), background)); QVERIFY(!hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), border));
         QVERIFY(hasColorNear(tabImage, QPointF(inactive.center().x(), tabs->height() - 1), border)); auto *header = workspace->findChild<QWidget *>("documentHeader"); auto *tabStrip = workspace->findChild<QWidget *>("workspaceTabStrip"); const auto headerImage = header->grab().toImage(); QVERIFY(hasColorNear(headerImage, QPointF(tabStrip->geometry().right() - 12, header->height() - 1), border));
         auto *edge = workspace->findChild<QWidget *>("workspaceSidebarBorder"); QVERIFY(edge); QCOMPARE(edge->height(), workspace->findChild<QWidget *>("workspaceSidebar")->height()); const auto edgeImage = edge->grab().toImage(); for (const int y : {2, edge->height() / 2, edge->height() - 3}) QVERIFY(hasColorNear(edgeImage, QPointF(0, y), border));
         capture(workspace, theme + "-split");
         workspace->findChild<QAction *>("favoriteDocument")->trigger(); QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceRecent"), Qt::LeftButton); capture(workspace, theme + "-recent"); QTest::mouseClick(workspace->findChild<SharedButton *>("workspaceFavorites"), Qt::LeftButton); capture(workspace, theme + "-favorites");
-        auto *search = workspace->findChild<QLineEdit *>("workspaceSearch"); search->setText(QStringLiteral("不存在的文件名")); QTRY_COMPARE(workspace->findChild<QLabel *>("navigationEmpty")->text(), QStringLiteral("没有找到匹配的文档")); capture(workspace, theme + "-search-empty"); search->clear(); QVERIFY(pane->isVisible()); QCOMPARE(pane->document()->session(), session);
+        auto *search = workspace->findChild<QLineEdit *>("workspaceSearch"); search->setText(QStringLiteral("不存在的文件名")); QTRY_COMPARE(workspace->findChild<QLabel *>("navigationEmpty")->text(), QStringLiteral("没有找到匹配的文档")); capture(workspace, theme + "-search-empty"); search->clear(); QVERIFY(!workspace->activePane()); workspace->activatePane(pane->paneId()); QVERIFY(pane->isVisible()); QCOMPARE(pane->document()->session(), session);
     }
     void tabCloseCancelAndWorkspaceCloseSaveProtectOtherBuffers() {
         QTemporaryDir dir; const auto first = dir.filePath("first.md"), second = dir.filePath("second.md"); QVERIFY(fileFixtures::write(first, "one")); QVERIFY(fileFixtures::write(second, "two")); FileApplication desktop; QPointer<WorkspaceWindow> workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(first, workspace); auto *one = waitPane(workspace, first); QVERIFY(one); desktop.openInWorkspace(second, workspace); auto *two = waitPane(workspace, second); QVERIFY(two);

@@ -53,7 +53,7 @@ protected:
 private:
     QPointer<Appearance> m_appearance;
     QString m_symbol;
-    bool m_tab = false, m_outlined = false, m_nativeHover = false;
+    bool m_tab = false, m_outlined = false, m_hover = false, m_nativeHover = false;
 };
 class SharedMenu final : public QMenu {
     Q_OBJECT
