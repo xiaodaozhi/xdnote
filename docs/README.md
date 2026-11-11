@@ -14,6 +14,7 @@
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
 | 预览选型 | [非 Chromium 预览方案评估](engineering/preview-alternatives.md) | 约束、候选、成本边界与后续准入 |
+| Markdown 解析 | [Rust 原生解析方案](engineering/markdown-parsing.md) | 当前链路、候选、源码范围、增量与取消限制及复核方法 |
 | 原生预览 | [全局语义模型](engineering/native-preview-model.md)、[阅读控件准入](engineering/native-preview-view.md) | 只读块树、布局／交互、资源和版本边界及未完成项 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
 | 后台验证 | [无交互桌面自动化](qa/background-validation.md) | 固定离屏回归、自有样本性能、证据与真实桌面边界 |
