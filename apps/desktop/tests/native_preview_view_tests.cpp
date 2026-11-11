@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QWheelEvent>
 #include <QtTest>
+#include <QVBoxLayout>
 #include <algorithm>
 
 using namespace xdnote;
@@ -217,7 +218,7 @@ private slots:
         QPointer<NativePreviewView> failed = new NativePreviewView(&appearance);
         failed->expect(stamp());
         connect(failed, &NativePreviewView::layoutFailed, failed, [failed] { delete failed.data(); });
-        QVERIFY(!failed->present(stamp(), content(QStringLiteral("العربية ").repeated(1000).toUtf8()))); QVERIFY(!failed);
+        failed->showError(stamp(), QStringLiteral("测试错误")); QVERIFY(!failed);
         NativePreviewView view(&appearance); view.expect(stamp()); QVERIFY(view.present(stamp(), data, {}, true));
         connect(&view, &NativePreviewView::documentLinkRequested, &view, [&view] { view.expect(stamp(2)); });
         QSignalSpy opened(&view, &NativePreviewView::documentLinkRequested);
@@ -231,13 +232,61 @@ private slots:
         const auto guarded = content(QByteArray("[x] ").repeated(1000) + "\n\n[x]: " + QByteArray(2000, 'a') + "\n"); QVERIFY(guarded); QVERIFY(!guarded->model.referencesComplete());
         view.expect(stamp(2)); QVERIFY(view.present(stamp(2), guarded)); QVERIFY(!view.activateAction(0));
     }
-    void unadmittedLongBidiAndHugeGraphemeFailExplicitly() {
+    void longBidiAndHugeGraphemeKeepParagraphAndSelection() {
         Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400);
-        const auto bidi = content(QStringLiteral("العربية ").repeated(1000).toUtf8()); QVERIFY(bidi);
-        view.expect(stamp()); QVERIFY(!view.present(stamp(), bidi)); QVERIFY(view.error().contains(QStringLiteral("双向文字")));
+        const auto bidi = content(QStringLiteral("العربية abc 123 ").repeated(1000).toUtf8()); QVERIFY(bidi);
+        view.expect(stamp()); QVERIFY(view.present(stamp(), bidi)); QVERIFY(view.error().isEmpty());
+        view.selectAll(); QCOMPARE(view.selectedText(), bidi->text);
+        view.scrollToText(12000); QVERIFY(view.readingPosition().y() > 0);
         const auto cluster = content((QString("a") + QString(20000, QChar(0x0301))).toUtf8()); QVERIFY(cluster);
-        view.expect(stamp(2)); QVERIFY(!view.present(stamp(2), cluster)); QVERIFY(!view.error().isEmpty());
-        QCOMPARE(view.content()->text, cluster->text);
+        view.expect(stamp(2)); QVERIFY(view.present(stamp(2), cluster)); QVERIFY(view.error().isEmpty());
+        view.selectAll(); QCOMPARE(view.selectedText(), cluster->text);
+    }
+    void backgroundLayoutRemainsResponsiveAndRejectsSupersededPlans() {
+        Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400); view.show(); QApplication::processEvents();
+        const auto large = content(QByteArray("Long paragraph text 中文 ").repeated(40000)); QVERIFY(large);
+        QSignalSpy ready(&view, &NativePreviewView::layoutReady);
+        view.expect(stamp()); QVERIFY(view.presentAsync(stamp(), large));
+        int ticks = 0; QTimer timer; timer.setInterval(1); connect(&timer, &QTimer::timeout, &view, [&] { ++ticks; }); timer.start();
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QVERIFY(ticks > 3);
+        ready.clear(); view.expect(stamp(2)); QVERIFY(view.presentAsync(stamp(2), large));
+        view.expect(stamp(3)); const auto latest = content("# latest\n"); QVERIFY(view.presentAsync(stamp(3), latest));
+        QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QCOMPARE(ready.size(), 1);
+        QVERIFY(ready.first().first().value<NativePreviewStamp>() == stamp(3)); QCOMPARE(view.content()->text, latest->text);
+        auto *closed = new NativePreviewView(&appearance); closed->resize(700, 400); closed->show(); QApplication::processEvents(); closed->expect(stamp()); QVERIFY(closed->presentAsync(stamp(), large)); delete closed;
+    }
+    void hiddenPreviewDefersGeometryAndShowsOnlyTheLatestSnapshot() {
+        Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400);
+        const auto large = content(QByteArray("long hidden paragraph ").repeated(40000)); QVERIFY(large);
+        QSignalSpy ready(&view, &NativePreviewView::layoutReady);
+        view.expect(stamp()); QVERIFY(view.presentAsync(stamp(), large)); QTest::qWait(20);
+        QVERIFY(!view.ready()); QVERIFY(ready.isEmpty()); QCOMPARE(view.statistics().layouts, 0);
+        view.expect(stamp(2)); const auto latest = content("# latest\n"); QVERIFY(view.presentAsync(stamp(2), latest));
+        view.show(); QTRY_VERIFY_WITH_TIMEOUT(view.ready(), 15000); QVERIFY(!ready.isEmpty());
+        QVERIFY(view.displayedStamp() == stamp(2)); QCOMPARE(view.content()->text, latest->text);
+        view.hide(); QVERIFY(!view.ready()); view.show(); QTRY_VERIFY_WITH_TIMEOUT(view.ready(), 15000);
+        QCOMPARE(view.content()->text, latest->text);
+        QWidget host; QVBoxLayout layout(&host); NativePreviewView nested(&appearance, &host); layout.addWidget(&nested);
+        host.resize(700, 400); nested.expect(stamp()); QVERIFY(nested.presentAsync(stamp(), latest));
+        host.show(); QTRY_VERIFY_WITH_TIMEOUT(nested.ready(), 15000);
+        host.hide(); host.show(); QTRY_VERIFY_WITH_TIMEOUT(nested.ready(), 15000);
+        QCOMPARE(nested.content()->text, latest->text);
+    }
+    void virtualAccessibleActionsAndTabStopsKeepGlobalPositions() {
+        Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 500);
+        const auto data = content("[open](other.md)\n\n```cpp\nconst\tvalue = 1; /* multi\nline */\n```\n"); QVERIFY(data);
+        view.expect(stamp()); QVERIFY(view.present(stamp(), data, {}, true)); view.show(); QApplication::processEvents();
+        auto *accessible = QAccessible::queryAccessibleInterface(&view); QVERIFY(accessible);
+        QCOMPARE(accessible->childCount(), 2); auto *link = accessible->child(0); QVERIFY(link && link->isValid());
+        QCOMPARE(link->role(), QAccessible::Link); QCOMPARE(link->text(QAccessible::Name), QString("open"));
+        QSignalSpy opened(&view, &NativePreviewView::documentLinkRequested), copied(&view, &NativePreviewView::copyTextRequested);
+        link->actionInterface()->doAction(QAccessibleActionInterface::pressAction()); QCOMPARE(opened.size(), 1);
+        auto *copy = accessible->child(1); QVERIFY(copy && copy->actionInterface()); copy->actionInterface()->doAction(QAccessibleActionInterface::pressAction());
+        QCOMPARE(copied.size(), 1); QVERIFY(copied.first().first().toString().contains('\t'));
+        const int from = data->text.indexOf("const"), to = data->text.indexOf("value");
+        const auto advance = view.characterRect(to).left() - view.characterRect(from).left();
+        QVERIFY(qAbs(advance - QFontMetricsF(sourceFont()).horizontalAdvance(' ') * 8) < 3);
+        QVERIFY(!data->highlights.isEmpty()); view.expect(stamp(2)); QVERIFY(!link->isValid()); QVERIFY(!copy->isValid());
     }
     void lightAndDarkUseSharedTokensAndSaveEvidence() {
         const auto data = content(QStringLiteral("# 一个安静的写作空间\n\n把想法写下来，让思考慢慢清晰。**中文粗体**与 *italic*。 😀\n\n- [x] 完成一项任务\n- [ ] 保留一点时间\n\n> 少一点干扰，多一点专注。\n\n```cpp\nconst auto title = \"写作\";\n```\n\n|项目|状态|\n|:--|--:|\n|原生预览|进行中|\n\n[打开文档](notes/start.md)\n").toUtf8()); QVERIFY(data);

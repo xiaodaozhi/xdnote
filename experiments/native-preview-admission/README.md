@@ -1,6 +1,6 @@
 # Qt 原生阅读控件准入
 
-此入口构建实际 `NativePreviewContent`／`NativePreviewView`，复用本项目共享外观、控件和资源。仅查找固定 Qt 6.8.2 Widgets／Svg／Test，不链接或启动产品旧预览。它与[语义模型验证](../native-model-admission/README.md)和旧的[受控分节试验](../native-preview-spike/README.md)范围不同；模型、缓存和准入缺口见[原生控件说明](../../docs/engineering/native-preview-view.md)。
+此入口构建实际 `NativePreviewContent`／`NativePreviewView`，复用本项目共享外观、控件和资源。仅查找固定 Qt 6.8.2 Widgets／Svg／Concurrent／Test，不启动完整产品窗口。它与[语义模型验证](../native-model-admission/README.md)和旧的[受控分节试验](../native-preview-spike/README.md)范围不同；模型、缓存和准入缺口见[原生控件说明](../../docs/engineering/native-preview-view.md)。
 
 准备本项目工具、Qt 和离线 Cargo 缓存后，在仓库根运行：
 
@@ -13,8 +13,8 @@ python experiments/native-preview-admission/verify.py --qt-prefix build/Qt/6.8.2
 
 运行临时设置当前 Qt 的 DLL／插件／字体路径和 `offscreen` 平台，不修改系统 PATH。Windows 递归核对 Qt DLL 导入，排除 Chromium；离屏 PNG、QtTest、源码和工具摘要及测量进入忽略的构建目录。所有测试报告必须完整，Qt critical／fatal 或断言即使进程退出成功也判为失败。新预览不调用旧产品运行环境；启动实际产品仍遵守统一 `scripts/desktop.py run` 入口。
 
-诊断控件使用 800×600 逻辑像素观测视口，不是新增产品窗口规格。截图只表明当前控件出现了绘制，合成输入只验证 Qt 路径；不表示工作区／独立窗口已经迁移、视觉已经验收或真实读屏已经通过。
+诊断控件使用 800×600 逻辑像素观测视口，不是新增产品窗口规格。截图只表明当前控件出现了绘制，合成输入只验证 Qt 路径；不表示人工视觉或真实读屏已经通过。
 
 `native-verification.json` 记录当前输入与二进制身份、实际 Qt 导入和结果。每约 50ms 统计自有诊断进程树的私有提交与工作集；可能错过更短的峰值，工作集合计也可能重复共享页。私有提交可能换出，既不是常驻物理内存，也不是整应用或发行包预算。首个观测帧包含解析、派生内容、几何和强制抓图／编码成本，不等同于输入延迟或完整应用启动。
 
-`complete=true` 只表示本次定义范围的测试和样本执行完毕；已明确返回失败的超长双向段落和大字素簇仍是准入缺口，不能按“预期失败测试通过”关闭对应能力要求。默认产品没有调用此控件，旧 WebEngine 清除另行实施。
+`complete=true` 只表示定义范围的测试和样本已执行。实际产品使用同一控件；真实文件、资源授权和会话桥接由 `scripts/desktop.py test --suite preview` 验证，见[开发构建](../../docs/engineering/developer-build.md)。

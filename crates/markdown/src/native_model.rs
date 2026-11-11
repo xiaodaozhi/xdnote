@@ -290,6 +290,8 @@ impl Builder {
         {
             self.records[8 + index * 4..12 + index * 4].copy_from_slice(&value.to_le_bytes());
         }
+        self.records
+            .reserve_exact(self.offsets.len() * 4 + self.strings.len());
         for offset in self.offsets {
             self.records.extend_from_slice(&offset.to_le_bytes());
         }

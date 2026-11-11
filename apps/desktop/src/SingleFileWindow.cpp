@@ -42,7 +42,6 @@
 #include <QStackedWidget>
 #include <QSvgRenderer>
 #include <QVBoxLayout>
-#include <QWebEngineView>
 #include <QWindow>
 #include <QShowEvent>
 #include <QProgressBar>
@@ -378,6 +377,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
         if (!m_closeAfterOperation) return; m_closeAfterOperation = false; if (success) QTimer::singleShot(0, this, [this] { close(); }); else emit closeCancelled();
     });
     connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) { m_previewError = message; updateState(); });
+    connect(m_preview, &MarkdownPreview::previewPrepared, this, [this] { m_previewError.clear(); updateState(); });
     connect(m_preview, &MarkdownPreview::previewReady, this, [this] { m_previewError.clear(); updateState(); });
     connect(m_preview, &MarkdownPreview::documentLinkRequested, this, &SingleFileWindow::activateDocumentLink);
     connect(m_preview, &MarkdownPreview::fragmentNavigationMessage, this, [this](const QString &message) {

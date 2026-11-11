@@ -2,6 +2,7 @@
 #include "Utf8Text.h"
 #include <algorithm>
 #include <limits>
+#include <QTextBoundaryFinder>
 
 namespace xdnote {
 namespace {
@@ -196,15 +197,55 @@ std::optional<NativePreviewContent> NativePreviewContent::build(NativePreviewMod
         }
     }
     endFlow();
+    // Highlight only derived code text, never reparse Markdown or touch source.
+    // Keep the established 128 KiB decoration budget; longer code stays literal.
+    const QStringList keywords = {"fn", "let", "mut", "pub", "use", "struct", "impl", "return", "if", "else", "for", "while", "const", "class", "function", "import", "from", "def", "true", "false", "null", "None", "int", "void", "auto", "async", "await"};
+    for (const auto &owner : result.owners) {
+        if (!owner.code || owner.length > 128 * 1024) continue;
+        if (QStringView(result.text).mid(owner.start, owner.length).toUtf8().size() > 128 * 1024) continue;
+        const auto language = QString::fromUtf8(result.model.text(result.model.node(owner.node))).toLower();
+        if (!QStringList{"rust", "rs", "cpp", "c", "c++", "javascript", "js", "typescript", "ts", "python", "py", "json", "css", "sh", "bash"}.contains(language)) continue;
+        const int end = owner.start + owner.length;
+        for (int at = owner.start; at < end;) {
+            const int start = at; const auto ch = result.text[at];
+            Syntax kind{}; bool decorated = true;
+            if (at + 1 < end && result.text.mid(at, 2) == "//") {
+                while (at < end && result.text[at] != '\n') ++at;
+                kind = Syntax::Comment;
+            } else if (at + 1 < end && result.text.mid(at, 2) == "/*") {
+                at += 2; while (at < end && !(at > start + 2 && result.text[at - 1] == '*' && result.text[at] == '/')) ++at;
+                if (at < end) ++at; kind = Syntax::Comment;
+            } else if (ch == '"' || ch == '\'' || ch == '`') {
+                ++at; bool escape = false;
+                while (at < end) { const auto next = result.text[at++]; if (!escape && next == ch) break; escape = !escape && next == '\\'; }
+                kind = Syntax::String;
+            } else if (ch >= '0' && ch <= '9') {
+                ++at; while (at < end && (result.text[at].isLetterOrNumber() || result.text[at] == '.' || result.text[at] == '_')) ++at;
+                kind = Syntax::Number;
+            } else if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
+                ++at; while (at < end && (result.text[at].isLetterOrNumber() || result.text[at] == '_')) ++at;
+                int next = at; while (next < end && result.text[next].isSpace()) ++next;
+                decorated = keywords.contains(result.text.mid(start, at - start)) || (next < end && result.text[next] == ':');
+                kind = Syntax::Keyword;
+            } else { ++at; decorated = false; }
+            if (decorated) result.highlights.append({start, at - start, kind});
+        }
+    }
+    if (std::any_of(result.text.cbegin(), result.text.cend(), [](QChar ch) { return ch.unicode() >= 128; })) {
+        QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, result.text);
+        result.graphemeBoundaries.resize(result.text.size() + 1);
+        result.graphemeBoundaries.setBit(0);
+        for (int at = finder.toNextBoundary(); at >= 0; at = finder.toNextBoundary()) result.graphemeBoundaries.setBit(at);
+    }
     std::stable_sort(result.actions.begin(), result.actions.end(), [](const Action &a, const Action &b) { return a.start < b.start; });
     if (error) error->clear();
     return result;
 }
 
 qsizetype NativePreviewContent::estimatedBytes() const {
-    return model.encodedBytes() + text.capacity() * qsizetype(sizeof(QChar)) + runs.capacity() * qsizetype(sizeof(Run))
+    return model.encodedBytes() + (graphemeBoundaries.size() + 7) / 8 + text.capacity() * qsizetype(sizeof(QChar)) + runs.capacity() * qsizetype(sizeof(Run))
         + flows.capacity() * qsizetype(sizeof(Flow)) + cells.capacity() * qsizetype(sizeof(Cell))
         + owners.capacity() * qsizetype(sizeof(Owner)) + images.capacity() * qsizetype(sizeof(Image))
-        + actions.capacity() * qsizetype(sizeof(Action)) + headings.capacity() * qsizetype(sizeof(Heading));
+        + highlights.capacity() * qsizetype(sizeof(Highlight)) + actions.capacity() * qsizetype(sizeof(Action)) + headings.capacity() * qsizetype(sizeof(Heading));
 }
 }

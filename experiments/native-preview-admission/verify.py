@@ -85,7 +85,7 @@ def main():
             report["probeQtImports"] = qt_closure(probe, qt, desktop.prepared_tool("dumpbin", env), env)
             samples = []
             for flavor, size in [("idle", 10240), ("dense", 10240), ("dense", 1048576), ("dense", 2097152),
-                                 ("paragraph", 2097152), ("code", 2097152), ("table", 2097152), ("many", 2097152)]:
+                                 ("paragraph", 2097152), ("code", 2097152), ("table", 2097152), ("many", 2097152), ("bidi", 2097152), ("cluster", 2097152)]:
                 name = f"{flavor}-{size}"
                 log = build / (name + ".log")
                 print("Measuring native fixture:", name, flush=True)

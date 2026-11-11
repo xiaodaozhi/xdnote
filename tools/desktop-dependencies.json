@@ -3,7 +3,7 @@
   "phase": "desktop-admission",
   "qt": {
     "version": "6.8.2",
-    "modules": ["qt5compat", "qtwebengine", "qtwebchannel", "qtpositioning"],
+    "modules": ["qt5compat"],
     "aqtinstall": "3.3.0",
     "py7zr": "1.0.0"
   },

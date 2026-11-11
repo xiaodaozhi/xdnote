@@ -2,6 +2,7 @@
 
 #include "NativePreviewModel.h"
 #include <QVector>
+#include <QBitArray>
 #include <QUuid>
 
 namespace xdnote {
@@ -33,9 +34,15 @@ struct NativePreviewContent {
     struct Owner { quint32 node = 0; int start = 0, length = 0; bool code = false; };
     struct Image { int start = 0, length = 0; quint32 index = 0; char state = 0; };
     struct Action { quint32 node = 0; int start = 0, length = 0; bool copyCode = false; };
+    enum class Syntax { Keyword, String, Number, Comment };
+    struct Highlight { int start = 0, length = 0; Syntax kind{}; };
+    QVector<Highlight> highlights;
     struct Heading { quint32 node = 0; int position = 0; };
     NativePreviewModel model;
+    bool navigationAvailable = true;
     QString text;
+    // Empty for ASCII; otherwise one immutable bit per global UTF-16 boundary.
+    QBitArray graphemeBoundaries;
     QVector<Run> runs;
     QVector<Flow> flows;
     QVector<Cell> cells;

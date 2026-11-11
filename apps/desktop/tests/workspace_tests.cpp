@@ -41,9 +41,6 @@
 #include <QFileDialog>
 #include <QElapsedTimer>
 #include <QScopeGuard>
-#include <QWebEngineView>
-#include <QWebEnginePage>
-#include <QWebEngineScript>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLineEdit>
@@ -65,6 +62,15 @@ SingleFileWindow *waitStandalone(const QString &path) {
 }
 QByteArray disk(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); }
 void capture(QWidget *window, const QString &name) {
+    QElapsedTimer timer; timer.start();
+    while (timer.elapsed() < 15000) {
+        bool pending = false;
+        for (auto *preview : window->findChildren<MarkdownPreview *>()) if (preview->isVisible() && !preview->view()->ready()) pending = true;
+        if (!pending) break;
+        QTest::qWait(2);
+    }
+    for (auto *preview : window->findChildren<MarkdownPreview *>())
+        if (preview->isVisible() && !preview->view()->ready()) { QTest::qFail("Cannot capture a pending native preview", __FILE__, __LINE__); return; }
     const auto directory = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
     if (directory.isEmpty()) return;
     const QFontMetrics metrics(window->font());
@@ -83,22 +89,7 @@ bool hasRuleAt(const QImage &image, QPoint logical, const QColor &color) {
     return false;
 }
 void chooseClose(int choice) { QTimer::singleShot(30, qApp, [choice] { for (auto *widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") { if (auto *button = widget->findChild<SharedButton *>(QStringLiteral("choice%1").arg(choice))) button->click(); } }); }
-int loadedImages(MarkdownPreview *preview) {
-    QEventLoop loop; QTimer timeout; timeout.setSingleShot(true);
-    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
-    auto result = std::make_shared<int>(-1); const QPointer<QEventLoop> guarded(&loop);
-    preview->view()->page()->runJavaScript(QStringLiteral("Array.from(document.images).filter(i => i.naturalWidth > 0).length"), QWebEngineScript::ApplicationWorld,
-        [guarded, result](const QVariant &value) { *result = value.toInt(); if (guarded) guarded->quit(); });
-    timeout.start(10000); loop.exec(); return *result;
-}
-QVariant previewValue(MarkdownPreview *preview, const QString &script) {
-    QEventLoop loop; QTimer timeout; timeout.setSingleShot(true);
-    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
-    auto result = std::make_shared<QVariant>(); const QPointer<QEventLoop> guarded(&loop);
-    preview->view()->page()->runJavaScript(script, QWebEngineScript::ApplicationWorld,
-        [guarded, result](const QVariant &value) { *result = value; if (guarded) guarded->quit(); });
-    timeout.start(10000); loop.exec(); return *result;
-}
+int loadedImages(MarkdownPreview *preview) { return preview->view()->admittedImageCount(); }
 class InitializationWarning final : public QObject {
 public:
     bool injected = false;
@@ -357,7 +348,7 @@ private slots:
         auto *newPane = waitPane(workspace, fresh); QVERIFY(newPane);
         const auto expected = analyzeMarkdownHeadings(newPane->document()->session()->snapshot()); QVERIFY(expected.success);
         QCOMPARE(newPane->editor()->send(SCI_GETCURRENTPOS), sptr_t(expected.headings.first().range.start));
-        QTRY_VERIFY_WITH_TIMEOUT(previewValue(newPane->preview(), QStringLiteral("window.scrollY > 0")).toBool(), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(newPane->preview()->view()->readingPosition().y() > 0, 15000);
 #endif
     }
     void documentLinksRejectUnsafeTargetsAndStaleSource() {
@@ -409,13 +400,11 @@ private slots:
         QVERIFY(fileFixtures::write(source, "[open](target.md#target)")); QVERIFY(fileFixtures::write(target, "intro\n\n# target\n"));
         FileApplication app(nullptr, dir.filePath("settings/state.ini")); app.open(source); auto *pane = waitStandalone(source); QVERIFY(pane);
         auto *preview = pane->preview();
-        QTRY_VERIFY_WITH_TIMEOUT(previewValue(preview, QStringLiteral("!!document.querySelector('a.link-placeholder')")).toBool(), 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(preview->view()->content() && !preview->view()->content()->actions.isEmpty() && preview->view()->ready(), 15000);
         QSignalSpy requested(pane, &SingleFileWindow::documentLinkRequested);
-        const auto token = previewValue(preview, QStringLiteral("document.querySelector('a.link-placeholder').href")).toString();
-        QVERIFY(token.startsWith("xdnote-preview:")); preview->view()->page()->load(QUrl(token)); QTest::qWait(100); QVERIFY(requested.isEmpty());
-        const auto point = previewValue(preview, QStringLiteral("(()=>{const r=document.querySelector('a.link-placeholder').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")).toMap(); QVERIFY(!point.isEmpty());
-        QTest::mouseClick(preview->view()->focusProxy() ? preview->view()->focusProxy() : preview->view(), Qt::LeftButton, Qt::NoModifier,
-            QPoint(qRound(point.value("x").toDouble()), qRound(point.value("y").toDouble())));
+        auto *view = preview->view(); const auto &action = view->content()->actions.first();
+        const auto point = view->viewport()->mapFromGlobal(view->characterRect(action.start).center());
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, point);
         auto *destination = waitStandalone(target); QVERIFY(destination); QVERIFY(!destination->embedded());
         QCOMPARE(requested.size(), 1); QCOMPARE(destination->document()->session()->snapshot().utf8, QByteArray("intro\n\n# target\n"));
         QCOMPARE(destination->editor()->send(SCI_GETCURRENTPOS), sptr_t(7));
@@ -840,9 +829,9 @@ private slots:
     }
     void readingPositionSurvivesNativeHostTransfer() {
         QTemporaryDir dir; const auto path = dir.filePath("reader.md"); QByteArray text; for (int i = 0; i < 180; ++i) text += "paragraph\n\n"; QVERIFY(fileFixtures::write(path, text)); FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
-        QTRY_VERIFY(pane->preview()->view()->page()->contentsSize().height() > 1000);
-        pane->preview()->restoreReadingPosition({0, 500}); QTRY_VERIFY(pane->preview()->view()->page()->scrollPosition().y() >= 490);
-        const auto position = pane->preview()->readingPosition(); auto *view = pane->preview()->view(); QVERIFY(desktop.transferToWorkspace(pane)); QCOMPARE(pane->preview()->view(), view); QTest::qWait(200); QTRY_VERIFY(qAbs(view->page()->scrollPosition().y() - position.y()) <= 2); capture(pane->window(), "transferred-reader"); QCOMPARE(disk(path), text);
+        QTRY_VERIFY(pane->preview()->view()->contentsSize().height() > 1000);
+        pane->preview()->restoreReadingPosition({0, 500}); QTRY_VERIFY(pane->preview()->view()->readingPosition().y() >= 490);
+        const auto position = pane->preview()->readingPosition(); auto *view = pane->preview()->view(); QVERIFY(desktop.transferToWorkspace(pane)); QCOMPARE(pane->preview()->view(), view); QTest::qWait(200); QTRY_VERIFY(qAbs(view->readingPosition().y() - position.y()) <= 2); capture(pane->window(), "transferred-reader"); QCOMPARE(disk(path), text);
     }
     void failedOpenTabsOverflowAndKeyboardCloseRemainUsable_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
     void failedOpenTabsOverflowAndKeyboardCloseRemainUsable() {
@@ -880,7 +869,11 @@ private slots:
         QCOMPARE(workspace->findChild<QWidget *>("documentHeader")->height(), 48); QCOMPARE(workspace->findChild<QWidget *>("workspaceFooters")->height(), 26); QCOMPARE(pane->footer()->width(), workspace->width()); QVERIFY(!pane->windowGeometry()); QVERIFY(workspace->windowGeometry());
         QCOMPARE(pane->footer()->geometry(), workspace->findChild<QWidget *>("workspaceFooters")->rect());
         auto *splitter = pane->findChild<QSplitter *>("documentSplit"); auto *handle = splitter->handle(1); QVERIFY(handle->isVisible());
-        QTRY_COMPARE(workspace->tree()->currentIndex().data().toString(), QStringLiteral("写作，从这里开始.md")); QTRY_VERIFY(pane->preview()->view()->page()->contentsSize().height() > 100); QTest::qWait(250);
+        QTRY_COMPARE(workspace->tree()->currentIndex().data().toString(), QStringLiteral("写作，从这里开始.md")); QTRY_VERIFY2_WITH_TIMEOUT(pane->preview()->view()->ready(), qPrintable(QString("active=%1 visible=%2 content=%3 pending=%4 running=%5 revision=%6 expected=%7 error=%8")
+            .arg(workspace->activePane() == pane).arg(pane->preview()->view()->isVisible()).arg(pane->preview()->view()->content() != nullptr)
+            .arg(pane->preview()->view()->statistics().layoutPending).arg(pane->preview()->view()->statistics().layoutRunning)
+            .arg(pane->preview()->displayedRevision()).arg(session->revision()).arg(pane->preview()->view()->error())), 15000);
+        QVERIFY(pane->preview()->view()->contentsSize().height() > 100); QTest::qWait(250);
         const auto treeImage = workspace->tree()->viewport()->grab().toImage(); const auto treeRatio = treeImage.devicePixelRatio(); const auto selectedRow = workspace->tree()->visualRect(workspace->tree()->currentIndex()); QCOMPARE(treeImage.pixelColor(qRound((workspace->tree()->viewport()->width() - 16) * treeRatio), qRound(selectedRow.center().y() * treeRatio)), pane->appearance()->accentColor("soft"));
         const auto divider = handle->grab().toImage(); const auto ratio = divider.devicePixelRatio(); QCOMPARE(divider.pixelColor(int((handle->width() / 2.0) * ratio), qRound(60 * ratio)), pane->appearance()->color("border")); QCOMPARE(divider.pixelColor(0, qRound(60 * ratio)), pane->appearance()->color("background"));
         const auto original = splitter->sizes(); QTest::mousePress(handle, Qt::LeftButton); QTest::mouseMove(handle, handle->rect().center() + QPoint(40, 0), 30); QTest::mouseRelease(handle, Qt::LeftButton); QVERIFY(splitter->sizes().first() != original.first()); splitter->setSizes(original);

@@ -197,7 +197,7 @@ def runtime_environment(environment_values, qt, system=None):
     result = dict(environment_values)
     system = system or platform.system()
     if system == "Windows":
-        required = ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6WebEngineCore.dll")
+        required = ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll")
         missing = [name for name in required if not (qt / "bin" / name).is_file()]
         if missing:
             raise RuntimeError(f"Qt runtime is incomplete in {qt / 'bin'}: {', '.join(missing)}")
@@ -206,17 +206,9 @@ def runtime_environment(environment_values, qt, system=None):
     result["QML2_IMPORT_PATH"] = str(qt / "qml")
     result["QT_PLUGIN_PATH"] = str(qt / "plugins")
     result["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(qt / "plugins/platforms")
-    helper = qt / ("bin/QtWebEngineProcess.exe" if system == "Windows" else "libexec/QtWebEngineProcess")
-    if system == "Darwin" and not helper.is_file():
-        framework = qt / "lib/QtWebEngineCore.framework"
-        candidates = [framework / "Helpers/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess"]
-        candidates.extend(framework.glob("Versions/*/Helpers/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess"))
-        helper = next((candidate for candidate in candidates if candidate.is_file()), helper)
-    if not helper.is_file():
-        raise RuntimeError(f"Qt WebEngine runtime helper missing: {helper}")
-    result["QTWEBENGINEPROCESS_PATH"] = str(helper)
-    for name in ("QTWEBENGINE_RESOURCES_PATH", "QTWEBENGINE_LOCALES_PATH"):
-        result.pop(name, None)
+    for name in tuple(result):
+        if name.upper().startswith("QTWEBENGINE"):
+            result.pop(name, None)
     if system == "Linux":
         result["LD_LIBRARY_PATH"] = str(qt / "lib") + os.pathsep + result.get("LD_LIBRARY_PATH", "")
     return result
@@ -234,7 +226,7 @@ def main():
     parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
     parser.add_argument("--file", type=Path, action="append", default=[], help="local Markdown file to open with run; repeat for multiple files")
     parser.add_argument("--admission", action="store_true", help="run the memory-only component window instead of xdnote")
-    parser.add_argument("--suite", choices=("full", "resources"), default="full", help="test scope; resources runs only affected file/image paths")
+    parser.add_argument("--suite", choices=("full", "resources", "preview"), default="full", help="test scope; resources or preview run affected paths only")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
@@ -278,11 +270,11 @@ def main():
         arch = {"Windows": "msvc2022_64", "Darwin": "macos", "Linux": "gcc_64"}[platform.system()]
         args.qt_prefix = BUILD / "Qt" / settings["qtVersion"] / arch
     qt = checked_tool_path(args.qt_prefix, "Qt SDK", sdk=True)
-    if not (qt / "lib/cmake/Qt6WebEngineWidgets/Qt6WebEngineWidgetsConfig.cmake").is_file():
-        raise RuntimeError("Qt WebEngine SDK missing; run the explicit SDK preparation first")
+    if not (qt / "lib/cmake/Qt6Widgets/Qt6WidgetsConfig.cmake").is_file():
+        raise RuntimeError("Qt Widgets SDK missing; run the explicit SDK preparation first")
     env = runtime_environment(env, qt)
     if platform.system() == "Linux":
-        for binary in (qt / "plugins/platforms/libqxcb.so", qt / "libexec/QtWebEngineProcess"):
+        for binary in (qt / "plugins/platforms/libqxcb.so",):
             libraries = subprocess.check_output(["ldd", str(binary)], env=env, text=True)
             missing = [line.strip() for line in libraries.splitlines() if "not found" in line]
             if missing:
@@ -306,6 +298,24 @@ def main():
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
         verify_build_identity(build, args.profile, qt)
+        if args.suite == "preview":
+            suffix = ".exe" if platform.system() == "Windows" else ""
+            groups = {
+                "native_model": [], "native_preview": [],
+                "desktop": ["headingMapKeepsSnapshotIdentityAndUtf8Ranges", "previewPendingHeadingRejectsContextAndRevisionChanges", "previewFragmentLinksNavigateOnlyTheDisplayedRevision", "previewDoesNotActivateLinksWhenReferenceAnalysisMayBeIncomplete", "previewFragmentLinksSupportKeyboardFocusAndActivation", "workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding", "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork"],
+                "visual": ["themeGeometryAndEditing", "sharedAppearanceAndReloadPreserveTextUndoAndPosition", "missingFragmentShowsNoticeWithoutReplacingThePreview", "previewFailureRecoversAfterUndoWithoutHiddenLayoutDeadlock", "readerComponentsCopyAndHorizontalScroll"],
+                "workspace": ["documentLinksReuseDirtyTargetAndNavigateHeadings", "documentLinksRejectUnsafeTargetsAndStaleSource", "documentLinksPreviewClicksKeepStandaloneRouting", "acceptedFileCapabilitySurvivesSourceRootRevocation", "imageAccessFollowsStandaloneAndWorkspaceAuthorization", "standaloneImageImportUsesExplicitDirectoryAndKeepsOriginalBytes", "readingPositionSurvivesNativeHostTransfer", "splitThemeGeometryAndSaveUseTheSameSession"],
+            }
+            evidence = build / "evidence"; evidence.mkdir(exist_ok=True)
+            env["XDNOTE_TEST_EVIDENCE"] = str(evidence); env["XDNOTE_NATIVE_EVIDENCE"] = str(evidence)
+            for name, functions in groups.items():
+                report = build / f"preview-{name}-qtest.txt"; report.unlink(missing_ok=True)
+                run([build / f"xdnote_{name}_tests{suffix}", *functions, "-o", "-,txt", "-o", f"{report},txt"], env, build / f"preview-{name}.log")
+                text = report.read_text(encoding="utf-8", errors="replace")
+                print(text, flush=True)
+                if "0 failed" not in text or "Finished testing" not in text or re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", text):
+                    raise RuntimeError(f"Incomplete or failed native preview report: {report.name}")
+            return
         if args.suite == "resources":
             suffix = ".exe" if platform.system() == "Windows" else ""
             publication = ["workspaceImagePublicationNeverOverwritesOrReusesDifferentBytes", "workspaceImagePublicationHonorsRevocationAroundCommit", "workspaceImagePublicationSerializesCollisions"] if suffix else ["posixImagePublicationPreservesCollisionsAndRejectsDirectoryLinks", "workspaceImagePublicationHonorsRevocationAroundCommit", "workspaceImagePublicationSerializesCollisions"]
