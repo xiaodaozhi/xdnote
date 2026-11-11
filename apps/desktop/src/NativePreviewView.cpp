@@ -124,6 +124,7 @@ struct NativePreviewView::State {
     int anchor = 0, cursor = 0, pressedAction = -1, focusedAction = -1;
     bool dragging = false, keyboardOutline = false;
     bool localDocumentsAdmitted = false;
+    bool scrollMapped = false;
     std::function<bool(const NativePreviewStamp &)> actionValidator;
     mutable QHash<quint32, QFont> fonts;
     mutable QCache<quint64, Measurement> measurements{1024};
@@ -390,6 +391,23 @@ struct NativePreviewView::State {
         auto it = std::upper_bound(geometry.cbegin(), geometry.cend(), y,
             [](qreal at, const Geometry &entry) { return at < entry.y; });
         return qMax(0, int(it - geometry.cbegin()) - 1);
+    }
+    quint32 sourceStart(int index) const { return content->model.node(flow(index).node).sourceStart; }
+    qreal scrollY(int index) const {
+        const auto source = sourceStart(index);
+        const auto first = std::lower_bound(content->flows.cbegin(), content->flows.cend(), source,
+            [this](const Content::Flow &entry, quint32 byte) { return content->model.node(entry.node).sourceStart < byte; });
+        index = int(first - content->flows.cbegin());
+        const auto &entry = flow(index);
+        return entry.kind == Content::FlowKind::CodeLine && entry.owner >= 0 ? groups[entry.owner].y : geometry[index].y;
+    }
+    std::optional<ScrollSpan> scrollSpan(int right) const {
+        ScrollSpan span;
+        if (right > 0) { span.sourceStart = sourceStart(right - 1); span.top = scrollY(right - 1); }
+        span.sourceEnd = right < content->flows.size() ? sourceStart(right) : content->model.sourceBytes();
+        span.bottom = right < content->flows.size() ? scrollY(right) : totalHeight;
+        if (span.sourceEnd <= span.sourceStart || span.bottom <= span.top) return {};
+        return span;
     }
     qreal x(int flowIndex) const { return left + indent(flow(flowIndex)); }
     qreal offsetX(int owner) const { return horizontal.value(owner, 0); }
@@ -807,6 +825,12 @@ void NativePreviewView::rebuild(bool keepPosition) {
     finishLayout(oldOffset, keepPosition);
 }
 void NativePreviewView::finishLayout(int offset, bool restore) {
+    d->scrollMapped = d->error.isEmpty() && d->geometry.size() == d->content->flows.size();
+    quint32 previous = 0;
+    for (int index = 0; d->scrollMapped && index < d->content->flows.size(); ++index) {
+        const auto source = d->sourceStart(index);
+        d->scrollMapped = source >= previous && source < d->content->model.sourceBytes(); previous = source;
+    }
     verticalScrollBar()->setPageStep(viewport()->height()); verticalScrollBar()->setSingleStep(qMax(1, qRound(28.8 * d->zoom)));
     verticalScrollBar()->setRange(0, qMax(0, qCeil(d->totalHeight) - viewport()->height()));
     const QPointer<NativePreviewView> alive(this);
@@ -1129,6 +1153,23 @@ void NativePreviewView::scrollToText(int offset) {
 }
 QPointF NativePreviewView::readingPosition() const { return {0, qreal(verticalScrollBar()->value())}; }
 void NativePreviewView::restoreReadingPosition(const QPointF &position) { verticalScrollBar()->setValue(qRound(position.y())); }
+std::optional<NativePreviewView::ScrollSpan> NativePreviewView::scrollSpanForSource(quint32 byte, const NativePreviewStamp &stamp) const {
+    if (!ready() || !d->scrollMapped || stamp != d->shown || byte > d->content->model.sourceBytes()) return {};
+    const auto &flows = d->content->flows;
+    const auto right = std::upper_bound(flows.cbegin(), flows.cend(), byte,
+        [this](quint32 source, const Content::Flow &entry) { return source < d->content->model.node(entry.node).sourceStart; });
+    return d->scrollSpan(int(right - flows.cbegin()));
+}
+std::optional<NativePreviewView::ScrollSpan> NativePreviewView::scrollSpanAtY(qreal y, const NativePreviewStamp &stamp) const {
+    if (!ready() || !d->scrollMapped || stamp != d->shown || !std::isfinite(y) || y < 0 || y > d->totalHeight) return {};
+    const auto &flows = d->content->flows;
+    auto right = std::upper_bound(flows.cbegin(), flows.cend(), y,
+        [this, &flows](qreal at, const Content::Flow &entry) { return at < d->scrollY(int(&entry - flows.constData())); });
+    if (right == flows.cbegin() && !flows.isEmpty() && d->sourceStart(0) == 0)
+        right = std::upper_bound(flows.cbegin(), flows.cend(), quint32(0),
+            [this](quint32 source, const Content::Flow &entry) { return source < d->content->model.node(entry.node).sourceStart; });
+    return d->scrollSpan(int(right - flows.cbegin()));
+}
 void NativePreviewView::resizeEvent(QResizeEvent *event) { QAbstractScrollArea::resizeEvent(event); rebuild(true); }
 void NativePreviewView::showEvent(QShowEvent *event) { QAbstractScrollArea::showEvent(event); if (d->asynchronous) rebuild(true); }
 void NativePreviewView::hideEvent(QHideEvent *event) { QAbstractScrollArea::hideEvent(event); if (d->asynchronous) rebuild(true); }

@@ -1580,7 +1580,7 @@
     {
       "path": "docs/visual/window-registry.json",
       "bytes": 8566,
-      "sha256": "9ef450f59598b1805f789b06075c4c0b8f6c6ba8d2177b72ecb326bb4919afd7"
+      "sha256": "26fba334936cd3643b1bb26eb64bc064b5f8857d489fd9f5d9122a30587d98d5"
     },
     {
       "path": "docs/visual/surface-registry-v2.json",

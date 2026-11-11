@@ -110,6 +110,18 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     QTimer::singleShot(0, this, [this] { if (m_generation == 0) refresh(); });
 }
 MarkdownPreview::~MarkdownPreview() { m_closed = true; disconnect(&m_worker, nullptr, this, nullptr); }
+bool MarkdownPreview::mappingCurrent() {
+    if (m_closed || m_restoring || !m_pageReady || !m_session || m_session->isClosing()
+        || m_session->isBusy() || m_session->isComposing() || !m_view->ready()) return false;
+    const QPointer<MarkdownPreview> alive(this);
+    const auto revision = m_session->revision(); // Flush pending edits before trusting the old map.
+    if (!alive) return false;
+    const auto stamp = m_view->displayedStamp();
+    return !m_closed && !m_restoring && m_pageReady && m_session && m_view->ready()
+        && stamp.document == m_session->documentId() && stamp.revision == revision
+        && stamp.request == m_generation && m_presentingGeneration == m_generation
+        && stamp.path == m_contextGeneration && stamp.resources == m_resourceGeneration;
+}
 void MarkdownPreview::restoreReadingPosition(const QPointF &position) {
     if (m_closed || !std::isfinite(position.x()) || !std::isfinite(position.y())) return;
     m_scroll = QPointF(qBound(0.0, position.x(), 100000000.0), qBound(0.0, position.y(), 100000000.0));

@@ -34,6 +34,8 @@
 
 CI 使用只读仓库权限和固定依赖；不打包、签名、发布或安装产品，也不配置系统文件关联。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
 
+`scope=scroll-unix` 仅在 Linux、macOS Intel／ARM 执行[双栏段落映射](scroll-synchronization.md)与受影响的预览／接管离屏回归，使用 `test --suite scroll`；不包含完整桌面矩阵或物理滚动验收。
+
 `scope=ui-unix` 仅补验 Linux、macOS Intel／ARM 的原生阅读与共享界面回归，使用 `test --suite ui` 的固定离屏环境；Windows 原生系统命令与动画设置以独立本机证据记录。界面截图与几何回归不替代用户要求的视觉验收，也不因定向范围新增而重复完整桌面 CI。
 
 `scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入、四项自有离屏探针和资源助手定向用例，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、安装或发行许可验收。

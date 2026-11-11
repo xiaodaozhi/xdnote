@@ -44,6 +44,7 @@ public:
     QPointF readingPosition() const { return m_scroll; }
     void restoreReadingPosition(const QPointF &position);
     void navigateToHeading(const QString &fragment, quint64 revision);
+    bool mappingCurrent();
 signals:
     void previewReady(quint64 revision);
     void previewPrepared(quint64 revision);

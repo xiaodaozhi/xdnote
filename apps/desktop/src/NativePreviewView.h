@@ -49,6 +49,11 @@ public:
     void scrollToText(int offset);
     QPointF readingPosition() const;
     void restoreReadingPosition(const QPointF &position);
+    // Adjacent semantic block starts in source bytes and laid-out document Y.
+    // Interpolation is local to this span, never a whole-document percentage.
+    struct ScrollSpan { quint32 sourceStart = 0, sourceEnd = 0; qreal top = 0, bottom = 0; };
+    std::optional<ScrollSpan> scrollSpanForSource(quint32 byte, const NativePreviewStamp &stamp) const;
+    std::optional<ScrollSpan> scrollSpanAtY(qreal y, const NativePreviewStamp &stamp) const;
     Statistics statistics() const;
     QString error() const;
     bool keyboardOutlineVisible() const;
