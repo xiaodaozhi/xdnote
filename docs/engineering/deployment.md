@@ -34,7 +34,7 @@ macOS 创建诊断 `xdnote.app`，产品、两个探针、资源助手及资源�
 
 产品没有 Qt SQL 数据库功能。macOS 部署工具扫描带入的 `sqldrivers` 不进入诊断候选，避免无关数据库客户端成为隐含依赖；排除原因写入报告，不以开发机器上另行安装数据库库来掩盖外部依赖。
 
-手动选择桌面工作流的 `scope=deployment-unix`，仅在 Linux x86_64、macOS Intel／ARM 构建并执行本项诊断，不运行完整桌面测试矩阵。CI 仅上传诊断证据，不上传安装包或发布产品。
+手动选择桌面工作流的 `scope=deployment-unix`，仅在 Linux x86_64、macOS Intel／ARM 构建并执行本项诊断；`scope=deployment-linux` 只补验 Linux 专属变动。不运行完整桌面测试矩阵。CI 仅上传诊断证据，不上传安装包或发布产品。
 
 ## 许可材料与发行边界
 

@@ -36,7 +36,9 @@ CI 使用只读仓库权限和固定依赖；不打包、签名、发布或安�
 
 `scope=ui-unix` 仅补验 Linux、macOS Intel／ARM 的原生阅读与共享界面回归，使用 `test --suite ui` 的固定离屏环境；Windows 原生系统命令与动画设置以独立本机证据记录。界面截图与几何回归不替代用户要求的视觉验收，也不因定向范围新增而重复完整桌面 CI。
 
-`scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入、四项自有离屏探针和资源助手定向用例，保留证据而不发布软件。其通过不代表完整桌面回归、最低系统、安装或发行许可验收。
+`scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入、四项自有离屏探针和资源助手定向用例，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、安装或发行许可验收。
+
+桌面工作流的 Ubuntu 22.04 依赖准备使用显式官方 jammy／updates／security 源与 Ubuntu 归档密钥，APT 配置只对该命令生效；不关闭签名核验，不沿用宿主预设的镜像优先级。索引更新、包下载及整个准备步骤均有时限；DNS 或镜像故障作为基础设施失败记录，不无限等待或计为产品测试结果。
 
 ## 工具、诊断与周期收尾
 
