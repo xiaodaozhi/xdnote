@@ -2,9 +2,9 @@
 
 ## 范围与接入顺序
 
-已选择 Rust 全局解析＋Qt 原生按需布局作为预览主路线，litehtml 核心＋自有 Qt 适配保留备选，候选依据见[方案评估](preview-alternatives.md)。`crates/markdown/src/native_model.rs` 和 `NativePreviewModel` 已提供只读模型及 Qt Core 接收端；当前产品 `MarkdownPreview` 仍使用待迁移的 WebEngine，没有完成控件替换。语义模型通过不表示布局、选择复制、实际资源打开、窗口或读屏通过。
+已选择 Rust 全局解析＋Qt 原生按需布局作为预览主路线，litehtml 核心＋自有 Qt 适配保留备选，候选依据见[方案评估](preview-alternatives.md)。`crates/markdown/src/native_model.rs` 和 `NativePreviewModel` 提供只读模型及 Qt 接收端；产品 `MarkdownPreview` 已在工作区和独立窗口接入原生阅读控件，构建与运行依赖已移除 WebEngine。解析器职责、候选与限制见 [Rust 解析方案](markdown-parsing.md)；模型通过仍不等于真实读屏、完整平台或发行验收通过。
 
-[原生阅读控件](native-preview-view.md)已建立独立准入，覆盖有界片段、连续像素滚动、全局选区、复制与受控输入契约；长段增量布局、部分文字和产品服务桥接仍待完成。按依赖顺序满足这些条件后，再替换工作区和独立窗口，删除 WebEngine 链接、SDK 模块、运行与部署配置，并重新核对依赖闭包。布局继续遵守现有视觉、会话和资源契约，不沿用试验的 H1 切节或节序号滚动。
+[原生阅读控件](native-preview-view.md)已接入长段按需布局、全局选区、复制和受控产品资源／导航服务，并通过[段落语义范围](scroll-synchronization.md)关联双栏滚动。布局继续遵守现有视觉、会话和资源契约，不沿用试验的 H1 切节或节序号滚动；实际平台、真实辅助技术和部署边界以各项证据分别记录。
 
 ## 解析与所有权
 
