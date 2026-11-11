@@ -17,6 +17,7 @@
 #include <QTest>
 #include <QInputMethodEvent>
 #include <QWheelEvent>
+#include <QKeyEvent>
 #include <cmath>
 
 using namespace xdnote;
@@ -98,7 +99,7 @@ private slots:
         Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane));
         auto *editor = pane->editor(); auto *view = pane->preview()->view(); auto *reader = view->verticalScrollBar(); editor->send(SCI_SETSEL, 2, 10); QVERIFY(waitForMapping(pane)); const auto anchor = editor->send(SCI_GETANCHOR), caret = editor->send(SCI_GETCURRENTPOS); auto *focus = QApplication::focusWidget(); const auto original = pane->document()->session()->snapshot();
         const int b = byteAt(f.source, QStringLiteral("## 锚点 B")); const auto targetB = view->scrollSpanForSource(b, view->displayedStamp()); QVERIFY(targetB);
-        QSignalSpy moves(reader, &QScrollBar::valueChanged); editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(visualLine(editor, b))); QTRY_VERIFY(std::abs(reader->value() - targetB->top) <= 2); QVERIFY(waitForMapping(pane)); QVERIFY(moves.size() <= 2);
+        QSignalSpy moves(reader, &QScrollBar::valueChanged); editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(visualLine(editor, b))); QTRY_VERIFY(std::abs(reader->value() - targetB->top) <= 2); QVERIFY(waitForMapping(pane)); const auto settled = moves.size(); QTest::qWait(150); QCOMPARE(moves.size(), settled); QCOMPARE(editor->send(SCI_GETFIRSTVISIBLELINE), visualLine(editor, b));
         const auto sourceRatio = double(editor->verticalScrollBar()->value()) / editor->verticalScrollBar()->maximum(); const auto readerRatio = double(reader->value()) / reader->maximum(); QVERIFY(std::abs(sourceRatio - readerRatio) > .05);
         const int c = byteAt(f.source, QStringLiteral("## 锚点 C")); const auto targetC = view->scrollSpanForSource(c, view->displayedStamp()); QVERIFY(targetC); reader->setValue(qRound(targetC->top)); QTRY_VERIFY(std::abs(editor->send(SCI_GETFIRSTVISIBLELINE) - visualLine(editor, c)) <= 1);
         QCOMPARE(editor->send(SCI_GETANCHOR), anchor); QCOMPARE(editor->send(SCI_GETCURRENTPOS), caret); QCOMPARE(QApplication::focusWidget(), focus); QCOMPARE(pane->document()->session()->snapshot().utf8, original.utf8); QCOMPARE(pane->document()->session()->revision(), original.revision); QVERIFY(!pane->document()->dirty());
@@ -132,13 +133,30 @@ private slots:
         auto revoked = view->displayedStamp(); ++revoked.resources; view->expect(revoked); const auto retained = view->verticalScrollBar()->value(); editor->send(SCI_SETFIRSTVISIBLELINE, 45); QTest::qWait(40); QCOMPARE(view->verticalScrollBar()->value(), retained); QVERIFY(!pane->preview()->mappingCurrent());
         pane->preview()->refresh(); QVERIFY(waitForMapping(pane)); const auto changed = pane->document()->session()->snapshot(); QCOMPARE(changed.utf8, QByteArray("inserted\n\n") + f.source); QCOMPARE(pane->document()->session()->undo(), EditResult::Applied); QTRY_VERIFY(pane->preview()->mappingCurrent()); QCOMPARE(pane->document()->session()->snapshot().utf8, f.source);
     }
+    void deferredSnapshotsResumeAfterBusyNotificationsAndComposition() {
+        DocumentSession session("# deferred\n\nretained"); Appearance appearance;
+        QCOMPARE(session.beginResourceUpdate(), EditResult::Applied);
+        MarkdownPreview preview(&session, nullptr, 24, &appearance); preview.resize(640, 420); preview.show(); QTest::qWait(30); QVERIFY(!preview.view()->content());
+        session.endResourceUpdate(); QTRY_VERIFY(preview.mappingCurrent()); const auto before = preview.view()->displayedStamp();
+        const auto snapshot = session.snapshot(); bool rebound = false;
+        const auto connection = connect(&session, &DocumentSession::stateChanged, &preview, [&] {
+            if (rebound) return; rebound = true;
+            QVERIFY(session.isBusy()); preview.setResourceContext({}, "after-save.md", "new-file-identity");
+        });
+        QCOMPARE(session.confirmSaved(snapshot), EditResult::Applied); QObject::disconnect(connection); QTRY_VERIFY(preview.mappingCurrent()); QVERIFY(rebound); QVERIFY(preview.view()->displayedStamp().path > before.path); QCOMPARE(session.snapshot().utf8, snapshot.utf8);
+        DocumentSession composing("# IME\n"); SourceEditor editor(&composing, nullptr, &appearance); editor.show();
+        QInputMethodEvent preedit(QStringLiteral("组合输入"), {}); QApplication::sendEvent(&editor, &preedit); QVERIFY(composing.isComposing());
+        MarkdownPreview delayed(&composing, nullptr, 24, &appearance); delayed.resize(640, 420); delayed.show(); QTest::qWait(30); QVERIFY(!delayed.view()->content());
+        QInputMethodEvent cancel; QApplication::sendEvent(&editor, &cancel); QTRY_VERIFY(!composing.isComposing()); QTRY_VERIFY(delayed.mappingCurrent());
+        DocumentSession closing("close while deferred"); QCOMPARE(closing.beginResourceUpdate(), EditResult::Applied); auto *pending = new MarkdownPreview(&closing); pending->show(); QTest::qWait(20); QPointer<MarkdownPreview> deleted(pending); pending->deleteLater(); closing.endResourceUpdate(); QTRY_VERIFY(deleted.isNull());
+    }
     void wheelAndKeyboardScrollDriveTheOppositeView() {
         Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane));
         auto *editor = pane->editor(); auto *view = pane->preview()->view();
         QWheelEvent wheel(QPointF(100, 100), QPointF(editor->viewport()->mapToGlobal(QPoint(100, 100))), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
         QApplication::sendEvent(editor->viewport(), &wheel); QTRY_VERIFY(editor->send(SCI_GETFIRSTVISIBLELINE) > 0); QTRY_VERIFY(view->verticalScrollBar()->value() > 0);
-        view->setFocus(Qt::OtherFocusReason); QVERIFY(waitForMapping(pane)); QTest::keyClick(view, Qt::Key_End, Qt::ControlModifier); QVERIFY(waitForMapping(pane)); QVERIFY(view->verticalScrollBar()->maximum() > 0); QCOMPARE(view->verticalScrollBar()->value(), view->verticalScrollBar()->maximum()); QCOMPARE(editor->verticalScrollBar()->value(), editor->verticalScrollBar()->maximum());
-        QTest::keyClick(view, Qt::Key_Home, Qt::ControlModifier); QTRY_COMPARE(editor->verticalScrollBar()->value(), 0); QVERIFY(view->characterRect(0).intersects(QRect(view->viewport()->mapToGlobal(QPoint()), view->viewport()->size()))); QCOMPARE(pane->document()->session()->snapshot().utf8, f.source);
+        view->setFocus(Qt::OtherFocusReason); QVERIFY(waitForMapping(pane)); QKeyEvent end(QEvent::KeyPress, Qt::Key_End, Qt::ControlModifier); QApplication::sendEvent(view, &end); QCOMPARE(view->selection().second, view->content()->text.size()); QVERIFY(waitForMapping(pane)); QVERIFY(view->verticalScrollBar()->maximum() > 0); QCOMPARE(view->verticalScrollBar()->value(), view->verticalScrollBar()->maximum()); QCOMPARE(editor->verticalScrollBar()->value(), editor->verticalScrollBar()->maximum());
+        QKeyEvent home(QEvent::KeyPress, Qt::Key_Home, Qt::ControlModifier); QApplication::sendEvent(view, &home); QCOMPARE(view->selection().second, 0); QVERIFY(waitForMapping(pane)); QTRY_COMPARE(editor->verticalScrollBar()->value(), 0); QVERIFY(view->characterRect(0).intersects(QRect(view->viewport()->mapToGlobal(QPoint()), view->viewport()->size()))); QCOMPARE(pane->document()->session()->snapshot().utf8, f.source);
     }
     void modesHiddenTabsAndPendingCloseRemainIndependent() {
         Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane)); auto *editor = pane->editor(); auto *view = pane->preview()->view();

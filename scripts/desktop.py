@@ -305,8 +305,8 @@ def main():
             env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
             suffix = ".exe" if platform.system() == "Windows" else ""
             groups = {"scroll": [], "native_preview": [],
-                      "workspace": ["splitThemeGeometryAndSaveUseTheSameSession", "readingPositionSurvivesNativeHostTransfer"],
-                      "desktop": ["previewPendingHeadingRejectsContextAndRevisionChanges", "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork", "previewFragmentLinksNavigateOnlyTheDisplayedRevision"]}
+                      "workspace": ["splitThemeGeometryAndSaveUseTheSameSession", "readingPositionSurvivesNativeHostTransfer", "compositionDefersTransferAndClosedDestinationPreservesStandalone"],
+                      "desktop": ["previewPendingHeadingRejectsContextAndRevisionChanges", "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork", "previewFragmentLinksNavigateOnlyTheDisplayedRevision", "literalTextAndAtomicUndo", "viewLifetimeAndReadOnly", "compositionAndCommit", "reentrancyClosingAndWrongThread", "accessibleCommandsAndInvalidation", "accessibleWritesDoNotFlushDocumentOnAnotherThread", "accessibleWritesRejectUncommittedComposition", "nativeInputNotificationRejectsReentrantWrite"]}
             result = {"ok": False, "scope": "fixed offscreen semantic scroll mapping and affected preview/session regression", "buildIdentity": verify_build_identity(build, args.profile, qt), "tests": {}}
             try:
                 for group, functions in groups.items():

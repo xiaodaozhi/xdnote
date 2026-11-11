@@ -55,6 +55,7 @@ signals:
     void documentLinkRequested(QString target, quint64 revision);
 private:
     void startPending();
+    void retryDeferred();
     QPointer<DocumentSession> m_session;
     NativePreviewView *m_view = nullptr;
     QFutureWatcher<RenderResult> m_worker;
@@ -81,5 +82,6 @@ private:
     quint64 m_navigationRevision = 0;
     bool m_navigationPending = false;
     bool m_pageReady = false;
+    bool m_refreshDeferred = false, m_refreshQueued = false;
 };
 }
