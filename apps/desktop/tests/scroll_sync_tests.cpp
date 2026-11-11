@@ -39,6 +39,28 @@ std::shared_ptr<const NativePreviewContent> derived(const QByteArray &source) {
 const NativePreviewStamp identity{QUuid("{12638533-71c1-4358-999a-2c7dc38ca006}"), 7, 2, 3, 4};
 int byteAt(const QByteArray &source, const QString &marker) { return int(source.indexOf(marker.toUtf8())); }
 sptr_t visualLine(SourceEditor *editor, int byte) { return editor->send(SCI_VISIBLEFROMDOCLINE, uptr_t(editor->send(SCI_LINEFROMPOSITION, uptr_t(byte)))); }
+// Frame/layout and wrap completion are asynchronous, especially on slower
+// runners. Require a quiet, current mapping instead of sleeping a fixed time
+// and accidentally interacting with the next transient layout.
+bool waitForMapping(SingleFileWindow *pane) {
+    auto *preview = pane->preview(); auto *view = preview->view(); auto *source = pane->editor();
+    QElapsedTimer elapsed; elapsed.start(); qint64 changedAt = 0; QObject watcher;
+    const auto changed = [&] { changedAt = elapsed.elapsed(); };
+    QObject::connect(view, &NativePreviewView::layoutStarted, &watcher, changed);
+    QObject::connect(view, &NativePreviewView::layoutReady, &watcher, changed);
+    for (auto *bar : {source->verticalScrollBar(), view->verticalScrollBar()}) {
+        QObject::connect(bar, &QScrollBar::rangeChanged, &watcher, changed);
+        QObject::connect(bar, &QScrollBar::valueChanged, &watcher, changed);
+    }
+    auto sourceSize = source->viewport()->size(), previewSize = view->viewport()->size();
+    while (elapsed.elapsed() < 10000) {
+        if (!preview->mappingCurrent() || sourceSize != source->viewport()->size() || previewSize != view->viewport()->size()) changed();
+        sourceSize = source->viewport()->size(); previewSize = view->viewport()->size();
+        if (preview->mappingCurrent() && elapsed.elapsed() - changedAt >= 100) return true;
+        QTest::qWait(10);
+    }
+    return false;
+}
 struct Fixture {
     QTemporaryDir directory;
     QByteArray source = sample();
@@ -73,57 +95,57 @@ private slots:
         QVERIFY(!view.scrollSpanForSource(quint32(source.size() + 1), identity)); QVERIFY(!view.scrollSpanAtY(-1, identity));
     }
     void actualSplitFollowsBlocksInBothDirectionsWithoutChangingTheBuffer() {
-        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40);
-        auto *editor = pane->editor(); auto *view = pane->preview()->view(); auto *reader = view->verticalScrollBar(); editor->send(SCI_SETSEL, 2, 10); const auto anchor = editor->send(SCI_GETANCHOR), caret = editor->send(SCI_GETCURRENTPOS); auto *focus = QApplication::focusWidget(); const auto original = pane->document()->session()->snapshot();
+        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane));
+        auto *editor = pane->editor(); auto *view = pane->preview()->view(); auto *reader = view->verticalScrollBar(); editor->send(SCI_SETSEL, 2, 10); QVERIFY(waitForMapping(pane)); const auto anchor = editor->send(SCI_GETANCHOR), caret = editor->send(SCI_GETCURRENTPOS); auto *focus = QApplication::focusWidget(); const auto original = pane->document()->session()->snapshot();
         const int b = byteAt(f.source, QStringLiteral("## 锚点 B")); const auto targetB = view->scrollSpanForSource(b, view->displayedStamp()); QVERIFY(targetB);
-        QSignalSpy moves(reader, &QScrollBar::valueChanged); editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(visualLine(editor, b))); QTRY_VERIFY(std::abs(reader->value() - targetB->top) <= 2); QTest::qWait(50); QVERIFY(moves.size() <= 2);
+        QSignalSpy moves(reader, &QScrollBar::valueChanged); editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(visualLine(editor, b))); QTRY_VERIFY(std::abs(reader->value() - targetB->top) <= 2); QVERIFY(waitForMapping(pane)); QVERIFY(moves.size() <= 2);
         const auto sourceRatio = double(editor->verticalScrollBar()->value()) / editor->verticalScrollBar()->maximum(); const auto readerRatio = double(reader->value()) / reader->maximum(); QVERIFY(std::abs(sourceRatio - readerRatio) > .05);
         const int c = byteAt(f.source, QStringLiteral("## 锚点 C")); const auto targetC = view->scrollSpanForSource(c, view->displayedStamp()); QVERIFY(targetC); reader->setValue(qRound(targetC->top)); QTRY_VERIFY(std::abs(editor->send(SCI_GETFIRSTVISIBLELINE) - visualLine(editor, c)) <= 1);
         QCOMPARE(editor->send(SCI_GETANCHOR), anchor); QCOMPARE(editor->send(SCI_GETCURRENTPOS), caret); QCOMPARE(QApplication::focusWidget(), focus); QCOMPARE(pane->document()->session()->snapshot().utf8, original.utf8); QCOMPARE(pane->document()->session()->revision(), original.revision); QVERIFY(!pane->document()->dirty());
-        reader->setValue(reader->maximum()); QTRY_COMPARE(editor->verticalScrollBar()->value(), editor->verticalScrollBar()->maximum()); pane->setContentZoom(125); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40); QCOMPARE(reader->value(), reader->maximum()); editor->send(SCI_SETFIRSTVISIBLELINE, 0); QTRY_COMPARE(reader->value(), 0);
-        pane->setContentZoom(150); pane->preview()->navigateToHeading(QStringLiteral("锚点-c"), pane->document()->session()->revision()); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(50); QTRY_VERIFY(std::abs(editor->send(SCI_GETFIRSTVISIBLELINE) - visualLine(editor, c)) <= 1);
+        reader->setValue(reader->maximum()); QTRY_COMPARE(editor->verticalScrollBar()->value(), editor->verticalScrollBar()->maximum()); pane->setContentZoom(125); QVERIFY(waitForMapping(pane)); QCOMPARE(reader->value(), reader->maximum()); editor->send(SCI_SETFIRSTVISIBLELINE, 0); QTRY_COMPARE(reader->value(), 0);
+        pane->setContentZoom(150); pane->preview()->navigateToHeading(QStringLiteral("锚点-c"), pane->document()->session()->revision()); QVERIFY(waitForMapping(pane)); QTRY_VERIFY(std::abs(editor->send(SCI_GETFIRSTVISIBLELINE) - visualLine(editor, c)) <= 1);
     }
     void wrappedParagraphAndReaderAnchorSurviveZoomResizeAndTheme() {
-        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40);
+        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane));
         auto *editor = pane->editor(); auto *view = pane->preview()->view(); const int byte = byteAt(f.source, QStringLiteral("长段落")); const auto line = editor->send(SCI_LINEFROMPOSITION, uptr_t(byte)); const auto rows = editor->send(SCI_WRAPCOUNT, uptr_t(line)); QVERIFY(rows > 10);
         editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(visualLine(editor, byte) + rows / 2)); const auto span = view->scrollSpanForSource(byte, view->displayedStamp()); QVERIFY(span); QTRY_VERIFY(view->verticalScrollBar()->value() > span->top + (span->bottom - span->top) * .25); QVERIFY(view->verticalScrollBar()->value() < span->top + (span->bottom - span->top) * .75);
         // A reader fraction must survive reflow even when it falls between two
         // source display rows; restoring from a rounded source row would drift.
-        view->verticalScrollBar()->setValue(qRound(span->top + .413 * (span->bottom - span->top))); QTest::qWait(40);
-        pane->setContentZoom(150); f.workspace->resize(1030, 760); QVERIFY(pane->appearance()->setPreferences("dark", "olive")); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(60);
+        view->verticalScrollBar()->setValue(qRound(span->top + .413 * (span->bottom - span->top))); QVERIFY(waitForMapping(pane));
+        pane->setContentZoom(150); f.workspace->resize(1030, 760); QVERIFY(pane->appearance()->setPreferences("dark", "olive")); QVERIFY(waitForMapping(pane));
         const auto changed = view->scrollSpanForSource(byte, view->displayedStamp()); QVERIFY(changed); const auto fraction = (view->verticalScrollBar()->value() - changed->top) / (changed->bottom - changed->top); QVERIFY2(std::abs(fraction - .413) < .015, qPrintable(QString::number(fraction)));
-        const auto readerPosition = view->verticalScrollBar()->value(); editor->send(SCI_SETWRAPMODE, SC_WRAP_NONE); QTest::qWait(50); QCOMPARE(view->verticalScrollBar()->value(), readerPosition); editor->send(SCI_SETWRAPMODE, SC_WRAP_WORD); QTest::qWait(50); QCOMPARE(view->verticalScrollBar()->value(), readerPosition);
+        const auto readerPosition = view->verticalScrollBar()->value(); editor->send(SCI_SETWRAPMODE, SC_WRAP_NONE); QVERIFY(waitForMapping(pane)); QCOMPARE(view->verticalScrollBar()->value(), readerPosition); editor->send(SCI_SETWRAPMODE, SC_WRAP_WORD); QVERIFY(waitForMapping(pane)); QCOMPARE(view->verticalScrollBar()->value(), readerPosition);
         const auto sourceFraction = [&] { return double(editor->send(SCI_GETFIRSTVISIBLELINE) - visualLine(editor, byte)) / qMax(sptr_t(1), editor->send(SCI_WRAPCOUNT, uptr_t(line))); };
         QTRY_VERIFY_WITH_TIMEOUT(std::abs(sourceFraction() - .413) < .05, 3000);
-        const auto b = byteAt(f.source, QStringLiteral("## 锚点 B")); editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(visualLine(editor, b))); QTest::qWait(40); pane->setContentZoom(125); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(50);
+        const auto b = byteAt(f.source, QStringLiteral("## 锚点 B")); editor->send(SCI_SETFIRSTVISIBLELINE, uptr_t(visualLine(editor, b))); QVERIFY(waitForMapping(pane)); pane->setContentZoom(125); QVERIFY(waitForMapping(pane));
         QTRY_COMPARE(editor->send(SCI_DOCLINEFROMVISIBLE, uptr_t(editor->send(SCI_GETFIRSTVISIBLELINE))), editor->send(SCI_LINEFROMPOSITION, uptr_t(b)));
         const auto current = view->scrollSpanForSource(b, view->displayedStamp()); QVERIFY(current); QVERIFY(std::abs(view->verticalScrollBar()->value() - current->top) <= 2);
         QCOMPARE(pane->document()->session()->snapshot().utf8, f.source);
         const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE"); if (!evidence.isEmpty()) { QVERIFY(QDir().mkpath(evidence)); QVERIFY(f.workspace->grab().save(evidence + "/split-scroll-dark.png")); }
     }
     void editingAndRevokedRequestCannotUseOldMappings() {
-        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40);
+        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane));
         auto *editor = pane->editor(); auto *view = pane->preview()->view(); auto old = view->displayedStamp();
         QInputMethodEvent preedit(QStringLiteral("正在输入"), {}); QApplication::sendEvent(editor, &preedit); QVERIFY(pane->document()->session()->isComposing()); QVERIFY(!pane->preview()->mappingCurrent()); const auto before = view->verticalScrollBar()->value(); editor->send(SCI_SETFIRSTVISIBLELINE, 40); QTest::qWait(25); QCOMPARE(view->verticalScrollBar()->value(), before);
         QInputMethodEvent cancel; QApplication::sendEvent(editor, &cancel); QTRY_VERIFY(!pane->document()->session()->isComposing()); QTRY_VERIFY(pane->preview()->mappingCurrent()); editor->send(SCI_SETFIRSTVISIBLELINE, 40); QTRY_VERIFY(view->verticalScrollBar()->value() != before);
         editor->send(SCI_INSERTTEXT, 0, reinterpret_cast<sptr_t>("inserted\n\n")); QVERIFY(!pane->preview()->mappingCurrent()); QTRY_VERIFY(pane->preview()->mappingCurrent()); QVERIFY(view->displayedStamp().revision > old.revision);
         auto revoked = view->displayedStamp(); ++revoked.resources; view->expect(revoked); const auto retained = view->verticalScrollBar()->value(); editor->send(SCI_SETFIRSTVISIBLELINE, 45); QTest::qWait(40); QCOMPARE(view->verticalScrollBar()->value(), retained); QVERIFY(!pane->preview()->mappingCurrent());
-        pane->preview()->refresh(); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40); const auto changed = pane->document()->session()->snapshot(); QCOMPARE(changed.utf8, QByteArray("inserted\n\n") + f.source); QCOMPARE(pane->document()->session()->undo(), EditResult::Applied); QTRY_VERIFY(pane->preview()->mappingCurrent()); QCOMPARE(pane->document()->session()->snapshot().utf8, f.source);
+        pane->preview()->refresh(); QVERIFY(waitForMapping(pane)); const auto changed = pane->document()->session()->snapshot(); QCOMPARE(changed.utf8, QByteArray("inserted\n\n") + f.source); QCOMPARE(pane->document()->session()->undo(), EditResult::Applied); QTRY_VERIFY(pane->preview()->mappingCurrent()); QCOMPARE(pane->document()->session()->snapshot().utf8, f.source);
     }
     void wheelAndKeyboardScrollDriveTheOppositeView() {
-        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40);
+        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane));
         auto *editor = pane->editor(); auto *view = pane->preview()->view();
         QWheelEvent wheel(QPointF(100, 100), QPointF(editor->viewport()->mapToGlobal(QPoint(100, 100))), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
         QApplication::sendEvent(editor->viewport(), &wheel); QTRY_VERIFY(editor->send(SCI_GETFIRSTVISIBLELINE) > 0); QTRY_VERIFY(view->verticalScrollBar()->value() > 0);
-        view->setFocus(Qt::OtherFocusReason); QTest::keyClick(view, Qt::Key_End, Qt::ControlModifier); QTRY_COMPARE(view->verticalScrollBar()->value(), view->verticalScrollBar()->maximum()); QTRY_COMPARE(editor->verticalScrollBar()->value(), editor->verticalScrollBar()->maximum());
+        view->setFocus(Qt::OtherFocusReason); QVERIFY(waitForMapping(pane)); QTest::keyClick(view, Qt::Key_End, Qt::ControlModifier); QVERIFY(waitForMapping(pane)); QVERIFY(view->verticalScrollBar()->maximum() > 0); QCOMPARE(view->verticalScrollBar()->value(), view->verticalScrollBar()->maximum()); QCOMPARE(editor->verticalScrollBar()->value(), editor->verticalScrollBar()->maximum());
         QTest::keyClick(view, Qt::Key_Home, Qt::ControlModifier); QTRY_COMPARE(editor->verticalScrollBar()->value(), 0); QVERIFY(view->characterRect(0).intersects(QRect(view->viewport()->mapToGlobal(QPoint()), view->viewport()->size()))); QCOMPARE(pane->document()->session()->snapshot().utf8, f.source);
     }
     void modesHiddenTabsAndPendingCloseRemainIndependent() {
-        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40); auto *editor = pane->editor(); auto *view = pane->preview()->view();
-        pane->setViewMode(SingleFileWindow::ViewMode::Reading); QTRY_VERIFY(view->ready()); QTest::qWait(30); const auto hidden = editor->send(SCI_GETFIRSTVISIBLELINE); view->verticalScrollBar()->setValue(400); QTest::qWait(30); QCOMPARE(editor->send(SCI_GETFIRSTVISIBLELINE), hidden);
-        pane->setViewMode(SingleFileWindow::ViewMode::Split); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(40);
-        const auto other = f.directory.filePath("other.md"); QVERIFY(fileFixtures::write(other, "# Other\n\nother")); f.app.openInWorkspace(other, f.workspace); QTRY_VERIFY(f.workspace->activePane() && f.workspace->activePane() != pane); auto *active = f.workspace->activePane(); QTRY_VERIFY(active->preview()->view()->ready()); const auto otherPosition = active->preview()->readingPosition(); editor->send(SCI_SETFIRSTVISIBLELINE, 80); QTest::qWait(30); QCOMPARE(active->preview()->readingPosition(), otherPosition);
-        f.workspace->activatePane(pane->paneId()); QTRY_VERIFY(pane->isVisible()); QTRY_VERIFY(pane->preview()->mappingCurrent()); QTest::qWait(30); editor->send(SCI_SETFIRSTVISIBLELINE, 90); QPointer<SingleFileWindow> closed(pane); f.workspace->closePane(pane->paneId()); QTRY_VERIFY(closed.isNull()); QCOMPARE(f.workspace->activePane(), active); QCOMPARE(active->document()->session()->snapshot().utf8, QByteArray("# Other\n\nother"));
+        Fixture f; QVERIFY(f.written); QTRY_VERIFY(f.pane()); auto *pane = f.pane(); pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane)); auto *editor = pane->editor(); auto *view = pane->preview()->view();
+        pane->setViewMode(SingleFileWindow::ViewMode::Reading); QVERIFY(waitForMapping(pane)); const auto hidden = editor->send(SCI_GETFIRSTVISIBLELINE); view->verticalScrollBar()->setValue(400); QTest::qWait(30); QCOMPARE(editor->send(SCI_GETFIRSTVISIBLELINE), hidden);
+        pane->setViewMode(SingleFileWindow::ViewMode::Split); QVERIFY(waitForMapping(pane));
+        const auto other = f.directory.filePath("other.md"); QVERIFY(fileFixtures::write(other, "# Other\n\nother")); f.app.openInWorkspace(other, f.workspace); QTRY_VERIFY(f.workspace->activePane() && f.workspace->activePane() != pane); auto *active = f.workspace->activePane(); QVERIFY(waitForMapping(active)); const auto otherPosition = active->preview()->readingPosition(); editor->send(SCI_SETFIRSTVISIBLELINE, 80); QTest::qWait(30); QCOMPARE(active->preview()->readingPosition(), otherPosition);
+        f.workspace->activatePane(pane->paneId()); QTRY_VERIFY(pane->isVisible()); QVERIFY(waitForMapping(pane)); editor->send(SCI_SETFIRSTVISIBLELINE, 90); QPointer<SingleFileWindow> closed(pane); f.workspace->closePane(pane->paneId()); QTRY_VERIFY(closed.isNull()); QCOMPARE(f.workspace->activePane(), active); QCOMPARE(active->document()->session()->snapshot().utf8, QByteArray("# Other\n\nother"));
     }
 };
 int main(int argc, char **argv) { initializeGuiRuntime(); QApplication app(argc, argv); configureGuiApplication(); app.setQuitOnLastWindowClosed(false); SourceEditor::installAccessibility(); ScrollSyncTests tests; return QTest::qExec(&tests, argc, argv); }
