@@ -2,7 +2,7 @@
 
 一款面向 Windows、macOS 和 Linux 的 Markdown 阅读与编辑桌面应用，让打开、阅读和修改本地文档保持简单。
 
-**当前阶段：工作区基础、单文件功能原型与组件准入。** `xdnote` 已接入真实本地 Markdown 文件的打开、阅读／编辑切换、保存、另存为、外部冲突和未保存关闭确认；同一文件跨入口共用会话。独立窗口支持跟随系统／浅色／深色与六种强调色，在文档操作菜单中选择并持久化，源文和阅读使用同一主题。首轮只接收不超过 2 MiB 的严格 UTF-8 普通文件；硬链接文件采用另存为保护。构建与运行见[开发构建](docs/engineering/developer-build.md)。工作区基础原型已接入显式目录、多标签、原会话接管和编辑／阅读／双栏，详见[工作区基础](docs/engineering/workspace-foundation.md)。Windows、Linux 和 macOS 已接入[受限本地图片预览与图片导入](docs/engineering/workspace-resource-foundation.md)，独立窗口导入会显式选择图片目标目录；预览支持当前文档的标题片段跳转。Windows、Linux 和 macOS 已接入工作区引用检查、相对文档链接打开／标题定位，以及预览确认的移动和引用维护；实际平台验收按各项证据独立记录。完整设置窗口、系统文件关联安装和发行包尚未完成，下文产品方向不代表全部已经实现。
+**当前阶段：工作区基础、单文件功能原型与组件准入。** `xdnote` 已接入真实本地 Markdown 文件的打开、阅读／编辑切换、保存、另存为、外部冲突和未保存关闭确认；同一文件跨入口共用会话。独立窗口支持跟随系统／浅色／深色与六种强调色，在文档操作菜单中选择并持久化，源文和阅读使用同一主题。首轮只接收不超过 2 MiB 的严格 UTF-8 普通文件；硬链接文件采用另存为保护。构建与运行见[开发构建](docs/engineering/developer-build.md)。工作区基础原型已接入显式目录、多标签、原会话接管和编辑／阅读／双栏，详见[工作区基础](docs/engineering/workspace-foundation.md)。Windows、Linux 和 macOS 已接入[受限本地图片预览与图片导入](docs/engineering/workspace-resource-foundation.md)，独立窗口导入会显式选择图片目标目录；预览支持当前文档的标题片段跳转。Windows、Linux 和 macOS 已接入工作区引用检查、相对文档链接打开／标题定位，以及预览确认的移动和引用维护；实际平台验收按各项证据独立记录。[设置窗口与偏好](docs/engineering/settings-window.md)已接入打开、排版和默认关闭的自动保存；新设置窗口的最终人工验收、系统文件关联安装和发行包尚未完成，下文产品方向不代表全部已经实现。
 
 ![xdnote 主要界面设计参考](design/hifi/v2/featured.png)
 

@@ -26,11 +26,11 @@ int main(int argc, char **argv) {
     xdnote::FileApplication *windows = nullptr;
     const auto result = instance.start(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation), paths, [&windows](const QStringList &files) {
         if (!windows) return;
-        if (files.isEmpty()) windows->activate(); else for (const auto &path : files) windows->open(path);
+        if (files.isEmpty()) windows->activate(); else for (const auto &path : files) windows->openExternal(path);
     });
     if (result == xdnote::SingleInstance::Result::Forwarded) return 0;
     if (result == xdnote::SingleInstance::Result::Error) { std::fprintf(stderr, "%s\n", instance.error().toUtf8().constData()); QMessageBox::critical(nullptr, QStringLiteral("xdnote"), instance.error()); return 1; }
     xdnote::FileApplication desktop(&application, QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/settings.json"); windows = &desktop;
-    if (paths.isEmpty()) desktop.workspaceWindow(); else for (const auto &path : paths) desktop.open(path);
+    if (paths.isEmpty()) desktop.workspaceWindow(); else for (const auto &path : paths) desktop.openExternal(path);
     const int code = application.exec(); windows = nullptr; instance.stop(); return code;
 }

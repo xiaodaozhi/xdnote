@@ -43,8 +43,8 @@
       "designStatus": "reference-available",
       "implementationStatus": "workspace-prototype",
       "implementationSource": "apps/desktop/src/WorkspaceWindow.cpp",
-      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection", "filename-search", "recent-documents", "favorites", "relative-breadcrumb", "appearance-menu", "resources-and-links"],
-      "deferredStates": ["full-text-search", "full-settings-window", "mapped-scroll-sync"],
+      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection", "filename-search", "recent-documents", "favorites", "relative-breadcrumb", "appearance-menu", "resources-and-links", "settings-window"],
+      "deferredStates": ["full-text-search", "mapped-scroll-sync"],
       "nativeValidation": "not-run"
     },
     {
@@ -88,8 +88,11 @@
         "about"
       ],
       "designStatus": "reference-available",
-      "implementationStatus": "not-started",
-      "nativeValidation": "not-run"
+      "implementationStatus": "settings-prototype",
+      "nativeValidation": "not-run",
+      "implementationSource": "apps/desktop/src/SettingsWindow.cpp",
+      "implementedStates": ["singleton-nonmodal", "six-pages", "settings-search", "shared-preferences", "live-editor-and-reader", "open-policy", "auto-save", "light-and-dark", "six-accents", "compact-swatch-layout"],
+      "deferredStates": ["native-association", "custom-shortcut-mapping", "remote-images", "manual-visual-acceptance"]
     },
     {
       "id": "unsaved-confirmation",

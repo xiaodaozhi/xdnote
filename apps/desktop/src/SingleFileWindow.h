@@ -76,6 +76,7 @@ signals:
     void copyTextRequested(QString text);
     void revealRequested(QString directory);
     void workspaceRequested();
+    void settingsRequested();
     void openDirectoryRequested();
     void sidebarRequested();
     void viewStateChanged();

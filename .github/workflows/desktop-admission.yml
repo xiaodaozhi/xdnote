@@ -1,5 +1,5 @@
 name: Desktop admission
-run-name: ${{ inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
+run-name: ${{ inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, settings-unix]
 
 permissions:
   contents: read
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   desktop:
-    name: ${{ inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
+    name: ${{ inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     strategy:
@@ -30,7 +30,7 @@ jobs:
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
           inputs.scope == 'resources-macos' &&
           '[{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
-          (inputs.scope == 'resources-unix' || inputs.scope == 'preview-unix' || inputs.scope == 'background-unix' || inputs.scope == 'ui-unix' || inputs.scope == 'deployment-unix') &&
+          (inputs.scope == 'resources-unix' || inputs.scope == 'preview-unix' || inputs.scope == 'background-unix' || inputs.scope == 'ui-unix' || inputs.scope == 'deployment-unix' || inputs.scope == 'settings-unix') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"},{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64","profile":"msvc2019","label":"windows-2022-msvc2019"}]') }}
     steps:
@@ -98,6 +98,9 @@ jobs:
           xdnote_qt_arch=gcc_64
           if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
           python scripts/deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
+      - name: Test settings and automatic saving on Unix
+        if: inputs.scope == 'settings-unix'
+        run: python scripts/desktop.py test --suite settings
       - name: Test UI polish on Unix
         if: inputs.scope == 'ui-unix'
         run: python scripts/desktop.py test --suite ui
@@ -169,7 +172,7 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: ${{ inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
+    name: ${{ inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop]
     if: always()
     runs-on: ubuntu-24.04

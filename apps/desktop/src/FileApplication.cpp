@@ -8,6 +8,8 @@
 #include "WorkspaceResourceReader.h"
 #include "WorkspacePath.h"
 #include "WorkspaceReferenceController.h"
+#include "SettingsWindow.h"
+#include "AutoSaveController.h"
 #include <QApplication>
 #include <QFileOpenEvent>
 #include <QFileDialog>
@@ -15,6 +17,7 @@
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QDir>
+#include <QKeyEvent>
 
 namespace xdnote {
 namespace {
@@ -28,6 +31,7 @@ QString rootKey(const QString &path) { const QFileInfo info(path); auto key = in
 FileApplication::FileApplication(QObject *parent, QString settingsPath)
     : QObject(parent), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
     qApp->installEventFilter(this);
+    m_autoSave = new AutoSaveController(&m_manager, m_appearance.preferences(), this);
     connect(&m_manager, &FileManager::resourcesChanged, this, [this] {
         for (auto pane : m_documents) if (pane && pane->preview()) pane->preview()->refresh();
     });
@@ -68,6 +72,7 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
 }
 FileApplication::~FileApplication() {
     m_destroying = true; qApp->removeEventFilter(this);
+    m_autoSave->stop(); delete m_autoSave; m_autoSave = nullptr; if (m_settings) delete m_settings;
     QList<QPointer<WorkspaceWindow>> workspaces; for (auto *workspace : m_workspaces) workspaces.append(workspace);
     QList<QPointer<SingleFileWindow>> panes; for (auto *pane : m_windows) panes.append(pane);
     for (auto workspace : workspaces) if (workspace) delete workspace;
@@ -80,14 +85,16 @@ SingleFileWindow *FileApplication::createWindow() {
     connect(pane, &SingleFileWindow::revealRequested, this, [](const QString &path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
     connect(pane, &SingleFileWindow::openRequested, this, [this, pane](const QString &path) { if (auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window())) openInWorkspace(path, workspace); else open(path, pane->document() ? nullptr : pane); });
     connect(pane, &SingleFileWindow::workspaceRequested, this, [this, pane] { transferToWorkspace(pane); });
+    connect(pane, &SingleFileWindow::settingsRequested, this, [this] { settingsWindow(); });
     connect(pane, &SingleFileWindow::openDirectoryRequested, this, [this, pane] { chooseDirectory(qobject_cast<WorkspaceWindow *>(pane->window())); });
     connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_linkNavigations.remove(intent); m_workspaceRequests.remove(intent); m_manager.cancelOpen(intent); });
     connect(pane, &SingleFileWindow::documentLinkRequested, this, [this, pane](const QString &target, quint64 revision) { openDocumentLink(pane, target, revision); });
     connect(pane, &SingleFileWindow::quitRequested, this, &FileApplication::requestQuit); connect(pane, &SingleFileWindow::closeCancelled, this, [this] { m_quitting = false; });
-    connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
+    connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
 }
 WorkspaceWindow *FileApplication::createWorkspace() {
     auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_navigation, &m_manager); m_workspaces.insert(workspace);
+    connect(workspace, &WorkspaceWindow::settingsRequested, this, [this] { settingsWindow(); });
     connect(workspace, &WorkspaceWindow::referenceSourceRequested, this, [this, workspace](const QString &path, const QString &identity, const QByteArray &sha, qsizetype start, qsizetype end) {
         LinkNavigation navigation; navigation.sourceLocation = true; navigation.workspace = workspace; navigation.root = workspace->resourceRoot();
         navigation.source = workspace->activePane(); navigation.sourceSha256 = sha; navigation.locationIdentity = identity; navigation.locationStart = start; navigation.locationEnd = end;
@@ -101,7 +108,7 @@ WorkspaceWindow *FileApplication::createWorkspace() {
     connect(workspace, &WorkspaceWindow::chooseDirectoryRequested, this, [this, workspace] { chooseDirectory(workspace); });
     connect(workspace, &WorkspaceWindow::closeCancelled, this, [this] { m_quitting = false; });
     connect(workspace, &WorkspaceWindow::quitRequested, this, &FileApplication::requestQuit);
-    connect(workspace, &QObject::destroyed, this, [this, workspace] { m_workspaces.remove(workspace); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return workspace;
+    connect(workspace, &QObject::destroyed, this, [this, workspace] { m_workspaces.remove(workspace); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return workspace;
 }
 WorkspaceWindow *FileApplication::workspaceWindow(const QString &root) {
     for (auto *workspace : m_workspaces) if (!workspace->closingWorkspace() && ((root.isEmpty() && workspace->rootPath().isEmpty()) || (!root.isEmpty() && !workspace->rootPath().isEmpty() && rootKey(root) == rootKey(workspace->rootPath())))) { workspace->show(); workspace->raise(); workspace->activateWindow(); return workspace; }
@@ -112,6 +119,20 @@ void FileApplication::chooseDirectory(WorkspaceWindow *owner) {
     if (owner && owner->rootPath().isEmpty() && !owner->closingWorkspace()) owner->setRootPath(root); else workspaceWindow(root);
 }
 SingleFileWindow *FileApplication::emptyWindow() { auto *pane = createWindow(); pane->show(); return pane; }
+SettingsWindow *FileApplication::settingsWindow() {
+    if (!m_settings) {
+        m_settings = new SettingsWindow(&m_appearance, &m_geometryStore);
+        connect(m_settings, &QObject::destroyed, this, [this] { if (!m_destroying && m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); });
+    }
+    if (m_settings->isMinimized()) m_settings->showNormal(); m_settings->show(); m_settings->raise(); m_settings->activateWindow(); return m_settings;
+}
+void FileApplication::openExternal(const QString &path) {
+    if (m_appearance.preferences()->value("desktop", "externalOpenTarget").toString() != "workspace-tab") { open(path); return; }
+    auto *target = qobject_cast<WorkspaceWindow *>(QApplication::activeWindow());
+    if (!m_workspaces.contains(target) || target->closingWorkspace()) target = nullptr;
+    if (!target) for (auto *workspace : m_workspaces) if (!workspace->closingWorkspace()) { target = workspace; break; }
+    if (!target) target = workspaceWindow(); openInWorkspace(path, target);
+}
 void FileApplication::open(const QString &path, SingleFileWindow *empty) {
     m_quitting = false; if (empty && empty->embedded()) { openInWorkspace(path, qobject_cast<WorkspaceWindow *>(empty->window())); return; }
     auto *pane = empty && !empty->document() ? empty : createWindow();
@@ -199,9 +220,16 @@ void FileApplication::retryTransfers() {
 }
 void FileApplication::activate() { for (auto *workspace : m_workspaces) { if (workspace->isMinimized()) workspace->showNormal(); workspace->raise(); workspace->activateWindow(); return; } if (!m_windows.isEmpty()) activatePane(*m_windows.begin()); else workspaceWindow(); }
 void FileApplication::requestQuit() { if (!m_quitting) { m_quitting = true; advanceQuit(); } }
-void FileApplication::advanceQuit() { if (!m_quitting) return; for (auto *workspace : m_workspaces) if (workspace->isVisible()) { workspace->close(); return; } for (auto *pane : m_windows) if (pane->isWindow() && pane->isVisible()) { pane->close(); return; } if (m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); }
+void FileApplication::advanceQuit() { if (!m_quitting) return; for (auto *workspace : m_workspaces) if (workspace->isVisible()) { workspace->close(); return; } for (auto *pane : m_windows) if (pane->isWindow() && pane->isVisible()) { pane->close(); return; } if (m_windows.isEmpty() && m_workspaces.isEmpty()) { if (m_settings) m_settings->close(); else QCoreApplication::quit(); } }
 bool FileApplication::eventFilter(QObject *target, QEvent *event) {
-    if (target == qApp && event->type() == QEvent::FileOpen) { const auto *file = static_cast<QFileOpenEvent *>(event); if (!file->file().isEmpty()) open(file->file()); else if (file->url().isLocalFile()) open(file->url().toLocalFile()); return true; }
+    if (target == qApp && event->type() == QEvent::FileOpen) { const auto *file = static_cast<QFileOpenEvent *>(event); if (!file->file().isEmpty()) openExternal(file->file()); else if (file->url().isLocalFile()) openExternal(file->url().toLocalFile()); return true; }
+    if (event->type() == QEvent::KeyPress) {
+        const auto *key = static_cast<QKeyEvent *>(event); auto *widget = qobject_cast<QWidget *>(target);
+        if (widget && key->key() == Qt::Key_Comma && key->modifiers() == Qt::ControlModifier
+            && (m_workspaces.contains(qobject_cast<WorkspaceWindow *>(widget->window())) || m_windows.contains(qobject_cast<SingleFileWindow *>(widget->window())))) {
+            settingsWindow(); return true;
+        }
+    }
     if (target == qApp && event->type() == QEvent::Quit && (!m_windows.isEmpty() || !m_workspaces.isEmpty())) { requestQuit(); return true; }
     return QObject::eventFilter(target, event);
 }

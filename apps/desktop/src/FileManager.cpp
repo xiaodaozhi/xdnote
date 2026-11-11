@@ -27,14 +27,15 @@ QString FileDocument::statusText() const {
     if (m_saving) return QStringLiteral("保存中…");
     if (m_loading) return QStringLiteral("重新载入中…");
     if (m_conflict) return QStringLiteral("磁盘内容已变化");
-    if (m_error) return QStringLiteral("保存或读取失败，内容已保留");
+    if (m_error) return m_automaticSave && m_lastSave.status != SaveStatus::Committed ? QStringLiteral("自动保存失败，已暂停；内容已保留") : QStringLiteral("保存或读取失败，内容已保留");
     if (dirty()) return QStringLiteral("未保存");
     if (m_readOnly) return QStringLiteral("只读");
     return m_savedOnce ? QStringLiteral("已保存") : QStringLiteral("未修改");
 }
-bool FileDocument::save() { return m_manager->save(this, path()); }
-bool FileDocument::saveAs(const QString &path) { return m_manager->save(this, path, true); }
-bool FileDocument::reload() { return m_manager->reload(this); }
+bool FileDocument::save() { m_automaticSave = false; return m_manager->save(this, path()); }
+bool FileDocument::saveAutomatically() { m_automaticSave = true; return m_manager->save(this, path()); }
+bool FileDocument::saveAs(const QString &path) { m_automaticSave = false; return m_manager->save(this, path, true); }
+bool FileDocument::reload() { m_automaticSave = false; return m_manager->reload(this); }
 void FileDocument::checkExternal() { m_manager->check(this); }
 
 FileManager::FileManager(QObject *parent, std::function<void(SaveStage)> observer, bool monitoring)

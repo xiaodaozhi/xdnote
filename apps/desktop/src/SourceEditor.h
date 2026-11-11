@@ -3,6 +3,7 @@
 #include "ScintillaEditBase.h"
 #include <QImage>
 #include <QPointer>
+#include <QJsonObject>
 
 namespace xdnote {
 class DocumentSession;
@@ -28,6 +29,7 @@ protected:
 
 private:
     void applyAppearance();
+    void applyPreferences();
     void restyle();
     QPointer<Appearance> m_appearance;
     QPointer<DocumentSession> m_session;
@@ -35,5 +37,6 @@ private:
     bool m_preedit = false;
     bool m_inIme = false;
     int m_textZoom = 100;
+    QJsonObject m_editorPreferences;
 };
 }

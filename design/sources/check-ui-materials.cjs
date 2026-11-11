@@ -64,7 +64,13 @@ async function main() {
     const filePrototype = ['standalone', 'unsaved-confirmation', 'external-conflict'].includes(w.id);
     const workspacePrototype = w.id === 'main' && w.kind === 'application-window';
     const resourcePrototype = w.id === 'workspace-resource-maintenance' && w.kind === 'owner-modal-dialog';
-    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : workspacePrototype ? 'workspace-prototype' : resourcePrototype ? 'workspace-resource-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    const settingsPrototype = w.id === 'settings' && w.kind === 'single-instance-nonmodal-window';
+    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : workspacePrototype ? 'workspace-prototype' : resourcePrototype ? 'workspace-resource-prototype' : settingsPrototype ? 'settings-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    if (settingsPrototype) {
+      assert(w.sizeToken === 'windows.settings' && w.implementationSource === 'apps/desktop/src/SettingsWindow.cpp', 'Settings window geometry and source');
+      assert(w.implementedStates?.includes('shared-preferences') && w.deferredStates?.includes('manual-visual-acceptance'), 'Settings prototype scope');
+      await fs.access(path.join(ROOT, w.implementationSource));
+    }
     if (resourcePrototype) {
       assert(w.sizeToken === 'windows.largeDialog' && w.designStatus === 'shared-pattern-extension' && w.sizeRationale, 'Resource maintenance dialog scope');
       assert(w.implementationSource === 'apps/desktop/src/ResourceMaintenanceController.cpp', 'Resource maintenance source identity');
