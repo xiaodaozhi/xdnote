@@ -51,10 +51,17 @@ jobs:
         timeout-minutes: 10
         run: |
           mkdir -p build/ci-apt
-          cat > build/ci-apt/ubuntu.list <<'EOF'
-          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu jammy main universe restricted multiverse
-          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu jammy-updates main universe restricted multiverse
-          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://security.ubuntu.com/ubuntu jammy-security main universe restricted multiverse
+          xdnote_apt_archive=https://archive.ubuntu.com/ubuntu
+          xdnote_apt_security=https://security.ubuntu.com/ubuntu
+          if ! timeout 10s getent ahosts archive.ubuntu.com > /dev/null || ! timeout 10s getent ahosts security.ubuntu.com > /dev/null; then
+            xdnote_apt_archive=https://mirrors.kernel.org/ubuntu
+            xdnote_apt_security=$xdnote_apt_archive
+          fi
+          echo "Ubuntu archive: $xdnote_apt_archive; security: $xdnote_apt_security (Ubuntu archive key verification enabled)"
+          cat > build/ci-apt/ubuntu.list <<EOF
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_archive jammy main universe restricted multiverse
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_archive jammy-updates main universe restricted multiverse
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_security jammy-security main universe restricted multiverse
           EOF
           xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
           timeout 180s sudo apt-get "${xdnote_apt_options[@]}" update

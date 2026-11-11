@@ -38,7 +38,7 @@ CI 使用只读仓库权限和固定依赖；不打包、签名、发布或安�
 
 `scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入、四项自有离屏探针和资源助手定向用例，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、安装或发行许可验收。
 
-桌面工作流的 Ubuntu 22.04 依赖准备使用显式官方 jammy／updates／security 源与 Ubuntu 归档密钥，APT 配置只对该命令生效；不关闭签名核验，不沿用宿主预设的镜像优先级。索引更新、包下载及整个准备步骤均有时限；DNS 或镜像故障作为基础设施失败记录，不无限等待或计为产品测试结果。
+桌面工作流的 Ubuntu 22.04 依赖准备使用显式 jammy／updates／security 源与 Ubuntu 归档密钥；主站域名解析失败时改用 [Linux Kernel Archives 的 Ubuntu 镜像](https://mirrors.kernel.org/)，实际地址写入日志，签名与有效期检查保持启用。APT 配置只对该命令生效，不沿用宿主预设的镜像优先级。DNS 探测、索引更新、包下载及整个准备步骤均有时限；网络故障作为基础设施失败记录，不无限等待或计为产品测试结果。
 
 ## 工具、诊断与周期收尾
 
