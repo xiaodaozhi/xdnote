@@ -89,17 +89,22 @@ std::optional<NativePreviewModel> NativePreviewModel::parse(const QByteArray &so
     auto buffer = xdnote_markdown_native_model(reinterpret_cast<const unsigned char *>(source.constData()),
                                                std::size_t(source.size()));
     const quint32 status = buffer.status;
-    QByteArray bytes;
-    if (status == 0 && buffer.length <= std::size_t(MaximumBytes) && buffer.data)
-        bytes = QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length));
-    xdnote_markdown_free(&buffer);
     if (status != 0) {
+        xdnote_markdown_free(&buffer);
         if (error) *error = status == 1 ? QStringLiteral("预览原文不是有效的 UTF-8。")
             : status == 2 ? QStringLiteral("预览语义模型超过当前解析范围或资源预算。")
                           : QStringLiteral("预览语义解析失败。");
         return std::nullopt;
     }
-    return decode(std::move(bytes), source, error);
+    if (!buffer.data || buffer.length > std::size_t(MaximumBytes)) {
+        xdnote_markdown_free(&buffer);
+        if (error) *error = QStringLiteral("预览语义模型的版本、结构或原文范围无效。");
+        return std::nullopt;
+    }
+    auto storage = std::shared_ptr<void>(buffer.data, [buffer](void *) mutable { xdnote_markdown_free(&buffer); });
+    auto result = decode(QByteArray::fromRawData(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length)), source, error);
+    if (result) result->m_storage = std::move(storage);
+    return result;
 }
 
 std::optional<NativePreviewModel> NativePreviewModel::decode(QByteArray bytes, QByteArrayView source, QString *error) {

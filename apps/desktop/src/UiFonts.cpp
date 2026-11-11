@@ -1,20 +1,30 @@
 #include "UiFonts.h"
 #include <QFontDatabase>
+#include <QFontInfo>
 #include <QGuiApplication>
 #include <QApplication>
 namespace xdnote {
 namespace {
 QStringList sansFamilies() {
 #ifdef Q_OS_WIN
-    return {QStringLiteral("Microsoft YaHei UI"), QStringLiteral("Microsoft YaHei"), QStringLiteral("Segoe UI")};
+    return {QStringLiteral("Microsoft YaHei UI"), QStringLiteral("Microsoft YaHei"), QStringLiteral("Segoe UI"), QStringLiteral("Segoe UI Emoji")};
 #elif defined(Q_OS_MACOS)
-    return {QFontDatabase::systemFont(QFontDatabase::GeneralFont).family(), QStringLiteral("PingFang SC")};
+    return {QFontDatabase::systemFont(QFontDatabase::GeneralFont).family(), QStringLiteral("PingFang SC"), QStringLiteral("Apple Color Emoji")};
 #else
-    return {QFontDatabase::systemFont(QFontDatabase::GeneralFont).family(), QStringLiteral("Noto Sans CJK SC"), QStringLiteral("WenQuanYi Micro Hei")};
+    return {QFontDatabase::systemFont(QFontDatabase::GeneralFont).family(), QStringLiteral("Noto Sans CJK SC"), QStringLiteral("WenQuanYi Micro Hei"), QStringLiteral("Noto Color Emoji")};
 #endif
 }
 QStringList monoFamilies() {
-    auto families = QStringList{QFontDatabase::systemFont(QFontDatabase::FixedFont).family()};
+    QStringList families;
+    const auto preferred = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (QFontInfo(preferred).fixedPitch()) families.append(preferred.family());
+#ifdef Q_OS_WIN
+    families.append({QStringLiteral("Consolas"), QStringLiteral("Cascadia Mono"), QStringLiteral("Courier New")});
+#elif defined(Q_OS_MACOS)
+    families.append({QStringLiteral("Menlo"), QStringLiteral("Monaco")});
+#else
+    families.append({QStringLiteral("DejaVu Sans Mono"), QStringLiteral("Liberation Mono"), QStringLiteral("Noto Sans Mono")});
+#endif
     families.append(sansFamilies()); return families;
 }
 QString css(QStringList families, const QString &generic) {

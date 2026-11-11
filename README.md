@@ -38,7 +38,7 @@
 
 完整索引见 [docs/README.md](docs/README.md)。
 
-产品预览明确不使用 Chromium，已选择 Rust 全局语义模型＋Qt 原生按需布局主路线。[语义模型](docs/engineering/native-preview-model.md)已提供只读块树和 Qt Core 接收端；[替代方案评估](docs/engineering/preview-alternatives.md)保留轻量排版库备选。当前原型仍含待迁移的 Qt WebEngine，尚未完成控件替换，不能将现有构建描述为已满足这一约束。
+产品预览明确不使用 Chromium，已选择 Rust 全局语义模型＋Qt 原生按需布局主路线。[语义模型](docs/engineering/native-preview-model.md)已提供只读块树和 Qt Core 接收端；[原生阅读控件](docs/engineering/native-preview-view.md)已进入独立布局与交互准入，[替代方案评估](docs/engineering/preview-alternatives.md)保留轻量排版库备选。当前原型仍含待迁移的 Qt WebEngine，尚未完成控件替换，不能将现有构建描述为已满足这一约束。
 
 ## 仓库结构
 

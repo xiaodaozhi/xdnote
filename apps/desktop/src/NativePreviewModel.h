@@ -4,6 +4,7 @@
 #include <QByteArrayView>
 #include <QString>
 #include <optional>
+#include <memory>
 
 namespace xdnote {
 
@@ -46,6 +47,9 @@ public:
 
 private:
     bool readNode(quint32 index, Node &node) const;
+    // When parsing through FFI, retain the Rust allocation instead of copying
+    // the entire encoded model. Declared first so byte views die before storage.
+    std::shared_ptr<void> m_storage;
     QByteArray m_bytes, m_sourceDigest;
     qsizetype m_arena = 0, m_index = 0;
     quint32 m_recordBytes = 0;
