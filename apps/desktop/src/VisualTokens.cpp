@@ -4,7 +4,11 @@
 #include <QResource>
 #include <stdexcept>
 
-static void initializeXdnoteResources() { Q_INIT_RESOURCE(xdnote_assets); }
+#ifndef XDNOTE_RESOURCE_NAME
+#define XDNOTE_RESOURCE_NAME xdnote_assets
+#endif
+#define XDNOTE_INITIALIZE_RESOURCE(name) Q_INIT_RESOURCE(name)
+static void initializeXdnoteResources() { XDNOTE_INITIALIZE_RESOURCE(XDNOTE_RESOURCE_NAME); }
 
 namespace xdnote {
 const QJsonObject &visualTokens() {
