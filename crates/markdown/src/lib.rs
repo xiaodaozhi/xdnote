@@ -6,11 +6,17 @@ use std::io::{self, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub mod headings;
+pub mod native_model;
 mod reference_targets;
 pub mod workspace_path;
 
 pub const MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_HTML_BYTES: usize = 8 * 1024 * 1024;
+
+fn reference_expansion_complete(source: &str, largest_reference: usize) -> bool {
+    let possible_lookups = source.bytes().filter(|byte| *byte == b'[').count();
+    largest_reference.saturating_mul(possible_lookups) < source.len().max(100_000)
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RenderError {
@@ -187,11 +193,9 @@ pub fn references(source: &str) -> Result<Vec<u8>, RenderError> {
             })
             .max()
             .unwrap_or(0);
-        let possible_lookups = source.bytes().filter(|byte| *byte == b'[').count();
         // The upstream parser refuses even a zero-cost lookup once its fuel is
         // exactly zero. Treat equality as potentially incomplete as well.
-        let complete =
-            largest_reference.saturating_mul(possible_lookups) < source.len().max(100_000);
+        let complete = reference_expansion_complete(source, largest_reference);
         while let Some((event, range)) = events.next() {
             let (kind, link_type, destination, title, id) = match event {
                 Event::Start(Tag::Link {
@@ -742,6 +746,20 @@ pub unsafe extern "C" fn xdnote_markdown_references(
 pub unsafe extern "C" fn xdnote_markdown_headings(data: *const u8, length: usize) -> RenderBuffer {
     // SAFETY: this function forwards its documented input contract unchanged.
     unsafe { snapshot_buffer(data, length, heading_map) }
+}
+
+/// Return the versioned, read-only native block/inline model. No resource is
+/// opened and no document target is activated. Ownership matches other buffers.
+///
+/// # Safety
+/// A non-empty input points to `length` readable bytes for this call only.
+#[no_mangle]
+pub unsafe extern "C" fn xdnote_markdown_native_model(
+    data: *const u8,
+    length: usize,
+) -> RenderBuffer {
+    // SAFETY: the immutable snapshot contract is forwarded unchanged.
+    unsafe { snapshot_buffer(data, length, native_model::build) }
 }
 
 unsafe fn workspace_path_buffer(

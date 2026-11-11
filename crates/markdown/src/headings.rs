@@ -34,6 +34,32 @@ fn base_id(title: &str) -> String {
     id
 }
 
+/// Shared by the heading map and the single-pass native preview model.
+#[derive(Default)]
+pub(crate) struct HeadingIds {
+    used: HashSet<String>,
+    next_suffix: HashMap<String, usize>,
+}
+
+impl HeadingIds {
+    pub(crate) fn next(&mut self, title: &str) -> String {
+        let base = base_id(title);
+        let mut id = base.clone();
+        if self.used.contains(&id) {
+            let next = self.next_suffix.entry(base.clone()).or_insert(1);
+            loop {
+                id = format!("{base}-{next}");
+                *next += 1;
+                if !self.used.contains(&id) {
+                    break;
+                }
+            }
+        }
+        self.used.insert(id.clone());
+        id
+    }
+}
+
 /// Extract heading ranges, plain inline text and globally unique IDs.
 /// The whole result fails on limits; it is never a silently truncated map.
 pub fn analyze(source: &str) -> Result<Vec<HeadingAnchor>, RenderError> {
@@ -42,8 +68,7 @@ pub fn analyze(source: &str) -> Result<Vec<HeadingAnchor>, RenderError> {
     }
     let mut result = Vec::new();
     let mut current: Option<HeadingAnchor> = None;
-    let mut used = HashSet::new();
-    let mut next_suffix: HashMap<String, usize> = HashMap::new();
+    let mut ids = HeadingIds::default();
     let mut budget = 0usize;
     for (event, range) in Parser::new_ext(source, markdown_options()).into_offset_iter() {
         match event {
@@ -57,18 +82,7 @@ pub fn analyze(source: &str) -> Result<Vec<HeadingAnchor>, RenderError> {
             }
             Event::End(TagEnd::Heading(_)) => {
                 if let Some(mut heading) = current.take() {
-                    let base = base_id(&heading.title);
-                    let mut id = base.clone();
-                    if used.contains(&id) {
-                        let next = next_suffix.entry(base.clone()).or_insert(1);
-                        loop {
-                            id = format!("{base}-{next}");
-                            *next += 1;
-                            if !used.contains(&id) {
-                                break;
-                            }
-                        }
-                    }
+                    let id = ids.next(&heading.title);
                     budget = budget
                         .saturating_add(heading.title.len())
                         .saturating_add(id.len())
@@ -76,7 +90,6 @@ pub fn analyze(source: &str) -> Result<Vec<HeadingAnchor>, RenderError> {
                     if budget > MAX_HTML_BYTES {
                         return Err(RenderError::OutputLimit);
                     }
-                    used.insert(id.clone());
                     heading.id = id;
                     result.push(heading);
                 }
