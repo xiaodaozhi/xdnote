@@ -226,7 +226,7 @@ def main():
     parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
     parser.add_argument("--file", type=Path, action="append", default=[], help="local Markdown file to open with run; repeat for multiple files")
     parser.add_argument("--admission", action="store_true", help="run the memory-only component window instead of xdnote")
-    parser.add_argument("--suite", choices=("full", "resources", "preview"), default="full", help="test scope; resources or preview run affected paths only")
+    parser.add_argument("--suite", choices=("full", "resources", "preview", "background"), default="full", help="test scope; resources/preview target affected paths; background is fixed offscreen")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
@@ -298,6 +298,10 @@ def main():
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
         verify_build_identity(build, args.profile, qt)
+        if args.suite == "background":
+            from background_validation import validate
+            validate(build, env)
+            return
         if args.suite == "preview":
             suffix = ".exe" if platform.system() == "Windows" else ""
             groups = {

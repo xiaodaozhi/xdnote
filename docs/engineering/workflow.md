@@ -30,7 +30,7 @@
 
 桌面测试覆盖组件准入、真实临时文件操作、独立窗口、几何与工作区会话等路径，诊断工件保留七天。各技术试验验证的范围及限制见其 README；试验通过不等于产品准入。Linux 使用虚拟显示，自动化、合成输入、窗口截图及 CI 宿主均不能代替真实输入法、读屏、文件管理器、物理多屏或人工视觉验收。按风险和可用环境执行原生检查，记录未验证项，不要求每次执行固定人工清单。
 
-桌面工作流手动选择 `scope=workspace-linux` 时，仅运行单套 Linux 的文件、引用扫描与链接导航定向回归及 Rust 检查；运行名称和汇总检查会标明范围，不运行五平台完整矩阵。`scope=resources-unix` 仅运行 Linux、macOS Intel 与 ARM 的受影响文件、图片、引用路径维护定向测试，不执行完整桌面用例或 Windows 兼容配置；本机可用 `test --suite resources` 复现同一范围。`scope=resources-macos` 仅复验 macOS 两种架构的相同资源用例，用于 Darwin 专属修正，不重复已通过的 Linux；`scope=resources-linux` 仅补验 Linux 的同一资源范围，用于 Linux 专属修正。资源定向失败保留该范围的报告，不自动再用调试器执行全部工作区用例；既有崩溃诊断仅用于 `workspace-linux` 专项。`scope=preview-unix` 只运行 Linux 和 macOS 双架构的原生预览／实际产品定向回归，使用 `test --suite preview`。`scope=full` 保留完整矩阵。普通提交、合并或仅同步分支不构成重复运行完整桌面 CI 的理由；以影响路径的本机验证及必要平台补充为准，不将定向结果记为全平台通过。
+桌面工作流手动选择 `scope=workspace-linux` 时，仅运行单套 Linux 的文件、引用扫描与链接导航定向回归及 Rust 检查；运行名称和汇总检查会标明范围，不运行五平台完整矩阵。`scope=resources-unix` 仅运行 Linux、macOS Intel 与 ARM 的受影响文件、图片、引用路径维护定向测试，不执行完整桌面用例或 Windows 兼容配置；本机可用 `test --suite resources` 复现同一范围。`scope=resources-macos` 仅复验 macOS 两种架构的相同资源用例，用于 Darwin 专属修正，不重复已通过的 Linux；`scope=resources-linux` 仅补验 Linux 的同一资源范围，用于 Linux 专属修正。资源定向失败保留该范围的报告，不自动再用调试器执行全部工作区用例；既有崩溃诊断仅用于 `workspace-linux` 专项。`scope=preview-unix` 只运行 Linux 和 macOS 双架构的原生预览／实际产品定向回归，使用 `test --suite preview`。`scope=background-unix` 只运行 Linux、macOS 双架构的[固定离屏回归与性能检查](../qa/background-validation.md)，使用 `test --suite background`，不依赖解锁桌面。`scope=full` 保留完整矩阵。普通提交、合并或仅同步分支不构成重复运行完整桌面 CI 的理由；以影响路径的本机验证及必要平台补充为准，不将定向结果记为全平台通过。
 
 CI 使用只读仓库权限和固定依赖；不打包、签名、发布或安装产品，也不配置系统文件关联。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
 

@@ -28,6 +28,6 @@
 
 ## 依赖和交付核验
 
-桌面准入工程的固定版本见[依赖清单](../../tools/desktop-dependencies.json)与 [Cargo.lock](../../Cargo.lock)。已核对的 Rust 包、Scintilla 许可原文及 Qt／WebEngine 的后续核验范围见[第三方许可与来源记录](../../THIRD_PARTY_NOTICES.md)；[机器可读清单](../../LICENSES/third-party/manifest.json)与锁定版本和保留文本由日常仓库检查核对。Qt 模块及工具许可仍须分别按[官方说明](https://doc.qt.io/qt-6.8/licensing.html)和实际交付核对。准备阶段下载的上游源码留在忽略的构建缓存，保留的上游许可文本不改标为项目自有内容。
+桌面准入工程的固定版本见[依赖清单](../../tools/desktop-dependencies.json)与 [Cargo.lock](../../Cargo.lock)。已核对的 Rust 包、Scintilla 许可原文及 Qt 原生模块的后续核验范围见[第三方许可与来源记录](../../THIRD_PARTY_NOTICES.md)；[机器可读清单](../../LICENSES/third-party/manifest.json)与锁定版本和保留文本由日常仓库检查核对。Qt 模块及工具许可仍须分别按[官方说明](https://doc.qt.io/qt-6.8/licensing.html)和实际交付核对。准备阶段下载的上游源码留在忽略的构建缓存，保留的上游许可文本不改标为项目自有内容。
 
 单文件原型另使用 Qt Network 的本地 IPC 和 Qt SVG 的品牌绘制，两者均动态链接，不引入打包字体。正式产品的打包与分发方式仍需按[架构准入](architecture.md)确定。发行前按实际交付内容核对第三方代码、字体、素材和运行库的许可及归属声明；随包使用项目设计素材时也须携带适用的署名和许可信息。项目文档及原创设计的许可已经确定，实际包的完整声明、源码提供义务与交付核验继续由 [Issue #4](https://github.com/xiaodaozhi/xdnote/issues/4) 跟踪。当前诊断工件不是安装包，也没有完成发行许可验收。
