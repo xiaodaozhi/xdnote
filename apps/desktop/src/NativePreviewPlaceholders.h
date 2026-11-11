@@ -58,6 +58,6 @@ inline QImage paintPreviewPlaceholder(const NativePreviewContent &content, const
         painter.drawText(QRectF(12 * zoom, 76 * zoom, qMax(1.0, size.width() - 24 * zoom), 20 * zoom), Qt::AlignCenter,
                          painter.fontMetrics().elidedText(previewImageReason(image), Qt::ElideRight, qMax(1, qRound(size.width() - 24 * zoom))));
     }
-    return result;
+    painter.end(); return result;
 }
 }

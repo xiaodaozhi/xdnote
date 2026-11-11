@@ -308,7 +308,7 @@ def main():
                 "geometry": GROUPS["geometry"] + ["captionTogglePreservesNormalClientSize"],
                 "desktop": ["workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding", "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork", "previewFragmentLinksNavigateOnlyTheDisplayedRevision"],
                 "visual": ["themeGeometryAndEditing", "sharedAppearanceAndReloadPreserveTextUndoAndPosition", "unsavedDialogAppearanceAndCancel", "menuShellsAndNestedNavigation", "readerComponentsCopyAndHorizontalScroll"],
-                "workspace": ["navigationTabsAreUniqueClosableAndPreserveDirtyDocument", "tabCloseAndSidebarBorderShareGeometryAndHover", "sidebarSearchRecentFavoritesAndTabsKeepTheSameBuffer", "duplicateOpenAndReorderedInactiveTabCloseKeepUniqueDirtyBuffer", "splitThemeGeometryAndSaveUseTheSameSession", "tabCloseCancelAndWorkspaceCloseSaveProtectOtherBuffers", "toolbarBordersAndHeadingDropdown", "readingPositionSurvivesNativeHostTransfer"],
+                "workspace": ["navigationTabsAreUniqueClosableAndPreserveDirtyDocument", "tabCloseAndSidebarBorderShareGeometryAndHover", "tabControlsStayAlignedThroughoutChanges", "sidebarSearchRecentFavoritesAndTabsKeepTheSameBuffer", "duplicateOpenAndReorderedInactiveTabCloseKeepUniqueDirtyBuffer", "splitThemeGeometryAndSaveUseTheSameSession", "tabCloseCancelAndWorkspaceCloseSaveProtectOtherBuffers", "toolbarBordersAndHeadingDropdown", "readingPositionSurvivesNativeHostTransfer"],
             }
             suffix = ".exe" if platform.system() == "Windows" else ""
             result = {"ok": False, "scope": "fixed offscreen UI regression; no physical desktop or animation acceptance", "buildIdentity": verify_build_identity(build, args.profile, qt), "tests": {}}

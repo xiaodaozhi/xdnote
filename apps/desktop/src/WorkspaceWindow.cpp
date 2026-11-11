@@ -31,17 +31,33 @@
 #include <QListWidget>
 #include <QPainterPath>
 #include <QMouseEvent>
+#include <QProxyStyle>
+#include <QStyleOptionTab>
 #include <algorithm>
 
 namespace xdnote {
 namespace {
 QJsonObject mainTokens() { return visualTokens().value("windows").toObject().value("main").toObject(); }
 int tabToken(const char *key) { return visualTokens().value("tabs").toObject().value(key).toInt(); }
+int tabContentY(int rowHeight, int itemHeight) { const int top = tabToken("topInset"); return top + (rowHeight - top - itemHeight) / 2; }
 int navToken(const char *key) { return visualTokens().value("navigation").toObject().value(key).toInt(); }
 QUuid tabId(QTabBar *tabs, int index) { return tabs->tabData(index).toMap().value("id").toUuid(); }
+class WorkspaceTabStyle final : public QProxyStyle {
+public:
+    QRect subElementRect(SubElement element, const QStyleOption *option, const QWidget *widget) const override {
+        if (element == SE_TabBarTabRightButton) if (const auto *tab = qstyleoption_cast<const QStyleOptionTab *>(option)) {
+            // QTabBar places buttons again on selection, scrolling and drag
+            // frames, not only on tabLayoutChange. Give every path one rect.
+            return {QPoint(tab->rect.right() + 1 - tabToken("closeInset") - tab->rightButtonSize.width(),
+                           tab->rect.top() + tabContentY(tab->rect.height(), tab->rightButtonSize.height())), tab->rightButtonSize};
+        }
+        return QProxyStyle::subElementRect(element, option, widget);
+    }
+};
 class WorkspaceTabs final : public QTabBar {
 public:
     WorkspaceTabs(Appearance *appearance, QWidget *parent) : QTabBar(parent), m_appearance(appearance) {
+        auto *placement = new WorkspaceTabStyle; placement->setParent(this); setStyle(placement);
         setFont(parent->font()); setAttribute(Qt::WA_MacShowFocusRect, false); setMouseTracking(true);
         setObjectName("workspaceTabs"); setAccessibleName(QStringLiteral("文档标签")); setExpanding(false); setMovable(true); setUsesScrollButtons(true); setElideMode(Qt::ElideMiddle); setDrawBase(false); setFixedHeight(mainTokens().value("titlebarHeight").toInt()); setFocusPolicy(Qt::StrongFocus);
         auto refresh = [this] { auto palette = this->palette(); palette.setColor(QPalette::ButtonText, m_appearance->color("text")); palette.setColor(QPalette::WindowText, m_appearance->color("text")); setPalette(palette); setStyleSheet(QStringLiteral("QTabBar#workspaceTabs QToolButton{background:%1;color:%2;border:0;border-bottom:1px solid %4} QTabBar#workspaceTabs QToolButton:hover{background:%3}").arg(m_appearance->color("sidebar").name(), m_appearance->color("text").name(), m_appearance->color("controlHover").name(), m_appearance->color("border").name())); update(); }; connect(appearance, &Appearance::changed, this, refresh); refresh(); connect(InputModality::forApplication(), &InputModality::changed, this, qOverload<>(&QWidget::update));
@@ -66,7 +82,7 @@ protected:
                 else painter.fillRect(QRect(rect.left(), height() - border, rect.width(), border), m_appearance->color("border"));
             }
             if (!active && i + 1 != currentIndex()) { painter.setPen(QPen(m_appearance->color("border"), border)); painter.drawLine(QPointF(rect.right() + .5, tabToken("separatorInset")), QPointF(rect.right() + .5, height() - tabToken("separatorInset"))); }
-            const int left = rect.x() + tabToken("padding"); const QRect icon(left, tabToken("topInset") + (height() - tabToken("topInset") - 16) / 2, 16, 16);
+            const int left = rect.x() + tabToken("padding"); const QRect icon(left, tabContentY(height(), 16), 16, 16);
             themedIcon(data.value("dirty").toBool() ? "status-dirty" : data.value("symbol", "document").toString(), data.value("dirty").toBool() ? m_appearance->semantic("warning") : m_appearance->color("textSecondary")).paint(&painter, icon);
             painter.setPen(m_appearance->color(active ? "text" : "textSecondary")); const QRect textRect = rect.adjusted(tabToken("padding") + 24, tabToken("topInset"), -tabToken("closeHit") - tabToken("closeInset") - 4, 0);
             painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, fontMetrics().elidedText(data.value("title").toString(), Qt::ElideMiddle, textRect.width()));
@@ -76,14 +92,7 @@ protected:
     void keyPressEvent(QKeyEvent *event) override { if (event->key() == Qt::Key_Delete && currentIndex() >= 0) { InputModality::forApplication()->clear(); if (closeRequested) closeRequested(tabId(this, currentIndex())); event->accept(); } else QTabBar::keyPressEvent(event); }
     void mouseMoveEvent(QMouseEvent *event) override { const auto previous = m_hover; m_hover = tabAt(event->position().toPoint()); if (previous != m_hover) update(); QTabBar::mouseMoveEvent(event); }
     void leaveEvent(QEvent *event) override { m_hover = -1; update(); QTabBar::leaveEvent(event); }
-    void resizeEvent(QResizeEvent *event) override { QTabBar::resizeEvent(event); placeCloseButtons(); }
-    void tabLayoutChange() override { QTabBar::tabLayoutChange(); placeCloseButtons(); if (layoutChanged) layoutChanged(); }
-    void placeCloseButtons() {
-        for (int i = 0; i < count(); ++i) if (auto *button = tabButton(i, QTabBar::RightSide)) {
-            const auto rect = tabRect(i); const int hit = tabToken("closeHit");
-            button->setGeometry(rect.right() + 1 - tabToken("closeInset") - hit, tabToken("topInset") + (height() - tabToken("topInset") - hit) / 2, hit, hit);
-        }
-    }
+    void tabLayoutChange() override { QTabBar::tabLayoutChange(); if (layoutChanged) layoutChanged(); }
 private:
     Appearance *m_appearance;
     int m_hover = -1;
@@ -102,7 +111,7 @@ protected:
 private:
     void arrange() {
         if (m_arranging) return; m_arranging = true;
-        const int tabWidth = qMin(tabs->preferredWidth(), qMax(0, width() - add->width() - 12)); tabs->setGeometry(0, 0, tabWidth, height()); add->move(tabWidth + 4, (height() - add->height()) / 2); m_arranging = false;
+        const int tabWidth = qMin(tabs->preferredWidth(), qMax(0, width() - add->width() - 12)); tabs->setGeometry(0, 0, tabWidth, height()); add->move(tabWidth + 4, tabContentY(height(), add->height())); m_arranging = false;
     }
     bool m_arranging = false;
 };

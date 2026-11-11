@@ -51,6 +51,7 @@ bool boundary(const QString &text, int at) {
     return at >= 0 && at <= text.size() && !(at > 0 && at < text.size() && text[at - 1].isHighSurrogate() && text[at].isLowSurrogate());
 }
 bool separator(QChar ch) { return ch == '\n' || ch == QChar(0x2028) || ch == QChar(0x2029); }
+QImage transparentPixel() { QImage image(1, 1, QImage::Format_ARGB32_Premultiplied); image.fill(Qt::transparent); return image; }
 struct NativeDocument final : QTextDocument {
     QVector<int> positions;
     qsizetype decodedBytes = 0;
@@ -66,7 +67,12 @@ struct NativeDocument final : QTextDocument {
     }
 protected:
     QVariant loadResource(int type, const QUrl &url) override {
-        return type == ImageResource && loader ? loader(url, this) : QVariant();
+        if (type != ImageResource || !loader) return {};
+        const auto resource = loader(url, this);
+        // QTextDocument does not cache an override's return value itself.
+        // Repainting must reuse the same decoded pixels and budget charge.
+        if (resource.isValid()) addResource(type, url, resource);
+        return resource;
     }
 };
 struct Chunk {
@@ -319,7 +325,7 @@ struct NativePreviewView::State {
                 bool valid = false; const int index = name.mid(placeholder.size()).toInt(&valid);
                 if (!valid || name != placeholder + QString::number(index) || index < 0 || index >= content->images.size() || imageInfo.contains(index)) { ++stats.deniedResources; return {}; }
                 const auto &image = content->images[index];
-                if (probe || image.start < start || image.start >= activeEnd) return QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
+                if (probe || image.start < start || image.start >= activeEnd) return transparentPixel();
                 auto bitmap = paintPreviewPlaceholder(*content, image, flow(flowIndex), availableWidth, zoom, dpr, colors.value("quoteSurface"), colors.value("border"), colors.value("textSecondary"));
                 if (bitmap.sizeInBytes() > MaximumDecodedPerDocument - owner->decodedBytes) return {};
                 owner->decodedBytes += bitmap.sizeInBytes(); stats.decodedImageBytes += bitmap.sizeInBytes();
@@ -329,9 +335,9 @@ struct NativePreviewView::State {
             const QString prefix = QStringLiteral("xdnote-native:image/");
             bool valid = false; const int index = name.startsWith(prefix) ? name.mid(prefix.size()).toInt(&valid) : -1;
             if (!valid || name != prefix + QString::number(index) || !imageInfo.contains(index) || !png.contains(index)) { ++stats.deniedResources; return {}; }
-            if (probe) return QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
+            if (probe) return transparentPixel();
             const auto &info = imageInfo[index]; const bool active = info.start >= start && info.start < activeEnd;
-            if (!active) return QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
+            if (!active) return transparentPixel();
             QBuffer input; input.setData(png.value(index)); input.open(QIODevice::ReadOnly);
             QImageReader reader(&input, "png"); const auto original = imageInfo.value(index).pixels;
             qreal scale = qMin(1.0, availableWidth * dpr / original.width());
@@ -357,12 +363,13 @@ struct NativePreviewView::State {
         if (auto *found = cache.object(key)) return found;
         if (transient && transientKey == key) return transient.get();
         auto doc = document(flowIndex, start, probeEnd, end, textWidth, false);
-        // Load only admitted objects in this consumed fragment, with dimensions
-        // already fixed by the header-only planning pass.
-        for (auto it = imageInfo.cbegin(); it != imageInfo.cend(); ++it) {
-            const bool active = it->start >= start && it->start < end;
-            if (active) doc->resource(QTextDocument::ImageResource, QUrl(QStringLiteral("xdnote-native:image/%1").arg(it.key())));
-        }
+        // Include generated placeholders before cache admission, so lazy paint
+        // requests cannot grow a document beyond its recorded memory cost.
+        auto image = std::lower_bound(content->images.cbegin(), content->images.cend(), start,
+            [](const Content::Image &entry, int position) { return entry.start < position; });
+        for (; image != content->images.cend() && image->start < end; ++image)
+            doc->resource(QTextDocument::ImageResource, QUrl(QStringLiteral("xdnote-native:%1/%2")
+                .arg(imageInfo.contains(int(image->index)) ? "image" : "placeholder").arg(image->index)));
         const auto cost = 4096 + doc->positions.capacity() * qsizetype(sizeof(int))
             + doc->positions.size() * 64 + doc->decodedBytes;
         if (cost > CacheKiB * 1024) { transientKey = key; transient = std::move(doc); return transient.get(); }

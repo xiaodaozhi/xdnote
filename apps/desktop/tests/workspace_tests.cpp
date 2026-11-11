@@ -20,6 +20,7 @@
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QEnterEvent>
+#include <QMoveEvent>
 #include <QThreadPool>
 #include <QSemaphore>
 #include <QtConcurrentRun>
@@ -495,6 +496,39 @@ private slots:
             QVERIFY(normal != hover); QVERIFY(!button->keyboardOutline()); capture(workspace, QString::fromLatin1(theme) + "-tab-alignment");
             auto *nav = workspace->findChild<SharedButton *>("workspaceRecent"); QApplication::sendEvent(nav, &leave); const auto navNormal = nav->grab().toImage(); QApplication::sendEvent(nav, &enter); QVERIFY(navNormal != nav->grab().toImage());
         }
+    }
+    void tabControlsStayAlignedThroughoutChanges() {
+        QTemporaryDir dir; const auto path = dir.filePath("retained.md"); QVERIFY(fileFixtures::write(path, "original"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path()); desktop.openInWorkspace(path, workspace);
+        auto *pane = waitPane(workspace, path); QVERIFY(pane); workspace->resize(1280, 820);
+        workspace->findChild<SharedButton *>("workspaceRecent")->click(); workspace->findChild<SharedButton *>("workspaceFavorites")->click();
+        auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); auto *add = workspace->findChild<SharedButton *>("workspaceAddTab"); QVERIFY(tabs); QVERIFY(add); QApplication::processEvents();
+        class Moves final : public QObject {
+        public:
+            int expectedY = 0, samples = 0; bool displaced = false;
+            bool eventFilter(QObject *, QEvent *event) override {
+                if (event->type() == QEvent::Move) { ++samples; displaced |= static_cast<QMoveEvent *>(event)->pos().y() != expectedY; }
+                return false;
+            }
+        } moves;
+        moves.expectedY = (tabs->height() + 6 - 24) / 2;
+        for (int i = 0; i < tabs->count(); ++i) tabs->tabButton(i, QTabBar::RightSide)->installEventFilter(&moves);
+        const auto check = [&] {
+            for (int i = 0; i < tabs->count(); ++i) {
+                const auto *button = tabs->tabButton(i, QTabBar::RightSide); const auto rect = tabs->tabRect(i);
+                if (button->geometry().top() != moves.expectedY || button->geometry().right() != rect.right() - 8) return false;
+                const auto center = button->mapTo(workspace, button->rect().center());
+                if (center.y() != add->mapTo(workspace, add->rect().center()).y()) return false;
+            }
+            return !moves.displaced;
+        };
+        for (int turn = 0; turn < 3; ++turn) for (int i = 0; i < tabs->count(); ++i) { tabs->setCurrentIndex(i); QVERIFY2(check(), "Tab controls moved before the next event loop"); QApplication::processEvents(); QVERIFY(check()); }
+        tabs->moveTab(2, 0); QVERIFY(check()); tabs->setTabText(1, "changed title"); QVERIFY(check());
+        const auto otherPath = dir.filePath("other.md"); QVERIFY(fileFixtures::write(otherPath, "other")); desktop.openInWorkspace(otherPath, workspace);
+        auto *other = waitPane(workspace, otherPath); QVERIFY(other); QVERIFY(check()); workspace->closePane(other->paneId()); QTRY_COMPARE(tabs->count(), 3); QVERIFY(check());
+        workspace->resize(960, 640); QApplication::processEvents(); QVERIFY(check()); workspace->resize(1280, 820); QApplication::processEvents(); QVERIFY(check());
+        workspace->activatePane(pane->paneId()); QVERIFY(check());
+        capture(workspace, "stable-tab-controls");
     }
     void sidebarSearchRecentFavoritesAndTabsKeepTheSameBuffer() {
         QTemporaryDir dir; QVERIFY(QDir().mkpath(dir.filePath(QStringLiteral("笔记/子目录")))); const auto path = dir.filePath(QStringLiteral("笔记/子目录/中文会议.md")); QVERIFY(fileFixtures::write(path, "# unchanged")); QVERIFY(fileFixtures::write(dir.filePath("other.md"), "中文会议 appears only in content"));

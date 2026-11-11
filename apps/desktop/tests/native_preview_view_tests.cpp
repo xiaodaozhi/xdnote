@@ -33,6 +33,30 @@ class NativePreviewViewTests final : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() { installFontFallbacks(); InputModality::forApplication(); qRegisterMetaType<NativePreviewStamp>(); }
+    void cachedImagesRemainStableAcrossRepaints_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
+    void cachedImagesRemainStableAcrossRepaints() {
+        QFETCH(QString, theme); Appearance appearance; QVERIFY(appearance.setPreferences(theme, "graphite"));
+        const auto data = content("![loaded](one.png)\n\ninline ![badge](missing.svg)\n\n![block](missing.png)\n\n" + QByteArray("paragraph\n\n").repeated(100), QByteArray::fromHex("010505")); QVERIFY(data); QCOMPARE(data->images.size(), 3);
+        QImage source(64, 32, QImage::Format_ARGB32); source.fill(Qt::red); QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(source.save(&buffer, "PNG"));
+        NativePreviewView view(&appearance); view.resize(640, 420); view.expect(stamp()); QVERIFY(view.presentAsync(stamp(), data, {{0, png}})); view.show(); QTRY_VERIFY(view.ready());
+        for (const qreal zoom : {1.0, 1.5}) {
+            view.setZoomFactor(zoom); QTRY_VERIFY(view.ready()); view.verticalScrollBar()->setValue(0); QApplication::processEvents();
+            const auto before = view.grab().toImage(); const auto bytes = view.statistics().decodedImageBytes; const auto loads = view.statistics().resourceLoads;
+            QVERIFY(bytes > 0); QVERIFY(loads > 0);
+            bool visuallyStable = true;
+            for (int turn = 0; turn < 80; ++turn) {
+                view.viewport()->update(); QApplication::processEvents(); const auto image = view.grab().toImage();
+                visuallyStable &= image == before;
+            }
+            const auto evidence = qEnvironmentVariable("XDNOTE_NATIVE_EVIDENCE");
+            if (!evidence.isEmpty()) { QVERIFY(QDir().mkpath(evidence)); const auto label = evidence + "/image-repaint-" + theme + "-" + QString::number(zoom); QVERIFY(before.save(label + "-before.png")); QVERIFY(view.grab().save(label + "-after.png")); }
+            QCOMPARE(view.statistics().decodedImageBytes, bytes); QCOMPARE(view.statistics().resourceLoads, loads); QCOMPARE(view.statistics().deniedResources, 0); QVERIFY(visuallyStable);
+            view.verticalScrollBar()->setValue(view.verticalScrollBar()->maximum()); view.grab();
+            view.verticalScrollBar()->setValue(0); QApplication::processEvents(); QCOMPARE(view.grab().toImage(), before);
+            QVERIFY(view.statistics().peakCachedEstimatedBytes <= 8 * 1024 * 1024);
+        }
+        view.expect(stamp(2)); QCOMPARE(view.statistics().decodedImageBytes, qsizetype(0));
+    }
     void readerStyleEvidence_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
     void readerStyleEvidence() {
         QFETCH(QString, theme);
@@ -330,7 +354,7 @@ private slots:
             auto textRect = view.characterRect(cell.start); textRect.translate(-view.viewport()->mapToGlobal(QPoint()));
             const int maximumWidth = visualTokens()["typography"].toObject()["reader"].toObject()["maxContentWidth"].toInt();
             const int tableWidth = qMin(maximumWidth, view.viewport()->width() - 48);
-            const int tableLeft = (view.viewport()->width() - tableWidth) / 2;
+            const qreal tableLeft = (view.viewport()->width() - tableWidth) / 2.0;
             const qreal ratio = image.devicePixelRatio(); bool bottomBorder = false;
             for (int y = textRect.top() + 1; y < qMin(view.viewport()->height(), textRect.top() + 60); ++y) {
                 int border = 0;
@@ -339,7 +363,11 @@ private slots:
                 if (border > tableWidth * .95) { bottomBorder = true; break; }
             }
             QVERIFY(bottomBorder);
-            QCOMPARE(image.pixelColor(qFloor((tableLeft + tableWidth - 1) * ratio), qFloor(textRect.center().y() * ratio)), appearance.color("border"));
+            // An odd viewport width puts the logical inset on a half pixel.
+            const int right = qFloor((tableLeft + tableWidth - .5) * ratio), centerY = qFloor(textRect.center().y() * ratio);
+            bool rightBorder = false;
+            for (int x = qMax(0, right - 1); x <= qMin(image.width() - 1, right + 1); ++x) rightBorder |= image.pixelColor(x, centerY) == appearance.color("border");
+            QVERIFY(rightBorder);
             if (!directory.isEmpty()) { QVERIFY(QDir().mkpath(directory)); QVERIFY(image.save(directory + "/native-preview-" + theme + ".png")); }
         }
     }
