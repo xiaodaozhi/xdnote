@@ -86,6 +86,8 @@ private slots:
         preview.setResourceContext({}, "changed.md", "changed-identity");
         QVERIFY(!messages.isEmpty()); QVERIFY(messages.last().first().toString().contains(QStringLiteral("位置已变化")));
         preview.show(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 15000); QVERIFY(moved.isEmpty());
+        preview.view()->resize(preview.view()->width() - 10, preview.view()->height());
+        QVERIFY(!preview.view()->ready()); // Force the post-ready viewport reflow.
         preview.navigateToHeading("target", session.revision()); QTRY_COMPARE_WITH_TIMEOUT(moved.size(), 1, 10000);
         preview.refresh(); preview.navigateToHeading("target", session.revision());
         QCOMPARE(session.replace(0, 0, "changed ", session.revision()), EditResult::Applied); preview.refresh();
@@ -1285,8 +1287,9 @@ private slots:
 
     void largePreviewAndCloseInvalidateWork() {
         DocumentSession large(QString(300000, QChar(0x7532)).toUtf8());
-        auto window = std::make_unique<AdmissionWindow>(&large);
-        auto *preview = window->preview();
+        // Measure a real reading viewport; mixed QML hosting has its own test.
+        auto window = std::make_unique<MarkdownPreview>(&large);
+        window->resize(700, 500); window->show(); auto *preview = window.get();
         QSignalSpy errors(preview, &MarkdownPreview::previewError);
         QSignalSpy ready(preview, &MarkdownPreview::previewReady);
         QTRY_VERIFY_WITH_TIMEOUT(ready.count() > 0 || errors.count() > 0, 30000);

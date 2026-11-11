@@ -354,6 +354,22 @@ private slots:
         owned.value->reportHostMessage({}); QTRY_VERIFY(!notice->isVisible());
         QCOMPARE(document->session()->snapshot().utf8, source); QVERIFY(!document->dirty());
     }
+    void previewFailureRecoversAfterUndoWithoutHiddenLayoutDeadlock() {
+        QTemporaryDir temporary; const auto path = temporary.filePath("recovery.md"); const QByteArray source("# recovered\n");
+        QVERIFY(fileFixtures::write(path, source)); Appearance appearance; FileManager manager(nullptr, {}, false);
+        auto *document = open(manager, path); QVERIFY(document);
+        Window owned{new SingleFileWindow(&manager, &appearance)}; owned.value->setDocument(document); owned.value->show();
+        auto *preview = owned.value->preview(); QTRY_VERIFY_WITH_TIMEOUT(preview->view()->ready(), 15000);
+        const QByteArray oversized(DocumentSession::AdmissionSourceLimit + 1, 'x');
+        owned.value->editor()->send(SCI_APPENDTEXT, uptr_t(oversized.size()), reinterpret_cast<sptr_t>(oversized.constData()));
+        auto *failure = owned.value->findChild<QWidget *>("previewFailure"); QVERIFY(failure);
+        QTRY_VERIFY_WITH_TIMEOUT(failure->isVisible(), 15000); QVERIFY(!preview->isVisible());
+        QCOMPARE(document->session()->snapshot().result, EditResult::InvalidText);
+        QCOMPARE(document->session()->undo(), EditResult::Applied);
+        QTRY_VERIFY_WITH_TIMEOUT(preview->isVisible() && preview->view()->ready(), 15000);
+        QCOMPARE(document->session()->snapshot().utf8, source); QVERIFY(!document->dirty());
+        QVERIFY(preview->view()->content()->text.contains("recovered")); QCOMPARE(read(path), source);
+    }
     void readerComponentsCopyAndHorizontalScroll() {
         QTemporaryDir temporary; const auto path = temporary.filePath("components.md");
         const auto code = QStringLiteral("const text = '<script>中文😀</script>';\n") + QString(240, 'x') + '\n';

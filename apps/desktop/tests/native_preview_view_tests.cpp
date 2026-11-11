@@ -242,7 +242,7 @@ private slots:
         view.selectAll(); QCOMPARE(view.selectedText(), cluster->text);
     }
     void backgroundLayoutRemainsResponsiveAndRejectsSupersededPlans() {
-        Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400);
+        Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400); view.show(); QApplication::processEvents();
         const auto large = content(QByteArray("Long paragraph text 中文 ").repeated(40000)); QVERIFY(large);
         QSignalSpy ready(&view, &NativePreviewView::layoutReady);
         view.expect(stamp()); QVERIFY(view.presentAsync(stamp(), large));
@@ -252,7 +252,19 @@ private slots:
         view.expect(stamp(3)); const auto latest = content("# latest\n"); QVERIFY(view.presentAsync(stamp(3), latest));
         QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 30000); QCOMPARE(ready.size(), 1);
         QVERIFY(ready.first().first().value<NativePreviewStamp>() == stamp(3)); QCOMPARE(view.content()->text, latest->text);
-        auto *closed = new NativePreviewView(&appearance); closed->expect(stamp()); QVERIFY(closed->presentAsync(stamp(), large)); delete closed;
+        auto *closed = new NativePreviewView(&appearance); closed->resize(700, 400); closed->show(); QApplication::processEvents(); closed->expect(stamp()); QVERIFY(closed->presentAsync(stamp(), large)); delete closed;
+    }
+    void hiddenPreviewDefersGeometryAndShowsOnlyTheLatestSnapshot() {
+        Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400);
+        const auto large = content(QByteArray("long hidden paragraph ").repeated(40000)); QVERIFY(large);
+        QSignalSpy ready(&view, &NativePreviewView::layoutReady);
+        view.expect(stamp()); QVERIFY(view.presentAsync(stamp(), large)); QTest::qWait(20);
+        QVERIFY(!view.ready()); QVERIFY(ready.isEmpty()); QCOMPARE(view.statistics().layouts, 0);
+        view.expect(stamp(2)); const auto latest = content("# latest\n"); QVERIFY(view.presentAsync(stamp(2), latest));
+        view.show(); QTRY_VERIFY_WITH_TIMEOUT(view.ready(), 15000); QVERIFY(!ready.isEmpty());
+        QVERIFY(view.displayedStamp() == stamp(2)); QCOMPARE(view.content()->text, latest->text);
+        view.hide(); QVERIFY(!view.ready()); view.show(); QTRY_VERIFY_WITH_TIMEOUT(view.ready(), 15000);
+        QCOMPARE(view.content()->text, latest->text);
     }
     void virtualAccessibleActionsAndTabStopsKeepGlobalPositions() {
         Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 500);

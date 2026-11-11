@@ -303,7 +303,7 @@ def main():
             groups = {
                 "native_model": [], "native_preview": [],
                 "desktop": ["headingMapKeepsSnapshotIdentityAndUtf8Ranges", "previewPendingHeadingRejectsContextAndRevisionChanges", "previewFragmentLinksNavigateOnlyTheDisplayedRevision", "previewDoesNotActivateLinksWhenReferenceAnalysisMayBeIncomplete", "previewFragmentLinksSupportKeyboardFocusAndActivation", "workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding", "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork"],
-                "visual": ["themeGeometryAndEditing", "sharedAppearanceAndReloadPreserveTextUndoAndPosition", "missingFragmentShowsNoticeWithoutReplacingThePreview", "readerComponentsCopyAndHorizontalScroll"],
+                "visual": ["themeGeometryAndEditing", "sharedAppearanceAndReloadPreserveTextUndoAndPosition", "missingFragmentShowsNoticeWithoutReplacingThePreview", "previewFailureRecoversAfterUndoWithoutHiddenLayoutDeadlock", "readerComponentsCopyAndHorizontalScroll"],
                 "workspace": ["documentLinksReuseDirtyTargetAndNavigateHeadings", "documentLinksRejectUnsafeTargetsAndStaleSource", "documentLinksPreviewClicksKeepStandaloneRouting", "acceptedFileCapabilitySurvivesSourceRootRevocation", "imageAccessFollowsStandaloneAndWorkspaceAuthorization", "standaloneImageImportUsesExplicitDirectoryAndKeepsOriginalBytes", "readingPositionSurvivesNativeHostTransfer", "splitThemeGeometryAndSaveUseTheSameSession"],
             }
             evidence = build / "evidence"; evidence.mkdir(exist_ok=True)

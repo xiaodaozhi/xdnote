@@ -202,6 +202,7 @@ std::optional<NativePreviewContent> NativePreviewContent::build(NativePreviewMod
     const QStringList keywords = {"fn", "let", "mut", "pub", "use", "struct", "impl", "return", "if", "else", "for", "while", "const", "class", "function", "import", "from", "def", "true", "false", "null", "None", "int", "void", "auto", "async", "await"};
     for (const auto &owner : result.owners) {
         if (!owner.code || owner.length > 128 * 1024) continue;
+        if (QStringView(result.text).mid(owner.start, owner.length).toUtf8().size() > 128 * 1024) continue;
         const auto language = QString::fromUtf8(result.model.text(result.model.node(owner.node))).toLower();
         if (!QStringList{"rust", "rs", "cpp", "c", "c++", "javascript", "js", "typescript", "ts", "python", "py", "json", "css", "sh", "bash"}.contains(language)) continue;
         const int end = owner.start + owner.length;

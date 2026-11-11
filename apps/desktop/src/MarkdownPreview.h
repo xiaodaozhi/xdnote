@@ -46,6 +46,7 @@ public:
     void navigateToHeading(const QString &fragment, quint64 revision);
 signals:
     void previewReady(quint64 revision);
+    void previewPrepared(quint64 revision);
     void previewError(const QString &message);
     void copyTextRequested(const QString &text);
     void fragmentNavigationMessage(const QString &message);

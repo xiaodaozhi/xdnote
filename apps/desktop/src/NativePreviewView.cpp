@@ -13,6 +13,8 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QFocusEvent>
+#include <QShowEvent>
+#include <QHideEvent>
 #include <QFutureWatcher>
 #include <QtConcurrentRun>
 #include <atomic>
@@ -763,7 +765,7 @@ void NativePreviewView::finishLayout(int offset, bool restore) {
     updateControls(); viewport()->update();
 }
 void NativePreviewView::scheduleLayout() {
-    if (d->runningPlan || !d->pendingPlan || !d->content) return;
+    if (d->runningPlan || !d->pendingPlan || !d->content || !isVisible()) return;
     d->pendingPlan = false; d->runningPlan = true; const auto generation = d->layoutGeneration;
     auto cancelled = std::make_shared<std::atomic_bool>(false); d->cancelled = cancelled;
     // Frozen value-only inputs. Every QTextDocument is created and destroyed
@@ -1067,6 +1069,8 @@ void NativePreviewView::scrollToText(int offset) {
 QPointF NativePreviewView::readingPosition() const { return {0, qreal(verticalScrollBar()->value())}; }
 void NativePreviewView::restoreReadingPosition(const QPointF &position) { verticalScrollBar()->setValue(qRound(position.y())); }
 void NativePreviewView::resizeEvent(QResizeEvent *event) { QAbstractScrollArea::resizeEvent(event); rebuild(true); }
+void NativePreviewView::showEvent(QShowEvent *event) { QAbstractScrollArea::showEvent(event); if (d->asynchronous) rebuild(true); }
+void NativePreviewView::hideEvent(QHideEvent *event) { QAbstractScrollArea::hideEvent(event); if (d->asynchronous) rebuild(true); }
 void NativePreviewView::scrollContentsBy(int, int) { updateControls(); viewport()->update(); }
 
 void NativePreviewView::mousePressEvent(QMouseEvent *event) {

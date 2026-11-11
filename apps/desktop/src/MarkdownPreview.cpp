@@ -96,6 +96,9 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
                 const auto previous = m_imageWatch.files() + m_imageWatch.directories();
                 if (!previous.isEmpty()) m_imageWatch.removePaths(previous);
                 if (!result.imageWatchPaths.isEmpty()) m_imageWatch.addPaths(result.imageWatchPaths);
+                emit previewPrepared(result.revision);
+                if (!alive) return;
+                if (m_closed || result.generation != m_generation || !currentRevision(m_session, result.revision)) { startPending(); return; }
                 if (m_resourceRoot && !m_resourceRoot->active()) { result.images.clear(); result.localDocumentsAdmitted = false; }
                 m_restoring = true;
                 m_view->presentAsync(result.stamp, std::move(result.content), std::move(result.images), result.localDocumentsAdmitted);
@@ -115,7 +118,7 @@ void MarkdownPreview::navigateToHeading(const QString &fragment, quint64 revisio
     if (m_closed || !currentRevision(m_session, revision)) {
         m_navigationPending = false; emit fragmentNavigationMessage(QStringLiteral("文档已变化，请重新定位标题。")); return;
     }
-    if (!m_pageReady || m_displayedRevision != revision || m_presentingGeneration != m_generation) {
+    if (!m_pageReady || !m_view->ready() || m_displayedRevision != revision || m_presentingGeneration != m_generation) {
         m_pendingFragment = fragment; m_navigationRevision = revision; m_navigationPending = true; return;
     }
     m_navigationPending = false;
