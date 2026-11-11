@@ -17,6 +17,7 @@ public:
         qsizetype retainedContentBytes = 0, decodedImageBytes = 0;
         qsizetype peakDecodedImageBytes = 0;
         int chunks = 0, flows = 0, resourceLoads = 0, deniedResources = 0;
+        bool layoutPending = false, layoutRunning = false;
     };
     explicit NativePreviewView(Appearance *appearance, QWidget *parent = nullptr, int padding = 24);
     ~NativePreviewView() override;

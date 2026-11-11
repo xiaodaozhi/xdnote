@@ -106,7 +106,8 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
         }
         if (alive) startPending();
     });
-    refresh();
+    // Let the owner configure its resource root before the initial parse.
+    QTimer::singleShot(0, this, [this] { if (m_generation == 0) refresh(); });
 }
 MarkdownPreview::~MarkdownPreview() { m_closed = true; disconnect(&m_worker, nullptr, this, nullptr); }
 void MarkdownPreview::restoreReadingPosition(const QPointF &position) {

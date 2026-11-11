@@ -594,7 +594,7 @@ void NativePreviewView::setZoomFactor(qreal factor) { factor = qBound(.5, factor
 qreal NativePreviewView::zoomFactor() const { return d->zoom; }
 const Content *NativePreviewView::content() const { return d->content.get(); }
 NativePreviewStamp NativePreviewView::displayedStamp() const { return d->shown; }
-NativePreviewView::Statistics NativePreviewView::statistics() const { return d->stats; }
+NativePreviewView::Statistics NativePreviewView::statistics() const { auto value = d->stats; value.layoutPending = d->planning; value.layoutRunning = d->runningPlan; return value; }
 QString NativePreviewView::error() const { return d->error; }
 bool NativePreviewView::keyboardOutlineVisible() const {
     return d->keyboardOutline && hasFocus() && window()->isActiveWindow()
@@ -746,7 +746,11 @@ void NativePreviewView::rebuild(bool keepPosition) {
         ++d->layoutGeneration; d->planning = true; d->pendingPlan = true;
         if (d->cancelled) d->cancelled->store(true);
         const QPointer<NativePreviewView> alive(this); emit layoutStarted(); if (!alive) return;
-        scheduleLayout(); updateControls(); viewport()->update(); return;
+        scheduleLayout();
+        // A child show event can precede visibility of its ancestors. Retry
+        // after the hierarchy settles, with this widget as lifetime context.
+        QTimer::singleShot(0, this, [this] { scheduleLayout(); });
+        updateControls(); viewport()->update(); return;
     }
     d->plan(viewport()->size());
     finishLayout(oldOffset, keepPosition);

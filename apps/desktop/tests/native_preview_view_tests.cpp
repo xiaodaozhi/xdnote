@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QWheelEvent>
 #include <QtTest>
+#include <QVBoxLayout>
 #include <algorithm>
 
 using namespace xdnote;
@@ -265,6 +266,11 @@ private slots:
         QVERIFY(view.displayedStamp() == stamp(2)); QCOMPARE(view.content()->text, latest->text);
         view.hide(); QVERIFY(!view.ready()); view.show(); QTRY_VERIFY_WITH_TIMEOUT(view.ready(), 15000);
         QCOMPARE(view.content()->text, latest->text);
+        QWidget host; QVBoxLayout layout(&host); NativePreviewView nested(&appearance, &host); layout.addWidget(&nested);
+        host.resize(700, 400); nested.expect(stamp()); QVERIFY(nested.presentAsync(stamp(), latest));
+        host.show(); QTRY_VERIFY_WITH_TIMEOUT(nested.ready(), 15000);
+        host.hide(); host.show(); QTRY_VERIFY_WITH_TIMEOUT(nested.ready(), 15000);
+        QCOMPARE(nested.content()->text, latest->text);
     }
     void virtualAccessibleActionsAndTabStopsKeepGlobalPositions() {
         Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 500);

@@ -869,7 +869,11 @@ private slots:
         QCOMPARE(workspace->findChild<QWidget *>("documentHeader")->height(), 48); QCOMPARE(workspace->findChild<QWidget *>("workspaceFooters")->height(), 26); QCOMPARE(pane->footer()->width(), workspace->width()); QVERIFY(!pane->windowGeometry()); QVERIFY(workspace->windowGeometry());
         QCOMPARE(pane->footer()->geometry(), workspace->findChild<QWidget *>("workspaceFooters")->rect());
         auto *splitter = pane->findChild<QSplitter *>("documentSplit"); auto *handle = splitter->handle(1); QVERIFY(handle->isVisible());
-        QTRY_COMPARE(workspace->tree()->currentIndex().data().toString(), QStringLiteral("写作，从这里开始.md")); QTRY_VERIFY(pane->preview()->view()->contentsSize().height() > 100); QTest::qWait(250);
+        QTRY_COMPARE(workspace->tree()->currentIndex().data().toString(), QStringLiteral("写作，从这里开始.md")); QTRY_VERIFY2_WITH_TIMEOUT(pane->preview()->view()->ready(), qPrintable(QString("active=%1 visible=%2 content=%3 pending=%4 running=%5 revision=%6 expected=%7 error=%8")
+            .arg(workspace->activePane() == pane).arg(pane->preview()->view()->isVisible()).arg(pane->preview()->view()->content() != nullptr)
+            .arg(pane->preview()->view()->statistics().layoutPending).arg(pane->preview()->view()->statistics().layoutRunning)
+            .arg(pane->preview()->displayedRevision()).arg(session->revision()).arg(pane->preview()->view()->error())), 15000);
+        QVERIFY(pane->preview()->view()->contentsSize().height() > 100); QTest::qWait(250);
         const auto treeImage = workspace->tree()->viewport()->grab().toImage(); const auto treeRatio = treeImage.devicePixelRatio(); const auto selectedRow = workspace->tree()->visualRect(workspace->tree()->currentIndex()); QCOMPARE(treeImage.pixelColor(qRound((workspace->tree()->viewport()->width() - 16) * treeRatio), qRound(selectedRow.center().y() * treeRatio)), pane->appearance()->accentColor("soft"));
         const auto divider = handle->grab().toImage(); const auto ratio = divider.devicePixelRatio(); QCOMPARE(divider.pixelColor(int((handle->width() / 2.0) * ratio), qRound(60 * ratio)), pane->appearance()->color("border")); QCOMPARE(divider.pixelColor(0, qRound(60 * ratio)), pane->appearance()->color("background"));
         const auto original = splitter->sizes(); QTest::mousePress(handle, Qt::LeftButton); QTest::mouseMove(handle, handle->rect().center() + QPoint(40, 0), 30); QTest::mouseRelease(handle, Qt::LeftButton); QVERIFY(splitter->sizes().first() != original.first()); splitter->setSizes(original);
