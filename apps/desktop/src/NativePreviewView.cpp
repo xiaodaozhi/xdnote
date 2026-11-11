@@ -1,4 +1,5 @@
 #include "NativePreviewView.h"
+#include "NativePreviewPlaceholders.h"
 #include "Appearance.h"
 #include "InputModality.h"
 #include "MarkdownBridge.h"
@@ -100,7 +101,7 @@ struct NativePreviewView::State {
     void plan(QSize viewportSize);
     void freeze() {
         dpr = q->devicePixelRatioF();
-        for (const auto *name : {"text", "textSecondary", "syntaxHeading", "syntaxCode", "border", "background", "codeSurface"}) colors.insert(name, appearance->color(name));
+        for (const auto *name : {"text", "textSecondary", "syntaxHeading", "syntaxCode", "border", "background", "codeSurface", "link", "quoteSurface", "tableStripe"}) colors.insert(name, appearance->color(name));
         for (const auto *name : {"solid", "foreground"}) accents.insert(name, appearance->accentColor(name));
     }
     NativePreviewStamp expected, shown;
@@ -129,7 +130,9 @@ struct NativePreviewView::State {
     bool current() const { return content && shown == expected && !planning && error.isEmpty(); }
     const Content::Flow &flow(int index) const { return content->flows[index]; }
     qreal indent(const Content::Flow &value) const {
-        return qMin(width * .65, (qreal(value.indent) * 20 + qreal(value.quote) * 19) * zoom);
+        const auto metrics = visualTokens()["typography"].toObject()["reader"].toObject();
+        const qreal list = value.indent ? metrics["listLeadingInset"].toInt() + (value.indent - 1) * metrics["listIndent"].toInt() : 0;
+        return qMin(width * .65, (list + qreal(value.quote) * metrics["quoteIndent"].toInt()) * zoom);
     }
     qreal available(const Content::Flow &value) const { return qMax(48.0, width - indent(value)); }
     quint32 fontKey(const Content::Flow &value, quint32 style) const {
@@ -143,14 +146,22 @@ struct NativePreviewView::State {
         int size = typography[value.kind == Content::FlowKind::CodeLine || (style & Content::Mono) ? "source" : "reader"].toObject()["size"].toInt();
         if (value.heading) size = typography["headings"].toObject()[value.heading == 1 ? "documentH1" : value.heading == 2 ? "documentH2" : value.heading == 3 ? "documentH3" : ""].toInt(16);
         auto result = value.kind == Content::FlowKind::CodeLine || (style & Content::Mono) ? sourceFont(qMax(1, qRound(size * zoom))) : uiFont(qMax(1, qRound(size * zoom)));
-        result.setBold(value.heading || value.header || (style & Content::Bold));
+        result.setWeight(value.heading || value.header || (style & Content::Bold) ? QFont::DemiBold : QFont::Normal);
         result.setItalic(style & Content::Italic); result.setStrikeOut(style & Content::Strike);
         if (value.kind == Content::FlowKind::CodeLine) result.setKerning(false);
         fonts.insert(key, result);
         return result;
     }
     qreal lineHeight(const Content::Flow &value) const {
-        return qMax(QFontMetricsF(font(value)).height(), font(value).pixelSize() * (value.heading ? 1.4 : 1.8));
+        const auto reader = visualTokens()["typography"].toObject()["reader"].toObject();
+        const qreal factor = reader[value.heading ? "headingLineHeight" : value.kind == Content::FlowKind::CodeLine ? "codeLineHeight" : "lineHeight"].toDouble();
+        return qMax(QFontMetricsF(font(value)).height(), font(value).pixelSize() * factor);
+    }
+    QSizeF imageDimensions(const Content::Image &image, const Content::Flow &flow, qreal room) const {
+        room = qMax(1.0, room); const auto found = imageInfo.constFind(int(image.index));
+        if (found == imageInfo.cend()) return previewPlaceholderSize(*content, image, flow, room, zoom);
+        const auto size = found->pixels; const qreal factor = qMin(1.0, room / size.width());
+        return QSizeF(size.width() * factor, size.height() * factor);
     }
     int safeEnd(int start, int limit, int end) const {
         int result = qMin(end, start + limit);
@@ -166,6 +177,13 @@ struct NativePreviewView::State {
         for (const auto &image : imageInfo) {
             if (image.start < result && image.start + image.length > result)
                 result = image.start > start ? image.start : image.start + image.length;
+        }
+        auto image = std::upper_bound(content->images.cbegin(), content->images.cend(), result,
+            [](int position, const Content::Image &entry) { return position < entry.start; });
+        if (image != content->images.cbegin()) {
+            --image;
+            if (image->start < result && image->start + image->length > result)
+                result = image->start > start ? image->start : image->start + image->length;
         }
         return qMax(start + 1, qMin(end, result));
     }
@@ -209,9 +227,8 @@ struct NativePreviewView::State {
             auto image = std::lower_bound(content->images.cbegin(), content->images.cend(), start,
                 [](const Content::Image &entry, int position) { return entry.start < position; });
             for (; image != content->images.cend() && image->start < end; ++image) {
-                const auto info = imageInfo.constFind(int(image->index));
-                if (info != imageInfo.cend() && image->start + image->length <= end)
-                    result += qMin(qreal(info->pixels.width()), available(value) - 24 * zoom)
+                if (image->start + image->length <= end)
+                    result += imageDimensions(*image, value, available(value)).width()
                         - measure(value, image->start, image->length, false);
             }
         }
@@ -229,7 +246,7 @@ struct NativePreviewView::State {
             [](const Content::Image &entry, int position) { return entry.start < position; });
         while (at < end) {
             if (image != content->images.cend() && image->start == at && image->start + image->length <= end
-                && imageInfo.contains(int(image->index))) {
+                ) {
                 doc->positions.append(at); objects.append({int(text.size()), int(image->index)});
                 text += QChar::ObjectReplacementCharacter; at += image->length; ++image;
             } else {
@@ -244,7 +261,14 @@ struct NativePreviewView::State {
         QTextCursor cursor(doc.get()); cursor.select(QTextCursor::Document);
         QTextBlockFormat block; block.setTopMargin(0); block.setBottomMargin(0);
         block.setLineHeight(lineHeight(value), QTextBlockFormat::MinimumHeight); cursor.setBlockFormat(block);
-        QTextCharFormat base; base.setForeground(colors.value("text")); cursor.setCharFormat(base);
+        if (value.markerLength) {
+            const qreal marker = QFontMetricsF(font(value)).horizontalAdvance(content->text.mid(value.start, value.markerLength));
+            for (auto part = doc->begin(); part.isValid(); part = part.next()) {
+                QTextCursor item(part); auto hanging = part.blockFormat(); hanging.setLeftMargin(marker);
+                hanging.setTextIndent(start == value.start && part.position() == 0 ? -marker : 0); item.setBlockFormat(hanging);
+            }
+        }
+        QTextCharFormat base; base.setForeground(colors.value(value.quote ? "textSecondary" : "text")); cursor.setCharFormat(base);
         auto run = std::lower_bound(content->runs.cbegin(), content->runs.cend(), start,
             [](const Content::Run &entry, int position) { return entry.start + entry.length <= position; });
         for (; run != content->runs.cend() && run->start < end; ++run) {
@@ -252,7 +276,10 @@ struct NativePreviewView::State {
             cursor.setPosition(from); cursor.setPosition(to, QTextCursor::KeepAnchor);
             QTextCharFormat format; format.setFont(font(value, run->style));
             if (run->link != NativePreviewModel::NoParent) {
-                format.setForeground(colors.value("textSecondary")); format.setFontUnderline(true);
+                format.setForeground(colors.value("link")); format.setFontUnderline(true);
+            }
+            if ((run->style & Content::Mono) && value.kind == Content::FlowKind::Text) {
+                format.setBackground(colors.value("codeSurface")); format.setForeground(colors.value("syntaxCode"));
             }
             cursor.mergeCharFormat(format);
             if (run->style & Content::Task) {
@@ -279,15 +306,27 @@ struct NativePreviewView::State {
         }
         const qreal availableWidth = qMax(1.0, textWidth);
         for (const auto &object : objects) {
-            const auto size = imageInfo.value(object.second).pixels;
-            const qreal imageWidth = qMin(availableWidth, value.kind == Content::FlowKind::TableRow ? available(value) - 24 * zoom : availableWidth);
-            const qreal scale = qMin(1.0, imageWidth / size.width());
-            QTextImageFormat format; format.setName(QStringLiteral("xdnote-native:image/%1").arg(object.second));
-            format.setWidth(size.width() * scale); format.setHeight(size.height() * scale);
+            const auto &image = content->images[object.second];
+            const qreal room = qMin(availableWidth, value.kind == Content::FlowKind::TableRow ? available(value) - 24 * zoom : availableWidth);
+            const auto size = imageDimensions(image, value, room);
+            QTextImageFormat format; format.setName(QStringLiteral("xdnote-native:%1/%2").arg(imageInfo.contains(object.second) ? "image" : "placeholder").arg(object.second));
+            format.setWidth(size.width()); format.setHeight(size.height());
             cursor.setPosition(object.first); cursor.setPosition(object.first + 1, QTextCursor::KeepAnchor); cursor.setCharFormat(format);
         }
-        doc->loader = [this, probe, activeEnd, start, availableWidth](const QUrl &url, NativeDocument *owner) -> QVariant {
-            const QString name = url.toString(); const QString prefix = QStringLiteral("xdnote-native:image/");
+        doc->loader = [this, probe, activeEnd, start, availableWidth, flowIndex](const QUrl &url, NativeDocument *owner) -> QVariant {
+            const QString name = url.toString(); const QString placeholder = QStringLiteral("xdnote-native:placeholder/");
+            if (name.startsWith(placeholder)) {
+                bool valid = false; const int index = name.mid(placeholder.size()).toInt(&valid);
+                if (!valid || name != placeholder + QString::number(index) || index < 0 || index >= content->images.size() || imageInfo.contains(index)) { ++stats.deniedResources; return {}; }
+                const auto &image = content->images[index];
+                if (probe || image.start < start || image.start >= activeEnd) return QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
+                auto bitmap = paintPreviewPlaceholder(*content, image, flow(flowIndex), availableWidth, zoom, dpr, colors.value("quoteSurface"), colors.value("border"), colors.value("textSecondary"));
+                if (bitmap.sizeInBytes() > MaximumDecodedPerDocument - owner->decodedBytes) return {};
+                owner->decodedBytes += bitmap.sizeInBytes(); stats.decodedImageBytes += bitmap.sizeInBytes();
+                stats.peakDecodedImageBytes = qMax(stats.peakDecodedImageBytes, stats.decodedImageBytes);
+                return bitmap;
+            }
+            const QString prefix = QStringLiteral("xdnote-native:image/");
             bool valid = false; const int index = name.startsWith(prefix) ? name.mid(prefix.size()).toInt(&valid) : -1;
             if (!valid || name != prefix + QString::number(index) || !imageInfo.contains(index) || !png.contains(index)) { ++stats.deniedResources; return {}; }
             if (probe) return QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
@@ -547,6 +586,7 @@ void NativePreviewView::expect(const NativePreviewStamp &stamp) {
     for (auto *button : d->buttons) { button->setEnabled(false); button->hide(); button->deleteLater(); }
     for (auto *bar : d->scrollbars) { bar->setEnabled(false); bar->hide(); bar->deleteLater(); }
     d->buttons.clear(); d->scrollbars.clear();
+    viewport()->setToolTip({});
     d->expected = stamp; d->content.reset(); d->clearCache(); d->png.clear(); d->imageInfo.clear();
     d->geometry.clear(); d->chunks.clear(); d->groups.clear(); d->horizontal.clear(); d->error.clear(); d->totalHeight = 0;
     d->anchor = d->cursor = 0; d->focusedAction = -1; d->keyboardOutline = false;
@@ -649,13 +689,17 @@ void NativePreviewView::State::plan(QSize viewportSize) {
                 if (content.owners[flow.owner].code) y += 44 * this->zoom;
             }
             priorOwner = flow.owner;
+            const auto spacing = visualTokens()["typography"].toObject()["reader"].toObject();
+            if (flow.heading && index > 0) y += qMax(0, spacing["headingTopGap"].toInt() - spacing["paragraphGap"].toInt()) * this->zoom;
             Geometry geometry; geometry.y = y; geometry.first = int(this->chunks.size());
             if (flow.kind == Content::FlowKind::Text) {
                 const int end = flow.start + flow.length; int start = flow.start;
                 bool shortLine = flow.length <= 128;
                 if (shortLine) {
                     for (int at = start; at < end; ++at) if (separator(content.text[at])) { shortLine = false; break; }
-                    for (const auto &image : this->imageInfo) if (image.start >= start && image.start < end) { shortLine = false; break; }
+                    const auto image = std::lower_bound(content.images.cbegin(), content.images.cend(), start,
+                        [](const Content::Image &entry, int position) { return entry.start < position; });
+                    if (image != content.images.cend() && image->start < end) shortLine = false;
                     shortLine = shortLine && this->measure(flow, start, flow.length) + 2 * this->lineHeight(flow) < this->available(flow);
                 }
                 if (shortLine) {
@@ -695,7 +739,7 @@ void NativePreviewView::State::plan(QSize viewportSize) {
                 }
                 geometry.count = int(this->chunks.size()) - geometry.first; geometry.height = y - geometry.y;
                 }
-                y += flow.indent ? 4 * this->zoom : 16 * this->zoom;
+                y += spacing[flow.heading ? "headingBottomGap" : flow.indent ? "listItemGap" : "paragraphGap"].toInt() * this->zoom;
             } else if (flow.kind == Content::FlowKind::Rule) { geometry.height = 16 * this->zoom; y += geometry.height; }
             else if (flow.kind == Content::FlowKind::CodeLine) {
                 geometry.height = this->lineHeight(flow); y += geometry.height;
@@ -817,6 +861,12 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
         }
         painter.save(); painter.setClipRect(surface, Qt::IntersectClip); painter.translate(x, y - scroll); doc->documentLayout()->draw(&painter, context); painter.restore();
     };
+    for (int i = d->flowAtY(scroll); i < content.flows.size() && d->geometry[i].y < scroll + viewport()->height(); ++i) {
+        const auto &flow = content.flows[i]; const auto &geometry = d->geometry[i];
+        if (!flow.quote) continue;
+        painter.fillRect(QRectF(d->x(i) - 16 * d->zoom, geometry.y - scroll - 6 * d->zoom,
+                               d->available(flow) + 16 * d->zoom, geometry.height + 12 * d->zoom), d->appearance->color("quoteSurface"));
+    }
     // Shared code surfaces and table borders are independent of cached text.
     for (int owner = 0; owner < d->groups.size(); ++owner) {
         const auto &group = d->groups[owner];
@@ -838,8 +888,8 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
         const qreal x = d->x(index), width = d->available(flow);
         if (geometry.y + geometry.height < scroll) continue;
         if (flow.quote) {
-            painter.setPen(QPen(d->appearance->color("border"), 3 * d->zoom));
-            painter.drawLine(QPointF(x - 12 * d->zoom, geometry.y - scroll), QPointF(x - 12 * d->zoom, geometry.y + geometry.height - scroll));
+            painter.setPen(QPen(d->appearance->color("textSecondary"), 3 * d->zoom));
+            painter.drawLine(QPointF(x - 16 * d->zoom, geometry.y - scroll - 6 * d->zoom), QPointF(x - 16 * d->zoom, geometry.y + geometry.height - scroll + 6 * d->zoom));
         }
         if (flow.kind == Content::FlowKind::Rule) {
             painter.setPen(QPen(d->appearance->color("border"), 1)); painter.drawLine(QPointF(x, geometry.y - scroll + 8 * d->zoom), QPointF(x + width, geometry.y - scroll + 8 * d->zoom));
@@ -861,8 +911,8 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
                     const qreal cellWidth = columns[column]; const auto &cell = content.cells[flow.firstCell + column];
                     if (atX + cellWidth >= x && atX <= x + width) {
                         painter.setPen(QPen(d->appearance->color("border"), 1));
-                        painter.setBrush(flow.header ? d->appearance->color("codeSurface") : d->appearance->color("background"));
-                        painter.fillRect(QRectF(atX, geometry.y - scroll, cellWidth, geometry.height), flow.header ? d->appearance->color("codeSurface") : d->appearance->color("background"));
+                        painter.setBrush(flow.header ? d->appearance->color("quoteSurface") : (index - d->groups[flow.owner].firstFlow) % 2 == 0 ? d->appearance->color("tableStripe") : d->appearance->color("background"));
+                        painter.fillRect(QRectF(atX, geometry.y - scroll, cellWidth, geometry.height), flow.header ? d->appearance->color("quoteSurface") : (index - d->groups[flow.owner].firstFlow) % 2 == 0 ? d->appearance->color("tableStripe") : d->appearance->color("background"));
                         painter.drawLine(QPointF(atX, geometry.y - scroll + .5), QPointF(atX + cellWidth, geometry.y - scroll + .5));
                         painter.drawLine(QPointF(atX + .5, geometry.y - scroll), QPointF(atX + .5, geometry.y + geometry.height - scroll));
                         if (column + 1 == flow.cellCount) painter.drawLine(QPointF(atX + cellWidth - .5, geometry.y - scroll), QPointF(atX + cellWidth - .5, geometry.y + geometry.height - scroll));
@@ -1093,6 +1143,12 @@ void NativePreviewView::mouseMoveEvent(QMouseEvent *event) {
         setSelection(d->anchor, offsetAtPoint(event->position().toPoint()));
     } else {
         viewport()->setCursor(actionAtPoint(event->position().toPoint()) >= 0 ? Qt::PointingHandCursor : Qt::IBeamCursor);
+        const int offset = offsetAtPoint(event->position().toPoint());
+        auto image = std::upper_bound(d->content->images.cbegin(), d->content->images.cend(), offset,
+            [](int position, const Content::Image &entry) { return position < entry.start; });
+        QString tooltip;
+        if (image != d->content->images.cbegin()) { --image; if (offset < image->start + image->length && !d->imageInfo.contains(int(image->index))) tooltip = previewImageReason(*image) + QStringLiteral("：") + previewImageLabel(*d->content, *image); }
+        viewport()->setToolTip(tooltip);
     }
 }
 void NativePreviewView::mouseReleaseEvent(QMouseEvent *event) {

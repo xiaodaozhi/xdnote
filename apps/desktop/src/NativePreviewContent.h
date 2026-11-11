@@ -26,6 +26,7 @@ struct NativePreviewContent {
         int start = 0, length = 0, owner = -1, firstCell = 0, cellCount = 0;
         quint32 node = 0;
         quint16 indent = 0, quote = 0;
+        quint16 markerLength = 0;
         quint8 heading = 0;
         FlowKind kind = FlowKind::Text;
         bool header = false;

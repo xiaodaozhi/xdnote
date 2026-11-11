@@ -77,6 +77,7 @@ private:
     QTimer m_fit, m_save;
     bool m_initialized = false, m_applying = false, m_transition = false;
     bool m_nativeMove = false, m_nativeResize = false, m_constrained = false;
+    bool m_nativeStateTransition = false;
     bool m_pendingUserResize = false;
     bool m_restoreMaximized = false;
     bool m_hasSaved = false;

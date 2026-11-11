@@ -1,4 +1,5 @@
 #include "WindowGeometry.h"
+#include "WindowChrome.h"
 #include <QApplication>
 #include <QDir>
 #include <QEvent>
@@ -63,8 +64,8 @@ bool nativeMapping(HWND hwnd, QWidget *window) {
 }
 bool nativeFrame(HWND hwnd, QWidget *window, UINT dpi, QSize *result) {
     if (!dpi) return false;
-    // The application's frameless Windows shell uses the whole normal HWND as
-    // client area. Standard decorated QWidget windows retain all native insets.
+    // Qt Widgets owns a zero-margin client area for the custom application
+    // frame. Native WS_CAPTION is retained for system commands and animation.
     if (window->windowFlags().testFlag(Qt::FramelessWindowHint)) { *result = QSize(0, 0); return true; }
     RECT rect{};
     if (!AdjustWindowRectExForDpi(&rect, DWORD(GetWindowLongPtrW(hwnd, GWL_STYLE)), FALSE,
@@ -167,6 +168,8 @@ WindowGeometry::WindowGeometry(QWidget *window, WindowGeometryStore *store, QStr
     connect(&m_fit, &QTimer::timeout, this, &WindowGeometry::fitToScreen);
     connect(&m_save, &QTimer::timeout, this, [this] { flush(); });
     window->installEventFilter(this); qApp->installNativeEventFilter(this);
+    if (auto *shell = qobject_cast<ApplicationWindow *>(window))
+        connect(shell, &ApplicationWindow::nativeStateChangeStarting, this, [this] { m_nativeStateTransition = true; });
     connect(qApp, &QGuiApplication::screenRemoved, this, [this](QScreen *) { scheduleFit(); });
     if (window->isVisible()) QTimer::singleShot(0, this, &WindowGeometry::initialize);
 }
@@ -221,6 +224,12 @@ void WindowGeometry::fitToScreen() {
         }
         return;
     }
+#ifdef Q_OS_WIN
+    if (QGuiApplication::platformName() == "windows" && m_window->internalWinId()) {
+        const auto hwnd = reinterpret_cast<HWND>(m_window->internalWinId());
+        if (IsZoomed(hwnd) || IsIconic(hwnd)) { m_pendingUserResize = false; return; }
+    }
+#endif
     m_transition = false;
     if (m_window->windowState() != Qt::WindowNoState || !m_window->windowHandle()) { m_pendingUserResize = false; return; }
     m_returningToNormal = false;
@@ -239,7 +248,7 @@ void WindowGeometry::fitToScreen() {
     m_constrained = fit.client.size() != m_placement.normal.size();
     m_window->resize(fit.client.size());
     if (!wayland()) m_window->move(fit.client.topLeft() - QPoint(frame.left(), frame.top()));
-    m_restorePosition = false; m_restoreNormal = false; m_fittedOnce = true;
+    m_restorePosition = false; m_restoreNormal = false; m_nativeStateTransition = false; m_fittedOnce = true;
     if (m_explicitSizePending) m_placement.maximized = false;
     m_explicitSizePending = false;
     m_placement.available = available;
@@ -275,7 +284,7 @@ bool WindowGeometry::eventFilter(QObject *target, QEvent *event) {
         m_placement.normal.setSize(static_cast<QResizeEvent *>(event)->size());
     if (event->type() == QEvent::ScreenChangeInternal || event->type() == QEvent::DevicePixelRatioChange) scheduleFit();
     if (event->type() == QEvent::Move) rememberPosition();
-    if (event->type() == QEvent::Resize && event->spontaneous() && m_initialized && !m_applying && !m_transition && !m_nativeMove
+    if (event->type() == QEvent::Resize && event->spontaneous() && m_initialized && !m_applying && !m_transition && !m_nativeStateTransition && !m_restoreNormal && !m_nativeMove
         && m_window->windowState() == Qt::WindowNoState && m_window->screen()
         && !resemblesWindowTile(m_window->frameGeometry(), m_window->screen()->availableGeometry())) rememberUserGeometry(m_window->geometry());
     if (event->type() == QEvent::WindowStateChange && !m_window->isMinimized() && !m_window->isFullScreen()) {
@@ -291,6 +300,9 @@ bool WindowGeometry::nativeEventFilter(const QByteArray &, void *message, qintpt
     if (!msg || !m_window || !m_window->internalWinId() || msg->hwnd != reinterpret_cast<HWND>(m_window->internalWinId())) return false;
     const auto hwnd = msg->hwnd;
     DWORD process = 0; if (GetWindowThreadProcessId(hwnd, &process) != GetCurrentThreadId() || process != GetCurrentProcessId()) return false;
+    if ((msg->message == WM_SYSCOMMAND && ((msg->wParam & 0xfff0) == SC_MAXIMIZE || (msg->wParam & 0xfff0) == SC_RESTORE || (msg->wParam & 0xfff0) == SC_MINIMIZE))
+        || (msg->message == WM_SIZE && (msg->wParam != SIZE_RESTORED || m_window->windowState() != Qt::WindowNoState)))
+        m_nativeStateTransition = true;
     if (msg->message == WM_ENTERSIZEMOVE) { m_nativeMove = true; m_nativeResize = false; }
     if (msg->message == WM_SIZING) m_nativeResize = true;
     if (msg->message == WM_DPICHANGED) scheduleFit(); // Qt owns the suggested rectangle and DPI lifecycle.

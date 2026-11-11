@@ -57,6 +57,7 @@ protected:
     bool event(QEvent *) override;
     bool eventFilter(QObject *, QEvent *) override;
 private:
+    void installTabClose(int index, const QUuid &id);
     void refreshPane(const QUuid &id);
     void selectCurrent();
     void advanceClose();

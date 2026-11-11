@@ -57,7 +57,7 @@ std::optional<NativePreviewContent> NativePreviewContent::build(NativePreviewMod
     const auto startFlow = [&](quint32 node, quint8 heading = 0) {
         endFlow();
         Flow value; value.start = int(result.text.size()); value.node = node;
-        value.indent = indent; value.quote = quote; value.heading = heading;
+        value.indent = indent; value.quote = quote; value.heading = heading; value.markerLength = quint16(pendingMarker.size());
         result.flows.append(value); flow = int(result.flows.size()) - 1;
         if (!pendingMarker.isEmpty()) { separator(pendingMarker); pendingMarker.clear(); }
     };

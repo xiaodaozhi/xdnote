@@ -226,7 +226,7 @@ def main():
     parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
     parser.add_argument("--file", type=Path, action="append", default=[], help="local Markdown file to open with run; repeat for multiple files")
     parser.add_argument("--admission", action="store_true", help="run the memory-only component window instead of xdnote")
-    parser.add_argument("--suite", choices=("full", "resources", "preview", "background"), default="full", help="test scope; resources/preview target affected paths; background is fixed offscreen")
+    parser.add_argument("--suite", choices=("full", "resources", "preview", "background", "ui"), default="full", help="test scope; resources/preview target affected paths; background is fixed offscreen")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
@@ -298,6 +298,33 @@ def main():
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
         verify_build_identity(build, args.profile, qt)
+        if args.suite == "ui":
+            from background_validation import offscreen_environment, execute, check_report, GROUPS
+            env = offscreen_environment(env, build)
+            evidence = build / "evidence/ui-polish"; evidence.mkdir(parents=True, exist_ok=True)
+            env["XDNOTE_TEST_EVIDENCE"] = str(evidence); env["XDNOTE_NATIVE_EVIDENCE"] = str(evidence)
+            groups = {
+                "native_model": [], "native_preview": [],
+                "geometry": GROUPS["geometry"] + ["captionTogglePreservesNormalClientSize"],
+                "desktop": ["workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding", "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork", "previewFragmentLinksNavigateOnlyTheDisplayedRevision"],
+                "visual": ["themeGeometryAndEditing", "sharedAppearanceAndReloadPreserveTextUndoAndPosition", "unsavedDialogAppearanceAndCancel", "menuShellsAndNestedNavigation", "readerComponentsCopyAndHorizontalScroll"],
+                "workspace": ["navigationTabsAreUniqueClosableAndPreserveDirtyDocument", "tabCloseAndSidebarBorderShareGeometryAndHover", "sidebarSearchRecentFavoritesAndTabsKeepTheSameBuffer", "duplicateOpenAndReorderedInactiveTabCloseKeepUniqueDirtyBuffer", "splitThemeGeometryAndSaveUseTheSameSession", "tabCloseCancelAndWorkspaceCloseSaveProtectOtherBuffers", "toolbarBordersAndHeadingDropdown", "readingPositionSurvivesNativeHostTransfer"],
+            }
+            suffix = ".exe" if platform.system() == "Windows" else ""
+            result = {"ok": False, "scope": "fixed offscreen UI regression; no physical desktop or animation acceptance", "buildIdentity": verify_build_identity(build, args.profile, qt), "tests": {}}
+            try:
+                for group, functions in groups.items():
+                    report = evidence / f"{group}-qtest.txt"; report.unlink(missing_ok=True)
+                    execute([build / f"xdnote_{group}_tests{suffix}", *functions, "-o", "-,txt", "-o", f"{report},txt"], env, evidence / f"{group}.log", 240)
+                    result["tests"][group] = check_report(report.read_text(encoding="utf-8"))
+                    print(f"UI {group}: passed", flush=True)
+                result["ok"] = True
+            except Exception as error:
+                result["error"] = str(error)
+                raise
+            finally:
+                (evidence / "report.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            return
         if args.suite == "background":
             from background_validation import validate
             validate(build, env)
