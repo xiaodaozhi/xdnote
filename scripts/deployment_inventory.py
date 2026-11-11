@@ -109,10 +109,11 @@ def dependency_closure(directory, system_directory):
     return result, sorted(missing)
 
 
-def collect_qt_notices(qt, directory):
+def collect_qt_notices(qt, directory, binary_names=None):
     target = directory / "licenses/qt"
     target.mkdir(parents=True)
-    shipped = {path.name.lower() for path in files_under(directory) if path.suffix.lower() in (".dll", ".exe")}
+    shipped = set(binary_names) if binary_names is not None else {
+        path.name.lower() for path in files_under(directory) if path.suffix.lower() in (".dll", ".exe")}
     records, notices = [], []
     covered = set()
     for sbom in sorted((qt / "sbom").glob("*.spdx.json")):
@@ -134,7 +135,8 @@ def collect_qt_notices(qt, directory):
                            "\nConcluded: " + package.get("licenseConcluded", "NOASSERTION") + "\n")
         for item in value.get("hasExtractedLicensingInfos", []):
             notices.append("\n" + item.get("licenseId", "") + "\n" + item.get("extractedText", "") + "\n")
-    uncovered = sorted(name for name in shipped if name.startswith("qt6") and name not in covered)
+    uncovered = sorted(name for name in shipped if name.startswith(("qt6", "libqt6")) and name not in covered)
+    uncovered += sorted(name for name in shipped if name.startswith("qt") and "." not in name and name not in covered)
     if uncovered:
         raise RuntimeError("Shipped Qt libraries lack SDK SBOM records: " + ", ".join(uncovered))
     if not records:
