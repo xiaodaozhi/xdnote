@@ -44,6 +44,7 @@ public:
     QPointF readingPosition() const { return m_scroll; }
     void restoreReadingPosition(const QPointF &position);
     void navigateToHeading(const QString &fragment, quint64 revision);
+    bool mappingCurrent();
 signals:
     void previewReady(quint64 revision);
     void previewPrepared(quint64 revision);
@@ -54,6 +55,7 @@ signals:
     void documentLinkRequested(QString target, quint64 revision);
 private:
     void startPending();
+    void retryDeferred();
     QPointer<DocumentSession> m_session;
     NativePreviewView *m_view = nullptr;
     QFutureWatcher<RenderResult> m_worker;
@@ -80,5 +82,6 @@ private:
     quint64 m_navigationRevision = 0;
     bool m_navigationPending = false;
     bool m_pageReady = false;
+    bool m_refreshDeferred = false, m_refreshQueued = false;
 };
 }

@@ -111,6 +111,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/SharedWidgets.cpp apps/desktop/src/SharedWidgets.h
     apps/desktop/src/FileManager.cpp apps/desktop/src/FileManager.h
     apps/desktop/src/SingleFileWindow.cpp apps/desktop/src/SingleFileWindow.h
+    apps/desktop/src/ScrollSyncController.cpp apps/desktop/src/ScrollSyncController.h
     apps/desktop/src/FileApplication.cpp apps/desktop/src/FileApplication.h
     apps/desktop/src/SingleInstance.cpp apps/desktop/src/SingleInstance.h
     apps/desktop/src/FileService.cpp apps/desktop/src/FileService.h
@@ -222,4 +223,11 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME workspace_workflow COMMAND xdnote_workspace_tests -o -,txt -o "${CMAKE_BINARY_DIR}/workspace-qtest.txt,txt")
     set_tests_properties(workspace_workflow PROPERTIES TIMEOUT 180)
+    add_executable(xdnote_scroll_tests apps/desktop/tests/scroll_sync_tests.cpp)
+    target_link_libraries(xdnote_scroll_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_scroll_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME split_scroll_sync COMMAND xdnote_scroll_tests -o -,txt -o "${CMAKE_BINARY_DIR}/scroll-qtest.txt,txt")
+    set_tests_properties(split_scroll_sync PROPERTIES TIMEOUT 180)
 endif()

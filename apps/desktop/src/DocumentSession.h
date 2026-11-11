@@ -83,6 +83,7 @@ private:
     bool m_reporting = false;
     bool m_closing = false;
     bool m_resourceBusy = false, m_resourceReadOnly = false;
+    bool m_reportedComposition = false;
     int m_mutations = 0;
     QString m_rejection;
 };

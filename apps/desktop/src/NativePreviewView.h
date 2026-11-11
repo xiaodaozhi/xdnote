@@ -46,9 +46,14 @@ public:
     bool activateAction(int action);
     QRect characterRect(int offset);
     int offsetAtPoint(const QPoint &viewportPoint);
-    void scrollToText(int offset);
+    void scrollToText(int offset, bool navigation = false);
     QPointF readingPosition() const;
     void restoreReadingPosition(const QPointF &position);
+    // Adjacent semantic block starts in source bytes and laid-out document Y.
+    // Interpolation is local to this span, never a whole-document percentage.
+    struct ScrollSpan { quint32 sourceStart = 0, sourceEnd = 0; qreal top = 0, bottom = 0; };
+    std::optional<ScrollSpan> scrollSpanForSource(quint32 byte, const NativePreviewStamp &stamp) const;
+    std::optional<ScrollSpan> scrollSpanAtY(qreal y, const NativePreviewStamp &stamp) const;
     Statistics statistics() const;
     QString error() const;
     bool keyboardOutlineVisible() const;
@@ -58,6 +63,7 @@ signals:
     void fragmentNavigated(const QString &fragment);
     void navigationMessage(const QString &message);
     void selectionChanged();
+    void verticalNavigationRequested();
     void layoutFailed(const QString &message);
     void layoutStarted();
     void layoutReady(const xdnote::NativePreviewStamp &stamp);

@@ -67,6 +67,7 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
         if (!m_restoring && m_pageReady) m_scroll = m_view->readingPosition();
     });
     connect(session, &DocumentSession::changed, this, &MarkdownPreview::refresh, Qt::QueuedConnection);
+    connect(session, &DocumentSession::stateChanged, this, &MarkdownPreview::retryDeferred, Qt::QueuedConnection);
     m_imageDelay.setSingleShot(true); m_imageDelay.setInterval(180);
     const auto imageChanged = [this] {
         if (m_closed || !m_session) return;
@@ -79,7 +80,7 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     connect(&m_imageDelay, &QTimer::timeout, this, &MarkdownPreview::refresh);
     const auto closed = [this] {
         m_closed = true; ++m_generation; ++m_contextGeneration; ++m_resourceGeneration;
-        m_hasPending = m_pageReady = m_navigationPending = false; m_imageDelay.stop();
+        m_hasPending = m_pageReady = m_navigationPending = m_refreshDeferred = false; m_imageDelay.stop();
         m_presentingLinkTargets.clear(); m_view->expect({});
     };
     connect(session, &DocumentSession::closed, this, closed);
@@ -110,6 +111,18 @@ MarkdownPreview::MarkdownPreview(DocumentSession *session, QWidget *parent, int 
     QTimer::singleShot(0, this, [this] { if (m_generation == 0) refresh(); });
 }
 MarkdownPreview::~MarkdownPreview() { m_closed = true; disconnect(&m_worker, nullptr, this, nullptr); }
+bool MarkdownPreview::mappingCurrent() {
+    if (m_closed || m_restoring || !m_pageReady || !m_session || m_session->isClosing()
+        || m_session->isBusy() || m_session->isComposing() || !m_view->ready()) return false;
+    const QPointer<MarkdownPreview> alive(this);
+    const auto revision = m_session->revision(); // Flush pending edits before trusting the old map.
+    if (!alive) return false;
+    const auto stamp = m_view->displayedStamp();
+    return !m_closed && !m_restoring && m_pageReady && m_session && m_view->ready()
+        && stamp.document == m_session->documentId() && stamp.revision == revision
+        && stamp.request == m_generation && m_presentingGeneration == m_generation
+        && stamp.path == m_contextGeneration && stamp.resources == m_resourceGeneration;
+}
 void MarkdownPreview::restoreReadingPosition(const QPointF &position) {
     if (m_closed || !std::isfinite(position.x()) || !std::isfinite(position.y())) return;
     m_scroll = QPointF(qBound(0.0, position.x(), 100000000.0), qBound(0.0, position.y(), 100000000.0));
@@ -127,15 +140,24 @@ void MarkdownPreview::navigateToHeading(const QString &fragment, quint64 revisio
 }
 void MarkdownPreview::refresh() {
     if (m_closed || !m_session) return;
+    if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
     const auto snapshot = m_session->snapshot();
     if (snapshot.result != EditResult::Applied) {
+        if (snapshot.result == EditResult::Busy || snapshot.result == EditResult::Composing) {
+            // Keep the latest intent, not an obsolete frozen snapshot. A save
+            // can rebind the resource context inside a state notification,
+            // where snapshot() intentionally refuses reentrant reads.
+            m_refreshDeferred = true; m_pageReady = m_hasPending = false; m_pending.clear();
+            ++m_generation; m_view->expect({snapshot.documentId, snapshot.revision, m_generation, m_contextGeneration, m_resourceGeneration});
+            retryDeferred();
+        } else m_refreshDeferred = false;
         if (snapshot.result == EditResult::InvalidText) {
             ++m_generation; const NativePreviewStamp stamp{snapshot.documentId, snapshot.revision, m_generation, m_contextGeneration, m_resourceGeneration};
             m_view->expect(stamp); m_view->showError(stamp, resultDescription(snapshot.result));
         }
         return;
     }
-    if (m_generation == std::numeric_limits<quint64>::max()) { m_closed = true; return; }
+    m_refreshDeferred = false;
     ++m_generation; m_pageReady = false;
     if (m_navigationPending && snapshot.revision != m_navigationRevision) {
         m_navigationPending = false; emit fragmentNavigationMessage(QStringLiteral("文档已变化，请重新定位标题。"));
@@ -143,6 +165,14 @@ void MarkdownPreview::refresh() {
     m_view->expect({snapshot.documentId, snapshot.revision, m_generation, m_contextGeneration, m_resourceGeneration});
     m_pending = snapshot.utf8; m_pendingDocumentId = snapshot.documentId; m_pendingRevision = snapshot.revision;
     m_hasPending = true; startPending();
+}
+void MarkdownPreview::retryDeferred() {
+    if (m_closed || !m_refreshDeferred || m_refreshQueued) return;
+    m_refreshQueued = true;
+    QTimer::singleShot(0, this, [this] {
+        m_refreshQueued = false;
+        if (!m_closed && m_refreshDeferred && m_session && !m_session->isBusy() && !m_session->isComposing()) refresh();
+    });
 }
 void MarkdownPreview::setResourceContext(std::shared_ptr<WorkspaceResourceReader> root, const QString &path, const QString &identity, const AuthorizedPreviewImages &authorized) {
     if (m_closed || (m_resourceRoot == root && m_resourceDocumentPath == path && m_resourceDocumentIdentity == identity && m_authorizedImages == authorized)) return;

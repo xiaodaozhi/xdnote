@@ -16,6 +16,7 @@ class QHBoxLayout;
 namespace xdnote {
 class SourceEditor;
 class MarkdownPreview;
+class ScrollSyncController;
 class WindowTitleBar;
 class Appearance;
 class SharedButton;
@@ -95,6 +96,7 @@ private:
     void updateCaret();
     void showSaveError();
     void syncPreviewResources();
+    ScrollSyncController *m_scrollSync = nullptr;
     void beginImageImport(const QString &path, const QImage &image, const QString &destinationDirectory = {});
     void chooseImage();
     void chooseWorkspaceDocumentLink();

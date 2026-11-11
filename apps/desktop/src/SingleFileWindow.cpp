@@ -10,6 +10,7 @@
 #include "SharedWidgets.h"
 #include "SourceEditor.h"
 #include "MarkdownPreview.h"
+#include "ScrollSyncController.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspacePath.h"
 #include "ImageImport.h"
@@ -370,6 +371,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     m_editor->send(SCI_SETEOLMODE, cr >= 0 && (lf < 0 || cr < lf) ? (lf == cr + 1 ? SC_EOL_CRLF : SC_EOL_CR) : SC_EOL_LF);
     connect(m_editor, &ScintillaEditBase::updateUi, this, [this] { updateCaret(); });
     layout->addWidget(m_editor, 1); m_splitter->insertWidget(0, m_editorPage); m_splitter->addWidget(m_previewPane); m_splitter->setSizes({500, 500});
+    m_scrollSync = new ScrollSyncController(m_editor, m_preview, this);
     connect(document, &FileDocument::stateChanged, this, &SingleFileWindow::updateState); connect(document, &QObject::destroyed, this, &SingleFileWindow::updateState);
     connect(document, &FileDocument::operationFinished, this, [this](bool success) {
         const bool saving = m_observedSave; m_observedSave = false;
@@ -386,6 +388,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     m_documentUiReady = true; setEditing(false); updateState();
 }
 SingleFileWindow::~SingleFileWindow() {
+    delete m_scrollSync; m_scrollSync = nullptr;
     for (const auto &image : m_importedImages) if (image.root) image.root->revoke();
     // QWidget's native close can deliver Hide from its base destructor. Stop
     // the controller while our UI members are still alive, before it can emit
@@ -491,7 +494,9 @@ void SingleFileWindow::reportHostMessage(const QString &message) { m_hostMessage
 void SingleFileWindow::setEditing(bool editing) { setViewMode(editing ? ViewMode::Source : ViewMode::Reading); }
 void SingleFileWindow::setViewMode(ViewMode mode) {
     if (!m_document || (!m_embedded && mode == ViewMode::Split) || (mode == ViewMode::Source && m_document->readOnly())) { updateState(); return; }
+    const bool fromReading = m_mode == ViewMode::Reading;
     m_mode = mode; m_editing = mode != ViewMode::Reading;
+    if (m_scrollSync) m_scrollSync->setEnabled(mode == ViewMode::Split, fromReading);
     m_body->setCurrentWidget(m_splitter); m_editorPage->setVisible(mode != ViewMode::Reading); m_previewPane->setVisible(mode != ViewMode::Source); m_previewHeading->setVisible(mode == ViewMode::Split); m_body->setFormatRuleVisible(mode != ViewMode::Reading);
     if (m_editing) m_editor->setFocus(Qt::OtherFocusReason); updateState();
 }

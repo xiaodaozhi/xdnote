@@ -123,7 +123,14 @@ void DocumentSession::flush() {
     emit changed(m_revision);
 }
 
-void DocumentSession::inputFinished() { if (m_pending) scheduleFlush(); }
+void DocumentSession::inputFinished() {
+    const bool composing = isComposing();
+    if (m_pending) scheduleFlush();
+    if (composing != m_reportedComposition) {
+        m_reportedComposition = composing;
+        QScopedValueRollback<bool> notifying(m_notifying, true); emit stateChanged();
+    }
+}
 quint64 DocumentSession::revision() { flush(); return m_revision; }
 
 DocumentSnapshot DocumentSession::snapshot() {

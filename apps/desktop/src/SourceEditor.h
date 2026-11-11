@@ -17,14 +17,19 @@ public:
     bool dispatching() const { return m_inputDepth != 0; }
     static void installAccessibility();
     void setTextZoom(int percent);
+    void acknowledgeNavigation();
 
 signals:
     void imagePasteRequested(QImage image);
+    void verticalNavigationRequested();
 
 protected:
     void inputMethodEvent(QInputMethodEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
 
 private:
     void applyAppearance();
@@ -35,5 +40,6 @@ private:
     bool m_preedit = false;
     bool m_inIme = false;
     int m_textZoom = 100;
+    qintptr m_lastAnchor = 0, m_lastCursor = 0;
 };
 }
