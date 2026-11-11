@@ -106,3 +106,7 @@ python scripts/desktop.py run --admission
 定向预览回归使用 `python scripts/desktop.py test --suite preview`；只执行受影响的五组测试，不运行文件／几何等完整套件。离屏运行须显式设置 `QT_QPA_PLATFORM=offscreen`，Windows 使用系统字体目录。
 
 Windows 可用 `python scripts/measure_preview.py --build-dir <本项目构建目录> --qt-prefix <本项目Qt目录> --vcvars <系统vcvars64.bat>` 测量自建真实文件的独立窗口进程，并核对产品 Qt DLL 闭包；报告区分空文档、普通文档和极密样本，不代表发行预算。该入口只启动诊断目标，不读取用户文件。
+
+## 无交互验证与部署诊断
+
+锁屏或没有交互桌面时使用 `test --suite background`，见[后台验证](../qa/background-validation.md)。入口固定离屏环境，不执行 UIA、真实输入或原生选择器，生成确定性回归与自有样本性能报告。Windows 独立诊断目录的准备、隔离运行及实际依赖清单见[部署诊断](deployment.md)；诊断不创建安装器或发行包，不代表最低系统及最终许可验收。
