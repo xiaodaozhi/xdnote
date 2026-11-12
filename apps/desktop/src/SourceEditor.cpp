@@ -19,6 +19,7 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QMimeData>
+#include <QSet>
 
 namespace xdnote {
 namespace {
@@ -227,7 +228,7 @@ void SourceEditor::setTextZoom(int percent) {
     const auto source = m_appearance->preferences()->section("editor");
     const auto size = source.value("fontSize").toDouble() * m_textZoom / 100.0;
     const auto points = qRound(size * 72.0 / logicalDpiY() * 100);
-    for (const auto style : {STYLE_DEFAULT, STYLE_LINENUMBER, 0, 1, 2, 3}) send(SCI_STYLESETSIZEFRACTIONAL, uptr_t(style), points);
+    for (const auto style : {STYLE_DEFAULT, STYLE_LINENUMBER, 0, 1, 2, 3, 4, 5, 6, 7}) send(SCI_STYLESETSIZEFRACTIONAL, uptr_t(style), points);
     send(SCI_SETEXTRAASCENT, 0); send(SCI_SETEXTRADESCENT, 0);
     const int extra = qMax(0, qRound(size * source.value("lineHeight").toDouble()) - int(send(SCI_TEXTHEIGHT, 0)));
     send(SCI_SETEXTRAASCENT, extra / 2); send(SCI_SETEXTRADESCENT, extra - extra / 2);
@@ -243,7 +244,7 @@ void SourceEditor::applyPreferences() {
     if (!values["fontFamily"].toString().isEmpty()) font.setFamily(values["fontFamily"].toString());
     setFont(font);
     const auto family = font.family().toUtf8();
-    for (const auto style : {STYLE_DEFAULT, STYLE_LINENUMBER, 0, 1, 2, 3}) send(SCI_STYLESETFONT, uptr_t(style), reinterpret_cast<sptr_t>(family.constData()));
+    for (const auto style : {STYLE_DEFAULT, STYLE_LINENUMBER, 0, 1, 2, 3, 4, 5, 6, 7}) send(SCI_STYLESETFONT, uptr_t(style), reinterpret_cast<sptr_t>(family.constData()));
     send(SCI_SETWRAPMODE, values["wordWrap"].toBool() ? SC_WRAP_WORD : SC_WRAP_NONE);
     send(SCI_SETMARGINWIDTHN, 0, values["lineNumbers"].toBool() ? visualTokens()["controls"].toObject()["lineNumberWidth"].toInt() : 0);
     send(SCI_SETTABWIDTH, values["indentWidth"].toInt()); send(SCI_SETINDENT, values["indentWidth"].toInt());
@@ -264,6 +265,7 @@ void SourceEditor::applyAppearance() {
     send(SCI_STYLESETFORE, 1, ref(m_appearance->color("syntaxHeading"))); send(SCI_STYLESETBOLD, 1, true);
     send(SCI_STYLESETFORE, 2, ref(m_appearance->color("syntaxCode")));
     send(SCI_STYLESETFORE, 3, ref(m_appearance->color("textSecondary")));
+    send(SCI_STYLESETFORE, 4, ref(m_appearance->color("syntaxHeading")));send(SCI_STYLESETFORE, 5, ref(m_appearance->color("syntaxCode")));send(SCI_STYLESETFORE, 6, ref(m_appearance->color("syntaxCode")));send(SCI_STYLESETFORE, 7, ref(m_appearance->color("textSecondary")));
     send(SCI_SETCARETFORE, ref(m_appearance->color("text")));
     send(SCI_SETSELBACK, true, ref(m_appearance->accentColor("soft")));
     send(SCI_SETSELFORE, true, ref(m_appearance->color("text")));
@@ -278,11 +280,22 @@ void SourceEditor::restyle() {
         send(SCI_STARTSTYLING, uptr_t(first)); send(SCI_SETSTYLING, uptr_t(length), number);
     };
     style(0, snapshot.utf8.size(), 0);
-    qsizetype offset = 0; bool fenced = false;
+    qsizetype offset = 0; bool fenced = false, blockComment=false;char fence=0;int fenceCount=0;QByteArray language;qsizetype codeBudget=0;
+    const QSet<QByteArray> keywords={"fn","let","mut","pub","use","struct","impl","return","if","else","for","while","const","class","function","import","from","def","true","false","null","None","int","void","auto","async","await","var","enum","match","break","continue","switch","case","export","static","namespace","public","private","bool"};
     for (const auto &line : snapshot.utf8.split('\n')) {
         const auto trimmed = line.trimmed();
-        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) { style(offset, line.size(), 2); fenced = !fenced; }
-        else if (fenced) style(offset, line.size(), 2);
+        int ticks=0;if(!trimmed.isEmpty()&&(trimmed[0]=='`'||trimmed[0]=='~'))while(ticks<trimmed.size()&&trimmed[ticks]==trimmed[0])++ticks;
+        if(ticks>=3&&(!fenced||(trimmed[0]==fence&&ticks>=fenceCount&&trimmed.mid(ticks).trimmed().isEmpty()))){style(offset,line.size(),2);if(fenced){fenced=false;}else{fenced=true;fence=trimmed[0];fenceCount=ticks;language=trimmed.mid(ticks).trimmed().toLower();blockComment=false;codeBudget=0;}}
+        else if (fenced) {style(offset,line.size(),2);codeBudget+=line.size();if(codeBudget<=128*1024){
+            for(qsizetype at=0;at<line.size();){const auto start=at;int number=0;const char ch=line[at];
+                if(blockComment||(ch=='/'&&at+1<line.size()&&line[at+1]=='*')){if(!blockComment)at+=2;blockComment=true;while(at<line.size()){if(at+1<line.size()&&line[at]=='*'&&line[at+1]=='/'){at+=2;blockComment=false;break;}++at;}number=7;}
+                else if((ch=='/'&&at+1<line.size()&&line[at+1]=='/')||(ch=='#'&&(language=="python"||language=="py"||language=="sh"||language=="bash"))){at=line.size();number=7;}
+                else if(ch=='\''||ch=='"'||ch=='`'){++at;bool escaped=false;while(at<line.size()){const char next=line[at++];if(!escaped&&next==ch)break;escaped=!escaped&&next=='\\';}number=5;}
+                else if(ch>='0'&&ch<='9'){++at;while(at<line.size()&&((line[at]>='0'&&line[at]<='9')||(line[at]>='a'&&line[at]<='f')||(line[at]>='A'&&line[at]<='F')||line[at]=='.'||line[at]=='x'||line[at]=='_'))++at;number=6;}
+                else if((ch>='a'&&ch<='z')||(ch>='A'&&ch<='Z')||ch=='_'||ch=='$'){++at;while(at<line.size()&&((line[at]>='a'&&line[at]<='z')||(line[at]>='A'&&line[at]<='Z')||(line[at]>='0'&&line[at]<='9')||line[at]=='_'||line[at]=='$'))++at;if(keywords.contains(line.mid(start,at-start)))number=4;}
+                else ++at;if(number)style(offset+start,at-start,number);
+            }
+        }}
         else {
             int hashes = 0; while (hashes < line.size() && hashes < 7 && line[hashes] == '#') ++hashes;
             if (hashes > 0 && hashes <= 6 && line.size() > hashes && line[hashes] == ' ') style(offset, line.size(), 1);

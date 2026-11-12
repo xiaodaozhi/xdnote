@@ -173,7 +173,13 @@ private slots:
         QTemporaryDir dir; const auto path = dir.filePath("settings.json"); Appearance appearance(nullptr, path); SettingsWindow window(&appearance, nullptr); window.show(); window.selectPage(1);
         auto *dark = window.findChild<QAbstractButton *>("settings-theme-dark"); auto *olive = window.findChild<QAbstractButton *>("settings-accent-olive"); QVERIFY(dark && olive); QTest::mouseClick(dark, Qt::LeftButton); QTest::mouseClick(olive, Qt::LeftButton); QVERIFY(appearance.dark()); QCOMPARE(appearance.accent(), QString("olive"));
         QVERIFY(QFile::remove(path)); QVERIFY(QDir().mkdir(path)); auto *light = window.findChild<QAbstractButton *>("settings-theme-light"); QTest::mouseClick(light, Qt::LeftButton); QVERIFY(appearance.dark()); QVERIFY(dark->isChecked()); QVERIFY(!light->isChecked()); QVERIFY(!appearance.preferences()->error().isEmpty()); QVERIFY(QDir().rmdir(path)); QTest::mouseClick(light, Qt::LeftButton); QVERIFY(!appearance.dark()); QVERIFY(appearance.preferences()->error().isEmpty());
-        window.selectPage(0); auto *search = window.findChild<QLineEdit *>("settingsSearch"); search->setText(QStringLiteral("软换行")); QCOMPARE(window.findChild<QStackedWidget *>("settingsPages")->currentIndex(), 2); search->clear(); QCOMPARE(window.findChild<QStackedWidget *>("settingsPages")->currentIndex(), 0); search->setText(QStringLiteral("主题")); QCOMPARE(window.findChild<QStackedWidget *>("settingsPages")->currentIndex(), 1); search->clear();
+        window.selectPage(0); auto *search = window.findChild<QLineEdit *>("settingsSearch"); search->setText(QStringLiteral("软换行"));
+        auto *results = window.findChild<QWidget *>("settingsSearchResults");
+        QCOMPARE(window.findChild<QStackedWidget *>("settingsContent")->currentWidget(), results);
+        auto *go = results->findChild<SharedButton *>("settingsSearchResult"); QVERIFY(go); QTest::mouseClick(go, Qt::LeftButton);
+        QCOMPARE(window.findChild<QStackedWidget *>("settingsPages")->currentIndex(), 2);
+        window.selectPage(0); search->setText(QStringLiteral("主题")); go = results->findChild<SharedButton *>("settingsSearchResult"); QVERIFY(go); QTest::mouseClick(go, Qt::LeftButton);
+        QCOMPARE(window.findChild<QStackedWidget *>("settingsPages")->currentIndex(), 1);
     }
     void externalPreferencesOnlyAffectNewDocuments() {
         QTemporaryDir dir; const auto a = dir.filePath("a.md"), b = dir.filePath("b.md"); QVERIFY(fileFixtures::write(a, "a")); QVERIFY(fileFixtures::write(b, "b")); FileApplication app(nullptr, dir.filePath("settings.json")); auto *settings = app.settingsWindow(); auto *prefs = settings->windowAppearance()->preferences();

@@ -43,17 +43,17 @@ async function vectorAsset(id, category, source, w, h, metadata = {}) {
 function glyph(name, color, size = 16, x = 0, y = 0) {
   return `<g transform="translate(${x} ${y}) scale(${size / G.icon.viewBox})" stroke="${color}" stroke-width="${G.icon.strokeWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round" color="${color}">${iconPaths[name][1]}</g>`;
 }
-function focused(w, h, color, r = T.radius.control) { return rect(1, 1, w - 2, h - 2, r + 3, 'none', color, T.controls.focusRingWidth); }
+function focused(w, h, color, r = 5) { const inset = G.focusPadding + G.focusRing.buttonInset; return rect(inset, inset, w - inset * 2, h - inset * 2, r, 'none', color, T.controls.focusRingWidth); }
 function disabledOpacity(content, disabled) { return disabled ? `<g opacity="0.38">${content}</g>` : content; }
 function spinner(x, y, color) { return `<g transform="translate(${x} ${y})">${circle(0, 0, 6, 'none', color, 1.5).replace('stroke-width="1.5"', 'stroke-width="1.5" opacity=".25"')}${line('M0-6a6 6 0 0 1 6 6', color)}</g>`; }
 function button(theme, accent, state, style = 'primary') {
   const t = T.themes[theme], a = T.accents[accent][theme], pad = G.focusPadding, h = T.controls.height, w = G.button.width;
-  const fill = style === 'primary' ? (state === 'hover' ? a.hover : state === 'pressed' ? a.pressed : a.solid) : style === 'danger' ? (state === 'hover' || state === 'pressed' ? t.codeSurface : t.surface) : style === 'ghost' && state === 'normal' ? 'none' : state === 'hover' || state === 'pressed' ? t.sidebar : t.surface;
+  let fill = style === 'primary' ? (state === 'hover' ? a.hover : state === 'pressed' ? a.pressed : a.solid) : style === 'danger' ? (state === 'pressed' ? t.controlPressed : state === 'hover' ? t.controlHover : t.surface) : style === 'ghost' && state === 'normal' ? 'none' : state === 'pressed' ? t.controlPressed : state === 'hover' ? t.controlHover : t.surface;
   const stroke = style === 'primary' || style === 'ghost' ? 'none' : style === 'danger' ? T.semantic[theme].error : t.border;
-  const fg = style === 'primary' ? a.foreground : style === 'danger' ? T.semantic[theme].error : t.text;
+  let fg = style === 'primary' ? a.foreground : style === 'danger' ? T.semantic[theme].error : t.text;
+  if (state === 'disabled') { fill = style === 'primary' ? t.border : style === 'ghost' ? 'none' : t.surface; fg = t.textSecondary; }
   let body = rect(pad + .5, pad + .5, w - 1, h - 1, T.radius.control, fill, stroke);
   if (state === 'busy') body += spinner(20, 20, fg);
-  body = disabledOpacity(body, state === 'disabled');
   if (state === 'focus') body += focused(w + pad * 2, h + pad * 2, a.solid);
   return { svg: svg(w + pad * 2, h + pad * 2, body), width: w + pad * 2, height: h + pad * 2, coreRect: { x: pad, y: pad, width: w, height: h }, contentRect: { x: state === 'busy' ? 32 : 16, y: 4, width: state === 'busy' ? 64 : 72, height: h }, textColor: fg, nineSlice: { left: 12, top: 12, right: 12, bottom: 12 } };
 }
@@ -63,7 +63,7 @@ function input(theme, state) {
   let body = rect(p + .5, p + .5, w - 1, h - 1, T.radius.control, state === 'readonly' ? t.sidebar : t.surface, border);
   if (state === 'error') body += glyph('error', border, 16, w - 18, 12);
   body = disabledOpacity(body, state === 'disabled');
-  if (state === 'focus') body += focused(w + 8, h + 8, a.solid);
+  if (state === 'focus') body += focused(w + 8, h + 8, a.solid, 4);
   return { svg: svg(w + 8, h + 8, body), width: w + 8, height: h + 8, coreRect: { x: p, y: p, width: w, height: h }, contentRect: { x: 16, y: 4, width: state === 'error' ? w - 44 : w - 24, height: h }, nineSlice: { left: 12, top: 12, right: 12, bottom: 12 } };
 }
 function choice(theme, accent, family, state) {
@@ -74,26 +74,27 @@ function choice(theme, accent, family, state) {
   if (family === 'checkbox') {
     body = rect(4.5, 4.5, 15, 15, G.checkbox.radius, selected ? a.solid : t.surface, selected ? a.solid : t.textSecondary);
     if (selected) body += state === 'mixed' ? line('M8 12h8', a.foreground, 1.8) : line('m8 12 3 3 5-6', a.foreground, 1.8);
-    if (state === 'focus') body += focused(24, 24, a.solid, 3);
+    if (state === 'focus') body += rect(1, 1, 22, 22, 5, 'none', a.solid, 2);
   } else if (family === 'radio') {
     body = circle(12, 12, 7.5, t.surface, selected ? a.solid : t.textSecondary);
     if (selected) body += circle(12, 12, 4, a.solid);
     if (state === 'focus') body += circle(12, 12, 11, 'none', a.solid, 2);
   } else if (family === 'toggle') {
     w = G.toggle.canvasWidth; h = G.toggle.canvasHeight;
-    body = rect(4, 5, G.toggle.trackWidth, G.toggle.trackHeight, 11, selected ? a.solid : t.textSecondary);
-    body += circle(selected ? 33 : 15, 16, G.toggle.thumbSize / 2, selected ? a.foreground : t.surface);
-    if (state === 'focus') body += rect(1, 2, 46, 28, 14, 'none', a.solid, 2);
+    body = rect(4, 5, G.toggle.trackWidth, G.toggle.trackHeight, 11, disabled ? t.border : selected ? a.solid : t.textSecondary);
+    body += circle(selected ? 33 : 15, 16, G.toggle.thumbSize / 2, disabled ? t.textSecondary : selected ? a.foreground : t.surface);
+    if (state === 'focus') body += rect(2, 3, 44, 26, 13, 'none', a.solid, 2);
   }
-  return { svg: svg(w, h, disabledOpacity(body, disabled)), width: w, height: h, hitTargetMinimum: T.controls.iconButtonHit, stretch: 'none', stateMeaning: selected ? 'selected' : 'unselected' };
+  return { svg: svg(w, h, family === 'toggle' ? body : disabledOpacity(body, disabled)), width: w, height: h, hitTargetMinimum: T.controls.iconButtonHit, stretch: 'none', stateMeaning: selected ? 'selected' : 'unselected' };
 }
 function selected(theme, accent, family, state = 'normal') {
   const t = T.themes[theme], a = T.accents[accent][theme];
-  if (family === 'segment') return { svg: svg(96, 40, rect(4, 4, G.segment.width, 32, 6, a.solid)), width: 96, height: 40, contentRect: { x: 16, y: 4, width: 64, height: 32 }, textColor: a.foreground, nineSlice: { left: 12, top: 12, right: 12, bottom: 12 } };
+  if (family === 'segment') { const width = G.segment.width * 2 + G.segment.groupPadding * 2 + G.segment.gap; const body = rect(4.5, 4.5, width - 1, 31, 6, t.sidebar, t.border) + rect(6.5, 6.5, G.segment.width - 1, 27, 4, a.solid); return { svg: svg(width + 8, 40, body), width: width + 8, height: 40, coreRect: { x: 4, y: 4, width, height: 32 }, contentRect: { x: 18, y: 6, width: G.segment.width - 24, height: 28 }, textColor: a.foreground, stretch: 'none' }; }
   if (family === 'row') return { svg: svg(232, 40, rect(4, 4, G.selectionRow.width, 32, 4, a.soft) + rect(4, 6, G.selectionRow.markerWidth, 28, 1.5, a.solid)), width: 232, height: 40, contentRect: { x: 36, y: 4, width: 180, height: 32 }, textColor: a.softForeground, nineSlice: { left: 12, top: 8, right: 8, bottom: 8 } };
   if (family === 'tab') {
-    const body = rect(4.5, 4.5, G.tab.width - 1, G.tab.height - 1, 6, t.surface, t.border) + rect(4, 38, 160, G.tab.indicatorHeight, 1, a.solid) + (state === 'dirty' ? circle(145, 21, 3, T.semantic[theme].warning) : '');
-    return { svg: svg(168, 44, body), width: 168, height: 44, contentRect: { x: 28, y: 4, width: 108, height: 32 }, nineSlice: { left: 12, top: 12, right: 28, bottom: 8 } };
+    const w=G.tab.width, h=G.tab.height, p=G.focusPadding, top=p+G.tab.topInset, bottom=p+h;
+    const body = `<path d="M${p+.5} ${bottom}V${top+6}Q${p+.5} ${top+.5} ${p+6} ${top+.5}H${p+w-6}Q${p+w-.5} ${top+.5} ${p+w-.5} ${top+6}V${bottom}" fill="${t.surface}" stroke="${t.border}"/>` + (state === 'dirty' ? circle(p+24,p+27,3,T.semantic[theme].warning) : glyph('document',t.textSecondary,16,p+16,p+19)) + glyph('close',t.textSecondary,12,p+w-8-12-6,p+21);
+    return { svg: svg(w+8,h+8,body), width:w+8,height:h+8,coreRect:{x:p,y:p,width:w,height:h},contentRect:{x:p+40,y:top,width:w-80,height:h-G.tab.topInset},stretch:'none' };
   }
   if (family === 'swatch') {
     let body = circle(16, 16, 12, T.accents[accent].base);

@@ -25,6 +25,7 @@ class WorkspaceResourceReader;
 class WorkspaceReferenceController;
 class FileManager;
 class ResourceMaintenanceController;
+class DocumentOutline;
 class WorkspaceWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -43,6 +44,7 @@ public:
     void showNotice(const QString &message);
     WorkspaceReferenceController *references() const { return m_references; }
     ResourceMaintenanceController *resourceMaintenance() const { return m_maintenance; }
+    void setFocusMode(bool enabled);
     std::shared_ptr<WorkspaceResourceReader> resourceRoot() const { return m_resourceRoot; }
 signals:
     void referenceSourceRequested(QString path, QString identity, QByteArray sha256, qsizetype start, qsizetype end);
@@ -76,6 +78,9 @@ private:
     WindowTitleBar *m_header;
     QTabBar *m_tabs;
     QWidget *m_sidebar = nullptr;
+    QStackedWidget *m_sidebarViews = nullptr;
+    DocumentOutline *m_outline = nullptr;
+    bool m_outlineWanted = false, m_focusMode = false;
     WorkspaceTree *m_tree;
     SharedButton *m_rootLabel, *m_recent, *m_favorites, *m_theme;
     QLineEdit *m_search = nullptr;

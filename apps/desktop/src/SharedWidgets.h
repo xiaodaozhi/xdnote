@@ -7,6 +7,8 @@
 #include <QDialog>
 #include <QTimer>
 #include <QSplitter>
+#include <QCheckBox>
+#include <QLineEdit>
 
 namespace xdnote {
 class Appearance;
@@ -40,6 +42,8 @@ public:
     void setSymbol(const QString &name) { m_symbol = name; updateGeometry(); update(); }
     void setOutlined(bool value) { m_outlined = value; update(); }
     void setNativeHover(bool value) { m_nativeHover = value; update(); }
+    void setBusy(bool value);
+    bool busy() const { return m_busy; }
     bool keyboardOutline() const;
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
@@ -50,10 +54,59 @@ protected:
     void keyPressEvent(QKeyEvent *) override;
     void enterEvent(QEnterEvent *) override;
     void leaveEvent(QEvent *) override;
+    void showEvent(QShowEvent *) override;
+    void hideEvent(QHideEvent *) override;
 private:
     QPointer<Appearance> m_appearance;
     QString m_symbol;
     bool m_tab = false, m_outlined = false, m_hover = false, m_nativeHover = false;
+    bool m_busy = false;
+    QTimer m_busyTimer;
+    int m_busyAngle = 0;
+};
+class SharedLineEdit final : public QLineEdit {
+    Q_OBJECT
+public:
+    explicit SharedLineEdit(Appearance *appearance, QWidget *parent = nullptr);
+protected:
+    void paintEvent(QPaintEvent *) override;
+    void focusInEvent(QFocusEvent *) override;
+    void focusOutEvent(QFocusEvent *) override;
+    void keyPressEvent(QKeyEvent *) override;
+private:
+    QPointer<Appearance> m_appearance;
+    bool m_tab = false;
+};
+class SharedCheckBox final : public QCheckBox {
+    Q_OBJECT
+public:
+    SharedCheckBox(const QString &text, Appearance *appearance, QWidget *parent = nullptr);
+    QSize sizeHint() const override;
+protected:
+    void paintEvent(QPaintEvent *) override;
+    void focusInEvent(QFocusEvent *) override;
+    void focusOutEvent(QFocusEvent *) override;
+    void keyPressEvent(QKeyEvent *) override;
+private:
+    QPointer<Appearance> m_appearance;
+    bool m_tab = false;
+};
+class SharedSegment final : public QWidget {
+public:
+    SharedSegment(Appearance *appearance, QWidget *parent = nullptr);
+    void addButton(SharedButton *button);
+protected:
+    void paintEvent(QPaintEvent *) override;
+private:
+    QPointer<Appearance> m_appearance;
+};
+class SharedPanel final : public QWidget {
+public:
+    SharedPanel(Appearance *appearance, QWidget *parent = nullptr);
+protected:
+    void paintEvent(QPaintEvent *) override;
+private:
+    QPointer<Appearance> m_appearance;
 };
 class SharedMenu final : public QMenu {
     Q_OBJECT

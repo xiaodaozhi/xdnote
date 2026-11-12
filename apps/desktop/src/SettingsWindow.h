@@ -7,6 +7,7 @@ class QLineEdit;
 class QStackedWidget;
 class QGridLayout;
 class QBoxLayout;
+class QLabel;
 namespace xdnote {
 class Preferences;
 class SharedButton;
@@ -50,5 +51,10 @@ private:
     QBoxLayout *m_readerLayout = nullptr;
     bool m_refreshing = false;
     int m_beforeSearch = 0;
+    QStackedWidget *m_content = nullptr;
+    QWidget *m_searchResults = nullptr, *m_feedback = nullptr;
+    QLabel *m_statusIcon = nullptr, *m_feedbackText = nullptr;
+    SharedButton *m_retrySettings = nullptr;
+    QString m_hiddenError;
 };
 }

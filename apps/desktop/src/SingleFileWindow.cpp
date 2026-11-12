@@ -6,6 +6,8 @@
 #include <QUrl>
 #include "MarkdownReferences.h"
 #include "MarkdownHeadings.h"
+#include "DocumentOutline.h"
+#include "DocumentExport.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
 #include "SourceEditor.h"
@@ -43,6 +45,8 @@
 #include <QStackedWidget>
 #include <QSvgRenderer>
 #include <QVBoxLayout>
+#include <QKeyEvent>
+#include <QtConcurrentRun>
 #include <QWindow>
 #include <QShowEvent>
 #include <QProgressBar>
@@ -109,7 +113,7 @@ int ask(SingleFileWindow *owner, const QString &name, const QString &title, cons
     else { auto *symbol = new QLabel(&dialog); symbol->setPixmap(themedIcon(name == "conflictDialog" || name == "reloadConfirmation" ? "warning" : "document", appearance->semantic("warning")).pixmap(QSize(24, 24), dialog.devicePixelRatioF())); top->addWidget(symbol); }
     top->addStretch(); auto *close = new SharedButton({}, "dialogClose", appearance, &dialog); close->setFixedWidth(32); close->setSymbol("close"); close->setAccessibleName(QStringLiteral("关闭对话框")); top->addWidget(close); QObject::connect(close, &QPushButton::clicked, &dialog, &QDialog::reject); layout->addLayout(top);
     auto *heading = new QLabel(title, &dialog); heading->setTextFormat(Qt::PlainText); heading->setWordWrap(true);
-    auto font = heading->font(); font.setBold(true); font.setPixelSize(visualTokens().value("typography").toObject().value("headings").toObject().value("dialog").toInt()); heading->setFont(font); layout->addWidget(heading);
+    auto font = heading->font(); font.setWeight(QFont::DemiBold); font.setPixelSize(visualTokens().value("typography").toObject().value("headings").toObject().value("dialog").toInt()); heading->setFont(font); layout->addWidget(heading);
     auto *body = new QLabel(text, &dialog); body->setTextFormat(Qt::PlainText); body->setWordWrap(true);
     body->setMinimumWidth(0); body->setTextInteractionFlags(Qt::TextSelectableByMouse);
     const int textHeight = QFontMetrics(body->font()).boundingRect(QRect(0, 0, width - 48, 100000), Qt::TextWordWrap, text).height();
@@ -193,7 +197,7 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     ui.setPixelSize(visualTokens().value("typography").toObject().value("ui").toObject().value("size").toInt()); setFont(ui);
     auto *layout = new QVBoxLayout(this); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
     m_header = new WindowTitleBar(m_appearance, this); setTitleBar(m_header); layout->addWidget(m_header);
-    auto *toolbar = new QWidget(this); toolbar->setObjectName("documentToolbar"); toolbar->setFixedHeight(size.value("toolbarHeight").toInt());
+    auto *toolbar = m_toolbar = new QWidget(this); toolbar->setObjectName("documentToolbar"); toolbar->setFixedHeight(size.value("toolbarHeight").toInt());
     auto *bar = new QGridLayout(toolbar); bar->setContentsMargins(16, 0, 16, 0); bar->setHorizontalSpacing(16); bar->setColumnStretch(0, 1); bar->setColumnStretch(2, 1);
     auto *location = new QWidget(toolbar); auto *pathRow = new QHBoxLayout(location); pathRow->setContentsMargins(0, 0, 0, 0); pathRow->setSpacing(8);
     m_pathButton = new SharedButton({}, "fileLocation", m_appearance, location); m_pathButton->setSymbol("folder-open"); m_pathButton->setOutlined(true);
@@ -205,14 +209,16 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     connect(reveal, &QAction::triggered, this, [this] { if (m_document) emit revealRequested(QFileInfo(m_document->path()).path()); });
     m_path = new ElidedLabel(location); auto pathFont = ui; pathFont.setPixelSize(visualTokens().value("typography").toObject().value("secondary").toObject().value("size").toInt()); m_path->setFont(pathFont); m_path->setObjectName("documentPath"); m_path->setProperty("secondary", true); pathRow->addWidget(m_path, 1); bar->addWidget(location, 0, 0);
     m_breadcrumb = new DocumentBreadcrumb(m_appearance, location); m_breadcrumb->setFont(pathFont); m_breadcrumb->hide(); pathRow->addWidget(m_breadcrumb, 1); location->setMinimumWidth(0);
-    auto *modeBox = new QWidget(toolbar); modeBox->setObjectName("modeSwitch"); modeBox->setFixedHeight(token("controls", "height")); auto *modeLayout = m_modeLayout = new QHBoxLayout(modeBox); modeLayout->setContentsMargins(0, 0, 0, 0); modeLayout->setSpacing(0);
+    auto *modeBox = new SharedSegment(m_appearance, toolbar); modeBox->setObjectName("modeSwitch"); auto *modeLayout = m_modeLayout = static_cast<QHBoxLayout *>(modeBox->layout());
     m_read = new SharedButton(QStringLiteral("阅读"), "readMode", m_appearance, modeBox); m_edit = new SharedButton(QStringLiteral("编辑"), "editMode", m_appearance, modeBox);
     m_split = new SharedButton(QStringLiteral("双栏"), "splitMode", m_appearance, modeBox); m_split->setCheckable(true); m_split->setFixedWidth(token("controls", "modeSegmentWidth")); m_split->hide();
     m_read->setCheckable(true); m_edit->setCheckable(true); auto *modes = new QButtonGroup(this); modes->setExclusive(true); modes->addButton(m_read, 0); modes->addButton(m_edit, 1); modes->addButton(m_split, 2);
     m_read->setFixedWidth(token("controls", "modeSegmentWidth")); m_edit->setFixedWidth(token("controls", "modeSegmentWidth"));
-    modeLayout->addWidget(m_read); modeLayout->addWidget(m_edit); bar->addWidget(modeBox, 0, 1);
+    modeBox->addButton(static_cast<SharedButton *>(m_read)); modeBox->addButton(static_cast<SharedButton *>(m_edit)); m_split->setProperty("segmentPart",true);m_split->setFixedHeight(token("controls","height")-4);bar->addWidget(modeBox, 0, 1);
     auto *actions = new QWidget(toolbar); auto *right = new QHBoxLayout(actions); right->setContentsMargins(0, 0, 0, 0); right->setSpacing(8); right->addStretch();
     m_save = new SharedButton(QStringLiteral("保存"), "saveButton", m_appearance, actions); m_save->setProperty("primary", true); right->addWidget(m_save);
+    auto*focus=new SharedButton({},"focusMode",m_appearance,actions);focus->setSymbol("focus");focus->setFixedWidth(32);focus->setToolTip(QStringLiteral("专注模式（F11）"));focus->setAccessibleName(QStringLiteral("切换专注模式"));right->addWidget(focus);
+    m_exportButton=new SharedButton(QStringLiteral("导出"),"exportDocument",m_appearance,actions);m_exportButton->setOutlined(true);auto*exportMenu=new SharedMenu(m_appearance,m_exportButton);exportMenu->setObjectName("exportMenu");exportMenu->addAction(QStringLiteral("导出 HTML…"),this,[this]{chooseExport(false);});exportMenu->addAction(QStringLiteral("导出 PDF…"),this,[this]{chooseExport(true);});m_exportButton->setMenu(exportMenu);right->addWidget(m_exportButton);
     auto *more = new SharedButton({}, "moreActions", m_appearance, actions); more->setSymbol("more"); more->setAccessibleName(QStringLiteral("文档操作")); more->setToolTip(QStringLiteral("文档操作")); more->setFixedWidth(token("controls", "iconButtonHit")); right->addWidget(more); bar->addWidget(actions, 0, 2);
     m_menu = new SharedMenu(m_appearance, more); m_menu->setObjectName("documentMenu"); m_menu->setTitle(QStringLiteral("文档操作"));
     auto action = [this](const QString &text, const QString &name, QKeySequence shortcut, auto callback) {
@@ -248,9 +254,12 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_menu->addSeparator();
     m_menu->addMenu(createAppearanceMenu(m_appearance, m_menu));
     action(QStringLiteral("设置…"), "settingsAction", {}, [this] { emit settingsRequested(); });
+    m_outlineAction=action(QStringLiteral("文档大纲"),"outlineAction",{},[this]{toggleOutline();});m_outlineAction->setIcon(themedIcon("outline",m_appearance->color("text")));
+    m_focusAction=action(QStringLiteral("专注模式"),"focusAction",QKeySequence(Qt::Key_F11),[this]{setFocusMode(!m_focusMode);});m_focusAction->setCheckable(true);connect(focus,&QPushButton::clicked,m_focusAction,&QAction::trigger);
     m_menu->addSeparator(); action(QStringLiteral("关闭文档"), "closeAction", QKeySequence::Close, [this] { close(); });
     action(QStringLiteral("退出 xdnote"), "quitAction", QKeySequence::Quit, [this] { emit quitRequested(); }); more->setMenu(m_menu);
     connect(modes, &QButtonGroup::idClicked, this, [this](int mode) { setViewMode(mode == 2 ? ViewMode::Split : mode == 1 ? ViewMode::Source : ViewMode::Reading); }); connect(m_save, &QPushButton::clicked, m_saveAction, &QAction::trigger); layout->addWidget(toolbar);
+    m_focusBar=new QWidget(this);m_focusBar->setObjectName("focusControls");m_focusBar->setFixedHeight(40);auto*focusRow=new QHBoxLayout(m_focusBar);focusRow->setContentsMargins(16,4,16,4);focusRow->addStretch();auto*exitFocus=new SharedButton(QStringLiteral("退出专注"),"exitFocus",m_appearance,m_focusBar);exitFocus->setSymbol("focus-exit");exitFocus->setOutlined(true);focusRow->addWidget(exitFocus);connect(exitFocus,&QPushButton::clicked,this,[this]{setFocusMode(false);});m_focusBar->hide();layout->addWidget(m_focusBar);
     m_banner = new QWidget(this); m_banner->setObjectName("documentBanner"); auto *banner = new QHBoxLayout(m_banner); banner->setContentsMargins(16, 8, 16, 8); banner->setSpacing(8);
     m_noticeSymbol = new QLabel(m_banner); m_noticeSymbol->setFixedSize(20, 20); banner->addWidget(m_noticeSymbol);
     m_notice = new QLabel(m_banner); m_notice->setObjectName("documentNotice"); m_notice->setTextFormat(Qt::PlainText); m_notice->setWordWrap(true); m_notice->setMinimumWidth(0); m_notice->setTextInteractionFlags(Qt::TextSelectableByMouse); banner->addWidget(m_notice, 1);
@@ -289,7 +298,7 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_saveSpinner = new SharedSpinner(m_appearance, footer); m_saveSpinner->setFixedSize(16, 16); foot->addWidget(m_saveSpinner);
     m_status = new ElidedLabel(footer); m_status->setObjectName("documentStatus"); foot->addWidget(m_status, 1);
     m_cursor = new QLabel(footer); m_cursor->setObjectName("cursorPosition"); foot->addWidget(m_cursor); separator(foot, m_appearance, footer);
-    m_encoding = new QLabel(footer); foot->addWidget(m_encoding); separator(foot, m_appearance, footer);
+    m_encoding = new QLabel(footer); foot->addWidget(m_encoding); separator(foot, m_appearance, footer);auto*fileFormat=new QLabel("Markdown",footer);fileFormat->setObjectName("documentFormat");foot->addWidget(fileFormat);separator(foot,m_appearance,footer);
     m_zoomButton = new SharedButton("100%", "contentZoom", m_appearance, footer); m_zoomButton->setProperty("footerControl", true); m_zoomButton->setFixedHeight(size.value("statusbarHeight").toInt() - 2 * visualTokens()["controls"].toObject()["footerControlInset"].toInt()); m_zoomButton->setAccessibleName(QStringLiteral("正文缩放，100%"));
     auto *zoomMenu = new SharedMenu(m_appearance, m_zoomButton); zoomMenu->setTitle(QStringLiteral("正文缩放")); auto *zoomGroup = new QActionGroup(zoomMenu);
     for (const int percent : {50, 75, 100, 125, 150, 200}) {
@@ -308,9 +317,9 @@ void SingleFileWindow::applyAppearance() {
     auto palette = this->palette(); palette.setColor(QPalette::Window, m_appearance->color("background")); palette.setColor(QPalette::Base, m_appearance->color("surface"));
     palette.setColor(QPalette::Text, m_appearance->color("text")); palette.setColor(QPalette::WindowText, m_appearance->color("text")); palette.setColor(QPalette::ButtonText, m_appearance->color("text"));
     palette.setColor(QPalette::Highlight, m_appearance->accentColor("soft")); palette.setColor(QPalette::HighlightedText, m_appearance->accentColor("softForeground")); setPalette(palette);
-    setStyleSheet(QStringLiteral("QWidget#standaloneWindow,QDialog,QScrollArea,QScrollArea>QWidget>QWidget{background:%1;color:%2} QLabel{color:%2;background:transparent} QLabel[secondary=\"true\"]{color:%3} QWidget#documentToolbar,QWidget#formatToolbar,QWidget#previewToolbar,QWidget#documentFooter{background:%1;border-bottom:1px solid %4} QWidget#documentFooter{border-top:1px solid %4;border-bottom:0} QWidget#modeSwitch{border:1px solid %4;border-radius:6px;background:%5} QWidget#dialogFile{border:1px solid %4;border-radius:6px;background:%6} QWidget#documentBanner{background:%5;border-bottom:1px solid %4}")
+    setStyleSheet(QStringLiteral("QWidget#standaloneWindow,QDialog,QScrollArea,QScrollArea>QWidget>QWidget{background:%1;color:%2} QLabel{color:%2;background:transparent} QLabel[secondary=\"true\"]{color:%3} QWidget#documentToolbar,QWidget#formatToolbar,QWidget#previewToolbar,QWidget#documentFooter{background:%1;border-bottom:1px solid %4} QWidget#documentFooter{border-top:1px solid %4;border-bottom:0} QWidget#dialogFile{border:1px solid %4;border-radius:6px;background:%6} QWidget#documentBanner{background:%5;border-bottom:1px solid %4}")
         .arg(m_appearance->color("background").name(), m_appearance->color("text").name(), m_appearance->color("textSecondary").name(), m_appearance->color("border").name(), m_appearance->color("sidebar").name(), m_appearance->color("surface").name()) + QStringLiteral(" QWidget#documentFooter,QWidget#documentFooter QLabel,QWidget#documentFooter QPushButton{font-size:%1px}").arg(visualTokens()["typography"].toObject()["secondary"].toObject()["size"].toInt()) + themedScrollBars(m_appearance));
-    const QHash<QString, QString> symbols{{"copyPath","copy"},{"revealFolder","folder-open"},{"openAction","folder-open"},{"saveAction","save"},{"saveAsAction","save-as"},{"reloadAction","refresh"},{"undoAction","undo"},{"redoAction","redo"},{"closeAction","close"},{"quitAction","focus-exit"},{"theme-system","monitor"},{"theme-light","sun"},{"theme-dark","moon"}};
+    const QHash<QString, QString> symbols{{"copyPath","copy"},{"revealFolder","folder-open"},{"openAction","folder-open"},{"saveAction","save"},{"saveAsAction","save-as"},{"reloadAction","refresh"},{"undoAction","undo"},{"redoAction","redo"},{"closeAction","close"},{"quitAction","focus-exit"},{"theme-system","monitor"},{"theme-light","sun"},{"theme-dark","moon"},{"openWorkspaceAction","folder-open"},{"transferWorkspaceAction","workspace"},{"insertImageAction","image"},{"insertWorkspaceLinkAction","link"},{"openDocumentLinkAction","link"},{"settingsAction","settings"},{"outlineAction","outline"},{"focusAction","focus"}};
     for (auto *item : findChildren<QAction *>()) if (symbols.contains(item->objectName())) item->setIcon(themedIcon(symbols.value(item->objectName()), m_appearance->color("text")));
     for (auto *menu : findChildren<QMenu *>()) if (menu->objectName() == "appearanceMenu" || menu->objectName() == "accentMenu") menu->menuAction()->setIcon(themedIcon("palette", m_appearance->color("text")));
 #ifdef Q_OS_WIN
@@ -324,10 +333,15 @@ void SingleFileWindow::showOpenError(const QString &path, const QString &message
 void SingleFileWindow::setDocument(FileDocument *document) {
     if (m_document) return;
     m_intent = {}; m_document = document;
-    m_splitter = new DocumentSplitter(m_appearance, m_body); m_splitter->setObjectName("documentSplit"); m_body->addWidget(m_splitter);
+    m_documentSurface = new QWidget(m_body); auto *documentRow = new QHBoxLayout(m_documentSurface); documentRow->setContentsMargins(0,0,0,0); documentRow->setSpacing(0); m_body->addWidget(m_documentSurface);
+    m_outline = new DocumentOutline(m_appearance,m_documentSurface); m_outline->setFixedWidth(224); m_outline->setSession(document->session()); m_outline->hide(); documentRow->addWidget(m_outline);
+    m_outlineDivider = new SharedSeparator(Qt::Vertical,m_appearance,m_documentSurface); m_outlineDivider->hide(); documentRow->addWidget(m_outlineDivider);
+    connect(m_outline,&DocumentOutline::closeRequested,this,[this]{m_outlineWanted=false;m_outline->hide();m_outlineDivider->hide();});
+    connect(m_outline,&DocumentOutline::headingActivated,this,[this](const QString&id,const QUuid&doc,quint64 revision){if(!m_document)return;const auto snapshot=m_document->session()->snapshot();if(snapshot.documentId==doc&&snapshot.revision==revision)navigateToHeading(id);});
+    m_splitter = new DocumentSplitter(m_appearance, m_documentSurface); m_splitter->setObjectName("documentSplit"); documentRow->addWidget(m_splitter,1);
     m_previewPane = new QWidget(m_splitter); auto *previewLayout = new QVBoxLayout(m_previewPane); previewLayout->setContentsMargins(0, 0, 0, 0); previewLayout->setSpacing(0);
-    m_previewHeading = new QWidget(m_previewPane); m_previewHeading->setObjectName("previewToolbar"); m_previewHeading->setFixedHeight(visualTokens().value("windows").toObject().value("main").toObject().value("sourceToolbarHeight").toInt()); auto *headingLayout = new QHBoxLayout(m_previewHeading); headingLayout->setContentsMargins(16, 0, 16, 0); headingLayout->addWidget(new QLabel(QStringLiteral("预览"), m_previewHeading)); previewLayout->addWidget(m_previewHeading);
-    m_previewStack = new QStackedWidget(m_previewPane); previewLayout->addWidget(m_previewStack, 1);
+    m_previewHeading = new QWidget(m_previewPane); m_previewHeading->setObjectName("previewToolbar"); m_previewHeading->setFixedHeight(visualTokens().value("windows").toObject().value("main").toObject().value("sourceToolbarHeight").toInt()); auto *headingLayout = new QHBoxLayout(m_previewHeading); headingLayout->setContentsMargins(16, 0, 16, 0); headingLayout->addWidget(new QLabel(QStringLiteral("预览"), m_previewHeading));headingLayout->addStretch();auto*outline=new SharedButton({},"previewOutline",m_appearance,m_previewHeading);outline->setSymbol("outline");outline->setFixedWidth(32);outline->setAccessibleName(QStringLiteral("显示文档大纲"));outline->setToolTip(QStringLiteral("文档大纲"));headingLayout->addWidget(outline);connect(outline,&QPushButton::clicked,this,&SingleFileWindow::toggleOutline); previewLayout->addWidget(m_previewHeading);
+    m_previewStack = new QStackedWidget(m_previewPane); previewLayout->addWidget(m_previewStack,1);
     m_preview = new MarkdownPreview(document->session(), m_previewStack, geometryTokens().value("readerPadding").toInt(), m_appearance); m_previewStack->addWidget(m_preview);
     connect(m_preview, &MarkdownPreview::copyTextRequested, this, &SingleFileWindow::copyTextRequested);
     m_previewFailure = new QWidget(m_previewStack); m_previewFailure->setObjectName("previewFailure"); auto *failure = new QVBoxLayout(m_previewFailure); failure->setContentsMargins(40, 40, 40, 40); failure->setSpacing(16); failure->addStretch();
@@ -389,6 +403,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     m_documentUiReady = true; setEditing(!m_embedded && m_appearance->preferences()->value("desktop", "standaloneDefaultMode").toString() == "source"); updateState();
 }
 SingleFileWindow::~SingleFileWindow() {
+    if(m_exportCancel)m_exportCancel->store(true);
     delete m_scrollSync; m_scrollSync = nullptr;
     for (const auto &image : m_importedImages) if (image.root) image.root->revoke();
     // QWidget's native close can deliver Hide from its base destructor. Stop
@@ -416,6 +431,7 @@ bool SingleFileWindow::embedIn(QWidget *parent) {
     const auto firstLine = m_editor ? m_editor->send(SCI_GETFIRSTVISIBLELINE) : 0, xOffset = m_editor ? m_editor->send(SCI_GETXOFFSET) : 0;
     const auto reading = m_preview ? m_preview->readingPosition() : QPointF();
     hide(); m_header->hide(); setMinimumSize(0, 0); setParent(parent, Qt::Widget); resetNativeFrame(); m_embedded = true;
+    m_focusAction->setShortcut({});m_focusAction->setProperty("displayShortcut","F11");m_outlineWanted=false;if(m_outline)m_outline->hide();if(m_outlineDivider)m_outlineDivider->hide();
     m_modeLayout->removeWidget(m_read); m_modeLayout->removeWidget(m_edit); m_modeLayout->addWidget(m_edit); m_modeLayout->addWidget(m_split); m_modeLayout->addWidget(m_read); m_split->show();
     m_pathButton->setSymbol("document"); m_pathButton->setOutlined(false); m_pathButton->setAccessibleName(QStringLiteral("切换工作区侧栏")); m_pathButton->setToolTip(QStringLiteral("显示或收起文件导航")); m_path->hide(); m_breadcrumb->show();
     if (auto *action = findChild<QAction *>("transferWorkspaceAction")) action->setVisible(false);
@@ -498,8 +514,19 @@ void SingleFileWindow::setViewMode(ViewMode mode) {
     const bool fromReading = m_mode == ViewMode::Reading;
     m_mode = mode; m_editing = mode != ViewMode::Reading;
     if (m_scrollSync) m_scrollSync->setEnabled(mode == ViewMode::Split, fromReading);
-    m_body->setCurrentWidget(m_splitter); m_editorPage->setVisible(mode != ViewMode::Reading); m_previewPane->setVisible(mode != ViewMode::Source); m_previewHeading->setVisible(mode == ViewMode::Split); m_body->setFormatRuleVisible(mode != ViewMode::Reading);
+    m_body->setCurrentWidget(m_documentSurface); m_editorPage->setVisible(mode != ViewMode::Reading); m_previewPane->setVisible(mode != ViewMode::Source); m_previewHeading->setVisible(mode == ViewMode::Split&&!m_focusMode); m_body->setFormatRuleVisible(mode != ViewMode::Reading&&!m_focusMode);if(auto*format=findChild<QWidget*>("formatToolbar"))format->setVisible(!m_focusMode);
     if (m_editing) m_editor->setFocus(Qt::OtherFocusReason); updateState();
+}
+void SingleFileWindow::setFocusMode(bool enabled){if(enabled&&(!m_document||m_document->closed()))return;if(m_focusMode==enabled)return;m_focusMode=enabled;m_toolbar->setVisible(!enabled);m_focusBar->setVisible(enabled);m_focusAction->setChecked(enabled);if(m_outline)m_outline->setVisible(!enabled&&!m_embedded&&m_outlineWanted);if(m_outlineDivider)m_outlineDivider->setVisible(!enabled&&!m_embedded&&m_outlineWanted);if(auto*format=findChild<QWidget*>("formatToolbar"))format->setVisible(!enabled);if(m_previewHeading)m_previewHeading->setVisible(!enabled&&m_mode==ViewMode::Split);if(m_document&&m_body)m_body->setFormatRuleVisible(!enabled&&m_mode!=ViewMode::Reading);emit focusModeChanged(enabled);}
+void SingleFileWindow::keyPressEvent(QKeyEvent*e){if(e->key()==Qt::Key_Escape&&m_focusMode&&m_document&&!m_document->session()->isComposing()){setFocusMode(false);InputModality::forApplication()->clear();e->accept();return;}ApplicationWindow::keyPressEvent(e);}
+void SingleFileWindow::toggleOutline(){if(!m_document)return;if(m_embedded){emit outlineRequested();return;}if(!m_outline)return;if(m_focusMode)setFocusMode(false);m_outlineWanted=!m_outlineWanted;m_outline->setVisible(m_outlineWanted);m_outlineDivider->setVisible(m_outlineWanted);}
+void SingleFileWindow::chooseExport(bool pdf){
+    if(!m_document||m_exporting)return;const auto snapshot=m_document->session()->snapshot();if(snapshot.result!=EditResult::Applied){reportHostMessage(QStringLiteral("当前文档正在处理，请稍后导出。"));return;}
+    auto destination=QFileDialog::getSaveFileName(window(),pdf?QStringLiteral("导出 PDF"):QStringLiteral("导出 HTML"),QFileInfo(m_document->path()).absolutePath()+"/"+QFileInfo(m_document->path()).completeBaseName()+(pdf?".pdf":".html"),pdf?QStringLiteral("PDF 文档 (*.pdf)"):QStringLiteral("HTML 文档 (*.html)"));InputModality::forApplication()->clear();if(destination.isEmpty())return;if(QFileInfo(destination).suffix().isEmpty())destination+=pdf?".pdf":".html";
+    const auto root=resourceRoot();const auto resourcePath=resourceDocumentPath();const auto identity=m_document->identity(),source=m_document->path(),title=QFileInfo(source).fileName();const auto authorized=m_importedImages;const auto reader=m_appearance->preferences()->section("reader");m_exportCancel=std::make_shared<std::atomic_bool>(false);const auto cancel=m_exportCancel;m_exporting=true;m_exportButton->setBusy(true);m_exportButton->setEnabled(false);auto*watcher=new QFutureWatcher<DocumentExportData>(this);
+    connect(watcher,&QFutureWatcher<DocumentExportData>::finished,this,[this,watcher,destination,pdf,source,identity]{auto result=watcher->result();watcher->deleteLater();m_exporting=false;m_exportButton->setBusy(false);m_exportButton->setEnabled(m_document&&!m_document->closed());QString error=result.error;if(error.isEmpty()&&QFileInfo::exists(destination)){const auto target=FileService::probe(destination);if(target.file)for(auto*doc:m_manager->documents())if(!doc->closed()&&doc->identity()==target.file->identity()){error=QStringLiteral("导出不能覆盖正在编辑的文档，请选择其他位置。");break;}}
+        const bool ok=error.isEmpty()&&writeDocumentExport(result,destination,pdf,source,identity,&error);reportHostMessage(ok?QStringLiteral("已导出至 %1").arg(QDir::toNativeSeparators(destination)):QStringLiteral("导出失败：%1").arg(error));});
+    watcher->setFuture(QtConcurrent::run([snapshot,title,root,resourcePath,identity,authorized,reader,cancel]{return prepareDocumentExport(snapshot,title,root,resourcePath,identity,authorized,reader,cancel);}));
 }
 void SingleFileWindow::setContentZoom(int percent) {
     m_zoom = qBound(50, percent, 200); m_zoomButton->setText(QString::number(m_zoom) + '%');
@@ -522,10 +549,11 @@ void SingleFileWindow::updateState() {
     if (m_embedded) m_breadcrumb->setDocumentPath(displayPath(), m_workspaceRoot);
     emit viewStateChanged();
     const bool ready = m_document && !m_document->closed(); const bool busy = ready && (m_document->saving() || m_document->loading() || m_document->maintainingResources());
+    m_exportButton->setEnabled(ready&&!m_exporting);m_focusAction->setEnabled(ready);m_outlineAction->setEnabled(ready);
     if (ready && m_document->saving()) m_observedSave = true;
     m_read->setEnabled(ready); m_edit->setEnabled(ready && !m_document->readOnly()); m_read->setChecked(m_mode == ViewMode::Reading); m_edit->setChecked(m_mode == ViewMode::Source); m_split->setEnabled(ready); m_split->setChecked(m_mode == ViewMode::Split);
     m_pathButton->setEnabled(ready); m_zoomButton->setEnabled(ready); m_save->setEnabled(ready && !busy && (m_document->dirty() || m_document->conflict()) && (!m_document->readOnly() || m_document->conflict()));
-    m_save->setProperty("primary", m_editing && ready && m_document->dirty()); m_save->setText(busy ? QStringLiteral("处理中…") : QStringLiteral("保存")); m_save->update();
+    m_save->setProperty("primary", m_editing && ready && m_document->dirty()); m_save->setText(busy ? QStringLiteral("处理中…") : QStringLiteral("保存")); static_cast<SharedButton *>(m_save)->setBusy(busy); m_save->update();
     m_saveSpinner->setVisible(busy); m_saveSpinner->setRunning(busy); m_statusIcon->setVisible(!busy);
     m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy);
     m_imageImportAction->setEnabled(ready && m_editing && resourceRoot() && !m_document->readOnly() && !busy && !m_imageImportPending);
@@ -591,7 +619,7 @@ void SingleFileWindow::showSaveError() {
     auto *layout = new QVBoxLayout(dialog->surface()); layout->setContentsMargins(24, 20, 24, 24); layout->setSpacing(16);
     auto *top = new QHBoxLayout; auto *symbol = new QLabel(dialog); symbol->setPixmap(themedIcon(uncertain ? "warning" : "error", m_appearance->semantic(uncertain ? "warning" : "error")).pixmap(24, 24)); top->addWidget(symbol); top->addStretch();
     auto *close = new SharedButton({}, "dialogClose", m_appearance, dialog); close->setSymbol("close"); close->setAccessibleName(QStringLiteral("关闭对话框")); top->addWidget(close); connect(close, &QPushButton::clicked, dialog, &QDialog::reject); layout->addLayout(top);
-    auto *heading = new QLabel(title, dialog); heading->setFont(uiFont(18)); heading->setTextFormat(Qt::PlainText); layout->addWidget(heading);
+    auto *heading = new QLabel(title, dialog); auto headingFont=uiFont(18);headingFont.setWeight(QFont::DemiBold);heading->setFont(headingFont); heading->setTextFormat(Qt::PlainText); layout->addWidget(heading);
     auto *body = new QLabel(m_document->message(), dialog); body->setTextFormat(Qt::PlainText); body->setWordWrap(true); body->setTextInteractionFlags(Qt::TextSelectableByMouse);
     const int textHeight = QFontMetrics(body->font()).boundingRect(QRect(0, 0, 432, 100000), Qt::TextWordWrap, body->text()).height(), cap = qMax(80, screen()->availableGeometry().height() / 3);
     if (textHeight > cap) { auto *scroll = new QScrollArea(dialog); scroll->setFrameShape(QFrame::NoFrame); scroll->setWidgetResizable(true); body->setMinimumHeight(textHeight + 8); scroll->setWidget(body); scroll->setFixedHeight(cap); layout->addWidget(scroll); } else layout->addWidget(body);

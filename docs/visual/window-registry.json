@@ -13,7 +13,9 @@
       "purpose": "内存样本文档验证 QWidget、QML、Scintilla 与受限预览的集成；不是主工作区的视觉交付，也不读写用户文件。",
       "sizeToken": "windows.main",
       "sizeRationale": "复用双栏主窗口的逻辑客户区和最小尺寸，保留平台原生窗口装饰。",
-      "designAssetIds": ["ui-v2-01-workspace-light"],
+      "designAssetIds": [
+        "ui-v2-01-workspace-light"
+      ],
       "designStatus": "reference-available",
       "implementationStatus": "component-admission",
       "implementationSource": "apps/desktop/src/AdmissionWindow.cpp",
@@ -43,8 +45,27 @@
       "designStatus": "reference-available",
       "implementationStatus": "workspace-prototype",
       "implementationSource": "apps/desktop/src/WorkspaceWindow.cpp",
-      "implementedStates": ["explicit-directory", "directory-feedback", "document-tabs", "session-transfer", "source", "reading", "split", "close-protection", "filename-search", "recent-documents", "favorites", "relative-breadcrumb", "appearance-menu", "resources-and-links", "mapped-scroll-sync", "settings-window"],
-      "deferredStates": ["full-text-search"],
+      "implementedStates": [
+        "explicit-directory",
+        "directory-feedback",
+        "document-tabs",
+        "session-transfer",
+        "source",
+        "reading",
+        "split",
+        "close-protection",
+        "filename-search",
+        "recent-documents",
+        "favorites",
+        "relative-breadcrumb",
+        "appearance-menu",
+        "resources-and-links",
+        "mapped-scroll-sync",
+        "settings-window"
+      ],
+      "deferredStates": [
+        "full-text-search"
+      ],
       "nativeValidation": "not-run"
     },
     {
@@ -62,8 +83,21 @@
       "implementationStatus": "single-file-prototype",
       "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
       "sizeRationale": "共享 48 逻辑像素应用标题行、工具栏和 26 像素状态栏；Windows 标题行包含应用窗口按钮，不叠加系统文字标题栏，其他平台保留系统装饰。",
-      "implementedStates": ["light-reading", "light-editing", "dark-reading", "dark-editing", "six-accents", "opening", "open-error", "read-only", "save-error", "content-zoom"],
-      "deferredStates": ["native-platform-acceptance"],
+      "implementedStates": [
+        "light-reading",
+        "light-editing",
+        "dark-reading",
+        "dark-editing",
+        "six-accents",
+        "opening",
+        "open-error",
+        "read-only",
+        "save-error",
+        "content-zoom"
+      ],
+      "deferredStates": [
+        "native-platform-acceptance"
+      ],
       "nativeValidation": "not-run"
     },
     {
@@ -91,8 +125,24 @@
       "implementationStatus": "settings-prototype",
       "nativeValidation": "not-run",
       "implementationSource": "apps/desktop/src/SettingsWindow.cpp",
-      "implementedStates": ["singleton-nonmodal", "six-pages", "settings-search", "shared-preferences", "live-editor-and-reader", "open-policy", "auto-save", "light-and-dark", "six-accents", "compact-swatch-layout"],
-      "deferredStates": ["native-association", "custom-shortcut-mapping", "remote-images", "manual-visual-acceptance"]
+      "implementedStates": [
+        "singleton-nonmodal",
+        "six-pages",
+        "settings-search",
+        "shared-preferences",
+        "live-editor-and-reader",
+        "open-policy",
+        "auto-save",
+        "light-and-dark",
+        "six-accents",
+        "compact-swatch-layout"
+      ],
+      "deferredStates": [
+        "native-association",
+        "custom-shortcut-mapping",
+        "remote-images",
+        "manual-visual-acceptance"
+      ]
     },
     {
       "id": "unsaved-confirmation",
@@ -105,7 +155,12 @@
       "designStatus": "reference-available",
       "implementationStatus": "single-file-prototype",
       "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
-      "implementedStates": ["save", "discard", "cancel", "wait-for-operation"],
+      "implementedStates": [
+        "save",
+        "discard",
+        "cancel",
+        "wait-for-operation"
+      ],
       "nativeValidation": "not-run"
     },
     {
@@ -120,7 +175,11 @@
       "designStatus": "reference-available",
       "implementationStatus": "single-file-prototype",
       "implementationSource": "apps/desktop/src/SingleFileWindow.cpp",
-      "implementedStates": ["keep-editing", "reload-with-confirmation", "save-as"],
+      "implementedStates": [
+        "keep-editing",
+        "reload-with-confirmation",
+        "save-as"
+      ],
       "nativeValidation": "not-run"
     },
     {
@@ -197,6 +256,29 @@
       "implementationStatus": "workspace-resource-prototype",
       "nativeValidation": "not-run",
       "implementationSource": "apps/desktop/src/ResourceMaintenanceController.cpp"
+    },
+    {
+      "id": "third-party-licenses",
+      "label": "第三方许可",
+      "kind": "owner-modal-dialog",
+      "purpose": "查看随构建嵌入的组件清单和许可原文，不执行外部文档内容。",
+      "sizeToken": "windows.licenseDialog",
+      "sizeRationale": "720 逻辑像素内容面，沿用共享阴影留白；原文区域滚动，完成和返回入口可达。",
+      "designAssetIds": [
+        "ui-v2-13-settings-shortcuts-about"
+      ],
+      "designStatus": "shared-pattern-extension",
+      "implementationStatus": "license-viewer-prototype",
+      "implementationSource": "apps/desktop/src/SettingsWindow.cpp",
+      "nativeValidation": "not-run",
+      "implementedStates": [
+        "bundled-notices",
+        "license-text",
+        "context-copy"
+      ],
+      "deferredStates": [
+        "manual-visual-acceptance"
+      ]
     }
   ],
   "platformOwnedSurfaces": [

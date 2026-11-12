@@ -303,7 +303,7 @@ struct NativePreviewView::State {
                 if (checked) { painter.setPen(QPen(accents.value("foreground"), 2)); painter.drawLine(QPointF(4, 8), QPointF(7, 11)); painter.drawLine(QPointF(7, 11), QPointF(12, 5)); }
                 painter.end(); const QUrl url(QStringLiteral("xdnote-native:task/%1").arg(run->start));
                 doc->addResource(QTextDocument::ImageResource, url, icon);
-                QTextImageFormat format; format.setName(url.toString()); format.setWidth(16 * zoom); format.setHeight(16 * zoom);
+                QTextImageFormat format; format.setName(url.toString()); format.setWidth(16 * zoom); format.setHeight(16 * zoom); format.setVerticalAlignment(QTextCharFormat::AlignMiddle);
                 cursor.setPosition(from); cursor.setPosition(qMin(from + 1, to), QTextCursor::KeepAnchor); cursor.insertImage(format);
             }
         }
@@ -894,9 +894,10 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
         QAbstractTextDocumentLayout::PaintContext context;
         context.clip = QRectF(qMax(0.0, -x), qMax(0.0, scroll - y), viewport()->width(), qMin(height, viewport()->height() + scroll - y));
         context.palette = palette(); context.palette.setColor(QPalette::Text, d->appearance->color("text"));
-        if (selectionStart < end && selectionEnd > start) {
+        const int selectableStart = qMax(start, content.flows[flowIndex].start + int(content.flows[flowIndex].markerLength));
+        if (selectionStart < end && selectionEnd > selectableStart) {
             QAbstractTextDocumentLayout::Selection selected;
-            selected.cursor = QTextCursor(doc); selected.cursor.setPosition(doc->local(qMax(start, selectionStart)));
+            selected.cursor = QTextCursor(doc); selected.cursor.setPosition(doc->local(qMax(selectableStart, selectionStart)));
             selected.cursor.setPosition(doc->local(qMin(end, selectionEnd), true), QTextCursor::KeepAnchor);
             selected.format.setBackground(d->appearance->accentColor("soft")); selected.format.setForeground(d->appearance->accentColor("softForeground"));
             context.selections.append(selected);
@@ -998,7 +999,7 @@ void NativePreviewView::updateControls() {
         if (record.code && group.y >= scroll - 32 * d->zoom && group.y <= scroll + viewport()->height()) {
             auto *button = d->buttons.value(int(record.node));
             if (!button) {
-                button = new SharedButton(QStringLiteral("复制"), QStringLiteral("nativeCodeCopy"), d->appearance, viewport());
+                button = new SharedButton({}, QStringLiteral("nativeCodeCopy"), d->appearance, viewport());button->setSymbol("copy");button->setFixedWidth(32);
                 button->setProperty("previewNode", record.node); button->setAccessibleName(QStringLiteral("复制代码")); button->setToolTip(QStringLiteral("复制代码"));
                 button->setFocusPolicy(Qt::NoFocus); d->buttons.insert(int(record.node), button);
                 connect(button, &QPushButton::clicked, this, [this, node = record.node, snapshot = d->shown] {
@@ -1032,10 +1033,14 @@ void NativePreviewView::updateControls() {
 }
 
 QString NativePreviewView::selectedText() const {
-    return d->content ? d->content->text.mid(qMin(d->anchor, d->cursor), qAbs(d->anchor - d->cursor)) : QString();
+    if (!d->content) return {};
+    const int first=qMin(d->anchor,d->cursor),last=qMax(d->anchor,d->cursor);QString result;int at=first;
+    for(const auto &flow:d->content->flows){if(flow.start>=last)break;if(!flow.markerLength||flow.start+flow.markerLength<=at)continue;const int markerEnd=qMin(last,flow.start+int(flow.markerLength));if(flow.start>at)result+=d->content->text.mid(at,flow.start-at);at=qMax(at,markerEnd);}
+    if(at<last)result+=d->content->text.mid(at,last-at);return result;
 }
 void NativePreviewView::setSelection(int anchor, int cursor) {
     if (!d->content || !boundary(d->content->text, anchor) || !boundary(d->content->text, cursor)) return;
+    const auto selectable=[&](int position){auto it=std::upper_bound(d->content->flows.cbegin(),d->content->flows.cend(),position,[](int p,const Content::Flow&f){return p<f.start;});if(it!=d->content->flows.cbegin()){--it;if(position<it->start+it->markerLength)position=it->start+it->markerLength;}return position;};anchor=selectable(anchor);cursor=selectable(cursor);
     if (anchor == d->anchor && cursor == d->cursor) return;
     d->anchor = anchor; d->cursor = cursor;
     const QPointer<NativePreviewView> alive(this); const auto snapshot = d->shown;

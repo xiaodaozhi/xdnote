@@ -79,7 +79,10 @@ private slots:
             QVERIFY(QDir().mkpath(evidence)); QVERIFY(view.grab().save(evidence + "/reader-" + theme + "-top.png"));
             view.verticalScrollBar()->setValue(view.verticalScrollBar()->maximum()); QVERIFY(view.grab().save(evidence + "/reader-" + theme + "-details.png"));
         }
-        QSignalSpy copy(&view, &NativePreviewView::copyTextRequested); view.selectAll(); view.copy(); QCOMPARE(copy.size(), 1); QCOMPARE(copy.first().first().toString(), before);
+        auto expectedCopy = before;
+        expectedCopy.replace(QStringLiteral("• "), QString());
+        expectedCopy.replace(QStringLiteral("☑ "), QString());
+        QSignalSpy copy(&view, &NativePreviewView::copyTextRequested); view.selectAll(); view.copy(); QCOMPARE(copy.size(), 1); QCOMPARE(copy.first().first().toString(), expectedCopy);
         QCOMPARE(data->text, before); QCOMPARE(view.statistics().deniedResources, 0); QVERIFY(view.statistics().peakCachedEstimatedBytes <= 8 * 1024 * 1024);
     }
     void sourceFontIsMonospacedAndEmojiHasGlyphFallback() {
@@ -103,8 +106,19 @@ private slots:
         const auto image = view.grab().toImage(); QVERIFY(!image.isNull());
         QVERIFY(view.statistics().cachedDocuments > 0); QVERIFY(view.statistics().flows > 0);
         QSignalSpy copied(&view, &NativePreviewView::copyTextRequested);
-        view.selectAll(); view.copy(); QCOMPARE(copied.size(), 1); QCOMPARE(copied.first().first().toString(), data->text);
+        view.selectAll(); view.copy(); QCOMPARE(copied.size(), 1);
+        QCOMPARE(copied.first().first().toString(), QStringLiteral("中文标题\n\n正文 粗体 斜体 删除 code 😀。\n\n完成\n\n子项\n\nconst char *text = \"<script>literal</script>\";\n\n左\t右\n甲\t乙\n\n跳转\n\n"));
         QVERIFY(view.navigateToHeading(QStringLiteral("中文标题"), stamp()));
+    }
+    void listDecorationsAreExcludedFromSelectionAndCopy() {
+        const auto data = content("3. ordered\n4. next\n\n- bullet\n- [x] task\n\n1\\. literal\n\n```\n1. code\n```\n"); QVERIFY(data);
+        Appearance appearance; NativePreviewView view(&appearance); view.resize(640, 720); view.expect(stamp()); QVERIFY(view.present(stamp(), data)); view.show(); QApplication::processEvents();
+        const auto before = data->text; QSignalSpy copied(&view, &NativePreviewView::copyTextRequested); view.selectAll(); view.copy();
+        QCOMPARE(copied.size(), 1); const auto text = copied.first().first().toString();
+        QVERIFY(text.startsWith("ordered\n\nnext\n\nbullet\n\ntask\n\n"));
+        QVERIFY(text.contains("1. literal")); QVERIFY(text.contains("1. code"));
+        QVERIFY(!text.contains("3. ordered")); QVERIFY(!text.contains(QStringLiteral("• bullet"))); QVERIFY(!text.contains(QStringLiteral("☑ task")));
+        QCOMPARE(data->text, before);
     }
     void projectionKeepsTightLooseAndNestedListOrder() {
         const auto data = content(QStringLiteral("1. **一**\n2. 二\n   - 子项\n\n> 引用\n\n- [ ] 待办\n\n- 段落一\n\n  段落二\n\n    ```\n    A\u2028B\u2029C\n    ```\n").toUtf8());

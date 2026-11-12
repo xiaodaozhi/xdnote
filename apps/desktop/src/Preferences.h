@@ -12,6 +12,8 @@ public:
     QJsonObject section(const QString &name) const { return m_values.value(name).toObject(); }
     bool setValues(const QString &section, const QJsonObject &patch);
     QString error() const { return m_error; }
+    bool canRetryWrite() const { return m_retryWrite; }
+    bool retryWrite();
 signals:
     void changed(QString section);
     void writeFailed(QString message);
@@ -21,5 +23,8 @@ private:
     QString m_path, m_error;
     QJsonObject m_values, m_defaults;
     bool m_valid = true;
+    bool m_retryWrite = false;
+    QString m_failedSection;
+    QJsonObject m_failedPatch;
 };
 }

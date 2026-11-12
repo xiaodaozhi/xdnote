@@ -3,6 +3,7 @@
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceReferenceController.h"
 #include "ResourceMaintenanceController.h"
+#include "DocumentOutline.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "Appearance.h"
@@ -33,6 +34,10 @@
 #include <QMouseEvent>
 #include <QProxyStyle>
 #include <QStyleOptionTab>
+#include <QApplication>
+#include <QElapsedTimer>
+#include <QToolButton>
+#include <QEasingCurve>
 #include <algorithm>
 
 namespace xdnote {
@@ -54,13 +59,21 @@ public:
         return QProxyStyle::subElementRect(element, option, widget);
     }
 };
+class TabDragSurface final : public QWidget {
+public:
+    TabDragSurface(QWidget*p):QWidget(p){setAttribute(Qt::WA_TransparentForMouseEvents);setFocusPolicy(Qt::NoFocus);hide();}
+    std::function<void(QPainter&)> draw;
+protected:
+    void paintEvent(QPaintEvent*)override{QPainter p(this);p.setRenderHint(QPainter::Antialiasing);if(draw)draw(p);}
+};
 class WorkspaceTabs final : public QTabBar {
 public:
     WorkspaceTabs(Appearance *appearance, QWidget *parent) : QTabBar(parent), m_appearance(appearance) {
         auto *placement = new WorkspaceTabStyle; placement->setParent(this); setStyle(placement);
         setFont(parent->font()); setAttribute(Qt::WA_MacShowFocusRect, false); setMouseTracking(true);
-        setObjectName("workspaceTabs"); setAccessibleName(QStringLiteral("文档标签")); setExpanding(false); setMovable(true); setUsesScrollButtons(true); setElideMode(Qt::ElideMiddle); setDrawBase(false); setFixedHeight(mainTokens().value("titlebarHeight").toInt()); setFocusPolicy(Qt::StrongFocus);
+        setObjectName("workspaceTabs"); setAccessibleName(QStringLiteral("文档标签")); setExpanding(false); setMovable(false); setUsesScrollButtons(true); setElideMode(Qt::ElideMiddle); setDrawBase(false); setFixedHeight(mainTokens().value("titlebarHeight").toInt()); setFocusPolicy(Qt::StrongFocus);
         auto refresh = [this] { auto palette = this->palette(); palette.setColor(QPalette::ButtonText, m_appearance->color("text")); palette.setColor(QPalette::WindowText, m_appearance->color("text")); setPalette(palette); setStyleSheet(QStringLiteral("QTabBar#workspaceTabs QToolButton{background:%1;color:%2;border:0;border-bottom:1px solid %4} QTabBar#workspaceTabs QToolButton:hover{background:%3}").arg(m_appearance->color("sidebar").name(), m_appearance->color("text").name(), m_appearance->color("controlHover").name(), m_appearance->color("border").name())); update(); }; connect(appearance, &Appearance::changed, this, refresh); refresh(); connect(InputModality::forApplication(), &InputModality::changed, this, qOverload<>(&QWidget::update));
+        m_ghost=new TabDragSurface(this);m_ghost->setObjectName("workspaceTabDragSurface");m_ghost->draw=[this](QPainter&p){const int i=dragIndex();if(i<0)return;paintTab(p,i,QRect(4,0,m_ghost->width()-8,height()),true);};m_animation.setInterval(16);connect(&m_animation,&QTimer::timeout,this,[this]{animate();});
     }
     std::function<void(QUuid)> closeRequested;
     std::function<void()> layoutChanged;
@@ -71,11 +84,24 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this); painter.setFont(font()); painter.setRenderHint(QPainter::Antialiasing); painter.fillRect(rect(), m_appearance->color("sidebar"));
         const int border = visualTokens().value("controls").toObject().value("borderWidth").toInt(); painter.fillRect(QRect(0, height() - border, width(), border), m_appearance->color("border"));
+        const int moving = dragIndex();
+        if ((m_dragging || m_settling) && moving >= 0) {
+            painter.setPen(QPen(m_appearance->color("border"),1,Qt::DashLine)); painter.setBrush(m_appearance->accentColor("soft"));
+            painter.drawRoundedRect(tabRect(moving).adjusted(2,tabToken("topInset"),-2,-2),6,6);
+        }
         for (int i = 0; i < count(); ++i) {
-            const auto rect = tabRect(i); if (!rect.intersects(this->rect())) continue;
+            if ((m_dragging || m_settling) && i == moving) continue;
+            auto rect = tabRect(i);rect.translate(qRound(slide(i)),0);if (!rect.intersects(this->rect())) continue;
+            paintTab(painter,i,rect,false);
+        }
+    }
+    void paintTab(QPainter &painter,int i,const QRect &rect,bool raised){
+            painter.setFont(font());
             const auto data = tabData(i).toMap(); const bool active = i == currentIndex();
+            const int border=1;
             const auto surface = QRectF(rect).adjusted(border / 2.0, tabToken("topInset") + border / 2.0, -border / 2.0, 0); const qreal radius = tabToken("cornerRadius");
-            if (active || i == m_hover) {
+            if(raised){paintPopupShell(painter,QRectF(rect).adjusted(.5,3.5,-.5,-3.5),m_appearance->color("surface"),m_appearance->color("border"),6,4);}
+            else if (active || i == m_hover) {
                 QPainterPath outline; outline.moveTo(surface.left(), height()); outline.lineTo(surface.left(), surface.top() + radius); outline.quadTo(surface.left(), surface.top(), surface.left() + radius, surface.top()); outline.lineTo(surface.right() - radius, surface.top()); outline.quadTo(surface.right(), surface.top(), surface.right(), surface.top() + radius); outline.lineTo(surface.right(), height());
                 painter.fillPath(outline, m_appearance->color(active ? "background" : "codeSurface"));
                 if (active) { painter.setPen(QPen(m_appearance->color("border"), border)); painter.setBrush(Qt::NoBrush); painter.drawPath(outline); }
@@ -86,16 +112,40 @@ protected:
             themedIcon(data.value("dirty").toBool() ? "status-dirty" : data.value("symbol", "document").toString(), data.value("dirty").toBool() ? m_appearance->semantic("warning") : m_appearance->color("textSecondary")).paint(&painter, icon);
             painter.setPen(m_appearance->color(active ? "text" : "textSecondary")); const QRect textRect = rect.adjusted(tabToken("padding") + 24, tabToken("topInset"), -tabToken("closeHit") - tabToken("closeInset") - 4, 0);
             painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, fontMetrics().elidedText(data.value("title").toString(), Qt::ElideMiddle, textRect.width()));
-            if (active && hasFocus() && InputModality::forApplication()->keyboardNavigation()) { painter.setBrush(Qt::NoBrush); painter.setPen(QPen(m_appearance->accentColor(), 2)); painter.drawRoundedRect(rect.adjusted(3, 3, -3, -3), 5, 5); }
-        }
+            if(raised)themedIcon("close",m_appearance->color("textSecondary")).paint(&painter,QRect(rect.right()+1-tabToken("closeInset")-tabToken("closeHit")/2-6,tabContentY(height(),12),12,12));
+            if (!raised&&active && hasFocus() && InputModality::forApplication()->keyboardNavigation()) { painter.setBrush(Qt::NoBrush); painter.setPen(QPen(m_appearance->accentColor(), 2)); painter.drawRoundedRect(rect.adjusted(3, 3, -3, -3), 5, 5); }
     }
-    void keyPressEvent(QKeyEvent *event) override { if (event->key() == Qt::Key_Delete && currentIndex() >= 0) { InputModality::forApplication()->clear(); if (closeRequested) closeRequested(tabId(this, currentIndex())); event->accept(); } else QTabBar::keyPressEvent(event); }
-    void mouseMoveEvent(QMouseEvent *event) override { const auto previous = m_hover; m_hover = tabAt(event->position().toPoint()); if (previous != m_hover) update(); QTabBar::mouseMoveEvent(event); }
+    void keyPressEvent(QKeyEvent *event) override { if(event->key()==Qt::Key_Escape&&(m_dragging||!m_pressId.isNull())){finishDrag(true);event->accept();return;}if (event->key() == Qt::Key_Delete && currentIndex() >= 0) { InputModality::forApplication()->clear(); if (closeRequested) closeRequested(tabId(this, currentIndex())); event->accept(); } else QTabBar::keyPressEvent(event); }
+    void mousePressEvent(QMouseEvent*e)override{if(e->button()==Qt::LeftButton){finishDrag(false);const int i=tabAt(e->position().toPoint());if(i>=0){m_pressId=tabId(this,i);m_press=e->position().toPoint();m_grabOffset=m_press.x()-tabRect(i).left();m_original.clear();for(int j=0;j<count();++j)m_original.append(tabId(this,j));}}QTabBar::mousePressEvent(e);}
+    void mouseMoveEvent(QMouseEvent *event) override {
+        const auto point=event->position().toPoint();m_lastMouse=point;const auto previous=m_hover;m_hover=tabAt(point);if(previous!=m_hover)update();
+        if(event->buttons().testFlag(Qt::LeftButton)&&!m_pressId.isNull()){
+            if(!m_dragging&&(point-m_press).manhattanLength()>=QApplication::startDragDistance()){m_dragId=m_pressId;m_dragging=true;m_settling=false;grabMouse();setCursor(Qt::ClosedHandCursor);m_ghost->show();m_ghost->raise();m_animation.start();}
+            if(m_dragging){const int current=dragIndex();if(current<0){finishDrag(false);return;}m_followX=qBound(0,point.x()-m_grabOffset,qMax(0,width()-tabRect(current).width()));int target=tabAt(point);if(target>=0&&target!=current&&((target>current&&point.x()>tabRect(target).center().x())||(target<current&&point.x()<tabRect(target).center().x()))){QHash<QUuid,qreal> before;for(int j=0;j<count();++j)before.insert(tabId(this,j),tabRect(j).left()+slide(j));moveTab(current,target);m_slides.clear();for(int j=0;j<count();++j)m_slides.insert(tabId(this,j),before.value(tabId(this,j),tabRect(j).left())-tabRect(j).left());m_slideClock.restart();}syncDrag();event->accept();return;}
+        }QTabBar::mouseMoveEvent(event);
+    }
+    void mouseReleaseEvent(QMouseEvent*e)override{if(e->button()==Qt::LeftButton&&(m_dragging||!m_pressId.isNull())){const bool dragged=m_dragging;finishDrag(false);if(dragged){e->accept();return;}}QTabBar::mouseReleaseEvent(e);}
+    bool event(QEvent*e)override{if((e->type()==QEvent::WindowDeactivate||e->type()==QEvent::UngrabMouse)&&m_dragging)finishDrag(true);return QTabBar::event(e);}
     void leaveEvent(QEvent *event) override { m_hover = -1; update(); QTabBar::leaveEvent(event); }
-    void tabLayoutChange() override { QTabBar::tabLayoutChange(); if (layoutChanged) layoutChanged(); }
+    void tabLayoutChange() override { QTabBar::tabLayoutChange(); if (layoutChanged) layoutChanged();if(m_ghost)syncDrag(); }
 private:
+    int dragIndex()const{for(int i=0;i<count();++i)if(tabId(const_cast<WorkspaceTabs*>(this),i)==m_dragId)return i;return -1;}
+    qreal slide(int i)const{if(!m_slideClock.isValid())return 0;const qreal t=qBound(0.0,m_slideClock.elapsed()/160.0,1.0);return m_slides.value(tabId(const_cast<WorkspaceTabs*>(this),i))*(1-QEasingCurve(QEasingCurve::OutCubic).valueForProgress(t));}
+    void syncDrag(){const int index=dragIndex();for(int i=0;i<count();++i)if(auto*b=tabButton(i,QTabBar::RightSide)){auto r=tabRect(i);b->move(r.right()+1-tabToken("closeInset")-b->width()+qRound(slide(i)),tabContentY(height(),b->height()));if(i==index&&(m_dragging||m_settling))b->hide();else b->setVisible(r.intersects(rect()));}if(index>=0&&(m_dragging||m_settling)){m_ghost->setGeometry(qRound(m_followX)-4,0,tabRect(index).width()+8,height());m_ghost->raise();m_ghost->update();}update();}
+    void finishDrag(bool cancel){const bool active=m_dragging;m_dragging=false;m_pressId={};if(mouseGrabber()==this)releaseMouse();unsetCursor();if(cancel){for(int i=0;i<m_original.size();++i)for(int j=i;j<count();++j)if(tabId(this,j)==m_original[i]){moveTab(j,i);break;}m_slides.clear();m_settling=false;m_ghost->hide();}else if(active&&dragIndex()>=0){m_settleStart=m_followX;m_settling=true;m_settleClock.restart();m_animation.start();}else if(!m_settling){m_ghost->hide();}syncDrag();}
+    void animate(){if(m_dragging&&++m_autoScrollTicks%10==0){for(auto*b:findChildren<QToolButton*>())if(b->isVisible()&&((m_lastMouse.x()<20&&b->arrowType()==Qt::LeftArrow)||(m_lastMouse.x()>width()-36&&b->arrowType()==Qt::RightArrow)))b->click();}if(m_settling){const int i=dragIndex();const qreal t=qBound(0.0,m_settleClock.elapsed()/120.0,1.0);if(i<0||t>=1){m_settling=false;m_ghost->hide();}else m_followX=m_settleStart+(tabRect(i).left()-m_settleStart)*QEasingCurve(QEasingCurve::OutCubic).valueForProgress(t);}if(!m_dragging&&!m_settling&&(!m_slideClock.isValid()||m_slideClock.elapsed()>=160)){m_slides.clear();m_animation.stop();}syncDrag();}
     Appearance *m_appearance;
     int m_hover = -1;
+    TabDragSurface*m_ghost=nullptr;
+    QTimer m_animation;
+    QElapsedTimer m_slideClock,m_settleClock;
+    QHash<QUuid,qreal>m_slides;
+    QVector<QUuid>m_original;
+    QUuid m_pressId,m_dragId;
+    QPoint m_press,m_lastMouse;
+    qreal m_followX=0,m_settleStart=0;
+    int m_grabOffset=0,m_autoScrollTicks=0;
+    bool m_dragging=false,m_settling=false;
 };
 class WorkspaceTabStrip final : public QWidget {
 public:
@@ -125,7 +175,7 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     tabs->closeRequested = [this](QUuid id) { closePane(id); }; connect(tabs, &QTabBar::currentChanged, this, [this] { m_navigationVisible = false; if (m_search) { const QSignalBlocker block(m_search); m_search->clear(); m_searchDelay.stop(); m_tree->cancelSearch(); } selectCurrent(); }); connect(tabs, &QTabBar::tabBarClicked, this, [this](int index) { if (index >= 0) activatePane(tabId(m_tabs, index)); });
     m_warning = new QLabel(this); m_warning->setObjectName("workspaceNotice"); m_warning->setWordWrap(true); m_warning->setTextFormat(Qt::PlainText); m_warning->setContentsMargins(16, 8, 16, 8); m_warning->hide(); layout->addWidget(m_warning);
     auto *content = new QWidget(this); auto *row = new QHBoxLayout(content); row->setContentsMargins(0, 0, 0, 0); row->setSpacing(0); layout->addWidget(content, 1);
-    m_sidebar = new QWidget(content); m_sidebar->setObjectName("workspaceSidebar"); m_sidebar->setFixedWidth(tokens.value("sidebarWidth").toInt()); auto *sidebarRow = new QHBoxLayout(m_sidebar); sidebarRow->setContentsMargins(0, 0, 0, 0); sidebarRow->setSpacing(0); auto *navigationColumn = new QWidget(m_sidebar); sidebarRow->addWidget(navigationColumn, 1); auto *sidebarBorder = new SharedSeparator(Qt::Vertical, windowAppearance(), m_sidebar); sidebarBorder->setObjectName("workspaceSidebarBorder"); sidebarRow->addWidget(sidebarBorder); auto *sidebar = new QVBoxLayout(navigationColumn); sidebar->setContentsMargins(0, 0, 0, 0); sidebar->setSpacing(0); row->addWidget(m_sidebar);
+    m_sidebar = new QWidget(content); m_sidebar->setObjectName("workspaceSidebar"); m_sidebar->setFixedWidth(tokens.value("sidebarWidth").toInt()); auto *sidebarRow = new QHBoxLayout(m_sidebar); sidebarRow->setContentsMargins(0, 0, 0, 0); sidebarRow->setSpacing(0);m_sidebarViews=new QStackedWidget(m_sidebar);sidebarRow->addWidget(m_sidebarViews,1);auto *navigationColumn = new QWidget(m_sidebarViews);m_sidebarViews->addWidget(navigationColumn);m_outline=new DocumentOutline(windowAppearance(),m_sidebarViews);m_sidebarViews->addWidget(m_outline);connect(m_outline,&DocumentOutline::closeRequested,this,[this]{m_outlineWanted=false;m_sidebarViews->setCurrentIndex(0);});connect(m_outline,&DocumentOutline::headingActivated,this,[this](const QString&id,const QUuid&document,quint64 revision){auto*p=activePane();if(!p||!p->document())return;const auto snapshot=p->document()->session()->snapshot();if(snapshot.documentId==document&&snapshot.revision==revision)p->navigateToHeading(id);});auto *sidebarBorder = new SharedSeparator(Qt::Vertical, windowAppearance(), m_sidebar); sidebarBorder->setObjectName("workspaceSidebarBorder"); sidebarRow->addWidget(sidebarBorder); auto *sidebar = new QVBoxLayout(navigationColumn); sidebar->setContentsMargins(0, 0, 0, 0); sidebar->setSpacing(0); row->addWidget(m_sidebar);
     auto *selector = new QWidget(m_sidebar); selector->setFixedHeight(tokens.value("toolbarHeight").toInt()); auto *tools = new QHBoxLayout(selector); tools->setContentsMargins(navToken("sidebarInset"), 0, navToken("sidebarInset"), 0);
     m_rootLabel = new SharedButton(QStringLiteral("我的文档"), "workspaceSelector", windowAppearance(), selector); m_rootLabel->setProperty("navigationRow", true); auto titleFont = font(); titleFont.setWeight(QFont::DemiBold); m_rootLabel->setFont(titleFont); tools->addWidget(m_rootLabel);
     auto *workspaceMenu = new SharedMenu(windowAppearance(), m_rootLabel); auto *choose = workspaceMenu->addAction(QStringLiteral("打开工作区目录…")); choose->setObjectName("chooseWorkspace"); connect(choose, &QAction::triggered, this, &WorkspaceWindow::chooseDirectoryRequested);
@@ -157,7 +207,8 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     m_searchDelay.setSingleShot(true); m_searchDelay.setInterval(navToken("searchDelayMs")); connect(&m_searchDelay, &QTimer::timeout, this, &WorkspaceWindow::startSearch);
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString &text) { m_searchDelay.stop(); m_tree->cancelSearch(); if (text.trimmed().isEmpty()) { m_navigationVisible = false; selectCurrent(); } else { m_navigationVisible = true; m_navigationPage->showPage(WorkspaceNavigation::Page::Search, rootPath()); m_navigationPage->showSearch(text.trimmed(), {}, {}, true); selectCurrent(); m_searchDelay.start(); } });
     connect(m_tree, &WorkspaceTree::searchFinished, this, [this](const QString &query, const QStringList &paths, const QString &warning) { if (m_navigationVisible && query == m_search->text().trimmed()) m_navigationPage->showSearch(query, paths, warning); });
-    auto *searchShortcut = new QAction(this); searchShortcut->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K)); addAction(searchShortcut); connect(searchShortcut, &QAction::triggered, this, [this] { m_sidebarWanted = true; m_sidebarExplicit = true; updateSidebar(); m_search->setFocus(Qt::ShortcutFocusReason); m_search->selectAll(); });
+    auto *searchShortcut = new QAction(this); searchShortcut->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_K)); addAction(searchShortcut); connect(searchShortcut, &QAction::triggered, this, [this] { setFocusMode(false); m_outlineWanted = false; m_sidebarViews->setCurrentIndex(0); m_sidebarWanted = true; m_sidebarExplicit = true; updateSidebar(); m_search->setFocus(Qt::ShortcutFocusReason); m_search->selectAll(); });
+    auto*focusShortcut=new QAction(this);focusShortcut->setObjectName("workspaceFocusAction");focusShortcut->setShortcut(QKeySequence(Qt::Key_F11));addAction(focusShortcut);connect(focusShortcut,&QAction::triggered,this,[this]{setFocusMode(!m_focusMode);});
     m_favoriteAction = new QAction(QStringLiteral("添加到收藏"), this); m_favoriteAction->setObjectName("favoriteDocument"); m_favoriteAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D)); addAction(m_favoriteAction);
     connect(m_favoriteAction, &QAction::triggered, this, [this] { if (m_navigationVisible) m_navigationPage->toggleSelectedFavorite(); else if (auto *pane = activePane()) if (pane->document()) m_navigation->setFavorite(pane->document()->path(), !m_navigation->favorite(pane->document()->path())); });
     connect(m_navigation, &NavigationStore::changed, this, [this] { updateNavigationSelection(); if (m_warning->property("noticeSource") == "navigation" && m_navigation->error().isEmpty()) showNotice({}); });
@@ -223,6 +274,7 @@ bool WorkspaceWindow::addPane(SingleFileWindow *pane) {
     const int index = m_tabs->addTab(QString()); m_tabs->setTabData(index, QVariantMap{{"id", id}});
     installTabClose(index, id);
     connect(pane, &SingleFileWindow::sidebarRequested, this, [this] { m_sidebarWanted = !m_sidebar->isVisible(); m_sidebarExplicit = true; updateSidebar(); });
+    connect(pane,&SingleFileWindow::outlineRequested,this,[this,pane]{if(pane!=activePane())return;m_outlineWanted=!m_outlineWanted;if(m_outlineWanted){m_sidebarWanted=true;m_sidebarExplicit=true;m_outline->setSession(pane->document()?pane->document()->session():nullptr);}m_sidebarViews->setCurrentIndex(m_outlineWanted?1:0);updateSidebar();});connect(pane,&SingleFileWindow::focusModeChanged,this,[this,pane](bool enabled){if(pane==activePane())setFocusMode(enabled);});pane->setFocusMode(m_focusMode);
     connect(pane, &SingleFileWindow::viewStateChanged, this, [this, id] { refreshPane(id); });
     connect(pane, &SingleFileWindow::closeCancelled, this, [this] { m_closingAll = false; emit closeCancelled(); });
     connect(pane, &QObject::destroyed, this, [this, id] { m_panes.remove(id); const int index = indexOf(id); if (index >= 0) m_tabs->removeTab(index); selectCurrent(); if (m_closingAll) QTimer::singleShot(0, this, &WorkspaceWindow::advanceClose); });
@@ -354,7 +406,7 @@ void WorkspaceWindow::refreshPane(const QUuid &id) {
     auto *pane = m_panes.value(id).data(); const int index = indexOf(id); if (!pane || index < 0) return;
     auto title = QFileInfo(pane->displayPath()).fileName(); if (title.isEmpty()) title = QStringLiteral("打开文档"); const bool dirty = pane->document() && pane->document()->dirty();
     m_tabs->setTabData(index, QVariantMap{{"id", id}, {"title", title}, {"dirty", dirty}}); m_tabs->setTabText(index, title + (dirty ? QStringLiteral("，未保存") : QString())); m_tabs->setTabToolTip(index, pane->displayPath()); if (auto *close = m_tabs->tabButton(index, QTabBar::RightSide)) { close->setAccessibleName(QStringLiteral("关闭 %1").arg(title)); close->setToolTip(close->accessibleName()); } m_tabs->update();
-    if (pane == activePane() && !m_navigationVisible) { m_tree->selectPath(pane->displayPath()); updateNavigationSelection(); }
+    if (pane == activePane() && !m_navigationVisible) { m_tree->selectPath(pane->displayPath()); updateNavigationSelection();m_outline->setSession(pane->document()?pane->document()->session():nullptr); }
 }
 void WorkspaceWindow::activatePane(const QUuid &id) { const int index = indexOf(id); if (index < 0) return; m_navigationVisible = false; { const QSignalBlocker block(m_search); m_search->clear(); } m_searchDelay.stop(); m_tree->cancelSearch(); m_tabs->setCurrentIndex(index); selectCurrent(); if (isMinimized()) showNormal(); show(); raise(); activateWindow(); }
 void WorkspaceWindow::selectCurrent() {
@@ -362,7 +414,7 @@ void WorkspaceWindow::selectCurrent() {
     const bool searching = m_search && !m_search->text().trimmed().isEmpty();
     m_navigationVisible = !kind.isEmpty() || searching;
     if (!kind.isEmpty() && !searching) m_navigationPage->showPage(kind == "favorites" ? WorkspaceNavigation::Page::Favorites : WorkspaceNavigation::Page::Recent, rootPath());
-    auto *pane = activePane(); m_pages->setCurrentWidget(m_navigationVisible ? static_cast<QWidget *>(m_navigationPage) : pane ? static_cast<QWidget *>(pane) : m_welcome); m_footers->setCurrentWidget(pane && !m_navigationVisible ? pane->footer() : m_emptyFooter); m_emptyOpen->setEnabled(!pane || m_navigationVisible); m_emptyQuit->setEnabled(!pane || m_navigationVisible); updateNavigationSelection(); if (pane && !m_navigationVisible) { m_tree->selectPath(pane->displayPath()); pane->activateDocument(); } }
+    auto *pane = activePane(); m_pages->setCurrentWidget(m_navigationVisible ? static_cast<QWidget *>(m_navigationPage) : pane ? static_cast<QWidget *>(pane) : m_welcome); m_footers->setCurrentWidget(pane && !m_navigationVisible ? pane->footer() : m_emptyFooter); m_emptyOpen->setEnabled(!pane || m_navigationVisible); m_emptyQuit->setEnabled(!pane || m_navigationVisible);updateNavigationSelection();if(m_navigationVisible||!pane)setFocusMode(false);m_outline->setSession(pane&&!m_navigationVisible&&pane->document()?pane->document()->session():nullptr);m_sidebarViews->setCurrentIndex(m_outlineWanted&&pane&&!m_navigationVisible?1:0);if (pane && !m_navigationVisible) {m_tree->selectPath(pane->displayPath());pane->setFocusMode(m_focusMode);pane->activateDocument();} }
 void WorkspaceWindow::showNavigation(bool favorites) {
     const QString kind = favorites ? "favorites" : "recent";
     int index = -1;
@@ -375,14 +427,15 @@ void WorkspaceWindow::showNavigation(bool favorites) {
     activatePane(tabId(m_tabs, index));
 }
 void WorkspaceWindow::startSearch() { const auto query = m_search->text().trimmed(); if (!query.isEmpty()) m_tree->searchFiles(query); }
-void WorkspaceWindow::updateNavigationSelection() { const bool recent = m_navigationVisible && m_navigationPage->page() == WorkspaceNavigation::Page::Recent, favorites = m_navigationVisible && m_navigationPage->page() == WorkspaceNavigation::Page::Favorites; m_recent->setProperty("navigationSelected", recent); m_favorites->setProperty("navigationSelected", favorites); m_recent->update(); m_favorites->update(); if (!m_favoriteAction) return; const auto *pane = activePane(); const auto path = m_navigationVisible ? m_navigationPage->selectedPath() : pane && pane->document() ? pane->document()->path() : QString(); m_favoriteAction->setText(m_navigation->favorite(path) ? QStringLiteral("取消收藏") : QStringLiteral("添加到收藏")); m_favoriteAction->setEnabled(!path.isEmpty()); }
+void WorkspaceWindow::updateNavigationSelection() { const bool recent = m_navigationVisible && m_navigationPage->page() == WorkspaceNavigation::Page::Recent, favorites = m_navigationVisible && m_navigationPage->page() == WorkspaceNavigation::Page::Favorites; m_recent->setProperty("navigationSelected", recent); m_favorites->setProperty("navigationSelected", favorites); m_recent->update(); m_favorites->update(); if (!m_favoriteAction) return; const auto *pane = activePane(); const auto path = m_navigationVisible ? m_navigationPage->selectedPath() : pane && pane->document() ? pane->document()->path() : QString(); m_favoriteAction->setIcon(themedIcon("star",windowAppearance()->color("text"))); m_favoriteAction->setText(m_navigation->favorite(path) ? QStringLiteral("取消收藏") : QStringLiteral("添加到收藏")); m_favoriteAction->setEnabled(!path.isEmpty()); }
 void WorkspaceWindow::closePane(const QUuid &id) { if (m_closingAll) return;
     const int index = indexOf(id);
     if (index >= 0 && !m_tabs->tabData(index).toMap().value("navigation").toString().isEmpty()) { m_tabs->removeTab(index); selectCurrent(); return; } if (auto *pane = m_panes.value(id).data()) { activatePane(id); pane->close(); } }
 void WorkspaceWindow::closeEvent(QCloseEvent *event) { if (m_maintenance->busy()) { event->ignore(); showNotice(QStringLiteral("正在维护资源，请等待逐项结果后再关闭。")); emit closeCancelled(); return; } if (m_panes.isEmpty()) { m_closingAll = true; event->accept(); return; } event->ignore(); if (!m_closingAll) { m_closingAll = true; QTimer::singleShot(0, this, &WorkspaceWindow::advanceClose); } }
 void WorkspaceWindow::advanceClose() { if (!m_closingAll) return; if (m_panes.isEmpty()) { close(); return; } const auto list = panes(); if (!list.isEmpty()) { auto *pane = list.first(); activatePane(pane->paneId()); pane->close(); } }
 void WorkspaceWindow::resizeEvent(QResizeEvent *event) { ApplicationWindow::resizeEvent(event); updateSidebar(); }
-void WorkspaceWindow::updateSidebar() { if (m_sidebar) m_sidebar->setVisible(m_sidebarWanted && (m_sidebarExplicit || width() >= mainTokens().value("compactBelowWidth").toInt())); }
+void WorkspaceWindow::updateSidebar() { if (m_sidebar) m_sidebar->setVisible(!m_focusMode&&m_sidebarWanted && (m_sidebarExplicit || width() >= mainTokens().value("compactBelowWidth").toInt())); }
+void WorkspaceWindow::setFocusMode(bool enabled){if(enabled&&(!activePane()||m_navigationVisible))return;if(m_focusMode==enabled)return;m_focusMode=enabled;for(auto*p:panes())p->setFocusMode(enabled);updateSidebar();}
 bool WorkspaceWindow::event(QEvent *event) { const bool result = ApplicationWindow::event(event); if (!m_tearingDown && !m_navigationVisible && event->type() == QEvent::WindowActivate && m_pages) if (auto *pane = activePane()) if (pane->document()) pane->document()->checkExternal(); return result; }
 bool WorkspaceWindow::eventFilter(QObject *target, QEvent *event) { if (target == m_search) { if (event->type() == QEvent::FocusIn) { const auto reason = static_cast<QFocusEvent *>(event)->reason(); m_searchTab = reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason; applyAppearance(); } else if (event->type() == QEvent::FocusOut || event->type() == QEvent::MouseButtonPress) { m_searchTab = false; applyAppearance(); } else if (event->type() == QEvent::KeyPress) { const auto key = static_cast<QKeyEvent *>(event)->key(); if (key == Qt::Key_Escape) { m_search->clear(); m_searchTab = false; applyAppearance(); return true; } if (key == Qt::Key_Return || key == Qt::Key_Enter) { m_searchTab = false; applyAppearance(); } } } return ApplicationWindow::eventFilter(target, event); }
 }
