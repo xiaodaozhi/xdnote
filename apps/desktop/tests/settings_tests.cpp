@@ -47,6 +47,70 @@ bool select(SettingsWindow *window, const char *name, const QVariant &value) {
 class SettingsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void missingLegacyFieldsUseDefaultsWithoutWarning_data() {
+        QTest::addColumn<QByteArray>("original");
+        QTest::addColumn<int>("fontSize");
+        QTest::addColumn<bool>("automatic");
+        QTest::newRow("appearance-only") << QByteArray(R"({"schemaVersion":1,"appearance":{"theme":"dark","accent":"olive"},"future":{"keep":42}})") << 14 << false;
+        QTest::newRow("partial-editor-and-autosave") << QByteArray(R"({"schemaVersion":1,"appearance":{"theme":"dark","accent":"olive"},"future":{"keep":42},"editor":{"fontSize":20,"autoSave":{"enabled":true,"future":7}}})") << 20 << true;
+        QTest::newRow("empty-optional-objects") << QByteArray(R"({"schemaVersion":1,"appearance":{"theme":"dark","accent":"olive"},"future":{"keep":42},"editor":{"autoSave":{}},"reader":{},"desktop":{},"files":{}})") << 14 << false;
+    }
+    void missingLegacyFieldsUseDefaultsWithoutWarning() {
+        QFETCH(QByteArray, original); QFETCH(int, fontSize); QFETCH(bool, automatic);
+        QTemporaryDir dir; const auto path = dir.filePath("settings.json"); QVERIFY(fileFixtures::write(path, original));
+        Appearance appearance(nullptr, path); auto *prefs = appearance.preferences();
+        QVERIFY2(prefs->error().isEmpty(), qPrintable(prefs->error())); QVERIFY(appearance.error().isEmpty());
+        SettingsWindow settings(&appearance, nullptr); auto *status = settings.findChild<QWidget *>("settingsStatus"); QVERIFY(status);
+        QCOMPARE(status->toolTip(), QStringLiteral("设置更改即时生效"));
+        QCOMPARE(appearance.theme(), QString("dark")); QCOMPARE(appearance.accent(), QString("olive"));
+        QCOMPARE(prefs->value("editor", "fontSize").toInt(), fontSize);
+        QCOMPARE(prefs->value("editor", "autoSaveEnabled").toBool(), automatic);
+        QCOMPARE(prefs->value("editor", "autoSaveDelayMs").toInt(), 1500);
+        QCOMPARE(bytes(path), original);
+        QVERIFY(prefs->setValues("desktop", {{"standaloneDefaultMode", "source"}}));
+        const auto saved = QJsonDocument::fromJson(bytes(path)).object();
+        QCOMPARE(saved["future"].toObject()["keep"].toInt(), 42);
+        QCOMPARE(saved["appearance"].toObject()["theme"].toString(), QString("dark"));
+        QCOMPARE(saved["appearance"].toObject()["accent"].toString(), QString("olive"));
+        if (automatic) QCOMPARE(saved["editor"].toObject()["autoSave"].toObject()["future"].toInt(), 7);
+        Appearance reopened(nullptr, path); QVERIFY(reopened.preferences()->error().isEmpty());
+        QCOMPARE(reopened.preferences()->value("editor", "fontSize").toInt(), fontSize);
+        QCOMPARE(reopened.preferences()->value("editor", "autoSaveEnabled").toBool(), automatic);
+    }
+    void invalidStoredValuesPreserveOtherValidSettings_data() {
+        QTest::addColumn<QByteArray>("original");
+        const auto base = QJsonDocument::fromJson(R"({"schemaVersion":1,"appearance":{"theme":"dark","accent":"olive"},"editor":{"fontSize":21,"wordWrap":false},"reader":{"fontSize":23},"future":{"keep":42}})").object();
+        auto add = [&](const char *name, const QString &section, const QJsonValue &value) {
+            auto input = base; input[section] = value; QTest::newRow(name) << QJsonDocument(input).toJson();
+        };
+        add("null-field", "editor", QJsonObject{{"fontSize", QJsonValue::Null}, {"wordWrap", false}});
+        add("wrong-editor-container", "editor", false);
+        add("wrong-reader-container", "reader", 7);
+        add("null-autosave-container", "editor", QJsonObject{{"fontSize", 21}, {"autoSave", QJsonValue::Null}});
+        add("invalid-autosave-value", "editor", QJsonObject{{"fontSize", 21}, {"autoSave", QJsonObject{{"enabled", "yes"}, {"delayMs", 2400}, {"future", 7}}}});
+    }
+    void invalidStoredValuesPreserveOtherValidSettings() {
+        QFETCH(QByteArray, original); QTemporaryDir dir; const auto path = dir.filePath("settings.json");
+        QVERIFY(fileFixtures::write(path, original)); Appearance appearance(nullptr, path); auto *prefs = appearance.preferences();
+        QVERIFY(!prefs->error().isEmpty()); QCOMPARE(bytes(path), original);
+        QCOMPARE(appearance.theme(), QString("dark")); QCOMPARE(appearance.accent(), QString("olive"));
+        const auto input = QJsonDocument::fromJson(original).object();
+        for (const auto &section : {QString("editor"), QString("reader")}) {
+            const auto value = input[section].toObject()["fontSize"];
+            if (value.isDouble()) QCOMPARE(prefs->value(section, "fontSize"), value);
+        }
+        if (input["editor"].toObject()["autoSave"].toObject().contains("delayMs")) {
+            QCOMPARE(prefs->value("editor", "autoSaveDelayMs").toInt(), 2400);
+            QVERIFY(!prefs->value("editor", "autoSaveEnabled").toBool());
+        }
+        QVERIFY(prefs->setValues("desktop", {{"standaloneDefaultMode", "source"}}));
+        const auto saved = QJsonDocument::fromJson(bytes(path)).object();
+        QCOMPARE(saved["future"].toObject()["keep"].toInt(), 42);
+        QCOMPARE(saved["appearance"], input["appearance"]);
+        const auto inputAuto = input["editor"].toObject()["autoSave"].toObject();
+        if (inputAuto.contains("future")) QCOMPARE(saved["editor"].toObject()["autoSave"].toObject()["future"], inputAuto["future"]);
+        Appearance reopened(nullptr, path); QVERIFY(reopened.preferences()->error().isEmpty());
+    }
     void splitPreferencesReuseAnalysisAndKeepReaderAnchor() {
         QTemporaryDir workspace, configuration;
         const auto source = QByteArray("# heading\n\n") + QStringLiteral("长段落 中文 **强调** ").repeated(160).toUtf8()

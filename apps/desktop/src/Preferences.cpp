@@ -32,20 +32,28 @@ Preferences::Preferences(QObject *parent, QString path) : QObject(parent), m_pat
     bool fallback = false;
     for (auto section = m_defaults.begin(); section != m_defaults.end(); ++section) {
         if (!section.value().isObject()) continue;
-        auto loaded = m_values[section.key()].toObject();
+        // Non-const operator[] inserts a null entry for a missing key. Read
+        // without mutation so optional legacy fields stay distinguishable
+        // from present, invalid values until defaults are applied below.
+        const auto storedSection = m_values.value(section.key());
+        fallback |= !storedSection.isUndefined() && !storedSection.isObject();
+        auto loaded = storedSection.toObject();
         const auto defaults = section.value().toObject();
         for (auto field = defaults.begin(); field != defaults.end(); ++field) {
+            const auto storedValue = loaded.value(field.key());
             if (section.key() == "editor" && field.key() == "autoSave") {
-                auto autosave = loaded[field.key()].toObject();
+                fallback |= !storedValue.isUndefined() && !storedValue.isObject();
+                auto autosave = storedValue.toObject();
                 for (const auto &name : {QString("enabled"), QString("delayMs")}) {
-                    if (!valid("editor", name == "enabled" ? "autoSaveEnabled" : "autoSaveDelayMs", autosave[name])) {
-                        fallback |= autosave.contains(name); autosave[name] = field.value().toObject()[name];
+                    const auto saved = autosave.value(name);
+                    if (!valid("editor", name == "enabled" ? "autoSaveEnabled" : "autoSaveDelayMs", saved)) {
+                        fallback |= !saved.isUndefined(); autosave[name] = field.value().toObject().value(name);
                     }
                 }
                 loaded[field.key()] = autosave; continue;
             }
-            if (!valid(section.key(), field.key(), loaded[field.key()])) {
-                fallback |= loaded.contains(field.key()); loaded[field.key()] = field.value();
+            if (!valid(section.key(), field.key(), storedValue)) {
+                fallback |= !storedValue.isUndefined(); loaded[field.key()] = field.value();
             }
         }
         m_values[section.key()] = loaded;
