@@ -132,6 +132,13 @@ void ScrollSyncController::synchronize() {
         const auto part = fraction(first * lineHeight, sourceY(span->sourceStart), sourceY(span->sourceEnd));
         const int target = first == 0 ? 0 : sourceBar->maximum() > 0 && first >= sourceBar->maximum() ? readerBar->maximum()
             : qBound(0, qRound(span->top + part * (span->bottom - span->top)), readerBar->maximum());
+        // Source-driven navigation needs the same public wrap bookmark as
+        // reader-driven navigation. A pending native wrap may otherwise restore
+        // its earlier anchor after the reader has already reached this target.
+        const auto subline = first - m_source->send(SCI_VISIBLEFROMDOCLINE, uptr_t(line));
+        m_sourceBookmark = true;
+        m_source->send(SCI_SCROLLVERTICAL, uptr_t(line), subline);
+        if (!alive || !m_source || !m_view) return;
         readerBar->setValue(target);
     } else {
         const auto span = m_view->scrollSpanAtY(readerBar->value(), stamp);

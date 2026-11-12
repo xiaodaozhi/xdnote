@@ -69,7 +69,9 @@ private slots:
         QVERIFY(a); QCOMPARE(a.get(), b.get());
         std::weak_ptr<const PreviewAnalysis> weak = a;
         PreviewAnalysis::forget(input.documentId); a.reset(); b.reset(); first = {}; second = {};
-        QVERIFY(weak.expired()); QCOMPARE(PreviewAnalysis::cacheStatistics()["inFlight"].toInt(), 0);
+        // Qt reports the future finished before the auto-deleted runnable drops
+        // its own result storage. Wait for actual destruction, not that flag.
+        QTRY_VERIFY_WITH_TIMEOUT(weak.expired(), 10000); QCOMPARE(PreviewAnalysis::cacheStatistics()["inFlight"].toInt(), 0);
     }
     void cacheIsBoundedAndCancelledRequestsDoNotPopulateIt() {
         QList<QUuid> documents;
