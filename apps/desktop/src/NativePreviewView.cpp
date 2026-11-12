@@ -52,6 +52,14 @@ bool boundary(const QString &text, int at) {
 }
 bool separator(QChar ch) { return ch == '\n' || ch == QChar(0x2028) || ch == QChar(0x2029); }
 QImage transparentPixel() { QImage image(1, 1, QImage::Format_ARGB32_Premultiplied); image.fill(Qt::transparent); return image; }
+int codeHeaderHeight() { return visualTokens()["controls"].toObject()["height"].toInt(); }
+QRectF codeCopyRect(qreal x, qreal y, qreal width) {
+    const auto controls = visualTokens()["controls"].toObject();
+    const int hit = controls["iconButtonHit"].toInt();
+    const qreal iconPadding = (hit-controls["iconSize"].toInt())/2.0;
+    const qreal inset = qMax(qreal(controls["borderWidth"].toInt()),controls["contentInset"].toDouble()-iconPadding);
+    return {x+width-inset-hit,y+(codeHeaderHeight()-hit)/2.0,qreal(hit),qreal(hit)};
+}
 struct NativeDocument final : QTextDocument {
     QVector<int> positions;
     qsizetype decodedBytes = 0;
@@ -121,7 +129,7 @@ struct NativePreviewView::State {
     QJsonObject readerSettings, editorSettings;
     bool asynchronous = false, planning = false, pendingPlan = false, runningPlan = false;
     quint64 layoutGeneration = 0;
-    int restoreOffset = 0;
+    int restoreOffset = -1; // Document top is distinct from the first text glyph.
     QFutureWatcher<std::shared_ptr<LayoutPlan>> *worker = nullptr;
     std::shared_ptr<std::atomic_bool> cancelled;
     void plan(QSize viewportSize);
@@ -681,7 +689,7 @@ NativePreviewView::NativePreviewView(Appearance *appearance, QWidget *parent, in
 NativePreviewView::~NativePreviewView() { if (d->cancelled) d->cancelled->store(true); }
 void NativePreviewView::setActionValidator(std::function<bool(const NativePreviewStamp &)> validator) { d->actionValidator = std::move(validator); }
 void NativePreviewView::expect(const NativePreviewStamp &stamp) {
-    ++d->layoutGeneration; d->pendingPlan = d->planning = false; d->restoreOffset = 0;
+    ++d->layoutGeneration; d->pendingPlan = d->planning = false; d->restoreOffset = -1;
     if (d->cancelled) d->cancelled->store(true);
     for (auto *button : d->buttons) { button->setEnabled(false); button->hide(); button->deleteLater(); }
     for (auto *bar : d->scrollbars) { bar->setEnabled(false); bar->hide(); bar->deleteLater(); }
@@ -787,7 +795,7 @@ void NativePreviewView::State::plan(QSize viewportSize) {
             if (flow.owner >= 0 && priorOwner != flow.owner) {
                 this->groups[flow.owner].y = y;
                 this->groups[flow.owner].firstFlow = index;
-                if (content.owners[flow.owner].code) y += 44 * this->zoom;
+                if (content.owners[flow.owner].code) y += codeHeaderHeight() + 12 * this->zoom;
             }
             priorOwner = flow.owner;
             const auto spacing = visualTokens()["typography"].toObject()["reader"].toObject();
@@ -873,7 +881,7 @@ void NativePreviewView::State::plan(QSize viewportSize) {
 
 void NativePreviewView::rebuild(bool keepPosition) {
     const int oldOffset = keepPosition && d->current() && !d->geometry.isEmpty()
-        ? offsetAtPoint(QPoint(qRound(d->left + 1), 1)) : d->restoreOffset;
+        ? verticalScrollBar()->value()==0 ? -1 : offsetAtPoint(QPoint(qRound(d->left + 1), 1)) : d->restoreOffset;
     d->restoreOffset = oldOffset;
     d->clearCache(); d->geometry.clear(); d->chunks.clear(); d->groups.clear(); d->error.clear();
     d->fonts.clear(); d->measurements.clear(); d->freeze();
@@ -908,7 +916,7 @@ void NativePreviewView::finishLayout(int offset, bool restore) {
     const QPointer<NativePreviewView> alive(this);
     if (!d->error.isEmpty()) { const auto message = d->error; emit layoutFailed(message); }
     else {
-        if (restore) scrollToText(offset);
+        if (restore) { if (offset<0) verticalScrollBar()->setValue(0); else scrollToText(offset); }
         updateControls(); viewport()->update();
         const auto stamp = d->shown; emit layoutReady(stamp);
     }
@@ -980,11 +988,13 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
         if (content.owners[owner].code) {
             painter.setPen(QPen(d->appearance->color("border"), 1)); painter.setBrush(d->appearance->color("codeSurface"));
             painter.drawRoundedRect(QRectF(x, group.y - scroll, width, group.height), 8 * d->zoom, 8 * d->zoom);
-            painter.drawLine(QPointF(x, group.y - scroll + 32 * d->zoom), QPointF(x + width, group.y - scroll + 32 * d->zoom));
-            painter.setPen(d->appearance->color("textSecondary")); painter.setFont(uiFont(qMax(1, qRound(12 * d->zoom))));
+            painter.drawLine(QPointF(x, group.y - scroll + codeHeaderHeight()), QPointF(x + width, group.y - scroll + codeHeaderHeight()));
+            painter.setPen(d->appearance->color("textSecondary")); painter.setFont(uiFont(visualTokens()["typography"].toObject()["secondary"].toObject()["size"].toInt()));
             const auto node = content.model.node(content.owners[owner].node);
-            painter.drawText(QRectF(x + 12 * d->zoom, group.y - scroll, width - 100 * d->zoom, 32 * d->zoom), Qt::AlignVCenter,
-                             decodeUtf8Literal(content.model.text(node)));
+            const qreal inset = visualTokens()["controls"].toObject()["contentInset"].toDouble();
+            const auto copy = codeCopyRect(x,group.y-scroll,width);
+            const QRectF label(x+inset,group.y-scroll,qMax(0.0,copy.left()-inset-(x+inset)),codeHeaderHeight());
+            if (label.width()>0) painter.drawText(label,Qt::AlignVCenter,painter.fontMetrics().elidedText(decodeUtf8Literal(content.model.text(node)),Qt::ElideRight,qFloor(label.width())));
         }
     }
     int index = d->flowAtY(scroll);
@@ -1040,7 +1050,7 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
         && d->focusedAction >= 0 && d->focusedAction < content.actions.size()) {
         const auto &action = content.actions[d->focusedAction]; QRect rect;
         if (action.copyCode) {
-            const auto button = d->buttons.value(int(action.node)); if (button) rect = button->geometry().adjusted(-2, -2, 2, 2);
+            const auto button = d->buttons.value(int(action.node)); if (button) rect = button->geometry().adjusted(2, 2, -2, -2);
         } else {
             rect = characterRect(action.start).united(characterRect(qMax(action.start, action.start + action.length - 1)));
             rect.translate(-viewport()->mapToGlobal(QPoint())); rect.adjust(-2, -2, 2, 2);
@@ -1059,10 +1069,10 @@ void NativePreviewView::updateControls() {
         if (group.firstFlow < 0 || group.y + group.height < scroll || group.y > scroll + viewport()->height()) continue;
         const qreal x = d->x(group.firstFlow), width = d->available(d->flow(group.firstFlow));
         const auto &record = d->content->owners[owner];
-        if (record.code && group.y >= scroll - 32 * d->zoom && group.y <= scroll + viewport()->height()) {
+        if (record.code && group.y + codeHeaderHeight() > scroll && group.y < scroll + viewport()->height()) {
             auto *button = d->buttons.value(int(record.node));
             if (!button) {
-                button = new SharedButton({}, QStringLiteral("nativeCodeCopy"), d->appearance, viewport());button->setSymbol("copy");button->setFixedWidth(32);
+                button = new SharedButton({}, QStringLiteral("nativeCodeCopy"), d->appearance, viewport());button->setSymbol("copy");
                 button->setProperty("previewNode", record.node); button->setAccessibleName(QStringLiteral("复制代码")); button->setToolTip(QStringLiteral("复制代码"));
                 button->setFocusPolicy(Qt::NoFocus); d->buttons.insert(int(record.node), button);
                 connect(button, &QPushButton::clicked, this, [this, node = record.node, snapshot = d->shown] {
@@ -1071,8 +1081,9 @@ void NativePreviewView::updateControls() {
                         if (d->content->actions[index].node == node && d->content->actions[index].copyCode) { activateAction(index); break; }
                 });
             }
-            button->setFont(uiFont(qMax(1, qRound(14 * d->zoom)))); button->setFixedHeight(qRound(28 * d->zoom));
-            button->setGeometry(qRound(x + width - 68 * d->zoom), qRound(group.y - scroll + 2 * d->zoom), qRound(60 * d->zoom), qRound(28 * d->zoom)); button->show();
+            const auto hit = visualTokens()["controls"].toObject()["iconButtonHit"].toInt(); button->setFixedSize(hit,hit);
+            const auto copy = codeCopyRect(x,group.y-scroll,width);
+            button->setGeometry(qRound(copy.left()),qRound(copy.top()),hit,hit); button->show();
         }
         if (group.width > width && group.y + group.height - 12 >= scroll && group.y + group.height <= scroll + viewport()->height() + 12) {
             auto *bar = d->scrollbars.value(owner);
