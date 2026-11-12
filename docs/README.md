@@ -14,6 +14,8 @@
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
 | 预览选型 | [非 Chromium 预览方案评估](engineering/preview-alternatives.md) | 约束、候选、成本边界与后续准入 |
+| Markdown 解析 | [Rust 原生解析方案](engineering/markdown-parsing.md) | 当前链路、候选、源码范围、增量与取消限制及复核方法 |
+| 预览流水线 | [分析与刷新](engineering/preview-pipeline.md) | 共享分析、有界缓存、资源重验、阶段取消和分阶段测量 |
 | 原生预览 | [全局语义模型](engineering/native-preview-model.md)、[阅读控件准入](engineering/native-preview-view.md) | 只读块树、布局／交互、资源和版本边界及未完成项 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
 | 后台验证 | [无交互桌面自动化](qa/background-validation.md) | 固定离屏回归、自有样本性能、证据与真实桌面边界 |
@@ -23,6 +25,7 @@
 | 独立窗口 | [视觉、交互与自动验证](engineering/standalone-window.md) | 共享控件、主题、阅读位置、反馈与验证边界 |
 | 工作区基础 | [导航、标签与会话接管](engineering/workspace-foundation.md) | 显式目录、唯一会话、视图、关闭和自动化边界 |
 | 设置工程 | [统一偏好与设置窗口](engineering/settings-window.md) | 兼容存储、即时生效、打开偏好、排版、自动保存与离屏验证 |
+| 双栏同步 | [段落映射滚动](engineering/scroll-synchronization.md) | 语义范围、显示行、重排锚点、版本门控和离屏验证 |
 | 资源基础 | [受控读取与引用分析](engineering/workspace-resource-foundation.md) | 路径、引用快照、实际对象授权与当前平台限制 |
 | 窗口几何 | [跨显示器缩放与窗口几何](engineering/window-geometry.md) | 逻辑客户区、原生 DPI 约束、可用区、窗口状态与恢复 |
 | 协作 | [产研与 GitHub 流程](engineering/workflow.md) | Issue、分支、PR、CI、验收及清理规则 |

@@ -1,5 +1,6 @@
 #include "MarkdownHeadings.h"
 #include "MarkdownBridge.h"
+#include "PreviewAnalysis.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -21,6 +22,26 @@ bool offset(const QJsonValue &value, const QByteArray &source, qsizetype &result
 MarkdownHeadingMap analyzeMarkdownHeadings(const DocumentSnapshot &snapshot) {
     MarkdownHeadingMap result; result.documentId = snapshot.documentId; result.revision = snapshot.revision;
     if (snapshot.result != EditResult::Applied) { result.reason = resultDescription(snapshot.result); return result; }
+    if (auto shared = PreviewAnalysis::find(snapshot)) {
+        const auto &model = shared->model; qsizetype budget = 0; QList<MarkdownHeading> headings;
+        for (quint32 i = 0; i < model.nodeCount(); ++i) {
+            const auto node = model.node(i); if (node.kind != NativePreviewModel::Kind::Heading) continue;
+            QByteArray title;
+            for (quint32 child = i + 1; child < node.subtreeEnd; ++child) {
+                const auto part = model.node(child);
+                if (part.kind == NativePreviewModel::Kind::SoftBreak || part.kind == NativePreviewModel::Kind::HardBreak) title += ' ';
+                else if (part.kind == NativePreviewModel::Kind::Text || part.kind == NativePreviewModel::Kind::InlineCode || part.kind == NativePreviewModel::Kind::LiteralHtml) {
+                    const auto text = model.text(part); title.append(text.data(), text.size());
+                }
+                if (title.size() > 8 * 1024 * 1024) { result.reason = QStringLiteral("标题结果过大"); return result; }
+            }
+            const auto id = model.text(node); budget += title.size() + id.size() + 64;
+            if (budget > 8 * 1024 * 1024) { result.headings.clear(); result.reason = QStringLiteral("标题结果过大"); return result; }
+            headings.append({{node.sourceStart, node.sourceEnd}, int(node.detail), QString::fromUtf8(title), QString::fromUtf8(id.data(), id.size())});
+            i = node.subtreeEnd - 1;
+        }
+        result.headings = std::move(headings); result.success = true; return result;
+    }
     auto buffer = xdnote_markdown_headings(reinterpret_cast<const unsigned char *>(snapshot.utf8.constData()), std::size_t(snapshot.utf8.size()));
     const auto release = qScopeGuard([&] { xdnote_markdown_free(&buffer); });
     if (buffer.status != 0 || !buffer.data || buffer.length > 8 * 1024 * 1024) { result.reason = QStringLiteral("无法分析标题：源文无效或结果过大"); return result; }

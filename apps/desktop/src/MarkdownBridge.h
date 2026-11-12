@@ -5,6 +5,9 @@
 
 extern "C" {
 struct XdnoteRenderBuffer { unsigned char *data; std::size_t length; std::uint32_t status; };
+struct XdnoteAnalysisBuffers { XdnoteRenderBuffer model, references; std::uint64_t semanticNs, referencesNs; };
+XdnoteAnalysisBuffers xdnote_markdown_analyze(const unsigned char *data, std::size_t length,
+    const void *context, bool (*cancelled)(const void *));
 XdnoteRenderBuffer xdnote_markdown_render(const unsigned char *data, std::size_t length);
 XdnoteRenderBuffer xdnote_markdown_render_images(const unsigned char *data, std::size_t length,
     const unsigned char *prefix, std::size_t prefixLength, const unsigned char *states, std::size_t statesLength);

@@ -16,12 +16,16 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
+    "pipeline": [],
+    "scroll": [],
     "native_model": [],
     "native_preview": [],
     "desktop": ["systemFontsCanShapeChinese", "literalTextAndAtomicUndo", "viewLifetimeAndReadOnly", "compositionAndCommit",
                 "reentrancyClosingAndWrongThread", "accessibleCommandsAndInvalidation", "accessibleWritesDoNotFlushDocumentOnAnotherThread",
                 "accessibleWritesRejectUncommittedComposition", "nativeInputNotificationRejectsReentrantWrite",
-                "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork", "workspaceReferenceScanRetainsGapsAndDiscardsRevokedResults"],
+                "previewIsolationAndLatestRevision", "largePreviewAndCloseInvalidateWork", "workspaceReferenceScanRetainsGapsAndDiscardsRevokedResults",
+                "previewPendingHeadingRejectsContextAndRevisionChanges", "workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding",
+                "previewLoadsOnlyVerifiedMemoryImages", "previewDoesNotActivateLinksWhenReferenceAnalysisMayBeIncomplete"],
     "file": ["saveRoundTripAndCreateWithoutOverwrite", "conflictsFailuresAndHardLinksPreserveOriginal",
              "lateReplacementRetainsDisplacedVersionAndReportsUncertain", "changeAfterCommitNeverReportsSaved",
              "savingWhileEditingAndRepeatedOpenKeepSameSession", "reloadProtectsEditsMadeDuringReadAndRejectsOtherOpenTarget"],
@@ -82,6 +86,7 @@ def check_report(content):
 
 def cases():
     for size in (10 * 1024, 1024 * 1024, 2 * 1024 * 1024):
+        yield "pipeline", size, "mixed"
         for operation in ("model", "render", "references", "headings", "session", "file"):
             yield operation, size, "mixed"
     for operation in ("model", "render", "references", "headings", "file"):
@@ -92,6 +97,13 @@ def cases():
         yield operation, 0, "generated"
     for theme in ("light", "dark"):
         yield "preview", 0, theme
+
+
+def measurement_timeout(operation, budgets):
+    # A worker warms up once and measures seven times. Its wall deadline must
+    # allow all eight bounded operations, not just a fraction of their budget.
+    milliseconds = budgets["previewReadyMilliseconds"] if operation == "preview" else 8 * budgets["p95Milliseconds"][operation]
+    return max(60, 20 + math.ceil(milliseconds / 1000))
 
 
 def validate(build, environment):
@@ -123,7 +135,10 @@ def validate(build, environment):
             command = [build / f"xdnote_background_probe{suffix}", operation, size, variant]
             if operation == "preview":
                 command.append(evidence / f"typography-{variant}.png")
-            content, wall = execute(command, env, evidence / f"{label}.log", 60)
+            case_env = dict(env)
+            if operation == "scan":
+                case_env["XDNOTE_PROBE_PROGRESS"] = "1"
+            content, wall = execute(command, case_env, evidence / f"{label}.log", measurement_timeout(operation, budgets))
             records = [json.loads(line) for line in content.splitlines() if line.startswith('{"')]
             if len(records) != 1 or records[0].get("ok") is not True:
                 raise RuntimeError(f"Missing successful measurement: {label}")
@@ -139,6 +154,20 @@ def validate(build, environment):
                 raise RuntimeError(f"Worker returned a different case: {label}")
             if record["peakProcessMiB"] > budgets["peakWorkerMiB"]:
                 raise RuntimeError(f"Isolated worker exceeded memory guardrail: {label}")
+            if operation == "pipeline":
+                stages = record.get("stages", [])
+                if len(stages) != 7:
+                    raise RuntimeError(f"Missing pipeline phase samples: {label}")
+                for sample in stages:
+                    if sample["afterClose"]["entries"] or sample["afterClose"]["inFlight"]:
+                        raise RuntimeError(f"Pipeline failed to release closed documents: {label}")
+                    if not sample["reused"].get("analysisCacheHit") or not sample["reused"].get("projectionCacheHit"):
+                        raise RuntimeError(f"Unchanged pipeline failed to reuse analysis: {label}")
+                    for mode in ("cold", "reused", "burst"):
+                        for name in ("semanticMs", "referencesMs", "decodeMs", "resourcesMs", "resourceReadMs", "imageDecodeMs", "projectionMs", "layoutMs", "readyMs", "queueMs", "workerMs"):
+                            value = sample[mode].get(name)
+                            if not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
+                                raise RuntimeError(f"Invalid pipeline phase {mode}/{name}: {label}")
             if operation == "preview":
                 duration, maximum = record["preview"]["readyMs"], budgets["previewReadyMilliseconds"]
             else:

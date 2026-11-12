@@ -1,4 +1,6 @@
 #include "SourceEditor.h"
+#include <QWheelEvent>
+#include <QMouseEvent>
 #include "Utf8Text.h"
 #include "DocumentSession.h"
 #include "VisualTokens.h"
@@ -211,6 +213,13 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent, Appearance
     }, Qt::QueuedConnection);
     connect(session, &QObject::destroyed, this, [this] { send(SCI_SETREADONLY, true); });
     send(SCI_SETREADONLY, session->isReadOnly());
+    m_lastAnchor = send(SCI_GETANCHOR); m_lastCursor = send(SCI_GETCURRENTPOS);
+    connect(this, &ScintillaEditBase::updateUi, this, [this](Scintilla::Update updated) {
+        if (!(static_cast<int>(updated) & SC_UPDATE_SELECTION)) return;
+        const auto anchor = send(SCI_GETANCHOR), cursor = send(SCI_GETCURRENTPOS);
+        if (anchor == m_lastAnchor && cursor == m_lastCursor) return;
+        m_lastAnchor = anchor; m_lastCursor = cursor; emit verticalNavigationRequested();
+    });
 }
 
 void SourceEditor::setTextZoom(int percent) {
@@ -223,6 +232,7 @@ void SourceEditor::setTextZoom(int percent) {
     const int extra = qMax(0, qRound(size * source.value("lineHeight").toDouble()) - int(send(SCI_TEXTHEIGHT, 0)));
     send(SCI_SETEXTRAASCENT, extra / 2); send(SCI_SETEXTRADESCENT, extra - extra / 2);
 }
+void SourceEditor::acknowledgeNavigation() { m_lastAnchor = send(SCI_GETANCHOR); m_lastCursor = send(SCI_GETCURRENTPOS); }
 
 void SourceEditor::applyPreferences() {
     auto values = m_appearance->preferences()->section("editor"); values.remove("autoSave");
@@ -354,5 +364,18 @@ void SourceEditor::keyPressEvent(QKeyEvent *event) {
         ScintillaEditBase::keyPressEvent(event);
     }
     if (m_session) m_session->inputFinished();
+    if (QList<int>{Qt::Key_Up, Qt::Key_Down, Qt::Key_Left, Qt::Key_Right, Qt::Key_Home, Qt::Key_End, Qt::Key_PageUp, Qt::Key_PageDown}.contains(event->key())) emit verticalNavigationRequested();
+}
+void SourceEditor::wheelEvent(QWheelEvent *event) {
+    ScintillaEditBase::wheelEvent(event);
+    if (!(event->modifiers() & Qt::ShiftModifier) && (event->angleDelta().y() || event->pixelDelta().y())) emit verticalNavigationRequested();
+}
+void SourceEditor::mousePressEvent(QMouseEvent *event) {
+    const QPointer<SourceEditor> alive(this); ScintillaEditBase::mousePressEvent(event);
+    if (alive && event->button() == Qt::LeftButton) emit verticalNavigationRequested();
+}
+void SourceEditor::mouseMoveEvent(QMouseEvent *event) {
+    const QPointer<SourceEditor> alive(this); ScintillaEditBase::mouseMoveEvent(event);
+    if (alive && (event->buttons() & Qt::LeftButton)) emit verticalNavigationRequested();
 }
 }

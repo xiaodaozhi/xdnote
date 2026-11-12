@@ -3,6 +3,7 @@
   "purpose": "offscreen regression guardrails; not interactive UX or total application memory budgets",
   "peakWorkerMiB": 512,
   "p95Milliseconds": {
+    "pipeline": 15000,
     "render": 5000,
     "references": 5000,
     "headings": 2000,

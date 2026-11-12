@@ -12,6 +12,7 @@
 #include "SharedWidgets.h"
 #include "GuiRuntime.h"
 #include "VisualTokens.h"
+#include "PreviewAnalysis.h"
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QAction>
@@ -26,6 +27,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QScopeGuard>
+#include <QScrollBar>
+#include <cmath>
 #include <atomic>
 #include <future>
 
@@ -44,6 +47,41 @@ bool select(SettingsWindow *window, const char *name, const QVariant &value) {
 class SettingsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void splitPreferencesReuseAnalysisAndKeepReaderAnchor() {
+        QTemporaryDir workspace, configuration;
+        const auto source = QByteArray("# heading\n\n") + QStringLiteral("长段落 中文 **强调** ").repeated(160).toUtf8()
+            + QByteArray("\n\n") + QByteArray("tail paragraph\n\n").repeated(80);
+        const auto path = workspace.filePath("layout.md"); QVERIFY(fileFixtures::write(path, source));
+        FileApplication app(nullptr, configuration.filePath("settings.json"));
+        auto *window = app.workspaceWindow(workspace.path()); app.openInWorkspace(path, window);
+        QTRY_VERIFY(window->activePane()); auto *pane = window->activePane();
+        pane->setViewMode(SingleFileWindow::ViewMode::Split);
+        auto *session = pane->document()->session();
+        QCOMPARE(session->replace(0, 0, "draft ", session->revision()), EditResult::Applied);
+        QTRY_VERIFY(pane->preview()->mappingCurrent());
+        const auto snapshot = session->snapshot(); const auto analysis = PreviewAnalysis::find(snapshot); QVERIFY(analysis);
+        auto *view = pane->preview()->view(); auto *bar = view->verticalScrollBar();
+        const auto byte = snapshot.utf8.indexOf(QStringLiteral("长段落").toUtf8()); QVERIFY(byte > 0);
+        const auto span = view->scrollSpanForSource(quint32(byte), view->displayedStamp()); QVERIFY(span);
+        const auto anchor = pane->editor()->send(SCI_GETANCHOR), caret = pane->editor()->send(SCI_GETCURRENTPOS);
+        bar->setSliderPosition(qRound(span->top + .42 * (span->bottom - span->top)));
+        bar->triggerAction(QAbstractSlider::SliderMove);
+        const auto fraction = [&] {
+            if (!pane->preview()->mappingCurrent()) return -1.0;
+            const auto current = view->scrollSpanForSource(quint32(byte), view->displayedStamp());
+            return current ? (bar->value() - current->top) / (current->bottom - current->top) : -1.0;
+        };
+        QTRY_VERIFY(std::abs(fraction() - .42) < .015);
+        auto *preferences = pane->appearance()->preferences();
+        QVERIFY(preferences->setValues("reader", {{"fontSize", 22}, {"maxWidth", 600}, {"lineHeight", 2.0}}));
+        QVERIFY(preferences->setValues("editor", {{"fontSize", 18}, {"wordWrap", false}}));
+        QTRY_VERIFY_WITH_TIMEOUT(std::abs(fraction() - .42) < .015, 10000);
+        QCOMPARE(PreviewAnalysis::find(snapshot), analysis);
+        QCOMPARE(session->revision(), snapshot.revision); QCOMPARE(session->snapshot().utf8, snapshot.utf8);
+        QCOMPARE(pane->editor()->send(SCI_GETANCHOR), anchor); QCOMPARE(pane->editor()->send(SCI_GETCURRENTPOS), caret);
+        QCOMPARE(bytes(path), source); QCOMPARE(session->undo(), EditResult::Applied);
+        QCOMPARE(session->snapshot().utf8, source);
+    }
     void storagePreservesLegacyAndUnknownFields() {
         QTemporaryDir dir; const auto path = dir.filePath("settings.json");
         const auto original = QByteArray(R"({"schemaVersion":1,"future":{"keep":42},"appearance":{"theme":"dark","accent":"olive","future":"kept"},"editor":{"future":true,"fontSize":-2,"autoSave":{"enabled":true,"delayMs":3000,"future":7}}})");
