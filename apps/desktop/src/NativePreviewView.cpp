@@ -65,6 +65,25 @@ struct NativeDocument final : QTextDocument {
         const int index = int(it - positions.cbegin());
         return !ceil && *it > global ? qMax(0, index - 1) : index;
     }
+    static qreal lineLeading(const QTextBlock &block, const QTextLine &line) {
+        const qreal natural = qCeil(line.ascent() + line.descent() + line.leading());
+        return qMax(0.0, block.blockFormat().lineHeight(natural) - line.height());
+    }
+    static qreal lineSlotTop(const QTextBlock &block, const QTextLine &line) {
+        return line.y() - lineLeading(block, line) / 2;
+    }
+    void balanceLineLeading() {
+        // Qt's MinimumHeight puts all extra leading above each natural line.
+        // Keep the line advance, but share that leading above and below. Move
+        // the actual layout line so painting, selection and hit testing agree.
+        for (auto block = begin(); block.isValid(); block = block.next()) {
+            auto *layout = block.layout();
+            for (int i = 0; i < layout->lineCount(); ++i) {
+                auto line = layout->lineAt(i);
+                line.setPosition(line.position() - QPointF(0, lineLeading(block,line) / 2));
+            }
+        }
+    }
 protected:
     QVariant loadResource(int type, const QUrl &url) override {
         if (type != ImageResource || !loader) return {};
@@ -246,7 +265,7 @@ struct NativePreviewView::State {
         }
         return result;
     }
-    std::unique_ptr<NativeDocument> document(int flowIndex, int start, int end, int activeEnd, qreal textWidth, bool probe) {
+    std::unique_ptr<NativeDocument> document(int flowIndex, int start, int end, int activeEnd, qreal textWidth, bool probe, qreal minimumLineHeight = 0) {
         const auto &value = flow(flowIndex);
         auto doc = std::make_unique<NativeDocument>();
         doc->setLayoutEnabled(false);
@@ -272,7 +291,7 @@ struct NativePreviewView::State {
         doc->setDefaultTextOption(option); doc->setPlainText(text);
         QTextCursor cursor(doc.get()); cursor.select(QTextCursor::Document);
         QTextBlockFormat block; block.setTopMargin(0); block.setBottomMargin(0);
-        block.setLineHeight(lineHeight(value), QTextBlockFormat::MinimumHeight); cursor.setBlockFormat(block);
+        block.setLineHeight(qMax(lineHeight(value), minimumLineHeight), QTextBlockFormat::MinimumHeight); cursor.setBlockFormat(block);
         if (value.markerLength) {
             const qreal marker = QFontMetricsF(font(value)).horizontalAdvance(content->text.mid(value.start, value.markerLength));
             for (auto part = doc->begin(); part.isValid(); part = part.next()) {
@@ -362,13 +381,14 @@ struct NativePreviewView::State {
         doc->setTextWidth(value.kind == Content::FlowKind::Text ? availableWidth : -1);
         doc->setLayoutEnabled(true);
         doc->documentLayout()->documentSize(); ++stats.layouts;
+        doc->balanceLineLeading();
         return doc;
     }
-    NativeDocument *cachedDocument(int flowIndex, int start, int probeEnd, int end, qreal textWidth) {
+    NativeDocument *cachedDocument(int flowIndex, int start, int probeEnd, int end, qreal textWidth, qreal minimumLineHeight = 0) {
         const quint64 key = (quint64(quint32(start)) << 32) | quint32(probeEnd);
         if (auto *found = cache.object(key)) return found;
         if (transient && transientKey == key) return transient.get();
-        auto doc = document(flowIndex, start, probeEnd, end, textWidth, false);
+        auto doc = document(flowIndex, start, probeEnd, end, textWidth, false, minimumLineHeight);
         // Include generated placeholders before cache admission, so lazy paint
         // requests cannot grow a document beyond its recorded memory cost.
         auto image = std::lower_bound(content->images.cbegin(), content->images.cend(), start,
@@ -416,6 +436,27 @@ struct NativePreviewView::State {
     }
     qreal x(int flowIndex) const { return left + indent(flow(flowIndex)); }
     qreal offsetX(int owner) const { return horizontal.value(owner, 0); }
+    quint32 quoteNode(int flowIndex) const {
+        auto node = flow(flowIndex).node;
+        while (node != NativePreviewModel::NoParent) {
+            const auto record = content->model.node(node);
+            if (record.kind == Kind::BlockQuote) return node;
+            node = record.parent;
+        }
+        return NativePreviewModel::NoParent;
+    }
+    QRectF quoteRect(int index) const {
+        const auto &value = flow(index); const auto &box = geometry[index];
+        qreal top = box.y - 6*zoom, bottom = box.y + box.height + 6*zoom;
+        if (value.owner >= 0) {
+            const auto &group = groups[value.owner];
+            if (group.firstFlow == index) top = qMin(top,group.y-6*zoom);
+            if (index+1 == content->flows.size() || flow(index+1).owner != value.owner) bottom = qMax(bottom,group.y+group.height+6*zoom);
+        }
+        if (index+1 < content->flows.size() && flow(index+1).quote == value.quote && quoteNode(index+1) == quoteNode(index))
+            bottom = qMax(bottom,geometry[index+1].y-6*zoom);
+        return {x(index)-16*zoom,top,available(value)+16*zoom,bottom-top};
+    }
     qreal cellX(int flowIndex, int column, qreal left) const {
         const auto &value = flow(flowIndex); const auto &cell = content->cells[value.firstCell + column];
         const auto alignments = content->model.text(content->model.node(content->owners[value.owner].node));
@@ -424,25 +465,50 @@ struct NativePreviewView::State {
         if (column < alignments.size() && alignments[column] == 'C') return left + (width - measured) / 2;
         return left + 12 * zoom;
     }
+    qreal unwrappedLineHeight(int flowIndex, int start, int end) const {
+        const auto &value = flow(flowIndex);
+        const QFontMetricsF base(font(value));
+        qreal ascent = base.ascent(), descent = base.descent(), leading = base.leading();
+        auto run = std::lower_bound(content->runs.cbegin(), content->runs.cend(), start,
+            [](const Content::Run &entry, int at) { return entry.start + entry.length <= at; });
+        for (; run != content->runs.cend() && run->start < end; ++run) {
+            const QFontMetricsF metrics(font(value,run->style));
+            ascent = qMax(ascent,metrics.ascent()); descent = qMax(descent,metrics.descent()); leading = qMax(leading,metrics.leading());
+        }
+        auto image = std::lower_bound(content->images.cbegin(), content->images.cend(), start,
+            [](const Content::Image &entry, int at) { return entry.start < at; });
+        for (; image != content->images.cend() && image->start < end; ++image)
+            ascent = qMax(ascent,imageDimensions(*image,value,qMax(1.0,available(value)-24*zoom)).height());
+        return qMax(lineHeight(value),qreal(qCeil(ascent+descent+leading)));
+    }
+    qreal unwrappedHeight(int flowIndex, int start, int end) const {
+        qreal height = 0;
+        do {
+            int lineEnd = start; while (lineEnd < end && !separator(content->text[lineEnd])) ++lineEnd;
+            height += unwrappedLineHeight(flowIndex,start,lineEnd); start = lineEnd + 1;
+        } while (start < end);
+        return height;
+    }
     void eachTile(int flowIndex, int start, int end, qreal baseX, qreal baseY,
-                  const std::function<void(int, int, qreal, qreal, qreal)> &visit) const {
+                  const std::function<void(int, int, qreal, qreal, qreal, qreal)> &visit) const {
         qreal y = baseY, x = baseX;
         while (start < end) {
             int lineEnd = start;
             while (lineEnd < end && !separator(content->text[lineEnd])) ++lineEnd;
+            const qreal height = unwrappedLineHeight(flowIndex,start,lineEnd);
             int from = start;
             while (from < lineEnd) {
                 if (content->text[from] == '\t') {
                     const qreal stop = QFontMetricsF(font(flow(flowIndex))).horizontalAdvance(' ') * 8;
                     const qreal advance = (std::floor((x - baseX) / stop) + 1) * stop - (x - baseX);
-                    visit(from, from + 1, x, y, advance); x += advance; ++from; continue;
+                    visit(from, from + 1, x, y, advance, height); x += advance; ++from; continue;
                 }
                 int limit = content->text.indexOf('\t', from); if (limit < 0 || limit > lineEnd) limit = lineEnd;
                 const int to = safeEnd(from, FragmentCharacters, limit);
                 const qreal width = measure(flow(flowIndex), from, to - from);
-                visit(from, to, x, y, width); x += width; from = to;
+                visit(from, to, x, y, width, height); x += width; from = to;
             }
-            start = lineEnd + 1; x = baseX; y += lineHeight(flow(flowIndex));
+            start = lineEnd + 1; x = baseX; y += height;
         }
     }
     QRectF positionRect(NativeDocument *doc, int offset, qreal x, qreal y) const {
@@ -695,7 +761,7 @@ void NativePreviewView::State::plan(QSize viewportSize) {
             for (int column = 0; column < flow.cellCount; ++column) {
                 const auto &cell = content.cells[flow.firstCell + column]; qreal maximum = 0;
                 this->eachTile(index, cell.start, cell.start + cell.length, 0, 0,
-                    [&](int, int, qreal x, qreal, qreal width) { maximum = qMax(maximum, x + width); });
+                    [&](int, int, qreal x, qreal, qreal width, qreal) { maximum = qMax(maximum, x + width); });
                 group.columns[column] = qMax(group.columns[column], maximum + 24 * this->zoom);
             }
         }
@@ -715,7 +781,8 @@ void NativePreviewView::State::plan(QSize viewportSize) {
             if (priorOwner >= 0 && priorOwner != flow.owner) {
                 auto &prior = this->groups[priorOwner];
                 y += content.owners[priorOwner].code ? 12 * this->zoom : 0;
-                y += 12; prior.height = y - prior.y; y += 16 * this->zoom;
+                if (prior.width > this->available(this->flow(prior.firstFlow))) y += 12;
+                prior.height = y - prior.y; y += 16 * this->zoom;
             }
             if (flow.owner >= 0 && priorOwner != flow.owner) {
                 this->groups[flow.owner].y = y;
@@ -734,7 +801,7 @@ void NativePreviewView::State::plan(QSize viewportSize) {
                     const auto image = std::lower_bound(content.images.cbegin(), content.images.cend(), start,
                         [](const Content::Image &entry, int position) { return entry.start < position; });
                     if (image != content.images.cend() && image->start < end) shortLine = false;
-                    shortLine = shortLine && this->measure(flow, start, flow.length) + 2 * this->lineHeight(flow) < this->available(flow);
+                    shortLine = shortLine && this->unwrappedLineHeight(index,start,end) <= this->lineHeight(flow) && this->measure(flow, start, flow.length) + 2 * this->lineHeight(flow) < this->available(flow);
                 }
                 if (shortLine) {
                     // A short single line needs neither a probe document nor a
@@ -761,7 +828,7 @@ void NativePreviewView::State::plan(QSize viewportSize) {
                         const auto layout = block.layout(); const auto rect = doc->documentLayout()->blockBoundingRect(block);
                         for (int lineIndex = 0; lineIndex < layout->lineCount(); ++lineIndex) {
                             const auto line = layout->lineAt(lineIndex); const int position = block.position() + line.textStart();
-                            const qreal lineY = rect.y() + line.y();
+                            const qreal lineY = rect.y() + NativeDocument::lineSlotTop(block,line);
                             if (position > 0 && lineY >= pageHeight) { consume = doc->global(position); height = lineY; break; }
                             lastStart = position; lastY = lineY;
                         }
@@ -776,22 +843,16 @@ void NativePreviewView::State::plan(QSize viewportSize) {
                 y += spacing[flow.heading ? "headingBottomGap" : flow.indent ? "listItemGap" : "paragraphGap"].toInt() * this->zoom;
             } else if (flow.kind == Content::FlowKind::Rule) { geometry.height = 16 * this->zoom; y += geometry.height; }
             else if (flow.kind == Content::FlowKind::CodeLine) {
-                geometry.height = this->lineHeight(flow); y += geometry.height;
+                geometry.height = this->unwrappedHeight(index,flow.start,flow.start+flow.length); y += geometry.height;
                 qreal maximum = 0;
                 this->eachTile(index, flow.start, flow.start + flow.length, 0, 0,
-                    [&](int, int, qreal x, qreal, qreal width) { maximum = qMax(maximum, x + width); });
+                    [&](int, int, qreal x, qreal, qreal width, qreal) { maximum = qMax(maximum, x + width); });
                 this->groups[flow.owner].width = qMax(this->groups[flow.owner].width, maximum + 32 * this->zoom);
             } else {
-                int lines = 1;
+                qreal height = this->lineHeight(flow);
                 for (int column = 0; column < flow.cellCount; ++column) {
-                    const auto &cell = content.cells[flow.firstCell + column]; int count = 1;
-                    for (int at = cell.start; at < cell.start + cell.length; ++at) if (separator(content.text[at])) ++count;
-                    lines = qMax(lines, count);
-                }
-                qreal height = this->lineHeight(flow) * lines;
-                for (const auto &image : this->imageInfo) if (image.start >= flow.start && image.start < flow.start + flow.length) {
-                    const qreal scale = qMin(1.0, (this->available(flow) - 24 * this->zoom) / image.pixels.width());
-                    height = qMax(height, image.pixels.height() * scale);
+                    const auto &cell = content.cells[flow.firstCell + column];
+                    height = qMax(height,this->unwrappedHeight(index,cell.start,cell.start+cell.length));
                 }
                 geometry.height = height + 12 * this->zoom; y += geometry.height;
             }
@@ -799,7 +860,9 @@ void NativePreviewView::State::plan(QSize viewportSize) {
         }
         if (priorOwner >= 0) {
             y += content.owners[priorOwner].code ? 12 * this->zoom : 0;
-            y += 12; this->groups[priorOwner].height = y - this->groups[priorOwner].y;
+            auto &last = this->groups[priorOwner];
+            if (last.width > this->available(this->flow(last.firstFlow))) y += 12;
+            last.height = y - last.y;
         }
         this->totalHeight = y + inset; this->stats.chunks = int(this->chunks.size()); this->stats.flows = int(content.flows.size());
     } catch (const std::exception &) {
@@ -890,7 +953,7 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
     const auto draw = [&](int flowIndex, int start, int end, int probeEnd, qreal x, qreal y, qreal width, qreal height) {
         QRectF surface(x, y - scroll, width, height);
         if (!surface.intersects(viewport()->rect())) return;
-        auto *doc = d->cachedDocument(flowIndex, start, probeEnd, end, width);
+        auto *doc = d->cachedDocument(flowIndex, start, probeEnd, end, width, content.flows[flowIndex].kind == Content::FlowKind::Text ? 0 : height);
         QAbstractTextDocumentLayout::PaintContext context;
         context.clip = QRectF(qMax(0.0, -x), qMax(0.0, scroll - y), viewport()->width(), qMin(height, viewport()->height() + scroll - y));
         context.palette = palette(); context.palette.setColor(QPalette::Text, d->appearance->color("text"));
@@ -907,8 +970,7 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
     for (int i = d->flowAtY(scroll); i < content.flows.size() && d->geometry[i].y < scroll + viewport()->height(); ++i) {
         const auto &flow = content.flows[i]; const auto &geometry = d->geometry[i];
         if (!flow.quote) continue;
-        painter.fillRect(QRectF(d->x(i) - 16 * d->zoom, geometry.y - scroll - 6 * d->zoom,
-                               d->available(flow) + 16 * d->zoom, geometry.height + 12 * d->zoom), d->appearance->color("quoteSurface"));
+        painter.fillRect(d->quoteRect(i).translated(0,-scroll), d->appearance->color("quoteSurface"));
     }
     // Shared code surfaces and table borders are independent of cached text.
     for (int owner = 0; owner < d->groups.size(); ++owner) {
@@ -931,8 +993,9 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
         const qreal x = d->x(index), width = d->available(flow);
         if (geometry.y + geometry.height < scroll) continue;
         if (flow.quote) {
+            const auto quote = d->quoteRect(index).translated(0,-scroll);
             painter.setPen(QPen(d->appearance->color("textSecondary"), 3 * d->zoom));
-            painter.drawLine(QPointF(x - 16 * d->zoom, geometry.y - scroll - 6 * d->zoom), QPointF(x - 16 * d->zoom, geometry.y + geometry.height - scroll + 6 * d->zoom));
+            painter.drawLine(quote.topLeft(),quote.bottomLeft());
         }
         if (flow.kind == Content::FlowKind::Rule) {
             painter.setPen(QPen(d->appearance->color("border"), 1)); painter.drawLine(QPointF(x, geometry.y - scroll + 8 * d->zoom), QPointF(x + width, geometry.y - scroll + 8 * d->zoom));
@@ -947,7 +1010,7 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
             painter.save(); painter.setClipRect(QRectF(x, geometry.y - scroll, width, geometry.height));
             if (flow.kind == Content::FlowKind::CodeLine) {
                 d->eachTile(index, flow.start, flow.start + flow.length, x + 16 * d->zoom - offset, geometry.y,
-                    [&](int from, int to, qreal atX, qreal atY, qreal tileWidth) { draw(index, from, to, to, atX, atY, qMax(1.0, tileWidth + 1), geometry.height); });
+                    [&](int from, int to, qreal atX, qreal atY, qreal tileWidth, qreal height) { draw(index, from, to, to, atX, atY, qMax(1.0, tileWidth + 1), height); });
             } else {
                 qreal atX = x - offset; const auto &columns = d->groups[flow.owner].columns;
                 for (int column = 0; column < flow.cellCount; ++column) {
@@ -964,7 +1027,7 @@ void NativePreviewView::paintEvent(QPaintEvent *) {
                         const qreal contentX = d->cellX(index, column, atX);
                         painter.save(); painter.setClipRect(QRectF(atX + 1, geometry.y - scroll + 1, cellWidth - 2, geometry.height - 2), Qt::IntersectClip);
                         d->eachTile(index, cell.start, cell.start + cell.length, contentX, geometry.y + 6 * d->zoom,
-                            [&](int from, int to, qreal partX, qreal partY, qreal tileWidth) { draw(index, from, to, to, partX, partY, qMax(1.0, tileWidth + 1), d->lineHeight(flow)); });
+                            [&](int from, int to, qreal partX, qreal partY, qreal tileWidth, qreal height) { draw(index, from, to, to, partX, partY, qMax(1.0, tileWidth + 1), height); });
                         painter.restore();
                     }
                     atX += cellWidth;
@@ -1111,9 +1174,9 @@ QRect NativePreviewView::characterRect(int offset) {
                 atX += d->groups[flow.owner].columns[column];
             }
         }
-        d->eachTile(index, start, end, atX, atY, [&](int from, int to, qreal tileX, qreal tileY, qreal width) {
+        d->eachTile(index, start, end, atX, atY, [&](int from, int to, qreal tileX, qreal tileY, qreal width, qreal height) {
             if (offset >= from && offset <= to && result.isEmpty()) {
-                auto *doc = d->cachedDocument(index, from, to, to, qMax(1.0, width + 1));
+                auto *doc = d->cachedDocument(index, from, to, to, qMax(1.0, width + 1), height);
                 result = d->positionRect(doc, offset, tileX, tileY - scroll);
             }
         });
@@ -1152,9 +1215,9 @@ int NativePreviewView::offsetAtPoint(const QPoint &point) {
             }
         }
         int result = end; bool found = false;
-        d->eachTile(index, start, end, atX, atY, [&](int from, int to, qreal tileX, qreal tileY, qreal width) {
-            if (!found && point.x() <= tileX + width && y >= tileY && y <= tileY + d->lineHeight(flow)) {
-                auto *doc = d->cachedDocument(index, from, to, to, qMax(1.0, width + 1));
+        d->eachTile(index, start, end, atX, atY, [&](int from, int to, qreal tileX, qreal tileY, qreal width, qreal height) {
+            if (!found && point.x() <= tileX + width && y >= tileY && y <= tileY + height) {
+                auto *doc = d->cachedDocument(index, from, to, to, qMax(1.0, width + 1), height);
                 result = doc->global(qMax(0, doc->documentLayout()->hitTest(QPointF(point.x() - tileX, y - tileY), Qt::FuzzyHit))); found = true;
             }
         });
