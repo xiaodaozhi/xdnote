@@ -37,10 +37,11 @@ void require(bool condition, const char *message) { if (!condition) throw std::r
 void write(const QString &path, const QByteArray &bytes) {
     QFile file(path); require(file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size(), "fixture write failed");
 }
-QByteArray sample(int bytes, bool dense) {
+QByteArray sample(int bytes, bool dense, bool references = false) {
     const QByteArray block = dense ? QByteArray("[label][ref] [label][ref]\n\n[ref]: target.md \"title\"\n\n")
         : (QStringLiteral("# 标题 heading\n\n中文、emoji 😀，**粗体**。\n\n- [x] item\n\n|列|值|\n|--|--|\n|甲|乙|\n\n```cpp\nint x = 1;\n```\n\n")
-           + QStringLiteral("这是用于测量长文处理的自有正文样本，保留文字、空格与换行。 ").repeated(8) + "\n\n").toUtf8();
+           + QStringLiteral("这是用于测量长文处理的自有正文样本，保留文字、空格与换行。 ").repeated(8)
+           + (references ? QStringLiteral("\n\n[段落链接][shared] [行内链接](docs/target.md#标题) ![占位](missing.png)\n\n[shared]: docs/target.md \"标题\"\n\n") : QStringLiteral("\n\n"))).toUtf8();
     QByteArray result; result.reserve(bytes);
     while (result.size() + block.size() <= bytes) result += block;
     result += QByteArray(bytes - result.size(), 'x');
@@ -67,6 +68,41 @@ QJsonObject measure(const std::function<void()> &operation) {
     auto sorted = values; std::sort(sorted.begin(), sorted.end()); QJsonArray runs;
     for (double value : values) runs.append(value);
     return {{"samplesMs", runs}, {"p50Ms", sorted[3]}, {"p95Ms", sorted[6]}}; // nearest rank, n=7
+}
+QJsonObject pipeline(const QByteArray &source) {
+    QTemporaryDir dir; require(dir.isValid(), "pipeline temporary directory missing");
+    Appearance appearance(nullptr, dir.filePath("appearance.json"));
+    DocumentSession one(source), two("# Other document\n\nunchanged\n");
+    auto first = std::make_unique<MarkdownPreview>(&one, nullptr, 24, &appearance);
+    auto other = std::make_unique<MarkdownPreview>(&two, nullptr, 24, &appearance);
+    first->resize(800, 600); other->resize(800, 600); first->show(); other->show();
+    auto await = [](MarkdownPreview &view, DocumentSession &session) {
+        QElapsedTimer elapsed; elapsed.start();
+        while (elapsed.elapsed() < 20000) {
+            QTest::qWait(5);
+            if (view.view()->ready() && view.displayedRevision() == session.revision()
+                && !view.workStatistics()["running"].toBool() && !view.workStatistics()["pending"].toBool()) return;
+        }
+        throw std::runtime_error("pipeline did not publish latest revision");
+    };
+    await(*first, one); await(*other, two); const auto cold = first->workStatistics();
+    first->refresh(); await(*first, one); const auto reused = first->workStatistics();
+    require(reused["analysisCacheHit"].toBool() && reused["projectionCacheHit"].toBool(), "unchanged preview recomputed syntax/projection");
+    // Prefix replacement leaves even a capacity-limit source within its budget.
+    for (int i = 0; i < 8; ++i) {
+        require(one.replace(0, 1, QString::number(i), one.revision()) == EditResult::Applied, "burst edit failed");
+        QApplication::processEvents(); first->setVisible(i % 2 == 0); other->setVisible(i % 2 != 0);
+    }
+    first->show(); other->show(); await(*first, one); await(*other, two);
+    const auto burst = first->workStatistics();
+    require(first->view()->content()->model.sourceDigest() == QCryptographicHash::hash(one.snapshot().utf8, QCryptographicHash::Sha256), "obsolete preview published");
+    require(two.snapshot().utf8 == "# Other document\n\nunchanged\n", "document crossover");
+    first->refresh(); first.reset(); other.reset();
+    QElapsedTimer close; close.start();
+    while (PreviewAnalysis::cacheStatistics()["inFlight"].toInt() && close.elapsed() < 20000) QTest::qWait(5);
+    const auto retained = PreviewAnalysis::cacheStatistics();
+    require(retained["inFlight"].toInt() == 0 && retained["entries"].toInt() == 0, "closed pipeline retained work or analysis");
+    return {{"cold", cold}, {"reused", reused}, {"burst", burst}, {"afterClose", retained}, {"closeDrainMs", close.nsecsElapsed() / 1e6}};
 }
 QJsonObject preview(const QString &theme, const QString &evidence) {
     QTemporaryDir temporary; require(temporary.isValid(), "fixture directory failed");
@@ -123,9 +159,16 @@ int main(int argc, char **argv) {
         const auto args = app.arguments(); require(args.size() >= 4, "expected operation, byte count and variant");
         const auto operation = args[1]; bool valid = false; const int bytes = args[2].toInt(&valid);
         require(valid && bytes >= 0 && bytes <= 10 * 1024 * 1024, "invalid bounded input size");
-        const bool dense = args[3] == "dense"; const auto source = sample(bytes, dense);
+        const bool dense = args[3] == "dense"; const auto source = sample(bytes, dense, operation == "pipeline");
         result = {{"operation", operation}, {"bytes", bytes}, {"variant", args[3]}, {"sourceSha256", QString::fromLatin1(QCryptographicHash::hash(source, QCryptographicHash::Sha256).toHex())}};
-        if (operation == "preview") {
+        if (operation == "pipeline") {
+            QJsonArray stages; int iteration = -1;
+            result.insert("expected", "success");
+            result.insert("timing", measure([&] {
+                auto record = pipeline(source); if (iteration++ >= 0) stages.append(record);
+            }));
+            result.insert("stages", stages);
+        } else if (operation == "preview") {
             require(args.size() == 5, "preview requires evidence path"); const auto record = preview(args[3], args[4]);
             result.insert("sourceSha256", record.value("sourceSha256")); result.insert("preview", record);
         } else if (operation == "model") {

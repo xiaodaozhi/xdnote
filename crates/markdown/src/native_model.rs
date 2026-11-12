@@ -309,10 +309,30 @@ pub fn build(source: &str) -> Result<Vec<u8>, RenderError> {
 }
 
 fn build_with_limit(source: &str, limit: usize) -> Result<Vec<u8>, RenderError> {
+    Ok(analyze(source, limit, false, &|| false)?.model)
+}
+
+pub struct Analysis {
+    pub model: Vec<u8>,
+    pub references: Vec<u8>,
+    pub semantic_ns: u64,
+    pub references_ns: u64,
+}
+pub fn analyze(
+    source: &str,
+    limit: usize,
+    references: bool,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<Analysis, RenderError> {
+    use std::time::Instant;
+    let start = Instant::now();
+    if cancelled() {
+        return Err(RenderError::Cancelled);
+    }
     if source.len() > MAX_SOURCE_BYTES {
         return Err(RenderError::SourceLimit);
     }
-    let events = Parser::new_ext(source, markdown_options()).into_offset_iter();
+    let mut events = Parser::new_ext(source, markdown_options()).into_offset_iter();
     let largest_reference = events
         .reference_definitions()
         .iter()
@@ -326,14 +346,60 @@ fn build_with_limit(source: &str, limit: usize) -> Result<Vec<u8>, RenderError> 
         .unwrap_or(0);
     let complete = reference_expansion_complete(source, largest_reference);
     let mut model = Builder::new(limit);
-    for (event, range) in events {
+    let mut writer = references.then(crate::ReferenceWriter::new);
+    let mut references_ns = 0u64;
+    let mut count = 0usize;
+    while let Some((event, range)) = events.next() {
+        if count.is_multiple_of(128) && cancelled() {
+            return Err(RenderError::Cancelled);
+        }
+        count += 1;
+        if let Some(writer) = &mut writer {
+            if matches!(&event, Event::Start(Tag::Link { .. } | Tag::Image { .. })) {
+                let before = Instant::now();
+                let definition = match &event {
+                    Event::Start(
+                        Tag::Link { id, link_type, .. } | Tag::Image { id, link_type, .. },
+                    ) if matches!(
+                        link_type,
+                        pulldown_cmark::LinkType::Reference
+                            | pulldown_cmark::LinkType::Collapsed
+                            | pulldown_cmark::LinkType::Shortcut
+                    ) =>
+                    {
+                        events
+                            .reference_definitions()
+                            .get(id)
+                            .map(|d| d.span.clone())
+                    }
+                    _ => None,
+                };
+                writer
+                    .event(source, &event, range.clone(), definition)
+                    .map_err(|_| RenderError::OutputLimit)?;
+                references_ns += before.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+            }
+        }
         match event {
             Event::Start(tag) => model.start(tag, range)?,
             Event::End(tag) => model.end(tag)?,
             event => model.leaf(event, range)?,
         }
     }
-    model.finish(source.len(), complete)
+    if cancelled() {
+        return Err(RenderError::Cancelled);
+    }
+    let model = model.finish(source.len(), complete)?;
+    let before = Instant::now();
+    let references = writer.map_or(Ok(Vec::new()), |w| w.finish(complete))?;
+    references_ns += before.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+    let total = start.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+    Ok(Analysis {
+        model,
+        references,
+        semantic_ns: total.saturating_sub(references_ns),
+        references_ns,
+    })
 }
 
 #[cfg(test)]

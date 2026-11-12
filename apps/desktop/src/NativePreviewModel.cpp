@@ -107,6 +107,12 @@ std::optional<NativePreviewModel> NativePreviewModel::parse(const QByteArray &so
     return result;
 }
 
+std::optional<NativePreviewModel> NativePreviewModel::adopt(QByteArray bytes, std::shared_ptr<void> storage, QByteArrayView source, QString *error) {
+    auto result = decode(std::move(bytes), source, error);
+    if (result) result->m_storage = std::move(storage);
+    return result;
+}
+
 std::optional<NativePreviewModel> NativePreviewModel::decode(QByteArray bytes, QByteArrayView source, QString *error) {
     const auto fail = [error]() -> std::optional<NativePreviewModel> {
         if (error) *error = QStringLiteral("预览语义模型的版本、结构或原文范围无效。");

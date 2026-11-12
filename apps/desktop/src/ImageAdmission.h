@@ -4,6 +4,7 @@
 
 namespace xdnote {
 constexpr qsizetype MaxImageSourceBytes = 8 * 1024 * 1024;
+constexpr qint64 MaxBatchImagePixels = 24'000'000;
 // 1: accepted, 3: size limit, 4: invalid or unsupported format. The preview
 // receives a static PNG; import retains its original source bytes.
 char decodeImage(const QByteArray &source, qint64 &pixels, qsizetype outputLimit,

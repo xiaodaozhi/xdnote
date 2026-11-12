@@ -22,6 +22,7 @@ fn reference_expansion_complete(source: &str, largest_reference: usize) -> bool 
 pub enum RenderError {
     SourceLimit,
     OutputLimit,
+    Cancelled,
 }
 
 struct LimitedOutput(Vec<u8>);
@@ -169,110 +170,143 @@ fn render_with_link_policy(
 /// separately admitted, safely rewritable byte range; null means read-only.
 /// `complete` is false when the parser's reference-expansion guard could have
 /// suppressed usages, even when every emitted event was processed successfully.
+struct ReferenceWriter {
+    output: LimitedOutput,
+    first: bool,
+    destinations: std::collections::HashMap<(usize, usize), Option<std::ops::Range<usize>>>,
+}
+impl ReferenceWriter {
+    fn new() -> Self {
+        Self {
+            output: LimitedOutput(b"{\"version\":1,\"references\":[".to_vec()),
+            first: true,
+            destinations: Default::default(),
+        }
+    }
+    fn event(
+        &mut self,
+        source: &str,
+        event: &Event<'_>,
+        range: std::ops::Range<usize>,
+        definition: Option<std::ops::Range<usize>>,
+    ) -> io::Result<()> {
+        let (kind, link_type, destination, title, id) = match event {
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }) => ("link", link_type, dest_url, title, id),
+            Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }) => ("image", link_type, dest_url, title, id),
+            _ => return Ok(()),
+        };
+        let is_reference = matches!(
+            link_type,
+            LinkType::Reference | LinkType::Collapsed | LinkType::Shortcut
+        );
+        if !self.first {
+            self.output.write_all(b",")?;
+        }
+        self.first = false;
+        write!(
+            self.output,
+            "{{\"kind\":\"{kind}\",\"start\":{},\"end\":{},\"target\":",
+            range.start, range.end
+        )?;
+        write_json_string(&mut self.output, destination)?;
+        self.output.write_all(b",\"title\":")?;
+        write_json_string(&mut self.output, title)?;
+        self.output.write_all(b",\"reference\":")?;
+        if is_reference {
+            write_json_string(&mut self.output, id)?;
+        } else {
+            self.output.write_all(b"null")?;
+        }
+        self.output.write_all(b",\"definition\":")?;
+        if let Some(ref span) = definition {
+            write!(self.output, "[{},{}]", span.start, span.end)?;
+        } else {
+            self.output.write_all(b"null")?;
+        }
+        self.output.write_all(b",\"destination\":")?;
+        let key = definition.as_ref().unwrap_or(&range);
+        let key = (key.start, key.end);
+        let destination_span = self
+            .destinations
+            .entry(key)
+            .or_insert_with(|| {
+                if let Some(ref span) = definition {
+                    reference_targets::destination_range(source, span.clone(), true, destination)
+                } else if matches!(link_type, LinkType::Inline) {
+                    reference_targets::destination_range(source, range.clone(), false, destination)
+                } else {
+                    None
+                }
+            })
+            .clone();
+        if let Some(span) = destination_span {
+            write!(self.output, "[{},{}]", span.start, span.end)?;
+        } else {
+            self.output.write_all(b"null")?;
+        }
+        self.output.write_all(b"}")?;
+
+        Ok(())
+    }
+    fn finish(mut self, complete: bool) -> Result<Vec<u8>, RenderError> {
+        self.output
+            .write_all(if complete {
+                b"],\"complete\":true}"
+            } else {
+                b"],\"complete\":false,\"incompleteReason\":\"reference-expansion-limit\"}"
+            })
+            .map_err(|_| RenderError::OutputLimit)?;
+        Ok(self.output.0)
+    }
+}
+
 pub fn references(source: &str) -> Result<Vec<u8>, RenderError> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(RenderError::SourceLimit);
     }
-    let mut output = LimitedOutput(Vec::new());
-    let result = (|| -> io::Result<()> {
-        output.write_all(b"{\"version\":1,\"references\":[")?;
-        let mut first = true;
-        let mut events = Parser::new_ext(source, markdown_options()).into_offset_iter();
-        // pulldown-cmark 0.13.6 has a private reference expansion budget of
-        // max(source bytes, 100000). Bound all possible lookups conservatively:
-        // each needs an opening bracket, and no definition costs more than the
-        // largest destination plus title. Never report a possibly partial scan
-        // as complete merely because the iterator returned normally.
-        let largest_reference = events
-            .reference_definitions()
-            .iter()
-            .map(|(_, def)| {
-                def.dest
-                    .len()
-                    .saturating_add(def.title.as_ref().map_or(0, |title| title.len()))
-            })
-            .max()
-            .unwrap_or(0);
-        // The upstream parser refuses even a zero-cost lookup once its fuel is
-        // exactly zero. Treat equality as potentially incomplete as well.
-        let complete = reference_expansion_complete(source, largest_reference);
-        while let Some((event, range)) = events.next() {
-            let (kind, link_type, destination, title, id) = match event {
-                Event::Start(Tag::Link {
+    let mut events = Parser::new_ext(source, markdown_options()).into_offset_iter();
+    let largest = events
+        .reference_definitions()
+        .iter()
+        .map(|(_, d)| {
+            d.dest
+                .len()
+                .saturating_add(d.title.as_ref().map_or(0, |t| t.len()))
+        })
+        .max()
+        .unwrap_or(0);
+    let complete = reference_expansion_complete(source, largest);
+    let mut writer = ReferenceWriter::new();
+    while let Some((event, range)) = events.next() {
+        let definition = match &event {
+            Event::Start(Tag::Link { id, link_type, .. } | Tag::Image { id, link_type, .. })
+                if matches!(
                     link_type,
-                    dest_url,
-                    title,
-                    id,
-                }) => ("link", link_type, dest_url, title, id),
-                Event::Start(Tag::Image {
-                    link_type,
-                    dest_url,
-                    title,
-                    id,
-                }) => ("image", link_type, dest_url, title, id),
-                _ => continue,
-            };
-            let is_reference = matches!(
-                link_type,
-                LinkType::Reference | LinkType::Collapsed | LinkType::Shortcut
-            );
-            let definition = if is_reference {
+                    LinkType::Reference | LinkType::Collapsed | LinkType::Shortcut
+                ) =>
+            {
                 events
                     .reference_definitions()
-                    .get(&id)
-                    .map(|entry| entry.span.clone())
-            } else {
-                None
-            };
-            if !first {
-                output.write_all(b",")?;
+                    .get(id)
+                    .map(|d| d.span.clone())
             }
-            first = false;
-            write!(
-                output,
-                "{{\"kind\":\"{kind}\",\"start\":{},\"end\":{},\"target\":",
-                range.start, range.end
-            )?;
-            write_json_string(&mut output, &destination)?;
-            output.write_all(b",\"title\":")?;
-            write_json_string(&mut output, &title)?;
-            output.write_all(b",\"reference\":")?;
-            if is_reference {
-                write_json_string(&mut output, &id)?;
-            } else {
-                output.write_all(b"null")?;
-            }
-            output.write_all(b",\"definition\":")?;
-            if let Some(ref span) = definition {
-                write!(output, "[{},{}]", span.start, span.end)?;
-            } else {
-                output.write_all(b"null")?;
-            }
-            output.write_all(b",\"destination\":")?;
-            let destination_span = if let Some(ref span) = definition {
-                reference_targets::destination_range(source, span.clone(), true, &destination)
-            } else if matches!(link_type, LinkType::Inline) {
-                reference_targets::destination_range(source, range.clone(), false, &destination)
-            } else {
-                None
-            };
-            if let Some(span) = destination_span {
-                write!(output, "[{},{}]", span.start, span.end)?;
-            } else {
-                output.write_all(b"null")?;
-            }
-            output.write_all(b"}")?;
-        }
-        if complete {
-            output.write_all(b"],\"complete\":true}")
-        } else {
-            output.write_all(
-                b"],\"complete\":false,\"incompleteReason\":\"reference-expansion-limit\"}",
-            )
-        }
-    })();
-    result.map_err(|_| RenderError::OutputLimit)?;
-    Ok(output.0)
+            _ => None,
+        };
+        writer
+            .event(source, &event, range, definition)
+            .map_err(|_| RenderError::OutputLimit)?;
+    }
+    writer.finish(complete)
 }
 
 /// Return the exact IDs used by preview, with snapshot-relative UTF-8 ranges.
@@ -502,6 +536,154 @@ pub struct RenderBuffer {
     pub data: *mut u8,
     pub length: usize,
     pub status: u32,
+}
+
+#[repr(C)]
+pub struct AnalysisBuffers {
+    pub model: RenderBuffer,
+    pub references: RenderBuffer,
+    pub semantic_ns: u64,
+    pub references_ns: u64,
+}
+
+/// One global parse for preview and exact reference metadata. The callback is
+/// cooperative: parser construction and an individual next() cannot be stopped.
+/// # Safety
+/// Input is immutable and live for the call. Callback/context, when supplied,
+/// remain live, thread-safe and non-unwinding until this function returns.
+#[no_mangle]
+pub unsafe extern "C" fn xdnote_markdown_analyze(
+    data: *const u8,
+    length: usize,
+    context: *const std::ffi::c_void,
+    cancelled: Option<unsafe extern "C" fn(*const std::ffi::c_void) -> bool>,
+) -> AnalysisBuffers {
+    let error = |status| AnalysisBuffers {
+        model: RenderBuffer::error(status),
+        references: RenderBuffer::error(status),
+        semantic_ns: 0,
+        references_ns: 0,
+    };
+    if length > MAX_SOURCE_BYTES {
+        return error(2);
+    }
+    if data.is_null() && length != 0 {
+        return error(1);
+    }
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let bytes = if length == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(data, length) }
+        };
+        let source = std::str::from_utf8(bytes).map_err(|_| 1u32)?;
+        let check = || cancelled.is_some_and(|callback| unsafe { callback(context) });
+        native_model::analyze(source, native_model::MAX_MODEL_BYTES, true, &check).map_err(|e| {
+            if e == RenderError::Cancelled {
+                4u32
+            } else {
+                2u32
+            }
+        })
+    }));
+    match result {
+        Ok(Ok(value)) => {
+            fn buffer(bytes: Vec<u8>) -> RenderBuffer {
+                let length = bytes.len();
+                RenderBuffer {
+                    data: Box::into_raw(bytes.into_boxed_slice()) as *mut u8,
+                    length,
+                    status: 0,
+                }
+            }
+            AnalysisBuffers {
+                model: buffer(value.model),
+                references: buffer(value.references),
+                semantic_ns: value.semantic_ns,
+                references_ns: value.references_ns,
+            }
+        }
+        Ok(Err(status)) => error(status),
+        Err(_) => error(3),
+    }
+}
+
+#[cfg(test)]
+mod shared_analysis_tests {
+    use super::*;
+    #[test]
+    fn same_global_events_preserve_model_and_exact_reference_metadata() {
+        for source in [
+            "# 中文 😀\r\n\n[a][x] ![图片][x]\n\n[x]: <a\\(b\\).md> \"标题\"\n\n# 中文 😀\n",
+            "- [x] done\n\n|a|b|\n|-|-|\n|c|d|\n\n```\n[x](no.md)\n```\n",
+            "[a `]`](a&amp;b.md) ![![nested](pic.png)](outer.png)",
+        ] {
+            let result =
+                native_model::analyze(source, native_model::MAX_MODEL_BYTES, true, &|| false)
+                    .unwrap();
+            assert_eq!(result.model, native_model::build(source).unwrap());
+            assert_eq!(result.references, references(source).unwrap());
+        }
+    }
+    #[test]
+    fn cooperative_callback_cancels_before_parse_and_during_event_walk() {
+        let source = "paragraph **bold**\n\n".repeat(20000);
+        let count = std::cell::Cell::new(0usize);
+        let cancel = || {
+            count.set(count.get() + 1);
+            count.get() >= 4
+        };
+        assert!(matches!(
+            native_model::analyze(&source, native_model::MAX_MODEL_BYTES, true, &cancel),
+            Err(RenderError::Cancelled)
+        ));
+        assert_eq!(count.get(), 4);
+        unsafe extern "C" fn stopped(_: *const std::ffi::c_void) -> bool {
+            true
+        }
+        let mut result = unsafe {
+            xdnote_markdown_analyze(
+                source.as_ptr(),
+                source.len(),
+                std::ptr::null(),
+                Some(stopped),
+            )
+        };
+        assert_eq!(result.model.status, 4);
+        assert_eq!(result.references.status, 4);
+        assert!(result.model.data.is_null());
+        assert!(result.references.data.is_null());
+        unsafe {
+            xdnote_markdown_free(&mut result.model);
+            xdnote_markdown_free(&mut result.references);
+        }
+    }
+    #[test]
+    fn ffi_shared_buffers_have_independent_owned_release_and_reject_invalid_utf8() {
+        let source = "# heading\n\n[a](b.md)";
+        let mut result = unsafe {
+            xdnote_markdown_analyze(source.as_ptr(), source.len(), std::ptr::null(), None)
+        };
+        assert_eq!(result.model.status, 0);
+        assert_eq!(result.references.status, 0);
+        unsafe {
+            xdnote_markdown_free(&mut result.model);
+        }
+        assert_eq!(
+            unsafe { std::slice::from_raw_parts(result.references.data, result.references.length) },
+            references(source).unwrap()
+        );
+        unsafe {
+            xdnote_markdown_free(&mut result.references);
+            xdnote_markdown_free(&mut result.model);
+        }
+        assert_eq!(
+            unsafe { xdnote_markdown_analyze([0xff].as_ptr(), 1, std::ptr::null(), None) }
+                .model
+                .status,
+            1
+        );
+    }
 }
 
 impl RenderBuffer {

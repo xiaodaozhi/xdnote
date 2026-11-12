@@ -1,11 +1,13 @@
 #include "MarkdownReferences.h"
 #include "MarkdownBridge.h"
+#include "PreviewAnalysis.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QScopeGuard>
+#include <QCryptographicHash>
 #include <cmath>
 
 namespace xdnote {
@@ -30,13 +32,20 @@ bool validRange(const QByteArray &source, const QJsonValue &start, const QJsonVa
 MarkdownReferenceAnalysis analyzeMarkdownReferences(const DocumentSnapshot &snapshot) {
     MarkdownReferenceAnalysis result; result.documentId = snapshot.documentId; result.revision = snapshot.revision;
     if (snapshot.result != EditResult::Applied) { result.reason = resultDescription(snapshot.result); return result; }
+    if (auto shared = PreviewAnalysis::find(snapshot)) return shared->references;
     auto output = xdnote_markdown_references(reinterpret_cast<const unsigned char *>(snapshot.utf8.constData()), std::size_t(snapshot.utf8.size()));
     const auto release = qScopeGuard([&] { xdnote_markdown_free(&output); });
     if (output.status != 0 || !output.data || output.length > 8 * 1024 * 1024) {
         result.reason = QStringLiteral("无法分析引用：源文无效或分析结果过大"); return result;
     }
+    return decodeMarkdownReferences(snapshot, QByteArray::fromRawData(reinterpret_cast<const char *>(output.data), qsizetype(output.length)));
+}
+
+MarkdownReferenceAnalysis decodeMarkdownReferences(const DocumentSnapshot &snapshot, const QByteArray &bytes) {
+    MarkdownReferenceAnalysis result; result.documentId = snapshot.documentId; result.revision = snapshot.revision;
+    if (snapshot.result != EditResult::Applied || bytes.size() > 8 * 1024 * 1024) return result;
     QJsonParseError error{};
-    const auto json = QJsonDocument::fromJson(QByteArray(reinterpret_cast<const char *>(output.data), qsizetype(output.length)), &error);
+    const auto json = QJsonDocument::fromJson(bytes, &error);
     const auto root = json.object();
     if (error.error != QJsonParseError::NoError || !json.isObject() || root.value("version").toInt() != 1
         || !root.value("references").isArray() || !root.value("complete").isBool()) {
@@ -78,6 +87,7 @@ MarkdownReferenceAnalysis analyzeMarkdownReferences(const DocumentSnapshot &snap
         }
         items.append(std::move(item));
     }
+    result.sourceDigest = QCryptographicHash::hash(snapshot.utf8, QCryptographicHash::Sha256);
     result.references = std::move(items); result.complete = root.value("complete").toBool(); result.success = true;
     if (!result.complete) result.reason = QStringLiteral("引用过多，分析可能不完整");
     return result;

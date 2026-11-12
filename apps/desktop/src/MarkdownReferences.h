@@ -26,6 +26,7 @@ struct MarkdownReference {
 struct MarkdownReferenceAnalysis {
     QUuid documentId;
     quint64 revision = 0;
+    QByteArray sourceDigest;
     QList<MarkdownReference> references;
     bool success = false;
     bool complete = false;
@@ -36,4 +37,5 @@ struct MarkdownReferenceAnalysis {
 // The ranges cover complete Markdown constructs, not the destination alone.
 // A caller must recheck document identity and revision before using results.
 MarkdownReferenceAnalysis analyzeMarkdownReferences(const DocumentSnapshot &snapshot);
+MarkdownReferenceAnalysis decodeMarkdownReferences(const DocumentSnapshot &snapshot, const QByteArray &json);
 }

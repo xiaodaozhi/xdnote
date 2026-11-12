@@ -35,6 +35,7 @@ public:
     // identifies bytes, not current session authority or resource permission.
     static std::optional<NativePreviewModel> parse(const QByteArray &source, QString *error = nullptr);
     static std::optional<NativePreviewModel> decode(QByteArray bytes, QByteArrayView source, QString *error = nullptr);
+    static std::optional<NativePreviewModel> adopt(QByteArray bytes, std::shared_ptr<void> storage, QByteArrayView source, QString *error = nullptr);
 
     quint32 nodeCount() const { return m_nodes; }
     quint32 sourceBytes() const { return m_sourceBytes; }
