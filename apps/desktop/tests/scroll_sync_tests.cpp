@@ -67,9 +67,12 @@ bool waitForMapping(SingleFileWindow *pane) {
 }
 struct Fixture {
     QTemporaryDir directory;
+    // Window geometry is persisted after a debounce. Keep application settings
+    // outside the image-watched workspace, as in a normal installation.
+    QTemporaryDir configuration;
     QByteArray source = sample();
     QString path = directory.filePath("scroll.md");
-    FileApplication app{nullptr, directory.filePath("settings.json")};
+    FileApplication app{nullptr, configuration.filePath("settings.json")};
     WorkspaceWindow *workspace = nullptr;
     bool written = false;
     Fixture() { written = fileFixtures::write(path, source); workspace = app.workspaceWindow(directory.path()); app.openInWorkspace(path, workspace); }

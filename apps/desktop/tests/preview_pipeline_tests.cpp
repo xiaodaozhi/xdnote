@@ -15,6 +15,7 @@
 #include <QCryptographicHash>
 #include <QImage>
 #include <QTemporaryDir>
+#include <QScrollBar>
 #include <QTest>
 #include <QtConcurrentRun>
 
@@ -115,11 +116,27 @@ private slots:
     }
     void resourceRefreshReusesSyntaxAndProjectionWithCurrentGenerations() {
         QTemporaryDir dir; QVERIFY(dir.isValid()); Appearance appearance(nullptr, dir.filePath("appearance.json"));
-        DocumentSession session("# Title\n\nbody\n"); MarkdownPreview preview(&session, nullptr, 24, &appearance); preview.resize(700, 500); preview.show();
+        const auto source = QByteArray("# Title\n\n![missing](missing.png)\n\n") + QByteArray("body paragraph\n\n").repeated(100);
+        QVERIFY(fileFixtures::write(dir.filePath("doc.md"), source));
+        const auto file = FileService::probe(dir.filePath("doc.md")); QVERIFY(file.file);
+        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
+        DocumentSession session(source); MarkdownPreview preview(&session, nullptr, 24, &appearance); preview.resize(700, 500);
+        preview.setResourceContext(root.reader, "doc.md", file.file->identity()); preview.show();
         QVERIFY(ready(preview, session)); const auto original = session.snapshot().utf8; const auto before = preview.requestedGeneration();
+        QVERIFY(preview.view()->verticalScrollBar()->maximum() > 80); preview.view()->verticalScrollBar()->setValue(80);
+        bool revokedBeforeRefresh = false;
+        connect(preview.view()->verticalScrollBar(), &QScrollBar::valueChanged, &preview, [&](int value) {
+            if (value == 0 && !preview.mappingCurrent()) revokedBeforeRefresh = true;
+        });
+        // Directory watches also see unrelated files (including a misplaced
+        // test settings file). Reproduce the reset and verify safe reuse.
+        QVERIFY(fileFixtures::write(dir.filePath("unrelated.json"), "{}"));
+        QTRY_VERIFY_WITH_TIMEOUT(preview.requestedGeneration() > before, 10000);
+        QVERIFY(ready(preview, session)); QVERIFY(revokedBeforeRefresh);
+        QCOMPARE(preview.view()->verticalScrollBar()->value(), 80);
+        QVERIFY(preview.workStatistics()["analysisCacheHit"].toBool()); QVERIFY(preview.workStatistics()["projectionCacheHit"].toBool());
         preview.refresh(); QVERIFY(ready(preview, session));
         QVERIFY(preview.requestedGeneration() > before); QVERIFY(preview.workStatistics()["analysisCacheHit"].toBool()); QVERIFY(preview.workStatistics()["projectionCacheHit"].toBool());
-        const auto root = WorkspaceResourceReader::open(dir.path()); QVERIFY(root.reader);
         preview.setResourceContext(root.reader, "not-on-disk.md", "unverified"); QVERIFY(ready(preview, session));
         QVERIFY(preview.workStatistics()["analysisCacheHit"].toBool()); QCOMPARE(session.snapshot().utf8, original);
         const auto stats = preview.workStatistics();
