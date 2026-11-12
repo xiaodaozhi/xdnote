@@ -127,9 +127,22 @@ private slots:
         sourceScroll(editor, visualLine(editor, byte) + rows / 2); const auto span = view->scrollSpanForSource(byte, view->displayedStamp()); QVERIFY(span); QTRY_VERIFY(view->verticalScrollBar()->value() > span->top + (span->bottom - span->top) * .25); QVERIFY(view->verticalScrollBar()->value() < span->top + (span->bottom - span->top) * .75);
         // A reader fraction must survive reflow even when it falls between two
         // source display rows; restoring from a rounded source row would drift.
-        readerScroll(view, qRound(span->top + .413 * (span->bottom - span->top))); QVERIFY(waitForMapping(pane));
+        // Reflow caused by the source scrollbar can still be pending when its
+        // first target is reached. Issue the next command against fresh geometry.
+        QVERIFY(waitForMapping(pane)); const auto readerSpan = view->scrollSpanForSource(byte, view->displayedStamp()); QVERIFY(readerSpan);
+        readerScroll(view, qRound(readerSpan->top + .413 * (readerSpan->bottom - readerSpan->top))); QVERIFY(waitForMapping(pane));
+        const auto beforeZoom = view->scrollSpanForSource(byte, view->displayedStamp()); QVERIFY(beforeZoom);
+        const auto beforeFraction = (view->verticalScrollBar()->value() - beforeZoom->top) / (beforeZoom->bottom - beforeZoom->top);
+        QVERIFY2(std::abs(beforeFraction - .413) < .015, qPrintable(QString::number(beforeFraction)));
         pane->setContentZoom(150); f.workspace->resize(1030, 760); QVERIFY(pane->appearance()->setPreferences("dark", "olive")); QVERIFY(waitForMapping(pane));
-        const auto changed = view->scrollSpanForSource(byte, view->displayedStamp()); QVERIFY(changed); const auto fraction = (view->verticalScrollBar()->value() - changed->top) / (changed->bottom - changed->top); QVERIFY2(std::abs(fraction - .413) < .015, qPrintable(QString::number(fraction)));
+        // Layout readiness precedes the queued resize/scroll restoration. Wait
+        // for that exact semantic target, not an arbitrary quiet-time proxy.
+        const auto readerFraction = [&] {
+            const auto changed = view->scrollSpanForSource(byte, view->displayedStamp());
+            return changed ? (view->verticalScrollBar()->value() - changed->top) / (changed->bottom - changed->top) : -1.0;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(std::abs(readerFraction() - .413) < .015, 10000);
+        QVERIFY(waitForMapping(pane));
         const auto readerPosition = view->verticalScrollBar()->value(); editor->send(SCI_SETWRAPMODE, SC_WRAP_NONE); QVERIFY(waitForMapping(pane)); QCOMPARE(view->verticalScrollBar()->value(), readerPosition); editor->send(SCI_SETWRAPMODE, SC_WRAP_WORD); QVERIFY(waitForMapping(pane)); QCOMPARE(view->verticalScrollBar()->value(), readerPosition);
         const auto sourceFraction = [&] { return double(editor->send(SCI_GETFIRSTVISIBLELINE) - visualLine(editor, byte)) / qMax(sptr_t(1), editor->send(SCI_WRAPCOUNT, uptr_t(line))); };
         QTRY_VERIFY_WITH_TIMEOUT(std::abs(sourceFraction() - .413) < .05, 3000);

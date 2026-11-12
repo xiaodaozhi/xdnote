@@ -64,7 +64,9 @@ Value PreviewAnalysis::get(const DocumentSnapshot &snapshot, const PreviewCancel
     metrics["semanticMs"] = double(output.semanticNs) / 1e6;
     metrics["referencesMs"] = double(output.referencesNs) / 1e6;
     if (previewCancelled(cancel) || output.model.status == 4) return {};
-    if (output.model.status || output.references.status || !output.model.data || !output.references.data
+    const bool referencesLimited = output.references.status == 2 && !output.references.data && !output.references.length;
+    if (output.model.status || !output.model.data
+        || (!referencesLimited && (output.references.status || !output.references.data))
         || output.model.length > NativePreviewModel::MaximumBytes || output.references.length > 8 * 1024 * 1024) {
         if (error) *error = QStringLiteral("无法分析 Markdown：源文或派生结果无效／超限"); return {};
     }
@@ -72,10 +74,14 @@ Value PreviewAnalysis::get(const DocumentSnapshot &snapshot, const PreviewCancel
     auto owned = new XdnoteRenderBuffer(output.model); output.model = {};
     std::shared_ptr<void> storage(owned, [](void *pointer) { auto buffer = static_cast<XdnoteRenderBuffer *>(pointer); xdnote_markdown_free(buffer); delete buffer; });
     auto model = NativePreviewModel::adopt(QByteArray::fromRawData(reinterpret_cast<const char *>(owned->data), qsizetype(owned->length)), std::move(storage), snapshot.utf8, error);
-    auto refs = decodeMarkdownReferences(snapshot, QByteArray::fromRawData(reinterpret_cast<const char *>(output.references.data), qsizetype(output.references.length)));
+    auto refs = referencesLimited ? MarkdownReferenceAnalysis{} : decodeMarkdownReferences(snapshot, QByteArray::fromRawData(reinterpret_cast<const char *>(output.references.data), qsizetype(output.references.length)));
+    if (referencesLimited) {
+        refs.documentId = snapshot.documentId; refs.revision = snapshot.revision;
+        refs.reason = QStringLiteral("引用元数据超限，资源与链接已禁用");
+    }
     metrics["decodeMs"] = timer.nsecsElapsed() / 1e6;
-    if (!model || !refs.success || previewCancelled(cancel)) {
-        if (!refs.success && error) *error = refs.reason.isEmpty() ? QStringLiteral("引用分析结果无效") : refs.reason;
+    if (!model || (!referencesLimited && !refs.success) || previewCancelled(cancel)) {
+        if (!referencesLimited && !refs.success && error) *error = refs.reason.isEmpty() ? QStringLiteral("引用分析结果无效") : refs.reason;
         return {};
     }
     auto result = std::make_shared<PreviewAnalysis>(); result->model = std::move(*model); result->references = std::move(refs);

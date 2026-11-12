@@ -315,6 +315,7 @@ fn build_with_limit(source: &str, limit: usize) -> Result<Vec<u8>, RenderError> 
 pub struct Analysis {
     pub model: Vec<u8>,
     pub references: Vec<u8>,
+    pub references_ok: bool,
     pub semantic_ns: u64,
     pub references_ns: u64,
 }
@@ -347,6 +348,7 @@ pub fn analyze(
     let complete = reference_expansion_complete(source, largest_reference);
     let mut model = Builder::new(limit);
     let mut writer = references.then(crate::ReferenceWriter::new);
+    let mut references_ok = true;
     let mut references_ns = 0u64;
     let mut count = 0usize;
     while let Some((event, range)) = events.next() {
@@ -354,7 +356,7 @@ pub fn analyze(
             return Err(RenderError::Cancelled);
         }
         count += 1;
-        if let Some(writer) = &mut writer {
+        if let Some(ref_writer) = &mut writer {
             if matches!(&event, Event::Start(Tag::Link { .. } | Tag::Image { .. })) {
                 let before = Instant::now();
                 let definition = match &event {
@@ -374,11 +376,19 @@ pub fn analyze(
                     }
                     _ => None,
                 };
-                writer
+                if ref_writer
                     .event(source, &event, range.clone(), definition)
-                    .map_err(|_| RenderError::OutputLimit)?;
+                    .is_err()
+                {
+                    references_ok = false;
+                }
                 references_ns += before.elapsed().as_nanos().min(u64::MAX as u128) as u64;
             }
+        }
+        // Reference metadata has its own quota. Its failure must not discard a
+        // complete model that the former independent preview could display.
+        if !references_ok {
+            writer = None;
         }
         match event {
             Event::Start(tag) => model.start(tag, range)?,
@@ -391,12 +401,19 @@ pub fn analyze(
     }
     let model = model.finish(source.len(), complete)?;
     let before = Instant::now();
-    let references = writer.map_or(Ok(Vec::new()), |w| w.finish(complete))?;
+    let references = match writer.map_or(Ok(Vec::new()), |w| w.finish(complete)) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            references_ok = false;
+            Vec::new()
+        }
+    };
     references_ns += before.elapsed().as_nanos().min(u64::MAX as u128) as u64;
     let total = start.elapsed().as_nanos().min(u64::MAX as u128) as u64;
     Ok(Analysis {
         model,
         references,
+        references_ok,
         semantic_ns: total.saturating_sub(references_ns),
         references_ns,
     })

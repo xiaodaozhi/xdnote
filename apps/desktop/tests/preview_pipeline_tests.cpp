@@ -61,6 +61,14 @@ private slots:
         auto changed = input; changed.utf8 += "\nchanged";
         auto different = PreviewAnalysis::get(changed, {}, metrics, &error); QVERIFY(different); QVERIFY(different.get() != result.get()); QVERIFY(!metrics["analysisCacheHit"].toBool());
         PreviewAnalysis::forget(input.documentId);
+        auto dense = snapshot(QByteArray("[x](y) ").repeated(100000));
+        const auto limited = PreviewAnalysis::get(dense, {}, metrics, &error);
+        QVERIFY2(limited, qPrintable(error)); QCOMPARE(limited->model.sourceBytes(), quint32(dense.utf8.size()));
+        QVERIFY(!limited->references.success); QVERIFY(!limited->references.complete); QVERIFY(limited->references.references.isEmpty());
+        auto content = NativePreviewContent::build(limited->model); QVERIFY(content); QVERIFY(!content->text.isEmpty());
+        const auto denied = preparePreviewImages(dense, limited->references, {}, {}, {}, {}, {}, {});
+        QVERIFY(!denied.analyzed); QVERIFY(denied.png.isEmpty()); QVERIFY(denied.linkTargets.isEmpty());
+        PreviewAnalysis::forget(dense.documentId);
     }
     void concurrentRequestsShareOneResultAndReleaseAfterForget() {
         auto input = snapshot(QByteArray("# Shared\n\nparagraph **text**\n\n").repeated(2000));

@@ -598,7 +598,11 @@ pub unsafe extern "C" fn xdnote_markdown_analyze(
             }
             AnalysisBuffers {
                 model: buffer(value.model),
-                references: buffer(value.references),
+                references: if value.references_ok {
+                    buffer(value.references)
+                } else {
+                    RenderBuffer::error(2)
+                },
                 semantic_ns: value.semantic_ns,
                 references_ns: value.references_ns,
             }
@@ -611,6 +615,27 @@ pub unsafe extern "C" fn xdnote_markdown_analyze(
 #[cfg(test)]
 mod shared_analysis_tests {
     use super::*;
+    #[test]
+    fn reference_quota_preserves_the_complete_native_model() {
+        let source = "[x](y) ".repeat(100_000);
+        let model = native_model::build(&source).unwrap();
+        assert_eq!(references(&source), Err(RenderError::OutputLimit));
+        let combined =
+            native_model::analyze(&source, native_model::MAX_MODEL_BYTES, true, &|| false).unwrap();
+        assert_eq!(combined.model, model);
+        assert!(!combined.references_ok);
+        assert!(combined.references.is_empty());
+        let mut result = unsafe {
+            xdnote_markdown_analyze(source.as_ptr(), source.len(), std::ptr::null(), None)
+        };
+        assert_eq!(result.model.status, 0);
+        assert_eq!(result.references.status, 2);
+        assert!(result.references.data.is_null());
+        unsafe {
+            xdnote_markdown_free(&mut result.model);
+            xdnote_markdown_free(&mut result.references);
+        }
+    }
     #[test]
     fn same_global_events_preserve_model_and_exact_reference_metadata() {
         for source in [
