@@ -1,5 +1,6 @@
 """Protect noninteractive execution and evidence classification."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -39,6 +40,16 @@ class BackgroundTests(unittest.TestCase):
         self.assertNotIn("UIA", functions)
         self.assertNotIn("FilePicker", functions)
         self.assertNotIn("mixedDpiNative", functions)
+
+
+    def test_worker_deadline_covers_eight_scans_without_raising_sample_budget(self):
+        budgets = json.loads((background.ROOT / 'tools/background-budgets.json').read_text(encoding='utf-8'))
+        self.assertEqual(budgets['p95Milliseconds']['scan'], 30000)
+        self.assertGreaterEqual(background.measurement_timeout('scan', budgets), 240)
+        self.assertLessEqual(background.measurement_timeout('scan', budgets), 300)
+        self.assertEqual(background.measurement_timeout('model', budgets), 60)
+        self.assertLessEqual(background.measurement_timeout('pipeline', budgets), 180)
+        self.assertEqual(background.measurement_timeout('preview', budgets), 60)
 
 
 if __name__ == "__main__":

@@ -120,6 +120,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/DocumentSession.cpp apps/desktop/src/DocumentSession.h
     apps/desktop/src/SourceEditor.cpp apps/desktop/src/SourceEditor.h
     apps/desktop/src/MarkdownPreview.cpp apps/desktop/src/MarkdownPreview.h
+    apps/desktop/src/PreviewAnalysis.cpp apps/desktop/src/PreviewAnalysis.h
     apps/desktop/src/MarkdownReferences.cpp apps/desktop/src/MarkdownReferences.h apps/desktop/src/MarkdownBridge.h
     apps/desktop/src/MarkdownHeadings.cpp apps/desktop/src/MarkdownHeadings.h
     apps/desktop/src/WorkspacePath.cpp apps/desktop/src/WorkspacePath.h
@@ -230,4 +231,11 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME split_scroll_sync COMMAND xdnote_scroll_tests -o -,txt -o "${CMAKE_BINARY_DIR}/scroll-qtest.txt,txt")
     set_tests_properties(split_scroll_sync PROPERTIES TIMEOUT 180)
+    add_executable(xdnote_pipeline_tests apps/desktop/tests/preview_pipeline_tests.cpp)
+    target_link_libraries(xdnote_pipeline_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_pipeline_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME preview_pipeline COMMAND xdnote_pipeline_tests -o -,txt -o "${CMAKE_BINARY_DIR}/pipeline-qtest.txt,txt")
+    set_tests_properties(preview_pipeline PROPERTIES TIMEOUT 240)
 endif()

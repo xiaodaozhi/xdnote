@@ -7,7 +7,6 @@
 namespace xdnote {
 namespace {
 constexpr qint64 MaxImagePixels = 12'000'000;
-constexpr qint64 MaxBatchPixels = 24'000'000;
 class LimitedOutput final : public QIODevice {
 public:
     explicit LimitedOutput(qsizetype limit) : m_limit(limit) { open(QIODevice::WriteOnly); }
@@ -37,7 +36,7 @@ char decodeImage(const QByteArray &source, qint64 &pixels, qsizetype outputLimit
     const auto size = reader.size();
     if (!size.isValid() || size.width() > 8192 || size.height() > 8192) return 3;
     const qint64 count = qint64(size.width()) * size.height();
-    if (count > MaxImagePixels || count > MaxBatchPixels - pixels) return 3;
+    if (count > MaxImagePixels || count > MaxBatchImagePixels - pixels) return 3;
     const auto image = reader.read();
     if (image.isNull()) return 4;
     if (image.width() > 8192 || image.height() > 8192 || qint64(image.width()) * image.height() != count) return 4;

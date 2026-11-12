@@ -10,6 +10,7 @@
 #include <QWidget>
 #include <QFileSystemWatcher>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <memory>
 #include "WorkspaceImagePreview.h"
 #include "NativePreviewView.h"
@@ -28,6 +29,9 @@ struct RenderResult {
     QStringList imageWatchPaths;
     NativePreviewStamp stamp;
     bool localDocumentsAdmitted = false;
+    QByteArray imageStates;
+    QJsonObject metrics;
+    bool cancelled = false;
 };
 
 class MarkdownPreview final : public QWidget {
@@ -45,6 +49,7 @@ public:
     void restoreReadingPosition(const QPointF &position);
     void navigateToHeading(const QString &fragment, quint64 revision);
     bool mappingCurrent();
+    QJsonObject workStatistics() const;
 signals:
     void previewReady(quint64 revision);
     void previewPrepared(quint64 revision);
@@ -83,5 +88,15 @@ private:
     bool m_navigationPending = false;
     bool m_pageReady = false;
     bool m_refreshDeferred = false, m_refreshQueued = false;
+    PreviewCancellation m_cancel;
+    std::shared_ptr<PreviewAnalysisStore> m_analysisStore = PreviewAnalysis::store();
+    std::shared_ptr<PreviewImageCache> m_imageCache = std::make_shared<PreviewImageCache>();
+    std::shared_ptr<const NativePreviewContent> m_previousContent;
+    QByteArray m_previousImageStates;
+    QUuid m_documentId;
+    QElapsedTimer m_queuedAt, m_requestedAt, m_layoutAt;
+    QJsonObject m_metrics;
+    int m_completedWork = 0, m_cancelledWork = 0;
+    bool m_awaitingLayout = false;
 };
 }
