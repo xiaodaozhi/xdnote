@@ -99,6 +99,13 @@ def cases():
         yield "preview", 0, theme
 
 
+def measurement_timeout(operation, budgets):
+    # A worker warms up once and measures seven times. Its wall deadline must
+    # allow all eight bounded operations, not just a fraction of their budget.
+    milliseconds = budgets["previewReadyMilliseconds"] if operation == "preview" else 8 * budgets["p95Milliseconds"][operation]
+    return max(60, 20 + math.ceil(milliseconds / 1000))
+
+
 def validate(build, environment):
     evidence = build / "evidence/background"
     evidence.mkdir(parents=True, exist_ok=True)
@@ -128,7 +135,10 @@ def validate(build, environment):
             command = [build / f"xdnote_background_probe{suffix}", operation, size, variant]
             if operation == "preview":
                 command.append(evidence / f"typography-{variant}.png")
-            content, wall = execute(command, env, evidence / f"{label}.log", 180 if operation == "pipeline" else 60)
+            case_env = dict(env)
+            if operation == "scan":
+                case_env["XDNOTE_PROBE_PROGRESS"] = "1"
+            content, wall = execute(command, case_env, evidence / f"{label}.log", measurement_timeout(operation, budgets))
             records = [json.loads(line) for line in content.splitlines() if line.startswith('{"')]
             if len(records) != 1 or records[0].get("ok") is not True:
                 raise RuntimeError(f"Missing successful measurement: {label}")

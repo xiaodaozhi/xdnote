@@ -25,6 +25,8 @@ python scripts/desktop.py test --suite background --build-dir build/desktop-admi
 
 预算由 [background-budgets.json](../../tools/background-budgets.json)锁定，属于后台回归护栏，不是产品体验承诺。内存为隔离工作进程的峰值工作集（Windows）或 RSS（Unix），不包含资源助手或完整应用；不能与私有提交量混用。预览就绪耗时也不是冷启动、真实键入或滚动延迟。宿主、字体、存储和并发负载变化后，不直接横比不同机器的性能值。
 
+计时子进程总限时按预热与七次测量共八次的单项预算，加 20 秒启动／调度余量计算，最低 60 秒；单次预览诊断按自身就绪预算处理。扫描单次 P95 仍为 30 秒，因此八次扫描进程限时为 260 秒；它不提高单次性能阈值，也不把超时记为成功。扫描保留逐次开始／完成及耗时日志，以区分单次阻塞和累计测量用时。
+
 ## 平台边界
 
 手动选择桌面工作流的 `scope=background-unix`，只验证 Linux、macOS Intel／ARM 的本范围，不运行完整桌面矩阵或 Windows 兼容配置。普通提交与合并仍只运行材料 CI。

@@ -62,9 +62,17 @@ double peakMiB() {
 #endif
 }
 QJsonObject measure(const std::function<void()> &operation) {
+    const bool progress = qEnvironmentVariableIsSet("XDNOTE_PROBE_PROGRESS");
+    QElapsedTimer warm; warm.start();
+    if (progress) { std::fprintf(stderr, "measurement warmup started\n"); std::fflush(stderr); }
     operation(); // Warm-up is checked, but excluded from timing quantiles.
+    if (progress) { std::fprintf(stderr, "measurement warmup completed: %.3f ms\n", warm.nsecsElapsed() / 1e6); std::fflush(stderr); }
     QList<double> values;
-    for (int i = 0; i < 7; ++i) { QElapsedTimer timer; timer.start(); operation(); values.append(timer.nsecsElapsed() / 1e6); }
+    for (int i = 0; i < 7; ++i) {
+        if (progress) { std::fprintf(stderr, "measurement sample %d started\n", i + 1); std::fflush(stderr); }
+        QElapsedTimer timer; timer.start(); operation(); values.append(timer.nsecsElapsed() / 1e6);
+        if (progress) { std::fprintf(stderr, "measurement sample %d completed: %.3f ms\n", i + 1, values.last()); std::fflush(stderr); }
+    }
     auto sorted = values; std::sort(sorted.begin(), sorted.end()); QJsonArray runs;
     for (double value : values) runs.append(value);
     return {{"samplesMs", runs}, {"p50Ms", sorted[3]}, {"p95Ms", sorted[6]}}; // nearest rank, n=7
