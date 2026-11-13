@@ -159,7 +159,7 @@ def remove_owned(folder):
 def install(payload, destination, system=None, apply=False, registration=False, data_home=None):
     system = system or platform.system()
     payload, destination = Path(payload).absolute(), Path(destination).absolute()
-    if destination.is_symlink() or destination.is_junction() or any(p.is_symlink() or p.is_junction() for p in destination.parents):
+    if destination.is_symlink() or destination.is_junction():
         raise ValueError("Linked installation destination is not allowed")
     if payload.is_symlink() or payload.is_junction():
         raise ValueError("Payload root must be a real directory")
@@ -220,7 +220,7 @@ def install(payload, destination, system=None, apply=False, registration=False, 
 
 def uninstall(destination, apply=False, registration=False, data_home=None):
     destination = Path(destination).absolute()
-    if destination.is_symlink() or destination.is_junction() or any(p.is_symlink() or p.is_junction() for p in destination.parents):
+    if destination.is_symlink() or destination.is_junction():
         raise ValueError("Linked installation destination is not allowed")
     destination = destination.resolve()
     manifest = checked_installation(destination)

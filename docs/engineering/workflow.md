@@ -70,3 +70,5 @@ python scripts/cleanup_cycles.py --stale-days 30 --apply --yes
 项目尚无发行工作流。后续设计发行流程时，应将版本、源码提交、验证记录和工件绑定；同一候选尽可能在一次受控运行中构建并复用产物，避免标签、草稿和手动触发造成重复构建。不同提交、输入或平台的结果不能混用；正式发布仍需单独完成发行要求和授权。
 
 `scope=tools-unix` 只在 Linux、macOS Intel／ARM 执行文档查找搜索、恢复副本、快捷键与受影响设置／文件的固定离屏验证，使用 `test --suite tools`。它不执行真实系统关联、不安装用户目录，也不扩大为完整桌面矩阵；工作流仍只允许手动触发。
+
+`scope=tools-macos` 仅补验相同文档工具范围的 macOS Intel／ARM，用于 Darwin 路径或平台差异修复；已有有效 Linux 产品结果不因 macOS 补验重复构建。两种 tools 范围均保留 Python 安装维护回归，不执行真实系统默认应用变更。
