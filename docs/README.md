@@ -7,6 +7,7 @@
 | 产品 | [需求](product/requirements.md) | 用户场景、需求来源、首版与后续范围 |
 | 交互 | [交互规格](product/interaction-spec.md) | 打开路由、文档状态、窗口迁移、保存和关闭 |
 | 工作区资源 | [图片与文档链接](product/workspace-resources.md) | 集中图片目录、相对链接、引用索引、移动维护与授权 |
+| 查找与搜索 | [文档工具](product/document-tools.md) | 原文字面匹配、会话替换、工作区有界全文搜索与恢复边界 |
 | 控件 | [控件交互与焦点](product/control-interactions.md) | 点击反馈、Tab 外框、激活／取消后的清除与逻辑焦点 |
 | 设置 | [设置规格](product/settings.md) | 主题与六种强调色、默认值、作用域和持久化 |
 | 视觉 | [设计系统](visual/design-system.md) | 信息层级、跨界面公共组件一致性、缩放与材料权威 |

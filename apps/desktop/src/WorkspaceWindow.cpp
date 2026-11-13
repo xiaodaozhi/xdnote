@@ -1,4 +1,5 @@
 #include "WorkspaceWindow.h"
+#include "WorkspaceSearch.h"
 #include "WorkspaceTree.h"
 #include "WorkspaceResourceReader.h"
 #include "WorkspaceReferenceController.h"
@@ -204,6 +205,8 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     auto *openFile = new SharedButton(QStringLiteral("打开文件…"), "workspaceOpenFile", windowAppearance(), m_welcome); openFile->setSymbol("document"); openFile->setProperty("primary", true); welcome->addWidget(openFile, 0, Qt::AlignHCenter); connect(openFile, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested);
     auto *openDirectory = new SharedButton(QStringLiteral("打开工作区…"), "workspaceOpenDirectory", windowAppearance(), m_welcome); openDirectory->setSymbol("folder-open"); openDirectory->setOutlined(true); welcome->addWidget(openDirectory, 0, Qt::AlignHCenter); connect(openDirectory, &QPushButton::clicked, this, &WorkspaceWindow::chooseDirectoryRequested); welcome->addStretch(); m_pages->addWidget(m_welcome);
     m_navigationPage = new WorkspaceNavigation(windowAppearance(), m_navigation, m_pages); m_pages->addWidget(m_navigationPage); connect(m_navigationPage, &WorkspaceNavigation::openRequested, this, &WorkspaceWindow::openRequested); connect(m_navigationPage, &WorkspaceNavigation::clearSearchRequested, m_search, &QLineEdit::clear);
+    m_fullSearch=new WorkspaceSearch(windowAppearance(),manager,m_sidebarViews);m_sidebarViews->addWidget(m_fullSearch);connect(m_fullSearch,&WorkspaceSearch::backRequested,this,[this]{m_sidebarViews->setCurrentIndex(0);});connect(m_fullSearch,&WorkspaceSearch::locationRequested,this,&WorkspaceWindow::referenceSourceRequested);
+    auto *fullSearch=new SharedButton(QStringLiteral("全文搜索"),"workspaceFullSearchButton",windowAppearance(),m_sidebar);fullSearch->setSymbol("search");fullSearch->setOutlined(true);sidebar->insertWidget(3,fullSearch);auto openFullSearch=[this]{setFocusMode(false);m_sidebarWanted=true;m_sidebarExplicit=true;updateSidebar();m_sidebarViews->setCurrentWidget(m_fullSearch);m_fullSearch->focusQuery();};connect(fullSearch,&QPushButton::clicked,this,openFullSearch);auto *fullSearchAction=new QAction(this);fullSearchAction->setObjectName("fullSearchAction");fullSearchAction->setShortcut(QKeySequence(Qt::CTRL|Qt::SHIFT|Qt::Key_F));addAction(fullSearchAction);connect(fullSearchAction,&QAction::triggered,this,openFullSearch);
     m_searchDelay.setSingleShot(true); m_searchDelay.setInterval(navToken("searchDelayMs")); connect(&m_searchDelay, &QTimer::timeout, this, &WorkspaceWindow::startSearch);
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString &text) { m_searchDelay.stop(); m_tree->cancelSearch(); if (text.trimmed().isEmpty()) { m_navigationVisible = false; selectCurrent(); } else { m_navigationVisible = true; m_navigationPage->showPage(WorkspaceNavigation::Page::Search, rootPath()); m_navigationPage->showSearch(text.trimmed(), {}, {}, true); selectCurrent(); m_searchDelay.start(); } });
     connect(m_tree, &WorkspaceTree::searchFinished, this, [this](const QString &query, const QStringList &paths, const QString &warning) { if (m_navigationVisible && query == m_search->text().trimmed()) m_navigationPage->showSearch(query, paths, warning); });
@@ -251,6 +254,7 @@ void WorkspaceWindow::setRootPath(const QString &path) {
     m_tree->setRootPath(path);
     m_resourceRoot = path.isEmpty() ? nullptr : WorkspaceResourceReader::open(m_tree->rootPath()).reader;
     m_references->setRoot(m_resourceRoot, m_tree->rootPath());
+    m_fullSearch->setRoot(m_resourceRoot);
     for (auto *pane : panes()) {
         pane->setWorkspaceRoot(rootPath());
         pane->setWorkspaceResourceRoot(m_resourceRoot, rootPath());

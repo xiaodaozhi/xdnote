@@ -27,6 +27,7 @@ class SharedSpinner;
 class DocumentBreadcrumb;
 class DocumentBody;
 class DocumentOutline;
+class DocumentSearch;
 class WorkspaceResourceReader;
 class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
@@ -95,6 +96,7 @@ protected:
     bool eventFilter(QObject *target, QEvent *event) override;
     void keyPressEvent(QKeyEvent *) override;
 private:
+    DocumentSearch *m_find = nullptr;
     void updateState();
     void chooseOpen();
     void reloadDisk();

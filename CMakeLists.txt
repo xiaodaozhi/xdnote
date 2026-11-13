@@ -99,6 +99,8 @@ if(UNIX)
 endif()
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/DocumentSearch.cpp apps/desktop/src/DocumentSearch.h
+    apps/desktop/src/WorkspaceSearch.cpp apps/desktop/src/WorkspaceSearch.h
     apps/desktop/src/DocumentExport.cpp apps/desktop/src/DocumentExport.h
     apps/desktop/src/DocumentOutline.cpp apps/desktop/src/DocumentOutline.h
     apps/desktop/src/DocumentBreadcrumb.cpp apps/desktop/src/DocumentBreadcrumb.h
@@ -237,6 +239,13 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME settings_workflow COMMAND xdnote_settings_tests -o -,txt -o "${CMAKE_BINARY_DIR}/settings-qtest.txt,txt")
     set_tests_properties(settings_workflow PROPERTIES TIMEOUT 180)
+    add_executable(xdnote_product_tools_tests apps/desktop/tests/product_tools_tests.cpp)
+    target_link_libraries(xdnote_product_tools_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_product_tools_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME product_tools COMMAND xdnote_product_tools_tests -o -,txt -o "${CMAKE_BINARY_DIR}/product-tools-qtest.txt,txt")
+    set_tests_properties(product_tools PROPERTIES TIMEOUT 180)
     add_executable(xdnote_control_tests apps/desktop/tests/control_consistency_tests.cpp)
     target_link_libraries(xdnote_control_tests PRIVATE xdnote_desktop Qt6::Test)
     if(MSVC)

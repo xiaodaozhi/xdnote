@@ -1,4 +1,5 @@
 #include "SingleFileWindow.h"
+#include "DocumentSearch.h"
 #include "DocumentBreadcrumb.h"
 #include <algorithm>
 #include <QCryptographicHash>
@@ -233,6 +234,8 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_saveAction = action(QStringLiteral("保存"), "saveAction", QKeySequence::Save, [this] { if (m_document && !m_document->save() && m_document->conflict()) resolveConflict(); });
     m_saveAsAction = action(QStringLiteral("另存为…"), "saveAsAction", QKeySequence::SaveAs, [this] { chooseSaveAs(); });
     m_reloadAction = action(QStringLiteral("重新载入磁盘版本…"), "reloadAction", {}, [this] { reloadDisk(); });
+    action(QStringLiteral("查找…"), "findAction", QKeySequence::Find, [this] { if(m_document)m_find->open(); });
+    action(QStringLiteral("替换…"), "replaceAction", QKeySequence::Replace, [this] { if(m_document)m_find->open(true); });
     m_menu->addSeparator();
     m_undoAction = action(QStringLiteral("撤销"), "undoAction", QKeySequence::Undo, [this] { if (m_document) m_document->session()->undo(); });
     m_redoAction = action(QStringLiteral("重做"), "redoAction", QKeySequence::Redo, [this] { if (m_document) m_document->session()->redo(); });
@@ -289,7 +292,7 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_welcomeOpen = new SharedButton(QStringLiteral("选择文件…"), "welcomeOpen", m_appearance, welcome); m_welcomeOpen->setSymbol("folder-open"); m_welcomeOpen->setProperty("primary", true); connect(m_welcomeOpen, &QPushButton::clicked, this, &SingleFileWindow::chooseOpen);
     m_cancelOpen = new SharedButton(QStringLiteral("取消打开"), "cancelOpen", m_appearance, welcome); m_cancelOpen->setOutlined(true); connect(m_cancelOpen, &QPushButton::clicked, this, [this] { if (!m_intent.isNull()) emit cancelOpenRequested(m_intent); m_intent = {}; m_openPath.clear(); updateState(); });
     auto *workspaceOpen = new SharedButton(QStringLiteral("打开工作区…"), "welcomeWorkspace", m_appearance, welcome); workspaceOpen->setSymbol("workspace"); connect(workspaceOpen, &QPushButton::clicked, this, &SingleFileWindow::openDirectoryRequested); welcomeLayout->addWidget(workspaceOpen, 0, Qt::AlignHCenter);
-    welcomeLayout->addWidget(m_welcomeOpen, 0, Qt::AlignHCenter); welcomeLayout->addWidget(m_cancelOpen, 0, Qt::AlignHCenter); welcomeLayout->addStretch(); m_body->addWidget(welcome); layout->addWidget(m_body, 1);
+    welcomeLayout->addWidget(m_welcomeOpen, 0, Qt::AlignHCenter); welcomeLayout->addWidget(m_cancelOpen, 0, Qt::AlignHCenter); welcomeLayout->addStretch(); m_body->addWidget(welcome); m_find=new DocumentSearch(m_appearance,this);layout->addWidget(m_find);connect(m_find,&DocumentSearch::locationRequested,this,[this](int start,int end){if(!m_document||!m_editor)return;auto *focus=QApplication::focusWidget();QPointer<QWidget> preserved=focus&&m_find->isAncestorOf(focus)?focus:nullptr;const auto snapshot=m_document->session()->snapshot();if(snapshot.result!=EditResult::Applied)return;const auto text=decodeUtf8Literal(snapshot.utf8);setEditing(true);m_editor->send(SCI_SETSEL,uptr_t(text.left(start).toUtf8().size()),sptr_t(text.left(end).toUtf8().size()));m_editor->send(SCI_SCROLLCARET);if(preserved)preserved->setFocus(Qt::OtherFocusReason);});connect(m_find,&DocumentSearch::dismissed,this,[this]{if(m_editor)m_editor->setFocus(Qt::OtherFocusReason);});layout->addWidget(m_body, 1);
     auto *footer = m_footer = new QWidget(this); footer->setObjectName("documentFooter"); footer->setFixedHeight(size.value("statusbarHeight").toInt());
     QFont secondary = ui; secondary.setPixelSize(visualTokens().value("typography").toObject().value("secondary").toObject().value("size").toInt()); footer->setFont(secondary);
     auto *foot = new QHBoxLayout(footer); foot->setContentsMargins(16, 0, 16, 0); foot->setSpacing(8);
@@ -379,7 +382,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
         } else connect(button, &QPushButton::clicked, this, [this, wrap = entry.second] { wrapSelection(wrap.first, wrap.second); }); tools->addWidget(button);
     }
     tools->addStretch(); layout->addWidget(format);
-    m_editor = new SourceEditor(document->session(), m_editorPage, m_appearance); m_editor->setObjectName("sourceEditor");
+    m_editor = new SourceEditor(document->session(), m_editorPage, m_appearance); m_editor->setObjectName("sourceEditor");m_find->setSession(document->session());
     connect(m_editor, &SourceEditor::imagePasteRequested, this, [this](const QImage &image) { importClipboardImage(image); });
     m_editor->send(SCI_SETMARGINWIDTHN, 0, m_appearance->preferences()->value("editor", "lineNumbers").toBool() ? token("controls", "lineNumberWidth") : 0); m_editor->send(SCI_SETMARGINTYPEN, 0, SC_MARGIN_NUMBER);
     const auto bytes = document->session()->snapshot().utf8; const int lf = int(bytes.indexOf('\n')), cr = int(bytes.indexOf('\r'));
