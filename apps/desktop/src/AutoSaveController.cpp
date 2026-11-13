@@ -22,7 +22,7 @@ void AutoSaveController::watch(FileDocument *document) {
     connect(document->session(), &DocumentSession::stateChanged, this, [this, document] { schedule(document); });
     connect(timer, &QTimer::timeout, this, [this, document] {
         if (m_stopped || !m_preferences->value("editor", "autoSaveEnabled").toBool()) return;
-        if (!document->session() || document->closed() || !document->dirty() || document->conflict() || document->hasError() || document->readOnly()) return;
+        if (document->untitled() || !document->session() || document->closed() || !document->dirty() || document->conflict() || document->hasError() || document->readOnly()) return;
         if (document->saving() || document->loading() || document->maintainingResources() || document->session()->isBusy()
             || document->session()->isComposing() || QApplication::activeModalWidget()) { schedule(document); return; }
         document->saveAutomatically();

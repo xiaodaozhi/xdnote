@@ -15,6 +15,7 @@ if(BUILD_TESTING)
     add_library(xdnote_native_preview_test_ui STATIC
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/Appearance.cpp"
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/Preferences.cpp"
+        "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/Shortcuts.cpp"
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/Preferences.h"
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/UiFonts.cpp"
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/VisualTokens.cpp"

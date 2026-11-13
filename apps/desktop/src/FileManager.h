@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QtConcurrentRun>
 #include <deque>
+#include <QTemporaryDir>
 
 namespace xdnote {
 class FileManager;
@@ -16,6 +17,7 @@ public:
     DocumentSession *session() const { return m_session; }
     QString path() const { return m_baseline->file()->path(); }
     QString identity() const { return m_baseline->file()->identity(); }
+    bool untitled() const { return m_untitled; }
     bool dirty() const { return m_session && m_session->isDirty(); }
     bool saving() const { return m_saving; }
     bool loading() const { return m_loading; }
@@ -46,6 +48,7 @@ private:
     FileManager *m_manager;
     QPointer<DocumentSession> m_session;
     std::shared_ptr<const FileBaseline> m_baseline;
+    bool m_untitled = false;
     bool m_saving = false, m_loading = false, m_conflict = false, m_error = false;
     bool m_closed = false, m_readOnly = false, m_checkPending = false, m_savedOnce = false;
     bool m_maintenance = false;
@@ -62,6 +65,7 @@ class FileManager final : public QObject {
     Q_OBJECT
 public:
     explicit FileManager(QObject *parent = nullptr, std::function<void(SaveStage)> observer = {}, bool monitoring = true);
+    void createDraft(const QByteArray &utf8, const QUuid &intent, bool bom=false);
     void open(const QString &path, const QUuid &intent = QUuid::createUuid());
     void openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &relativePath, const QUuid &intent, const QString &sourcePath = {}, const QString &sourceIdentity = {});
     QList<FileDocument *> documents() const;
@@ -99,6 +103,8 @@ private:
         });
         watcher->setFuture(QtConcurrent::run(std::move(job)));
     }
+    QHash<QUuid,QByteArray> m_draftRequests;
+    QList<std::shared_ptr<QTemporaryDir>> m_draftDirectories;
     SessionRegistry m_registry;
     QHash<QUuid, QPointer<FileDocument>> m_documents;
     QSet<QUuid> m_cancelled;

@@ -20,6 +20,7 @@
 | 原生预览 | [全局语义模型](engineering/native-preview-model.md)、[阅读控件准入](engineering/native-preview-view.md) | 只读块树、布局／交互、资源和版本边界及未完成项 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
 | 后台验证 | [无交互桌面自动化](qa/background-validation.md) | 固定离屏回归、自有样本性能、证据与真实桌面边界 |
+| 用户安装 | [开发安装维护](engineering/user-installation.md) | 清单归属、升级／卸载与打开方式，保留发行边界 |
 | 部署 | [实际依赖与诊断目录](engineering/deployment.md) | 各平台诊断入口、隔离运行、动态库闭包、Qt 模块许可输入与发行剩余项 |
 | 文件基础 | [文件读取与会话登记](engineering/file-read-baseline.md) | 原生身份、严格字节基线、请求失效与当前限制 |
 | 文件闭环 | [真实文件保存与冲突](engineering/file-save-workflow.md) | 冻结快照、替换保存、硬链接保护、冲突和关闭 |

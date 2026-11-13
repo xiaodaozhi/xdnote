@@ -147,7 +147,13 @@ QJsonObject preview(const QString &theme, const QString &evidence) {
     QString copied;
     QObject::connect(widget.view(), &NativePreviewView::copyTextRequested, &widget, [&](const QString &value) { copied = value; });
     widget.view()->selectAll(); widget.view()->copy();
-    require(copied == content->text, "native selection/copy mismatch");
+    // Task markers are presentation controls and are excluded from selection.
+    // Keep exact comparison for all literal text, including code and raw HTML.
+    auto expectedCopy = content->text;
+    require(expectedCopy.contains(QStringLiteral("☑ 已完成")) && expectedCopy.contains(QStringLiteral("☐ 待办")), "task marker fixture changed");
+    expectedCopy.replace(QStringLiteral("☑ 已完成"),QStringLiteral("已完成"));
+    expectedCopy.replace(QStringLiteral("☐ 待办"),QStringLiteral("待办"));
+    require(copied == expectedCopy, "native selection/copy mismatch");
     const auto stats = widget.view()->statistics();
     require(stats.peakCachedDocuments <= 48 && stats.peakCachedEstimatedBytes <= 8 * 1024 * 1024, "native layout cache limit");
     QJsonObject result{{"tasks", tasks}, {"codeBlocks", code}, {"tables", tables}, {"copyExact", true}, {"htmlLiteral", true},

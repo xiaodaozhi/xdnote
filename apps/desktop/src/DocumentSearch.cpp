@@ -14,14 +14,15 @@ namespace xdnote {
 TextMatches findText(const QString &text, const QString &query, bool matchCase, bool wholeWord, int limit) {
     TextMatches result;
     if (query.isEmpty() || limit < 1 || !DocumentSession::validText(query)) return result;
-    const auto word = [](QChar c) { return c.isLetterOrNumber() || c == '_' || c.isMark() || c.isSurrogate(); };
+    const auto wordAt = [&](int index) {char32_t c=text[index].unicode();if(text[index].isHighSurrogate()&&index+1<text.size())c=QChar::surrogateToUcs4(text[index],text[index+1]);return QChar::isLetterOrNumber(c)||c=='_'||QChar::isMark(c);};
+    const auto wordBefore = [&](int index) {--index;if(index>0&&text[index].isLowSurrogate()&&text[index-1].isHighSurrogate())--index;return wordAt(index);};
     int from = 0;
     while (from <= text.size()-query.size()) {
         const auto at = text.indexOf(query,from,matchCase?Qt::CaseSensitive:Qt::CaseInsensitive);
         if (at < 0) break;
         const int end = int(at+query.size());
         if (DocumentSession::utf16Boundary(text,int(at)) && DocumentSession::utf16Boundary(text,end)
-            && (!wholeWord || ((at==0 || !word(text[at-1])) && (end==text.size() || !word(text[end]))))) {
+            && (!wholeWord || ((at==0 || !wordBefore(int(at))) && (end==text.size() || !wordAt(end))))) {
             if (result.items.size() >= limit) { result.complete = false; break; }
             result.items.append({int(at),int(query.size())});
         }
@@ -49,6 +50,7 @@ void DocumentSearch::setSession(DocumentSession *session) {
 }
 void DocumentSearch::open(bool replaceMode){m_replaceRow->setVisible(replaceMode);show();refresh();m_query->setFocus(Qt::ShortcutFocusReason);m_query->selectAll();}
 void DocumentSearch::refresh(){
+    if(!isVisible()){m_matches={};m_current=-1;return;}
     m_snapshot=m_session?m_session->snapshot():DocumentSnapshot{};m_matches={};
     if(m_snapshot.result!=EditResult::Applied){m_status->setText(QStringLiteral("当前文档暂不可查找"));return;}
     m_matches=findText(decodeUtf8Literal(m_snapshot.utf8),m_query->text(),m_case->isChecked(),m_word->isChecked());

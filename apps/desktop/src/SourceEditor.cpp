@@ -1,4 +1,5 @@
 #include "SourceEditor.h"
+#include "Shortcuts.h"
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include "Utf8Text.h"
@@ -316,7 +317,7 @@ DocumentSession *SourceEditor::session() const { return m_session; }
 void SourceEditor::contextMenuEvent(QContextMenuEvent *event) {
     if (!m_session || m_session->isClosing()) return;
     SharedMenu menu(m_appearance, this); menu.setObjectName("sourceContextMenu");
-    auto add = [&](const QString &text, const QString &symbol, bool enabled, auto callback) { auto *item = menu.addAction(themedIcon(symbol, m_appearance->color("text")), text); item->setEnabled(enabled); connect(item, &QAction::triggered, this, callback); return item; };
+    auto add = [&](const QString &text, const QString &symbol, bool enabled, auto callback) { auto *item = menu.addAction(themedIcon(symbol, m_appearance->color("text")), text); item->setEnabled(enabled); if(m_appearance&&(symbol=="undo"||symbol=="redo"))bindShortcut(item,m_appearance->preferences(),symbol+"Action"); connect(item, &QAction::triggered, this, callback); return item; };
     const bool writable = !m_session->isReadOnly() && !m_session->isBusy() && !m_session->isComposing();
     add(QStringLiteral("撤销"), "undo", writable && send(SCI_CANUNDO), [this] { if (m_session) m_session->undo(); });
     add(QStringLiteral("重做"), "redo", writable && send(SCI_CANREDO), [this] { if (m_session) m_session->redo(); }); menu.addSeparator();
@@ -365,8 +366,11 @@ void SourceEditor::inputMethodEvent(QInputMethodEvent *event) {
 
 void SourceEditor::keyPressEvent(QKeyEvent *event) {
     if (!m_session || m_session->isClosing() || m_session->isBusy()) { event->ignore(); return; }
-    if (event->matches(QKeySequence::Undo)) { m_session->undo(); event->accept(); return; }
-    if (event->matches(QKeySequence::Redo)) { m_session->redo(); event->accept(); return; }
+    const auto key=QKeySequence(event->keyCombination());
+    const auto shortcuts=m_appearance?m_appearance->preferences()->section("shortcuts"):shortcutDefaults();
+    if(key==QKeySequence::fromString(shortcuts.value("undoAction").toString(),QKeySequence::PortableText)){m_session->undo();event->accept();return;}
+    if(key==QKeySequence::fromString(shortcuts.value("redoAction").toString(),QKeySequence::PortableText)){m_session->redo();event->accept();return;}
+    if(event->matches(QKeySequence::Undo)||event->matches(QKeySequence::Redo)){event->accept();return;}
     if (event->matches(QKeySequence::Paste)) {
         const auto *mime = QApplication::clipboard()->mimeData();
         if (mime && mime->hasImage() && !mime->hasText()) { emit imagePasteRequested(QApplication::clipboard()->image()); event->accept(); return; }

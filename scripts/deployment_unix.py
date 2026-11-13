@@ -154,7 +154,9 @@ def mac_stage(build, qt, destination, evidence):
     with (contents / "Info.plist").open("wb") as file:
         plistlib.dump({"CFBundleExecutable": "xdnote", "CFBundleIdentifier": "io.github.xiaodaozhi.xdnote.diagnostic",
                       "CFBundleName": "xdnote", "CFBundlePackageType": "APPL", "CFBundleVersion": "0",
-                      "LSMinimumSystemVersion": "13.0", "NSHighResolutionCapable": True}, file)
+                      "LSMinimumSystemVersion": "13.0", "NSHighResolutionCapable": True,
+                      "CFBundleDocumentTypes": [{"CFBundleTypeName": "Markdown", "CFBundleTypeRole": "Editor", "LSHandlerRank": "Alternate", "LSItemContentTypes": ["net.daringfireball.markdown"]}],
+                      "UTImportedTypeDeclarations": [{"UTTypeIdentifier": "net.daringfireball.markdown", "UTTypeDescription": "Markdown", "UTTypeConformsTo": ["public.plain-text"], "UTTypeTagSpecification": {"public.filename-extension": ["md", "markdown"], "public.mime-type": "text/markdown"}}]}, file)
     env = desktop.runtime_environment(desktop.environment(None), qt)
     # Ad-hoc integrity seals permit relocated arm64 code to execute. No identity,
     # entitlements, timestamp, notarization, disk image or release is requested.

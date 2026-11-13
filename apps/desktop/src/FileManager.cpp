@@ -1,4 +1,8 @@
 #include "FileManager.h"
+#include "Utf8Text.h"
+#include <QTemporaryDir>
+#include <QFile>
+#include <QDir>
 #include "WorkspaceResourceReader.h"
 #include <QDir>
 #include <QFileInfo>
@@ -45,6 +49,14 @@ FileManager::FileManager(QObject *parent, std::function<void(SaveStage)> observe
         for (auto document : m_documents) if (document) check(document);
     });
     if (monitoring) m_poll.start();
+}
+void FileManager::createDraft(const QByteArray &utf8,const QUuid &intent,bool bom) {
+    bool valid=false;decodeUtf8Literal(utf8,&valid);
+    if(!valid||utf8.size()>DocumentSession::AdmissionSourceLimit||m_draftDirectories.size()>=128){emit openFailed(intent,{},QStringLiteral("恢复草稿内容无效或达到本次会话上限"));return;}
+    auto directory=std::make_shared<QTemporaryDir>(QDir::tempPath()+"/xdnote-draft-XXXXXX");
+    if(!directory->isValid()){emit openFailed(intent,{},QStringLiteral("无法准备恢复副本目录"));return;}
+    QFile file(directory->filePath(QStringLiteral("恢复文档.md")));if(!file.open(QIODevice::WriteOnly)){emit openFailed(intent,{},QStringLiteral("无法创建恢复副本"));return;}if(bom&&file.write("\xef\xbb\xbf",3)!=3){emit openFailed(intent,{},QStringLiteral("无法准备恢复副本编码"));return;}file.close();
+    m_draftDirectories.append(directory);m_draftRequests[intent]=utf8;open(directory->filePath(QStringLiteral("恢复文档.md")),intent);
 }
 void FileManager::enqueue(std::function<void()> job) { m_jobs.push_back(std::move(job)); pump(); }
 void FileManager::pump() {
@@ -129,6 +141,7 @@ void FileManager::openRequest(const QString &path, const QUuid &intent, std::sha
                 const auto id = registered.session->documentId();
                 m_documents.insert(id, document);
                 connect(document, &QObject::destroyed, this, [this, id] { m_documents.remove(id); emit documentsChanged(); });
+                if(m_draftRequests.contains(intent)){document->m_untitled=true;const auto content=m_draftRequests.take(intent);document->session()->replace(0,0,decodeUtf8Literal(content),document->session()->revision());}
                 emit documentsChanged();
                 emit opened(intent, document, false);
                 finish();
@@ -139,6 +152,7 @@ void FileManager::openRequest(const QString &path, const QUuid &intent, std::sha
 
 bool FileManager::save(FileDocument *document, const QString &path, bool saveAs) {
     if (!document || document->closed() || document->saving() || document->loading() || !document->session()) return false;
+    if(document->untitled()&&!saveAs)return false;
     const bool original = !saveAs && path == document->path();
     if (original && document->conflict()) {
         document->m_message = QStringLiteral("磁盘版本已变化，请选择保留编辑、重新载入或另存为");
@@ -204,7 +218,7 @@ void FileManager::performSave(QPointer<FileDocument> document, DocumentSnapshot 
         document->m_saving = false;
         if (result.status == SaveStatus::Committed && result.baseline
             && m_registry.rebind(document->session(), result.baseline) == RegistryResult::Reused) {
-            document->m_baseline = result.baseline;
+            document->m_untitled = false; document->m_baseline = result.baseline;
             document->m_savedOnce = true; document->m_conflict = false; document->m_error = false; document->m_message.clear();
             document->session()->confirmSaved(snapshot);
             document->permissions();

@@ -1,4 +1,5 @@
 #include "Preferences.h"
+#include "Shortcuts.h"
 #include "VisualTokens.h"
 #include <QDir>
 #include <QFile>
@@ -6,6 +7,7 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <cmath>
+#include <algorithm>
 
 namespace xdnote {
 namespace {
@@ -28,6 +30,7 @@ Preferences::Preferences(QObject *parent, QString path) : QObject(parent), m_pat
             {"autoSave", QJsonObject{{"enabled", false}, {"delayMs", 1500}}}}},
         {"reader", QJsonObject{{"fontFamily", ""}, {"fontSize", reader["size"]}, {"lineHeight", reader["lineHeight"]},
             {"maxWidth", reader["maxContentWidth"]}}}, {"files", QJsonObject{{"confirmUnsavedClose", true}}}};
+    m_defaults["shortcuts"]=shortcutDefaults();
     m_values = m_defaults;
     if (m_path.isEmpty() || !QFileInfo::exists(m_path)) return;
     QFile file(m_path);
@@ -39,7 +42,7 @@ Preferences::Preferences(QObject *parent, QString path) : QObject(parent), m_pat
         m_valid = false; m_error = QStringLiteral("设置格式无效或版本不支持，原配置已保留"); return;
     }
     m_values = document.object();
-    bool fallback = false;
+    bool fallback = false;QString shortcutWarning;
     for (auto section = m_defaults.begin(); section != m_defaults.end(); ++section) {
         if (!section.value().isObject()) continue;
         // Non-const operator[] inserts a null entry for a missing key. Read
@@ -68,7 +71,13 @@ Preferences::Preferences(QObject *parent, QString path) : QObject(parent), m_pat
         }
         m_values[section.key()] = loaded;
     }
-    if (fallback) m_error = QStringLiteral("部分设置值无效，已使用默认值；原配置保留至下一次成功保存。");
+    if(!distinctShortcuts(m_values.value("shortcuts").toObject())){
+        auto loaded=m_values.value("shortcuts").toObject();const auto supplied=document.object().value("shortcuts").toObject();QJsonObject accepted=shortcutDefaults();for(const auto &command:commandShortcuts())accepted[command.id]="";
+        auto commands=commandShortcuts();std::stable_sort(commands.begin(),commands.end(),[&](const auto &left,const auto &right){return supplied.contains(left.id)&&!supplied.contains(right.id);});
+        for(const auto &command:commands){auto trial=accepted;trial[command.id]=loaded.value(command.id);if(distinctShortcuts(trial))accepted=trial;else if(supplied.contains(command.id))fallback=true;else shortcutWarning=QStringLiteral("新增命令的默认快捷键与已有自定义绑定冲突，已暂时禁用新增绑定；原自定义设置保留。");}
+        for(const auto &command:commands)loaded[command.id]=accepted.value(command.id);m_values["shortcuts"]=loaded;
+    }
+    if (fallback) m_error = QStringLiteral("部分设置值无效，已使用默认值；原配置保留至下一次成功保存。");else m_error=shortcutWarning;
 }
 QJsonValue Preferences::value(const QString &section, const QString &key) const {
     if (section == "editor" && (key == "autoSaveEnabled" || key == "autoSaveDelayMs")) return m_values[section].toObject()["autoSave"].toObject()[key == "autoSaveEnabled" ? "enabled" : "delayMs"];
@@ -78,6 +87,7 @@ bool Preferences::valid(const QString &section, const QString &key, const QJsonV
     const auto number = [&](double minimum, double maximum, bool integer = false) {
         const double n = value.toDouble(-1); return value.isDouble() && std::isfinite(n) && n >= minimum && n <= maximum && (!integer || std::floor(n) == n);
     };
+    if(section=="shortcuts")return shortcutDefaults().contains(key)&&value.isString()&&validShortcut(value.toString());
     if (section == "appearance") {
         if (key == "theme") return value.isString() && QStringList{"system", "light", "dark"}.contains(value.toString());
         if (key == "accent") return value.isString() && visualTokens()["accents"].toObject().contains(value.toString());
@@ -123,6 +133,7 @@ bool Preferences::setValues(const QString &section, const QJsonObject &patch) {
         }
         changed |= values[field.key()] != field.value(); values[field.key()] = field.value();
     }
+    if(section=="shortcuts"&&!distinctShortcuts(values))return fail(QStringLiteral("快捷键与其他命令相同或存在前缀冲突，本次更改未生效"));
     if (!changed) return true;
     next[section] = values; next["schemaVersion"] = 1;
     if (!m_path.isEmpty()) {

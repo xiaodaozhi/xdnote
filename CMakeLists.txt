@@ -99,6 +99,9 @@ if(UNIX)
 endif()
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/SystemIntegration.cpp apps/desktop/src/SystemIntegration.h
+    apps/desktop/src/Shortcuts.cpp apps/desktop/src/Shortcuts.h
+    apps/desktop/src/RecoveryStore.cpp apps/desktop/src/RecoveryStore.h
     apps/desktop/src/DocumentSearch.cpp apps/desktop/src/DocumentSearch.h
     apps/desktop/src/WorkspaceSearch.cpp apps/desktop/src/WorkspaceSearch.h
     apps/desktop/src/DocumentExport.cpp apps/desktop/src/DocumentExport.h

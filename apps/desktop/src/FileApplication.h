@@ -4,11 +4,13 @@
 #include "WindowGeometry.h"
 #include "NavigationStore.h"
 #include <QSet>
+#include <QJsonArray>
 namespace xdnote {
 class SingleFileWindow;
 class WorkspaceWindow;
 class SettingsWindow;
 class AutoSaveController;
+class RecoveryStore;
 class FileApplication final : public QObject {
     Q_OBJECT
 public:
@@ -33,6 +35,16 @@ private:
     void chooseDirectory(WorkspaceWindow *owner);
     void retryTransfers();
     void advanceQuit();
+    void captureRecovery();
+    void restoreSession();
+    void applyRestoredState(SingleFileWindow *pane,const QJsonObject &entry);
+    RecoveryStore *m_recovery = nullptr;
+    QTimer m_recoveryTimer;
+    QHash<QString,QJsonObject> m_unrestored,m_liveRecovery;
+    QHash<QUuid,QJsonObject> m_restoreRequests;
+    QJsonArray m_lastSession;
+    QStringList m_recoveryOrder;
+    bool m_restoring = false;
     void openDocumentLink(SingleFileWindow *source, const QString &target, quint64 revision);
     struct LinkNavigation {
         QPointer<SingleFileWindow> source;

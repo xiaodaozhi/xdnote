@@ -1,5 +1,6 @@
 #include "SingleFileWindow.h"
 #include "DocumentSearch.h"
+#include "Shortcuts.h"
 #include "DocumentBreadcrumb.h"
 #include <algorithm>
 #include <QCryptographicHash>
@@ -224,14 +225,14 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     m_menu = new SharedMenu(m_appearance, more); m_menu->setObjectName("documentMenu"); m_menu->setTitle(QStringLiteral("文档操作"));
     auto action = [this](const QString &text, const QString &name, QKeySequence shortcut, auto callback) {
         auto *item = m_menu->addAction(text); item->setObjectName(name); if (!shortcut.isEmpty()) item->setShortcut(shortcut);
-        item->setShortcutContext(Qt::WindowShortcut); addAction(item); connect(item, &QAction::triggered, InputModality::forApplication(), &InputModality::clear);
+        bindShortcut(item,m_appearance->preferences(),name);item->setShortcutContext(Qt::WindowShortcut); addAction(item); connect(item, &QAction::triggered, InputModality::forApplication(), &InputModality::clear);
         connect(item, &QAction::triggered, this, callback); return item;
     };
     pathMenu->setParent(m_menu, pathMenu->windowFlags()); m_menu->addMenu(pathMenu);
     action(QStringLiteral("打开工作区…"), "openWorkspaceAction", {}, [this] { emit openDirectoryRequested(); });
     action(QStringLiteral("在工作区打开"), "transferWorkspaceAction", {}, [this] { emit workspaceRequested(); });
     action(QStringLiteral("打开…"), "openAction", QKeySequence::Open, [this] { chooseOpen(); });
-    m_saveAction = action(QStringLiteral("保存"), "saveAction", QKeySequence::Save, [this] { if (m_document && !m_document->save() && m_document->conflict()) resolveConflict(); });
+    m_saveAction = action(QStringLiteral("保存"), "saveAction", QKeySequence::Save, [this] { if(m_document&&m_document->untitled()){chooseSaveAs();return;} if (m_document && !m_document->save() && m_document->conflict()) resolveConflict(); });
     m_saveAsAction = action(QStringLiteral("另存为…"), "saveAsAction", QKeySequence::SaveAs, [this] { chooseSaveAs(); });
     m_reloadAction = action(QStringLiteral("重新载入磁盘版本…"), "reloadAction", {}, [this] { reloadDisk(); });
     action(QStringLiteral("查找…"), "findAction", QKeySequence::Find, [this] { if(m_document)m_find->open(); });
@@ -421,7 +422,7 @@ SingleFileWindow::~SingleFileWindow() {
     if (m_preview) disconnect(m_preview, nullptr, this, nullptr);
     if (m_footer && m_footer->parentWidget() != this) delete m_footer;
 }
-QString SingleFileWindow::displayPath() const { return m_document ? m_document->path() : m_openPath; }
+QString SingleFileWindow::displayPath() const { return m_document ? m_document->untitled()?QStringLiteral("恢复文档.md"):m_document->path() : m_openPath; }
 bool SingleFileWindow::canTransfer() const { return !m_imageImportPending && !m_prompting && !m_saveErrorDialog && m_document && !m_document->closed() && !m_document->saving() && !m_document->loading() && !m_document->session()->isBusy() && !m_document->session()->isComposing() && (!m_editor || !m_editor->dispatching()); }
 bool SingleFileWindow::embedIn(QWidget *parent) {
     if (!parent || m_embedded || (m_document && !canTransfer())) return false;
@@ -513,7 +514,7 @@ void SingleFileWindow::setWorkspaceRoot(const QString &root) { m_workspaceRoot =
 void SingleFileWindow::reportHostMessage(const QString &message) { m_hostMessage = message; m_dismissedNotice.clear(); updateState(); }
 void SingleFileWindow::setEditing(bool editing) { setViewMode(editing ? ViewMode::Source : ViewMode::Reading); }
 void SingleFileWindow::setViewMode(ViewMode mode) {
-    if (!m_document || (!m_embedded && mode == ViewMode::Split) || (mode == ViewMode::Source && m_document->readOnly())) { updateState(); return; }
+    if (!m_document || (!m_embedded && mode == ViewMode::Split)) { updateState(); return; }
     const bool fromReading = m_mode == ViewMode::Reading;
     m_mode = mode; m_editing = mode != ViewMode::Reading;
     if (m_scrollSync) m_scrollSync->setEnabled(mode == ViewMode::Split, fromReading);
@@ -558,7 +559,7 @@ void SingleFileWindow::updateState() {
     m_pathButton->setEnabled(ready); m_zoomButton->setEnabled(ready); m_save->setEnabled(ready && !busy && (m_document->dirty() || m_document->conflict()) && (!m_document->readOnly() || m_document->conflict()));
     m_save->setProperty("primary", m_editing && ready && m_document->dirty()); m_save->setText(busy ? QStringLiteral("处理中…") : QStringLiteral("保存")); static_cast<SharedButton *>(m_save)->setBusy(busy); m_save->update();
     m_saveSpinner->setVisible(busy); m_saveSpinner->setRunning(busy); m_statusIcon->setVisible(!busy);
-    m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy);
+    m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy && !m_document->untitled());
     m_imageImportAction->setEnabled(ready && m_editing && resourceRoot() && !m_document->readOnly() && !busy && !m_imageImportPending);
     m_linkInsertAction->setEnabled(ready && m_editing && m_embedded && m_workspaceResourceRoot && !m_document->readOnly() && !busy && !m_linkInsertPending);
     m_openLinkAction->setEnabled(ready && m_editing && !busy);
@@ -578,7 +579,7 @@ void SingleFileWindow::updateState() {
         m_notice->setText(notice); m_banner->setVisible(!notice.isEmpty()); m_resolve->hide(); m_retry->hide(); m_later->hide(); return;
     }
     m_header->setTitle(QFileInfo(m_document->path()).fileName(), m_document->dirty()); setWindowTitle(QFileInfo(m_document->path()).fileName() + QStringLiteral("[*] — xdnote")); setWindowModified(m_document->dirty());
-    m_path->setFullText(QFileInfo(m_document->path()).path()); m_status->setFullText(m_document->statusText()); m_encoding->setText(m_document->bom() ? "UTF-8 BOM" : "UTF-8");
+    m_path->setFullText(m_document->untitled()?QStringLiteral("恢复副本 · 请另存为"):QFileInfo(m_document->path()).path()); m_status->setFullText(m_document->statusText()); m_encoding->setText(m_document->bom() ? "UTF-8 BOM" : "UTF-8");
     const bool warning = m_document->dirty() || m_document->conflict(); const bool error = m_document->hasError();
     const auto statusColor = busy || (m_document->readOnly() && !error && !warning) ? m_appearance->color("textSecondary") : m_appearance->semantic(error ? "error" : warning ? "warning" : "success");
     m_statusIcon->setProperty("semanticColor", statusColor.name());
@@ -609,7 +610,7 @@ void SingleFileWindow::chooseOpen() {
 }
 void SingleFileWindow::chooseSaveAs() {
     if (!m_document || m_document->saving() || m_document->loading()) return;
-    const auto path = QFileDialog::getSaveFileName(window(), QStringLiteral("另存为"), m_document->path(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)"));
+    const auto path = QFileDialog::getSaveFileName(window(), QStringLiteral("另存为"), m_document->untitled()?QDir::home().filePath(QStringLiteral("恢复文档.md")):m_document->path(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)"));
     InputModality::forApplication()->clear(); if (!path.isEmpty()) m_document->saveAs(path);
 }
 void SingleFileWindow::showSaveError() {
@@ -785,6 +786,7 @@ void SingleFileWindow::importImageFile(const QString &path, const QString &desti
 void SingleFileWindow::importClipboardImage(const QImage &image, const QString &destinationDirectory) { beginImageImport({}, image, destinationDirectory); }
 
 void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage &bitmap, const QString &destinationDirectory) {
+    if(m_document&&m_document->untitled()){const auto message=QStringLiteral("请先将恢复副本另存为，再导入图片。");reportHostMessage(message);emit imageImportFinished(false,message);return;}
     auto reject = [this](const QString &message) { reportHostMessage(message); emit imageImportFinished(false, message); };
     if (m_imageImportPending) { reject(QStringLiteral("图片正在导入，请等待完成。")); return; }
     if (!m_document || !m_editor || !m_editing || !resourceRoot()) {
@@ -904,7 +906,7 @@ void SingleFileWindow::closeEvent(QCloseEvent *event) {
         m_prompting = false;
         if (choice == 0 || !m_document || (choice == 2 && m_document->session()->revision() != revision)) { emit closeCancelled(); event->ignore(); return; }
         if (choice == 1) {
-            m_closeAfterOperation = true; if (!m_document->save()) { m_closeAfterOperation = false; emit closeCancelled(); if (m_document->conflict()) resolveConflict(); }
+            m_closeAfterOperation = true; if(m_document->untitled()){chooseSaveAs();if(!m_document->saving()){m_closeAfterOperation=false;emit closeCancelled();}} else if (!m_document->save()) { m_closeAfterOperation = false; emit closeCancelled(); if (m_document->conflict()) resolveConflict(); }
             event->ignore(); return;
         }
     }

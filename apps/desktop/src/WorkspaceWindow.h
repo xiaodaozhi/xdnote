@@ -62,6 +62,7 @@ protected:
     bool eventFilter(QObject *, QEvent *) override;
 private:
     WorkspaceSearch *m_fullSearch = nullptr;
+    bool m_fullSearchWanted = false;
     void installTabClose(int index, const QUuid &id);
     void refreshPane(const QUuid &id);
     void selectCurrent();
