@@ -33,7 +33,7 @@ bool RecoveryStore::validate(const QJsonObject &state){
 RecoveryStore::RecoveryStore(QString path,QObject *parent):QObject(parent),m_path(std::move(path)){
     m_state={{"schemaVersion",1},{"documents",QJsonArray{}},{"drafts",QJsonArray{}}};
     if(!m_path.isEmpty()&&QFileInfo::exists(m_path)){QFile file(m_path);if(QFileInfo(m_path).isSymLink()||!file.open(QIODevice::ReadOnly)||file.size()>limit){m_valid=false;m_error=QStringLiteral("恢复记录不可读，原记录已保留");}else{const auto parsed=QJsonDocument::fromJson(file.readAll());if(!parsed.isObject()||!validate(parsed.object())){m_valid=false;m_error=QStringLiteral("恢复记录损坏或版本不支持，原记录已保留");}else m_state=parsed.object();}}
-    connect(&m_writer,&QFutureWatcher<QString>::finished,this,[this]{m_active=false;const auto error=m_writer.result();m_error=error;if(!error.isEmpty()){emit failed(error);}if(!m_pending.isEmpty())startWrite();});
+    connect(&m_writer,&QFutureWatcher<QString>::finished,this,[this]{m_active=false;const auto error=m_writer.result();m_error=error;if(!error.isEmpty())emit failed(error);else emit persisted();if(!m_pending.isEmpty())startWrite();});
 }
 RecoveryStore::~RecoveryStore(){flush();}
 void RecoveryStore::save(QJsonObject state){

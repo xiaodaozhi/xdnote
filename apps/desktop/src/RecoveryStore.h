@@ -16,6 +16,7 @@ public:
     static bool validate(const QJsonObject &state);
 signals:
     void failed(QString message);
+    void persisted();
 private:
     void startWrite();
     QString m_path,m_error;

@@ -44,6 +44,7 @@ public:
     QWidget *footer() const { return m_footer; }
     void activateDocument();
     void reportHostMessage(const QString &message);
+    void clearHostMessage(const QString &expected);
     ViewMode viewMode() const { return m_mode; }
     void setViewMode(ViewMode mode);
     void setFocusMode(bool enabled);

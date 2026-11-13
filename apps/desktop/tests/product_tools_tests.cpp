@@ -18,6 +18,7 @@
 #include <QKeyEvent>
 #include <QTimer>
 #include <QDialog>
+#include <QLabel>
 #include <QApplication>
 #include <QTemporaryDir>
 #include <QFile>
@@ -29,6 +30,16 @@ using namespace xdnote;
 class ProductToolsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void failedSessionRestoreCanRetryAfterTheFileReturns(){
+        QTemporaryDir dir;const auto path=dir.filePath("missing.md"),settings=dir.filePath("settings.json");const QJsonObject entry{{"id",QUuid::createUuid().toString()},{"path",path},{"root",QString()}};{RecoveryStore store(settings+".recovery");store.save({{"schemaVersion",1},{"documents",QJsonArray{entry}},{"drafts",QJsonArray{}}});QVERIFY(store.flush());}
+        FileApplication app(nullptr,settings);auto *workspace=app.workspaceWindow();auto *restore=workspace->findChild<QPushButton*>("restoreLastSession");QVERIFY(restore);restore->click();QTRY_VERIFY(restore->isEnabled());QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write("returned");file.close();restore->click();QTRY_VERIFY(!restore->isVisible());
+    }
+    void recoveryWriteFailureIsObservableAndCanRetry(){
+        QTemporaryDir dir;const auto blocker=dir.filePath("blocked"),path=blocker+"/state.json";RecoveryStore store(path);QFile file(blocker);QVERIFY(file.open(QIODevice::WriteOnly));file.write("blocker");file.close();QSignalSpy failed(&store,&RecoveryStore::failed),persisted(&store,&RecoveryStore::persisted);const QJsonObject state{{"schemaVersion",1},{"documents",QJsonArray{}},{"drafts",QJsonArray{}}};store.save(state);QTRY_COMPARE(failed.size(),1);QVERIFY(!store.error().isEmpty());QVERIFY(QFile::remove(blocker));store.save(state);QTRY_COMPARE(persisted.size(),1);QVERIFY(store.error().isEmpty());
+    }
+    void standaloneReportsCorruptRecoveryWithoutResettingIt(){
+        QTemporaryDir dir;const auto settings=dir.filePath("settings.json"),source=dir.filePath("source.md");QFile recovery(settings+".recovery");QVERIFY(recovery.open(QIODevice::WriteOnly));recovery.write("broken");recovery.close();QFile file(source);QVERIFY(file.open(QIODevice::WriteOnly));file.write("source");file.close();{FileApplication app(nullptr,settings);auto *pane=app.emptyWindow();app.open(source,pane);QTRY_VERIFY(pane->document());bool shown=false;for(auto *label:pane->findChildren<QLabel*>())if(label->text().contains(QStringLiteral("恢复记录")))shown=true;QVERIFY(shown);}QVERIFY(recovery.open(QIODevice::ReadOnly));QCOMPARE(recovery.readAll(),QByteArray("broken"));
+    }
     void explicitDiscardRemovesRecoveryDraftButRetainsLastFile(){
         QTemporaryDir dir;const auto original=dir.filePath("original.md"),settings=dir.filePath("settings.json");QFile file(original);QVERIFY(file.open(QIODevice::WriteOnly));file.write("disk");file.close();
         {FileApplication app(nullptr,settings);auto *workspace=app.workspaceWindow(dir.path());app.openInWorkspace(original,workspace);QTRY_VERIFY(workspace->activePane()&&workspace->activePane()->document());auto *pane=workspace->activePane();auto *session=pane->document()->session();QCOMPARE(session->replace(0,4,"discarded edit",session->revision()),EditResult::Applied);QTimer::singleShot(0,workspace,[]{auto *dialog=QApplication::activeModalWidget();if(dialog)if(auto *discard=dialog->findChild<QPushButton*>("choice2"))discard->click();});pane->close();QTRY_VERIFY(workspace->panes().isEmpty());}

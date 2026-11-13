@@ -37,6 +37,7 @@ private:
     void advanceQuit();
     void captureRecovery();
     void restoreSession();
+    void refreshRecoveryActions();
     void applyRestoredState(SingleFileWindow *pane,const QJsonObject &entry);
     RecoveryStore *m_recovery = nullptr;
     QTimer m_recoveryTimer;
@@ -45,6 +46,7 @@ private:
     QJsonArray m_lastSession;
     QStringList m_recoveryOrder;
     bool m_restoring = false;
+    QString m_recoveryError;
     void openDocumentLink(SingleFileWindow *source, const QString &target, quint64 revision);
     struct LinkNavigation {
         QPointer<SingleFileWindow> source;

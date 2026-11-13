@@ -41,8 +41,10 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
     const auto stored=m_recovery->state();m_lastSession=stored["documents"].toArray();
     for(const auto &value:m_lastSession){const auto item=value.toObject();m_unrestored[item["id"].toString()]=item;if(!m_recoveryOrder.contains(item["id"].toString()))m_recoveryOrder.append(item["id"].toString());}
     for(const auto &value:stored["drafts"].toArray()){const auto item=value.toObject();m_unrestored[item["id"].toString()]=item;if(!m_recoveryOrder.contains(item["id"].toString()))m_recoveryOrder.append(item["id"].toString());}
+    for(auto it=m_unrestored.begin();it!=m_unrestored.end();)if(it->value("path").toString().isEmpty()&&!it->contains("content"))it=m_unrestored.erase(it);else ++it;
     m_recoveryTimer.setInterval(2000);connect(&m_recoveryTimer,&QTimer::timeout,this,&FileApplication::captureRecovery);if(!settingsPath.isEmpty())m_recoveryTimer.start();
-    connect(m_recovery,&RecoveryStore::failed,this,[this](const QString &message){for(auto *w:m_workspaces)w->showNotice(message);});
+    connect(m_recovery,&RecoveryStore::failed,this,[this](const QString &message){if(m_recoveryError==message)return;m_recoveryError=message;for(auto *w:m_workspaces)w->showNotice(message);for(auto *pane:m_windows)if(pane->isWindow())pane->reportHostMessage(message);});
+    connect(m_recovery,&RecoveryStore::persisted,this,[this]{if(m_recoveryError.isEmpty())return;for(auto *workspace:m_workspaces)if(auto *notice=workspace->findChild<QLabel*>("workspaceNotice"))if(notice->text()==m_recoveryError)workspace->showNotice({});for(auto *pane:m_windows)pane->clearHostMessage(m_recoveryError);m_recoveryError.clear();});
     connect(&m_manager,&FileManager::documentsChanged,this,[this]{if(!m_destroying)QTimer::singleShot(0,this,&FileApplication::captureRecovery);});
     m_autoSave = new AutoSaveController(&m_manager, m_appearance.preferences(), this);
     connect(&m_manager, &FileManager::resourcesChanged, this, [this] {
@@ -62,10 +64,10 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
         if (workspaceRequested && (!workspace || workspace->closingWorkspace())) { if (!reused) m_manager.closeDocument(document); placeholder->finishOpen(); placeholder->close(); return; }
         if(!document->untitled())m_navigation.recordOpen(document->path());
         const auto id = document->session()->documentId(); auto pane = m_documents.value(id);
-        if (pane) { if(m_restoreRequests.contains(intent)){const auto entry=m_restoreRequests.take(intent);m_unrestored.remove(entry["id"].toString());applyRestoredState(pane,entry);} placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); if (navigation.hasFragment) pane->navigateToHeading(navigation.fragment); if (navigation.sourceLocation) pane->navigateToReference(navigation.locationIdentity, navigation.sourceSha256, navigation.locationStart, navigation.locationEnd); return; }
+        if (pane) { if(m_restoreRequests.contains(intent)){const auto entry=m_restoreRequests.take(intent);m_unrestored.remove(entry["id"].toString());applyRestoredState(pane,entry);refreshRecoveryActions();} placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); if (navigation.hasFragment) pane->navigateToHeading(navigation.fragment); if (navigation.sourceLocation) pane->navigateToReference(navigation.locationIdentity, navigation.sourceSha256, navigation.locationStart, navigation.locationEnd); return; }
         if (workspaceRequested && !workspace->addPane(placeholder)) { if (!reused) m_manager.closeDocument(document); placeholder->finishOpen(); placeholder->close(); workspace->showNotice(QStringLiteral("无法准备文档标签，原有文档保持不变。")); return; }
         m_documents.insert(id, placeholder); placeholder->setDocument(document);
-        if(m_restoreRequests.contains(intent)){const auto entry=m_restoreRequests.take(intent);m_unrestored.remove(entry["id"].toString());applyRestoredState(placeholder,entry);}
+        if(m_restoreRequests.contains(intent)){const auto entry=m_restoreRequests.take(intent);m_unrestored.remove(entry["id"].toString());applyRestoredState(placeholder,entry);refreshRecoveryActions();}
         connect(placeholder, &QObject::destroyed, this, [this, id] { m_documents.remove(id); });
         connect(document, &FileDocument::stateChanged, this, [this, document, path = document->path()]() mutable { if (path != document->path()) { path = document->path(); m_navigation.recordOpen(path); } QTimer::singleShot(0, this, &FileApplication::retryTransfers); });
         connect(document->session(), &DocumentSession::stateChanged, this, [this] { QTimer::singleShot(0, this, &FileApplication::retryTransfers); }); activatePane(placeholder);
@@ -73,7 +75,7 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
         if (navigation.sourceLocation) placeholder->navigateToReference(navigation.locationIdentity, navigation.sourceSha256, navigation.locationStart, navigation.locationEnd);
     });
     connect(&m_manager, &FileManager::openFailed, this, [this](QUuid intent, const QString &path, const QString &message) {
-        m_restoreRequests.remove(intent);
+        m_restoreRequests.remove(intent);refreshRecoveryActions();
         auto pane = m_requests.take(intent); const auto navigation = m_linkNavigations.take(intent);
         const bool workspaceRequested = m_workspaceRequests.contains(intent); const auto workspace = m_workspaceRequests.take(intent);
         if (navigation.root) {
@@ -95,7 +97,7 @@ FileApplication::~FileApplication() {
     for (auto pane : panes) if (pane) delete pane;
 }
 SingleFileWindow *FileApplication::createWindow() {
-    auto *pane = new SingleFileWindow(&m_manager, &m_appearance, &m_geometryStore); m_windows.insert(pane);
+    auto *pane = new SingleFileWindow(&m_manager, &m_appearance, &m_geometryStore); m_windows.insert(pane);if(!m_recovery->error().isEmpty())pane->reportHostMessage(m_recovery->error());
     connect(pane, &SingleFileWindow::copyPathRequested, this, [](const QString &path) { QGuiApplication::clipboard()->setText(path); });
     connect(pane, &SingleFileWindow::copyTextRequested, this, [](const QString &text) { QGuiApplication::clipboard()->setText(text); });
     connect(pane, &SingleFileWindow::revealRequested, this, [](const QString &path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
@@ -103,7 +105,7 @@ SingleFileWindow *FileApplication::createWindow() {
     connect(pane, &SingleFileWindow::workspaceRequested, this, [this, pane] { transferToWorkspace(pane); });
     connect(pane, &SingleFileWindow::settingsRequested, this, [this] { settingsWindow(); });
     connect(pane, &SingleFileWindow::openDirectoryRequested, this, [this, pane] { chooseDirectory(qobject_cast<WorkspaceWindow *>(pane->window())); });
-    connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_linkNavigations.remove(intent); m_workspaceRequests.remove(intent); m_manager.cancelOpen(intent); });
+    connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_linkNavigations.remove(intent); m_workspaceRequests.remove(intent);m_restoreRequests.remove(intent);refreshRecoveryActions(); m_manager.cancelOpen(intent); });
     connect(pane, &SingleFileWindow::documentLinkRequested, this, [this, pane](const QString &target, quint64 revision) { openDocumentLink(pane, target, revision); });
     connect(pane, &SingleFileWindow::quitRequested, this, &FileApplication::requestQuit); connect(pane, &SingleFileWindow::closeCancelled, this, [this] { m_quitting = false; });
     connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
@@ -154,7 +156,7 @@ void FileApplication::openExternal(const QString &path) {
 void FileApplication::open(const QString &path, SingleFileWindow *empty) {
     m_quitting = false; if (empty && empty->embedded()) { openInWorkspace(path, qobject_cast<WorkspaceWindow *>(empty->window())); return; }
     auto *pane = empty && !empty->document() ? empty : createWindow();
-    for (auto it = m_requests.begin(); it != m_requests.end();) { if (it.value() == pane) { m_manager.cancelOpen(it.key()); it = m_requests.erase(it); } else ++it; }
+    for (auto it = m_requests.begin(); it != m_requests.end();) { if (it.value() == pane) { m_restoreRequests.remove(it.key());refreshRecoveryActions();m_manager.cancelOpen(it.key()); it = m_requests.erase(it); } else ++it; }
     const auto intent = QUuid::createUuid(); m_requests.insert(intent, pane); pane->setLoading(path, intent); pane->show(); m_manager.open(path, intent);
 }
 void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *workspace) {
@@ -169,7 +171,7 @@ void FileApplication::trackWorkspaceRequest(const QUuid &intent, SingleFileWindo
     connect(workspace, &QObject::destroyed, pane, [this, pane, intent] {
         // The unshown request belongs to its destination, even before it is a tab.
         if (!m_workspaceRequests.remove(intent)) return;
-        m_requests.remove(intent); m_linkNavigations.remove(intent); m_manager.cancelOpen(intent); pane->finishOpen(); pane->close();
+        m_requests.remove(intent); m_linkNavigations.remove(intent);m_restoreRequests.remove(intent);refreshRecoveryActions(); m_manager.cancelOpen(intent); pane->finishOpen(); pane->close();
     });
 }
 bool FileApplication::validLinkSource(const LinkNavigation &navigation) const {
@@ -259,6 +261,7 @@ void FileApplication::captureRecovery(){
     for(auto it=m_liveRecovery.begin();it!=m_liveRecovery.end();)if(!live.contains(it.key()))it=m_liveRecovery.erase(it);else ++it;
     for(const auto &item:m_unrestored){if(item.contains("content"))drafts.append(item);current.append(item);}
     if(!current.isEmpty()&&!m_quitting){m_lastSession={};for(const auto &value:current){auto item=value.toObject();item.remove("content");m_lastSession.append(item);}}
+    QSet<QString> draftIds;for(const auto &value:drafts)draftIds.insert(value.toObject()["id"].toString());QJsonArray retained;for(const auto &value:m_lastSession){const auto entry=value.toObject();if(!entry["path"].toString().isEmpty()||draftIds.contains(entry["id"].toString()))retained.append(value);}m_lastSession=retained;
     m_recovery->save({{"schemaVersion",1},{"documents",m_lastSession},{"drafts",drafts}});
 }
 void FileApplication::applyRestoredState(SingleFileWindow *pane,const QJsonObject &entry){
@@ -272,6 +275,10 @@ void FileApplication::restoreSession(){
     for(const auto &id:m_recoveryOrder){if(!entries.contains(id))continue;const auto entry=entries.value(id);auto *workspace=entry["root"].toString().isEmpty()?nullptr:workspaceWindow(entry["root"].toString());auto *pane=createWindow();const auto intent=QUuid::createUuid();m_requests[intent]=pane;m_restoreRequests[intent]=entry;pane->setLoading(entry["path"].toString(),intent);if(workspace)trackWorkspaceRequest(intent,pane,workspace);else pane->show();
         if(entry.contains("content"))m_manager.createDraft(QByteArray::fromBase64(entry["content"].toString().toLatin1()),intent,entry["bom"].toBool());else if(!entry["path"].toString().isEmpty())m_manager.open(entry["path"].toString(),intent);else{m_requests.remove(intent);m_restoreRequests.remove(intent);pane->finishOpen();pane->close();}
     }
+    refreshRecoveryActions();
+}
+void FileApplication::refreshRecoveryActions(){
+    QTimer::singleShot(0,this,[this]{if(m_destroying)return;m_restoring=!m_restoreRequests.isEmpty();for(auto *workspace:m_workspaces)if(auto *button=workspace->findChild<SharedButton*>("restoreLastSession")){button->setEnabled(!m_restoring&&!m_unrestored.isEmpty());button->setVisible(m_restoring||!m_unrestored.isEmpty());button->setText(m_restoring?QStringLiteral("正在恢复会话…"):QStringLiteral("恢复上次会话（%1 项）").arg(m_unrestored.size()));}});
 }
 
 }

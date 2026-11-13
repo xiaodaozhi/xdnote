@@ -511,6 +511,7 @@ void SingleFileWindow::syncPreviewResources() {
 }
 void SingleFileWindow::activateDocument() { if (m_document) { m_dismissedNotice.clear(); m_document->checkExternal(); } if (m_editing && m_editor) m_editor->setFocus(Qt::OtherFocusReason); }
 void SingleFileWindow::setWorkspaceRoot(const QString &root) { m_workspaceRoot = root; m_breadcrumb->setDocumentPath(displayPath(), root); }
+void SingleFileWindow::clearHostMessage(const QString &expected){if(m_hostMessage==expected)reportHostMessage({});}
 void SingleFileWindow::reportHostMessage(const QString &message) { m_hostMessage = message; m_dismissedNotice.clear(); updateState(); }
 void SingleFileWindow::setEditing(bool editing) { setViewMode(editing ? ViewMode::Source : ViewMode::Reading); }
 void SingleFileWindow::setViewMode(ViewMode mode) {
