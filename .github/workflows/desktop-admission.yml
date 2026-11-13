@@ -98,6 +98,9 @@ jobs:
           xdnote_qt_arch=gcc_64
           if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
           python scripts/deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
+      - name: Validate installed developer payload without registration
+        if: startsWith(inputs.scope, 'deployment-')
+        run: python scripts/validate_user_install.py --build-dir build/desktop-admission --payload build/cycle-112-deployment/staging --destination build/cycle-112-deployment/installed-check
       - name: Test document tools, recovery and shortcuts on Unix
         if: startsWith(inputs.scope, 'tools-')
         run: python scripts/desktop.py test --suite tools
@@ -174,6 +177,7 @@ jobs:
             build/desktop-*/native-toolchain.json
             build/desktop-*/evidence/
             build/cycle-112-deployment/staging-evidence/
+            build/cycle-112-deployment/installed-check-evidence/
           if-no-files-found: ignore
           retention-days: 7
 

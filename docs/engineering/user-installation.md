@@ -18,3 +18,7 @@ Windows 的 `--register` 只写当前用户的 ProgID、`OpenWithProgids`、Capa
 Linux 生成当前用户的 `.desktop` 入口，`Exec` 保留文件参数；不改写 `mimeapps.list` 或调用设置默认值的命令，已存在的不同副本入口予以保留。依据 [Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry/latest-single/)。macOS 部署包在 `Info.plist` 声明 Markdown 编辑角色与 `Alternate` 等级，用户通过 Finder 选择默认打开方式，依据 [CFBundleDocumentTypes](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundledocumenttypes)。
 
 当前实现是开发者可复现的安装维护入口，仍依赖 Python；尚未提供双击式安装器、发布者签名、公证、商店安装和自动更新。最终包逐项许可、最低系统和真实系统关联核验仍由独立任务跟踪，不能把隔离目录测试或声明文件生成计为三平台安装验收。
+
+## 独立运行目录的安装闭环
+
+`python scripts/validate_user_install.py --build-dir <已构建目录> --payload <独立部署目录> --destination <build 下的专用验证目录>` 在本项目构建目录中执行实际文件复制、隔离原生探针、升级与卸载，并验证旁边的自建配置／草稿样本摘要不变。真实注册始终关闭；成功后移除临时安装，保留报告。Unix 复用部署检查的明暗、文件会话、图片及资源助手探针，Windows 使用三项独立探针。手动 `deployment-unix`／`deployment-linux` 在部署闭包检查后接入相同安装验证，不触发完整桌面用例或用户目录安装。

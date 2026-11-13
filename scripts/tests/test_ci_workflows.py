@@ -53,6 +53,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("test --suite scroll", text)
         self.assertIn("if: startsWith(inputs.scope, 'deployment-')", text)
         self.assertIn("python scripts/deployment_unix.py", text)
+        self.assertIn("python scripts/validate_user_install.py", text)
+        self.assertIn("installed-check-evidence/", text)
         self.assertIn("staging-evidence/", text)
         self.assertIn("patchelf", text)
         self.assertIn("xdnote_apt_archive=https://archive.ubuntu.com/ubuntu", text)
