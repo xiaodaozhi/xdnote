@@ -1,0 +1,2 @@
+# Design export tool only; no Pillow dependency in the xdnote application.
+Pillow==13.0.0

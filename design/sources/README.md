@@ -24,7 +24,7 @@
 
 ## 重新导出
 
-素材工具需要 Node.js 与 `sharp`；原生图标容器需要 Python 与 Pillow。它们仅用于设计文件处理，不是 xdnote 应用框架依赖。具备这些工具时，从仓库根目录运行：
+素材工具需要 Node.js 与 `sharp`；原生图标容器需要 Python 与 [锁定的 Pillow](native-icons-requirements.txt)。依赖放在本项目 `build/` 工具环境，仅用于设计文件处理，不是 xdnote 应用框架依赖。先在该环境安装 `python -m pip install --only-binary=:all: -r design/sources/native-icons-requirements.txt`，确认解释器与二进制包兼容；具备这些工具时，从仓库根目录运行：
 
 ```text
 node design/sources/finalize-ui-suite.cjs

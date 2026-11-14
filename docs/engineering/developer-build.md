@@ -57,7 +57,7 @@ python scripts/desktop.py run --profile msvc2019
 
 Qt 6.8.2 的[编译器检查](https://github.com/qt/qtbase/blob/v6.8.2/src/corelib/global/qcompilerdetection.h)允许此编译器，而[官方支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)仍列 MSVC 2022；[微软二进制兼容说明](https://learn.microsoft.com/en-us/cpp/porting/binary-compat-2015-2017)也对链接器、输入工具链及运行库设有限制。因此本配置只记录实际验证的本地兼容结果，不将头文件可编译等同于上游支持或任意 ABI 兼容。不得用于发行；默认工具链的四平台检查按需执行。按需 Windows CI 另用实际 v142／14.29 执行兼容回归，失败同样阻止桌面汇总通过。
 
-构建身份记录配置、SDK 前缀、Qt 版本及 CMake 实际编译器版本。测试和运行同时核对配置、SDK 和源码摘要，不能切换参数后直接启动另一个目录中的旧产物；变更入口或源码后先重新构建。
+构建身份记录配置、SDK 前缀、Qt 版本及 CMake 实际编译器版本。测试和运行同时核对配置、SDK 和源码摘要，其中包括编译进 Qt 资源的功能及品牌 SVG；变更图标也须重建，避免旧产物继续显示旧图。不能切换参数后直接启动另一个目录中的旧产物；变更入口或源码后先重新构建。
 
 入口合并 Windows 工具链环境时统一变量名，避免 `Path` 与 `PATH` 并存而使子进程找不到 Qt DLL。有控制台时，入口在命令期间把输入／输出代码页共同设为 UTF-8，结束后恢复，确保 CMake 对中文 `/showIncludes` 前缀的解码与 Ninja 收到的字节一致。已有配置若记录了乱码前缀，可在选定的配置下使用 `build --fresh` 重新探测；不会改变系统或应用语言。
 

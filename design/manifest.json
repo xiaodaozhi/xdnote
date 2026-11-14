@@ -1200,8 +1200,8 @@
       "path": "sources/build-ui-assets.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 35073,
-      "sha256": "87138e239fe105b8016d6d24bedfcfafe80ef842b18604e9418c03980a833635",
+      "bytes": 35697,
+      "sha256": "b5eb7bfec29a8fd1a38cade58262d1b1ec50bfedcb0644955745a5f06af4a8b4",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1213,8 +1213,8 @@
       "path": "sources/ui-icon-paths.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 8743,
-      "sha256": "3c0f9cec0f87b4f80bc6843452f6d71b7d38b0a926a3a74dbb1d604c63255057",
+      "bytes": 11524,
+      "sha256": "96611f5d18d56737318cf0eab798b72be919562d92f47453364e8188ef68a8c0",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1265,8 +1265,8 @@
       "path": "sources/check-ui-materials.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 15753,
-      "sha256": "f9afd07af0636070fa7ce98685008b80e618dba9c927dcb645f01e1874bc156f",
+      "bytes": 18060,
+      "sha256": "8497e7c96850b4d0568c2e15260267aa6ee609a208328ab89b530735febe7d42",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1278,8 +1278,8 @@
       "path": "sources/README.md",
       "kind": "design-source",
       "status": "source",
-      "bytes": 4052,
-      "sha256": "54def605179749257897e12902d007507f5714170ddfe18017859cb087d67273",
+      "bytes": 4290,
+      "sha256": "208d35255ab55e5bc994fb43dd49528a7f8f9422a2778093dd88fe73553e9708",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1291,8 +1291,8 @@
       "path": "assets/ui-v2/manifest.json",
       "kind": "asset-manifest",
       "status": "source",
-      "bytes": 808252,
-      "sha256": "9f6f598f657cc85d5b206f9315d24bbeef3709afa1aa5501e942c80e4996e6e8",
+      "bytes": 827493,
+      "sha256": "1aca1bf2bd93bdcc387c6d5df63cf7191ef2571365421dbf4de73620381816b3",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1389,8 +1389,8 @@
       "path": "assets/ui-v2/previews/accent-matrix.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 154208,
-      "sha256": "c19d104306039bb5eef92125845a7cabea271018ada7e604afec4e01c3266544",
+      "bytes": 154848,
+      "sha256": "0c33bf4b39792b182cf26459219e6bb1ea9f5df5cf9440bea2413f74643ddc4f",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1425,8 +1425,8 @@
       "path": "assets/ui-v2/previews/components-dark.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 100170,
-      "sha256": "1f3f52d6418cf18e132336d6159a00eb7f3750b9289d253fbc0463a15ce17b97",
+      "bytes": 100204,
+      "sha256": "832a748f7ece5646b7cd7699d12e132d3a314dcd3902a339ddc11a4067cb3858",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1443,8 +1443,8 @@
       "path": "assets/ui-v2/previews/components-light.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 99537,
-      "sha256": "6a32ced894526d0a561e7949f6c5791d1ac34b7dbbe82209293e2f8ab83f130a",
+      "bytes": 99582,
+      "sha256": "6233ddf3045ec64012817d4dcaed365ae46153b14dde73131c5994b839420b10",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1461,8 +1461,8 @@
       "path": "assets/ui-v2/previews/empty-states.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 47897,
-      "sha256": "7fd7f79bee90f05243d865ec4ebe2dfc07162875b1d6c2eeac45a74b437096ea",
+      "bytes": 48563,
+      "sha256": "3515cb826e40bbcaa4ccd294717c3ca2b02d55e6c5185b13d656b25ad4b25792",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1479,8 +1479,8 @@
       "path": "assets/ui-v2/previews/icons-dark.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 98914,
-      "sha256": "87144fa30d0d2729184e72060c32497decc80e0b5ff6ff132b1d2133007b4ac9",
+      "bytes": 102875,
+      "sha256": "6639f91c6444de7f94868b23c990ec635348f4c4a7ae0de39f44fd17e05621d6",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1497,8 +1497,8 @@
       "path": "assets/ui-v2/previews/icons-light.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 98814,
-      "sha256": "6dd962cc1e96e0ae7751a3037106e394dd6cf70f06bab68edac415dd31347cc8",
+      "bytes": 102840,
+      "sha256": "016e56f097796cca20ef659209bc2b7625a228b18b717e96ff7a3f81558366da",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1526,6 +1526,45 @@
         "width": 1400,
         "height": 1270,
         "meaning": "raster-metadata-not-logical-window-size"
+      }
+    },
+    {
+      "id": "source-v2-ui-icon-reference.json",
+      "path": "sources/ui-icon-reference.json",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 30103,
+      "sha256": "ab6f8781b172d860cd204095be59e00fafd3009e59a8cc3c89ca50eb9541a336",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "ui-icon-reference.json"
+      }
+    },
+    {
+      "id": "source-v2-review-ui-icons.cjs",
+      "path": "sources/review-ui-icons.cjs",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 4979,
+      "sha256": "d437767b11c6df5de2057d21d58573e173b7370e050e3d5753ca9ec46dddc766",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "review-ui-icons.cjs"
+      }
+    },
+    {
+      "id": "source-native-icons-requirements",
+      "path": "sources/native-icons-requirements.txt",
+      "kind": "design-source",
+      "status": "source",
+      "bytes": 90,
+      "sha256": "3fce5f1b0aa02281db5ba4ed2c55ae19f78d6e1532386918dd05e4cf43c7cd82",
+      "referenceAssetIds": [],
+      "source": {
+        "kind": "project-local-design-export",
+        "sourceFilename": "native-icons-requirements.txt"
       }
     }
   ],
@@ -1575,7 +1614,7 @@
     {
       "path": "docs/visual/asset-geometry.json",
       "bytes": 2397,
-      "sha256": "48acd94a3d5d5ba14bd3f6342cf08e69b0b29887f7fc4b925e0c6fe9517d6a92"
+      "sha256": "706ca3f691803381ad03bc3be88b1523e667cfb7221a489c2ade969bed5f6071"
     },
     {
       "path": "docs/visual/window-registry.json",

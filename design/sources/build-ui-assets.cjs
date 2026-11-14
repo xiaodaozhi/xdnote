@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const sharp = require('sharp');
 const iconPaths = require('./ui-icon-paths.cjs');
+const iconReferences = require('./ui-icon-reference.json');
 const brandIdentity = require('./brand-mark.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const DESIGN = path.join(ROOT, 'design');
@@ -26,7 +27,10 @@ async function put(relative, data) {
   const p = path.join(OUT, relative);
   await fs.mkdir(path.dirname(p), { recursive: true });
   const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  await fs.writeFile(p, bytes);
+  // Keep identical exports untouched; this also avoids needlessly reopening
+  // files that Windows indexers or design viewers may hold for reading.
+  const previous=await fs.readFile(p).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+  if(!previous||!previous.equals(bytes))await fs.writeFile(p, bytes);
   const entry = { path: relative.replaceAll('\\', '/'), bytes: bytes.length, sha256: hash(bytes) };
   files.set(entry.path, entry);
   return entry;
@@ -117,7 +121,8 @@ async function icons() {
       const png = await sharp(Buffer.from(source)).resize(16 * d, 16 * d).ensureAlpha().png().toBuffer();
       names.push((await put(`icons/png/${theme}/${name}@${d}x.png`, png)).path);
     }
-    records.push({ id: 'icon/' + name, kind: 'original-outline-icon', accessibleLabel: label, logicalCanvas: { width: 16, height: 16 }, svgViewBox: 24, strokeWidthInViewBox: G.icon.strokeWidth, color: 'currentColor', files: names, hitTargetMinimum: T.controls.iconButtonHit });
+    const reference=iconReferences.icons.find(item=>item.id===name);if(!reference)throw new Error('Missing icon reference '+name);
+    records.push({ id: 'icon/' + name, kind: 'original-ui-icon', accessibleLabel: label, logicalCanvas: { width: 16, height: 16 }, svgViewBox: G.icon.viewBox, strokeWidthInViewBox: G.icon.strokeWidth, color: 'currentColor', contrastColor: paths.includes('#FFFFFF') ? '#FFFFFF' : null, designReference: {basis:reference.basis,reference:reference.reference}, files: names, hitTargetMinimum: T.controls.iconButtonHit });
   }
 }
 async function components() {

@@ -50,14 +50,19 @@ private:
 };
 }
 QIcon themedIcon(const QString &name, const QColor &color) {
-    if (name == "status-dirty") return QIcon(new SvgIcon(QByteArray("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><circle cx=\"8\" cy=\"8\" r=\"5\" fill=\"") + color.name().toUtf8() + "\"/></svg>"));
-    QFile file(QStringLiteral(":/xdnote/design/assets/ui-v2/icons/svg/%1.svg").arg(name));
+    QFile file(QStringLiteral(":/xdnote/design/assets/ui-v2/icons/svg/%1.svg").arg(name == "status-dirty" ? QStringLiteral("dirty") : name));
     if (!file.open(QIODevice::ReadOnly)) return {};
     auto svg = file.readAll(); svg.replace("currentColor", color.name().toUtf8());
     return QIcon(new SvgIcon(std::move(svg)));
 }
 QIcon colorSwatch(const QColor &color) {
-    return QIcon(new SvgIcon(QByteArray("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect x=\"1\" y=\"1\" width=\"14\" height=\"14\" rx=\"4\" fill=\"") + color.name().toUtf8() + "\"/></svg>"));
+    return themedIcon(QStringLiteral("accent-swatch"), color);
+}
+namespace {
+void paintSpinner(QPainter &painter, const QRect &area, const QColor &color, int angle) {
+    painter.save(); painter.translate(area.x()+area.width()/2.0,area.y()+area.height()/2.0); painter.rotate(angle);
+    themedIcon(QStringLiteral("spinner"),color).paint(&painter,QRect(-area.width()/2,-area.height()/2,area.width(),area.height())); painter.restore();
+}
 }
 SharedMenu *createAppearanceMenu(Appearance *appearance, QWidget *parent) {
     auto *menu = new SharedMenu(appearance, parent); menu->setTitle(QStringLiteral("外观")); menu->setObjectName("appearanceMenu");
@@ -228,7 +233,7 @@ void SharedButton::paintEvent(QPaintEvent *) {
     const int dropdown = menu() && (label || property("showMenuIndicator").toBool()) ? 16 : 0;
     const bool field = property("fieldDropdown").toBool();
     const int total = label + icon + (label && icon ? 8 : 0) + dropdown; int left = navigation || field ? control("contentInset") : (width() - total) / 2;
-    if (icon) { if (m_busy) { painter.setBrush(Qt::NoBrush); painter.setPen(QPen(foreground, 1.5, Qt::SolidLine, Qt::RoundCap)); painter.drawArc(QRectF(left + 2, (height() - icon) / 2.0 + 2, icon - 4, icon - 4), -m_busyAngle * 16, 260 * 16); } else themedIcon(m_symbol, foreground).paint(&painter, QRect(left, (height() - icon) / 2, icon, icon)); left += icon + (label ? 8 : 0); }
+    if (icon) { const QRect area(left,(height()-icon)/2,icon,icon); if (m_busy) paintSpinner(painter,area,foreground,m_busyAngle); else themedIcon(m_symbol,foreground).paint(&painter,area); left += icon + (label ? 8 : 0); }
     painter.setPen(foreground); painter.setFont(font()); painter.drawText(QRect(left, 0, label, height()), Qt::AlignCenter, labelText);
     if (dropdown) themedIcon(menu() && menu()->isVisible() ? "chevron-up" : "chevron-down", foreground).paint(&painter, QRect(field ? width() - control("contentInset") - 12 : left + label + 4, (height() - 12) / 2, 12, 12));
     if (keyboardOutline()) {
@@ -317,10 +322,10 @@ void SharedMenu::paintEvent(QPaintEvent *event) {
         const bool active=action==activeAction()&&action->isEnabled();
         if(active){painter.setPen(Qt::NoPen);painter.setBrush(m_appearance->accentColor("soft"));painter.drawRoundedRect(r,4,4);}
         const auto fg=action->isEnabled()?m_appearance->color("text"):m_appearance->color("textSecondary");painter.setPen(fg);painter.setFont(font());
-        if(!action->icon().isNull())action->icon().paint(&painter,QRect(r.left()+8,r.center().y()-8,16,16),Qt::AlignCenter,action->isEnabled()?QIcon::Normal:QIcon::Disabled);
+        if(!action->icon().isNull())action->icon().paint(&painter,QRect(r.left()+8,r.top()+(r.height()-16)/2,16,16),Qt::AlignCenter,action->isEnabled()?QIcon::Normal:QIcon::Disabled);
         int right=r.right()-8;
-        if(action->menu()){themedIcon("chevron-right",fg).paint(&painter,QRect(right-12,r.center().y()-6,12,12));right-=24;}
-        else if(action->isCheckable()){if(action->isChecked())themedIcon("check",fg).paint(&painter,QRect(right-16,r.center().y()-8,16,16));right-=24;}
+        if(action->menu()){themedIcon("chevron-right",fg).paint(&painter,QRect(right-12,r.top()+(r.height()-12)/2,12,12));right-=24;}
+        else if(action->isCheckable()){if(action->isChecked())themedIcon("check",fg).paint(&painter,QRect(right-16,r.top()+(r.height()-16)/2,16,16));right-=24;}
         const auto shortcut=action->shortcut().isEmpty()?action->property("displayShortcut").toString():action->shortcut().toString(QKeySequence::NativeText);
         if(!shortcut.isEmpty()){const int w=fontMetrics().horizontalAdvance(shortcut);painter.setPen(m_appearance->color("textSecondary"));painter.drawText(QRect(right-w,r.top(),w,r.height()),Qt::AlignRight|Qt::AlignVCenter,shortcut);right-=w+24;}
         const int left=r.left()+(hasIcons?32:8);auto text=action->text();text.replace("&&",QString(QChar(0xF000)));text.remove('&');text.replace(QChar(0xF000),'&');
@@ -363,7 +368,7 @@ SharedSpinner::SharedSpinner(Appearance *appearance, QWidget *parent) : QWidget(
 void SharedSpinner::setRunning(bool running) { m_running = running; if (running && isVisible()) m_timer.start(); else m_timer.stop(); update(); }
 void SharedSpinner::hideEvent(QHideEvent *event) { m_timer.stop(); QWidget::hideEvent(event); }
 void SharedSpinner::showEvent(QShowEvent *event) { QWidget::showEvent(event); if (m_running) m_timer.start(); }
-void SharedSpinner::paintEvent(QPaintEvent *) { if (!m_running) return; QPainter p(this); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(m_appearance->accentColor(), 2, Qt::SolidLine, Qt::RoundCap)); p.drawArc(QRectF(rect()).adjusted(3, 3, -3, -3), -m_angle * 16, 260 * 16); }
+void SharedSpinner::paintEvent(QPaintEvent *) { if (!m_running) return; QPainter p(this); paintSpinner(p,rect(),m_appearance->accentColor(),m_angle); }
 namespace {
 class DialogOverlay final : public QWidget {
 public:

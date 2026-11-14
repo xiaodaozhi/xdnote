@@ -18,6 +18,28 @@ SPEC.loader.exec_module(desktop)
 
 
 class DesktopToolTests(unittest.TestCase):
+    def test_compiled_icon_change_invalidates_build_identity(self):
+        desktop.BUILD.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="icon-identity-",dir=desktop.BUILD) as directory:
+            root=Path(directory)
+            for name in ("CMakeLists.txt","Cargo.toml","Cargo.lock","rust-toolchain.toml","docs/visual/tokens.json","scripts/desktop.py","scripts/prepare_qt.py","design/assets/ui-v2/icons/svg/document.svg","design/assets/ui-v2/brand/logo-light.svg"):
+                target=root/name
+                target.parent.mkdir(parents=True,exist_ok=True)
+                target.write_text("original",encoding="utf-8")
+            with patch.object(desktop,"ROOT",root),patch.object(desktop,"BUILD",root/"build"):
+                original=desktop.source_fingerprint()
+                icon=root/"design/assets/ui-v2/icons/svg/document.svg"
+                icon.write_text("redrawn",encoding="utf-8")
+                self.assertNotEqual(desktop.source_fingerprint(),original)
+                icon.write_text("original",encoding="utf-8")
+                self.assertEqual(desktop.source_fingerprint(),original)
+                extra=icon.with_name("new.svg")
+                extra.write_text("new",encoding="utf-8")
+                self.assertNotEqual(desktop.source_fingerprint(),original)
+                extra.unlink()
+                (root/"design/assets/ui-v2/brand/logo-light.svg").write_text("changed",encoding="utf-8")
+                self.assertNotEqual(desktop.source_fingerprint(),original)
+
     def test_runtime_environment_is_local_and_rejects_missing_dlls_before_launch(self):
         desktop.BUILD.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="runtime-", dir=desktop.BUILD) as directory:

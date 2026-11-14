@@ -1,6 +1,6 @@
 # 切图与可复用素材
 
-本轮素材位于 [ui-v2](ui-v2/manifest.json)，共 **86 个图标、310 个控件变体、141 张参考切片**，另有语义反馈、空态插画、已确认的品牌方向与预览图册。
+本轮素材位于 [ui-v2](ui-v2/manifest.json)，共 **90 个图标、310 个控件变体、141 张参考切片**，另有语义反馈、空态插画、已确认的品牌方向与预览图册。
 
 [完整画廊](../index.html) · [素材清单](ui-v2/manifest.json)
 
@@ -8,7 +8,7 @@
 
 | 目录 | 内容与格式 |
 | --- | --- |
-| `ui-v2/icons/svg` | 86 个原创线性图标，`currentColor`，16 逻辑像素，24 坐标系 |
+| `ui-v2/icons/svg` | 90 个原创线形／实心图标，`currentColor`，16 逻辑像素及原生坐标系；常规描边 1.25 |
 | `ui-v2/icons/png/light`、`dark` | 相同图标浅深色 PNG，1×／2×／3× |
 | `ui-v2/components/{theme}/{accent}` | 主要按钮、复选框、单选、开关、分段、选中行、标签、色块与焦点 |
 | `ui-v2/components/{theme}/neutral` | 次要／无底／危险按钮、输入框、未选与禁用控件 |
@@ -35,6 +35,6 @@
 
 [精确六色与明暗](ui-v2/previews/accent-matrix.png) · [浅色控件](ui-v2/previews/components-light.png) · [深色控件](ui-v2/previews/components-dark.png) · [浅色图标](ui-v2/previews/icons-light.png) · [深色图标](ui-v2/previews/icons-dark.png)
 
-原稿由内置 image_gen 生成；可复用图形由本项目原创几何路径绘制，没有从第三方库或 xdzip 搬入图标、品牌或字体。未分发字体。品牌方向已确认，仓库整体许可尚待项目决策。来源、导出方式和限制见[来源说明](../sources/README.md)及[交付规格](../../docs/visual/asset-handoff.md)。
+原稿由内置 image_gen 生成；可复用图形由本项目原创几何路径绘制，未分发字体。现有 86 个图标已逐项重绘，另将原来内嵌的强调色色块及退出、实心冲突、消息错误三个角色统一为独立素材。56 项直接原稿依据与 34 项同风格推导见[出处映射](../sources/ui-icon-reference.json)，不把推导图形称为原稿切片。品牌方向沿用已验收源。原创设计按 CC BY 4.0 授权，来源、导出方式和限制见[来源说明](../sources/README.md)、[许可范围](../../docs/engineering/licensing.md)及[交付规格](../../docs/visual/asset-handoff.md)。
 
 早期[六色候选样张](palettes/accent-color-candidates.png)保留为设计过程材料，精确值仍以共享参数为准。

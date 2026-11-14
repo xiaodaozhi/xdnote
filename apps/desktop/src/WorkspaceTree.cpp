@@ -64,14 +64,14 @@ void WorkspaceTree::drawRow(QPainter *painter, const QStyleOptionViewItem &optio
     if (selected) { painter->setBrush(m_appearance->accentColor()); painter->drawRoundedRect(QRectF(rect.left(), rect.top() + 5, 3, rect.height() - 10), 1.5, 1.5); }
     if (selected && hasFocus() && currentIndex() == index && InputModality::forApplication()->keyboardNavigation()) { painter->setBrush(Qt::NoBrush); painter->setPen(QPen(m_appearance->accentColor(), 2)); painter->drawRoundedRect(rect.adjusted(2, 2, -2, -2), 4, 4); }
     const auto icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole)); int left = cell.left() + 4;
-    if (!icon.isNull()) { icon.paint(painter, QRect(left, cell.center().y() - 8, 16, 16)); left += 24; }
+    if (!icon.isNull()) { icon.paint(painter, QRect(left, cell.top() + (cell.height() - 16) / 2, 16, 16)); left += 24; }
     painter->setFont(font()); painter->setPen(m_appearance->color(index.flags() & Qt::ItemIsEnabled ? "text" : "textSecondary")); const auto textRect = QRect(left, cell.top(), qMax(0, viewport()->width() - left - 12), cell.height()); painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, fontMetrics().elidedText(index.data().toString(), Qt::ElideMiddle, textRect.width()));
     drawBranches(painter, QRect(0, cell.top(), cell.left(), cell.height()), index); painter->restore();
 }
 void WorkspaceTree::mouseMoveEvent(QMouseEvent *event) { const auto previous = m_hover; m_hover = indexAt(event->position().toPoint()); if (previous != m_hover) viewport()->update(); QTreeView::mouseMoveEvent(event); }
 void WorkspaceTree::leaveEvent(QEvent *event) { m_hover = QPersistentModelIndex(); viewport()->update(); QTreeView::leaveEvent(event); }
 void WorkspaceTree::drawBranches(QPainter *painter, const QRect &rect, const QModelIndex &index) const {
-    if (model()->hasChildren(index)) themedIcon(isExpanded(index) ? "chevron-down" : "chevron-right", m_appearance->color("textSecondary")).paint(painter, QRect(rect.right() - indentation() + 2, rect.center().y() - 6, 12, 12));
+    if (model()->hasChildren(index)) themedIcon(isExpanded(index) ? "chevron-down" : "chevron-right", m_appearance->color("textSecondary")).paint(painter, QRect(rect.right() - indentation() + 2, rect.top() + (rect.height() - 12) / 2, 12, 12));
 }
 void WorkspaceTree::applyAppearance() {
     setStyleSheet(QStringLiteral("QTreeView{background:%1;color:%2;border:0;outline:0} QTreeView::item{height:%3px;padding-right:4px;background:transparent} QTreeView::item:selected,QTreeView::item:hover{background:transparent}").arg(m_appearance->color("sidebar").name(), m_appearance->color("text").name()).arg(visualTokens().value("navigation").toObject().value("treeRowHeight").toInt()) + themedScrollBars(m_appearance));

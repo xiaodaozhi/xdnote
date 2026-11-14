@@ -13,6 +13,7 @@
 | 视觉 | [设计系统](visual/design-system.md) | 信息层级、跨界面公共组件一致性、缩放与材料权威 |
 | 欢迎页 | [工作区欢迎页](visual/workspace-welcome.md) | 现有原稿的布局、同宽操作、最近文档与路由边界 |
 | 参数 | [tokens.json](visual/tokens.json) | 精确颜色、逻辑尺寸和字体参数 |
+| 图标 | [图标规范与原稿依据](visual/iconography.md) | 全套矢量、语义变体、原稿出处、光学留白及实际加载验证 |
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
 | 预览选型 | [非 Chromium 预览方案评估](engineering/preview-alternatives.md) | 约束、候选、成本边界与后续准入 |
