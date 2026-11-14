@@ -131,6 +131,8 @@ protected:
     bool event(QEvent*e)override{if((e->type()==QEvent::WindowDeactivate||e->type()==QEvent::UngrabMouse)&&m_dragging)finishDrag(true);return QTabBar::event(e);}
     void leaveEvent(QEvent *event) override { m_hover = -1; update(); QTabBar::leaveEvent(event); }
     void tabLayoutChange() override { QTabBar::tabLayoutChange(); if (layoutChanged) layoutChanged();if(m_ghost)syncDrag(); }
+    void tabInserted(int index) override { QTabBar::tabInserted(index); if (layoutChanged) layoutChanged(); }
+    void tabRemoved(int index) override { QTabBar::tabRemoved(index); if (layoutChanged) layoutChanged(); }
 private:
     int dragIndex()const{for(int i=0;i<count();++i)if(tabId(const_cast<WorkspaceTabs*>(this),i)==m_dragId)return i;return -1;}
     qreal slide(int i)const{if(!m_slideClock.isValid())return 0;const qreal t=qBound(0.0,m_slideClock.elapsed()/160.0,1.0);return m_slides.value(tabId(const_cast<WorkspaceTabs*>(this),i))*(1-QEasingCurve(QEasingCurve::OutCubic).valueForProgress(t));}
@@ -154,7 +156,7 @@ class WorkspaceTabStrip final : public QWidget {
 public:
     WorkspaceTabStrip(Appearance *appearance, QWidget *parent) : QWidget(parent) {
         setObjectName("workspaceTabStrip"); setMinimumWidth(0); setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        tabs = new WorkspaceTabs(appearance, this); add = new SharedButton({}, "workspaceAddTab", appearance, this); add->setSymbol("plus"); add->setFixedSize(32, 32); add->setAccessibleName(QStringLiteral("打开文档标签")); add->setToolTip(QStringLiteral("打开 Markdown 文档…")); tabs->layoutChanged = [this] { arrange(); };
+        tabs = new WorkspaceTabs(appearance, this); add = new SharedButton({}, "workspaceAddTab", appearance, this); add->setSymbol("plus"); add->setFixedSize(32, 32); add->setAccessibleName(QStringLiteral("打开文档标签")); add->setToolTip(QStringLiteral("打开 Markdown 文档…")); tabs->layoutChanged = [this] { arrange(); }; arrange();
     }
     WorkspaceTabs *tabs;
     SharedButton *add;
@@ -164,6 +166,8 @@ protected:
 private:
     void arrange() {
         if (m_arranging) return; m_arranging = true;
+        const bool populated = tabs->count() > 0;
+        tabs->setVisible(populated); add->setVisible(populated); setAttribute(Qt::WA_TransparentForMouseEvents, !populated);
         const int tabWidth = qMin(tabs->preferredWidth(), qMax(0, width() - add->width() - 12)); tabs->setGeometry(0, 0, tabWidth, height()); add->move(tabWidth + 4, tabContentY(height(), add->height())); m_arranging = false;
     }
     bool m_arranging = false;
@@ -210,7 +214,7 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     connect(m_welcome, &WorkspaceWelcome::openRequested, this, &WorkspaceWindow::openRequested);
     connect(m_welcome, &WorkspaceWelcome::recentRequested, this, [this] { showNavigation(false); });
     m_fullSearch=new WorkspaceSearch(windowAppearance(),manager,m_sidebarViews);m_sidebarViews->addWidget(m_fullSearch);connect(m_fullSearch,&WorkspaceSearch::backRequested,this,[this]{m_fullSearchWanted=false;m_sidebarViews->setCurrentIndex(0);});connect(m_fullSearch,&WorkspaceSearch::locationRequested,this,&WorkspaceWindow::referenceSourceRequested);
-    auto *fullSearch=new SharedButton(QStringLiteral("全文搜索"),"workspaceFullSearchButton",windowAppearance(),m_sidebar);fullSearch->setSymbol("search");fullSearch->setOutlined(true);sidebar->insertWidget(3,fullSearch);auto openFullSearch=[this]{m_fullSearchWanted=true;setFocusMode(false);m_sidebarWanted=true;m_sidebarExplicit=true;updateSidebar();m_sidebarViews->setCurrentWidget(m_fullSearch);m_fullSearch->focusQuery();};connect(fullSearch,&QPushButton::clicked,this,openFullSearch);auto *fullSearchAction=new QAction(this);fullSearchAction->setObjectName("fullSearchAction");bindShortcut(fullSearchAction,windowAppearance()->preferences(),"fullSearchAction");addAction(fullSearchAction);connect(fullSearchAction,&QAction::triggered,this,openFullSearch);
+    auto openFullSearch=[this]{m_fullSearchWanted=true;setFocusMode(false);m_sidebarWanted=true;m_sidebarExplicit=true;updateSidebar();m_sidebarViews->setCurrentWidget(m_fullSearch);m_fullSearch->focusQuery();};auto *fullSearchAction=new QAction(QStringLiteral("全文搜索…"),this);fullSearchAction->setObjectName("fullSearchAction");fullSearchAction->setIcon(themedIcon("search",windowAppearance()->color("text")));bindShortcut(fullSearchAction,windowAppearance()->preferences(),"fullSearchAction");addAction(fullSearchAction);connect(fullSearchAction,&QAction::triggered,this,openFullSearch);workspaceMenu->addSeparator();workspaceMenu->addAction(fullSearchAction);
     m_searchDelay.setSingleShot(true); m_searchDelay.setInterval(navToken("searchDelayMs")); connect(&m_searchDelay, &QTimer::timeout, this, &WorkspaceWindow::startSearch);
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString &text) { m_searchDelay.stop(); m_tree->cancelSearch(); if (text.trimmed().isEmpty()) { m_navigationVisible = false; selectCurrent(); } else { m_navigationVisible = true; m_navigationPage->showPage(WorkspaceNavigation::Page::Search, rootPath()); m_navigationPage->showSearch(text.trimmed(), {}, {}, true); selectCurrent(); m_searchDelay.start(); } });
     connect(m_tree, &WorkspaceTree::searchFinished, this, [this](const QString &query, const QStringList &paths, const QString &warning) { if (m_navigationVisible && query == m_search->text().trimmed()) m_navigationPage->showSearch(query, paths, warning); });
@@ -230,6 +234,7 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     m_geometry = new WindowGeometry(this, store, "main"); connect(m_geometry, &WindowGeometry::geometryWarning, this, &WorkspaceWindow::showNotice); connect(windowAppearance(), &Appearance::changed, this, [this] { if (m_warning->property("noticeSource") == "appearance") showNotice({}); applyAppearance(); }); applyAppearance(); setWindowTitle(QStringLiteral("xdnote")); updateSidebar(); updateNavigationSelection(); if (!m_navigation->error().isEmpty()) { showNotice(m_navigation->error()); m_warning->setProperty("noticeSource", "navigation"); }
 }
 void WorkspaceWindow::applyAppearance() {
+    if (auto *search = findChild<QAction *>("fullSearchAction")) search->setIcon(themedIcon("search", windowAppearance()->color("text")));
     auto *appearance = windowAppearance(); auto palette = this->palette(); palette.setColor(QPalette::Window, appearance->color("background")); palette.setColor(QPalette::WindowText, appearance->color("text")); setPalette(palette);
     setStyleSheet(QStringLiteral("QWidget#workspaceWindow{background:%1;color:%2} QWidget#workspaceSidebar{background:%3} QLabel{color:%2;background:transparent} QLabel#workspaceTreeState,QLabel[secondary=\"true\"],QLabel#workspaceSearchHint{color:%5} QStackedWidget#workspaceFooters{border:0;background:%1} QWidget#emptyWorkspaceFooter{border-top:1px solid %4} QLabel#workspaceNotice{background:%3;border-bottom:1px solid %4} QWidget#sidebarSettingsDivider{background:%4} QLineEdit#workspaceSearch{background:transparent;color:%2;border:0;outline:0;padding:0}").arg(appearance->color("background").name(), appearance->color("text").name(), appearance->color("sidebar").name(), appearance->color("border").name(), appearance->color("textSecondary").name()));
     const bool outline = m_searchTab && m_search->hasFocus() && InputModality::forApplication()->keyboardNavigation(); m_searchBox->setProperty("keyboardOutline", outline); m_searchBox->setStyleSheet(QStringLiteral("QWidget#workspaceSearchBox{background:%1;border:%3px solid %2;border-radius:6px}").arg(appearance->color("surface").name(), outline ? appearance->accentColor().name() : appearance->color("border").name()).arg(visualTokens().value("controls").toObject().value(outline ? "focusRingWidth" : "borderWidth").toInt()));

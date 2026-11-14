@@ -67,6 +67,7 @@ WorkspaceNavigation::WorkspaceNavigation(Appearance *appearance, NavigationStore
     if (m_previewLimit) {
         setObjectName("workspaceRecentPreview"); list->setObjectName("welcomeRecentResults"); list->setAccessibleName(QStringLiteral("最近文档预览"));
         m_heading->hide(); m_summary->hide(); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
+        list->setResizeMode(QListView::Adjust); list->setWrapping(false);
         list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     }
     list->setContextMenuPolicy(Qt::CustomContextMenu); connect(list, &QWidget::customContextMenuRequested, this, [this](QPoint point) {

@@ -41,7 +41,7 @@ WorkspaceWelcome::WorkspaceWelcome(Appearance *appearance, NavigationStore *navi
     auto *create = addAction(QStringLiteral("新建文档"), "workspaceNewDocument", "document-new"); create->setToolTip(QStringLiteral("在独立窗口新建文档，首次保存时选择位置"));
     connect(create, &QPushButton::clicked, this, &WorkspaceWelcome::newDocumentRequested); content->addSpacing(32);
     content->addWidget(new SharedSeparator(Qt::Horizontal, appearance, m_panel)); content->addSpacing(16);
-    auto *recentHeading = new QHBoxLayout; recentHeading->setContentsMargins(0, 0, 0, 0);
+    auto *recentHeading = new QHBoxLayout; recentHeading->setObjectName("welcomeRecentHeaderRow"); recentHeading->setContentsMargins(0, 0, 0, 0);
     auto *recentLabel = new QLabel(QStringLiteral("最近打开"), m_panel); recentLabel->setObjectName("welcomeRecentHeading"); auto sectionFont = uiFont(14); sectionFont.setWeight(QFont::DemiBold); recentLabel->setFont(sectionFont); recentHeading->addWidget(recentLabel); recentHeading->addStretch();
     auto *all = new SharedButton(QStringLiteral("查看全部"), "welcomeAllRecent", appearance, m_panel); recentHeading->addWidget(all); connect(all, &QPushButton::clicked, this, &WorkspaceWelcome::recentRequested);
     connect(navigation, &NavigationStore::changed, all, [navigation, all] { all->setVisible(!navigation->recent().isEmpty()); }); all->setVisible(!navigation->recent().isEmpty()); content->addLayout(recentHeading); content->addSpacing(8);
