@@ -26,6 +26,7 @@ class WindowGeometryStore;
 class SharedSpinner;
 class DocumentBreadcrumb;
 class DocumentBody;
+class DocumentOutline;
 class WorkspaceResourceReader;
 class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
@@ -44,6 +45,8 @@ public:
     void reportHostMessage(const QString &message);
     ViewMode viewMode() const { return m_mode; }
     void setViewMode(ViewMode mode);
+    void setFocusMode(bool enabled);
+    bool focusMode() const { return m_focusMode; }
     WindowGeometry *windowGeometry() const { return m_geometry; }
     FileDocument *document() const { return m_document; }
     SourceEditor *editor() const { return m_editor; }
@@ -80,6 +83,8 @@ signals:
     void settingsRequested();
     void openDirectoryRequested();
     void sidebarRequested();
+    void outlineRequested();
+    void focusModeChanged(bool enabled);
     void viewStateChanged();
     void imageImportFinished(bool inserted, QString message);
     void workspaceLinkFinished(bool inserted, QString message);
@@ -88,6 +93,7 @@ signals:
 protected:
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *target, QEvent *event) override;
+    void keyPressEvent(QKeyEvent *) override;
 private:
     void updateState();
     void chooseOpen();
@@ -96,6 +102,8 @@ private:
     void applyAppearance();
     void updateCaret();
     void showSaveError();
+    void chooseExport(bool pdf);
+    void toggleOutline();
     void syncPreviewResources();
     ScrollSyncController *m_scrollSync = nullptr;
     void beginImageImport(const QString &path, const QImage &image, const QString &destinationDirectory = {});
@@ -132,6 +140,7 @@ private:
     DocumentBody *m_body;
     QStackedWidget *m_previewStack = nullptr;
     QSplitter *m_splitter = nullptr;
+    QWidget *m_documentSurface = nullptr;
     QWidget *m_previewPane = nullptr, *m_previewHeading = nullptr, *m_footer = nullptr;
     QHBoxLayout *m_modeLayout;
     QPushButton *m_read;
@@ -167,6 +176,14 @@ private:
     bool m_imageImportPending = false;
     bool m_linkInsertPending = false;
     bool m_embedded = false;
+    bool m_focusMode = false, m_exporting = false;
+    QWidget *m_toolbar = nullptr, *m_focusBar = nullptr;
+    SharedButton *m_exportButton = nullptr;
+    QAction *m_focusAction = nullptr, *m_outlineAction = nullptr;
+    DocumentOutline *m_outline = nullptr;
+    QWidget *m_outlineDivider = nullptr;
+    bool m_outlineWanted = false;
+    PreviewCancellation m_exportCancel;
     ViewMode m_mode = ViewMode::Reading;
 };
 }

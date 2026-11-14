@@ -65,7 +65,13 @@ async function main() {
     const workspacePrototype = w.id === 'main' && w.kind === 'application-window';
     const resourcePrototype = w.id === 'workspace-resource-maintenance' && w.kind === 'owner-modal-dialog';
     const settingsPrototype = w.id === 'settings' && w.kind === 'single-instance-nonmodal-window';
-    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : workspacePrototype ? 'workspace-prototype' : resourcePrototype ? 'workspace-resource-prototype' : settingsPrototype ? 'settings-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    const licensePrototype = w.id === 'third-party-licenses' && w.kind === 'owner-modal-dialog';
+    assert(w.implementationStatus === (admission ? 'component-admission' : filePrototype ? 'single-file-prototype' : workspacePrototype ? 'workspace-prototype' : resourcePrototype ? 'workspace-resource-prototype' : settingsPrototype ? 'settings-prototype' : licensePrototype ? 'license-viewer-prototype' : 'not-started') && w.nativeValidation === 'not-run', 'Implementation boundary ' + w.id);
+    if (licensePrototype) {
+      assert(w.sizeToken === 'windows.licenseDialog' && w.implementationSource === 'apps/desktop/src/SettingsWindow.cpp', 'License viewer geometry and source');
+      assert(w.deferredStates?.includes('manual-visual-acceptance'), 'License viewer acceptance boundary');
+      await fs.access(path.join(ROOT,w.implementationSource));
+    }
     if (settingsPrototype) {
       assert(w.sizeToken === 'windows.settings' && w.implementationSource === 'apps/desktop/src/SettingsWindow.cpp', 'Settings window geometry and source');
       assert(w.implementedStates?.includes('shared-preferences') && w.deferredStates?.includes('manual-visual-acceptance'), 'Settings prototype scope');
@@ -150,7 +156,9 @@ async function main() {
         assert(m.hasAlpha, 'Missing alpha channel ' + p);
         const stats = await sharp(file).ensureAlpha().stats();
         assert(stats.channels[3].min === 0, 'Nontransparent outer background ' + p);
-        if (!record.id.endsWith('/button-ghost-normal')) assert(stats.channels[3].max > 0, 'Empty artwork ' + p);
+        // Ghost normal/disabled backgrounds are transparent; their text/icons
+        // are rendered separately and are deliberately absent from skin PNGs.
+        if (!record.id.endsWith('/button-ghost-normal') && !record.id.endsWith('/button-ghost-disabled')) assert(stats.channels[3].max > 0, 'Empty artwork ' + p);
         alphaChecks++;
       }
     }

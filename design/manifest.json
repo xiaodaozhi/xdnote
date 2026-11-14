@@ -1200,8 +1200,8 @@
       "path": "sources/build-ui-assets.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 34356,
-      "sha256": "707157b49f7483df2c5c2a26a6899401a0cd5c8ec0544e5e3977d455a13d12cc",
+      "bytes": 35073,
+      "sha256": "87138e239fe105b8016d6d24bedfcfafe80ef842b18604e9418c03980a833635",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1265,8 +1265,8 @@
       "path": "sources/check-ui-materials.cjs",
       "kind": "design-source",
       "status": "source",
-      "bytes": 15035,
-      "sha256": "f4ec9bf95b29cea19766193a44e6d7e89ee69e9b69e63f50a5c5108b2352a836",
+      "bytes": 15753,
+      "sha256": "f9afd07af0636070fa7ce98685008b80e618dba9c927dcb645f01e1874bc156f",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1291,8 +1291,8 @@
       "path": "assets/ui-v2/manifest.json",
       "kind": "asset-manifest",
       "status": "source",
-      "bytes": 807583,
-      "sha256": "49d24103ac1ee9a1dcec069ee8ed06eb7aa6987d5636ce6e605c6b2a9e4cd64d",
+      "bytes": 808252,
+      "sha256": "9f6f598f657cc85d5b206f9315d24bbeef3709afa1aa5501e942c80e4996e6e8",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1425,8 +1425,8 @@
       "path": "assets/ui-v2/previews/components-dark.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 99237,
-      "sha256": "68d0ec9e3d1ea5f13b243dd9601947eadcd19f9a27f7a7eb05bb716cb6af6bc5",
+      "bytes": 100170,
+      "sha256": "1f3f52d6418cf18e132336d6159a00eb7f3750b9289d253fbc0463a15ce17b97",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1443,8 +1443,8 @@
       "path": "assets/ui-v2/previews/components-light.png",
       "kind": "asset-preview",
       "status": "current",
-      "bytes": 98776,
-      "sha256": "bce4a8c271ddcadfbffb1d3368e389b9eb0ed2e8e563ee476c4f42a1e7b89059",
+      "bytes": 99537,
+      "sha256": "6a32ced894526d0a561e7949f6c5791d1ac34b7dbbe82209293e2f8ab83f130a",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1569,18 +1569,18 @@
   "authoritySnapshots": [
     {
       "path": "docs/visual/tokens.json",
-      "bytes": 9638,
-      "sha256": "af53582e39d7df5794382b72cd90391895678c3b90ae4105f10fe38be6f1e733"
+      "bytes": 9981,
+      "sha256": "4187726d0c97ee40ad3f2a97a7fc3e382daacf7455e92953bfdb3db4808c23db"
     },
     {
       "path": "docs/visual/asset-geometry.json",
-      "bytes": 1589,
-      "sha256": "4fe31346af11402773900b186b833dc797fea9a934589f0fc8edd5d09979d5c0"
+      "bytes": 2397,
+      "sha256": "48acd94a3d5d5ba14bd3f6342cf08e69b0b29887f7fc4b925e0c6fe9517d6a92"
     },
     {
       "path": "docs/visual/window-registry.json",
-      "bytes": 8974,
-      "sha256": "d44170dc9484310f3ffcb68e0e2f851369858aef986c06dbab77b99d47923b4e"
+      "bytes": 10321,
+      "sha256": "972afbe205a4152b82ac55def88ff97871146d23f521b64b2b6987e0620c7387"
     },
     {
       "path": "docs/visual/surface-registry-v2.json",

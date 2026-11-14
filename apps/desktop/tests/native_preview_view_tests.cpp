@@ -1,5 +1,6 @@
 #include "NativePreviewView.h"
 #include "Appearance.h"
+#include "Preferences.h"
 #include "InputModality.h"
 #include "UiFonts.h"
 #include "VisualTokens.h"
@@ -28,6 +29,26 @@ std::shared_ptr<const NativePreviewContent> content(const QByteArray &source, co
     return result ? std::make_shared<NativePreviewContent>(std::move(*result)) : nullptr;
 }
 NativePreviewStamp stamp(quint64 request = 1) { return {QUuid("{71803001-4910-4670-a178-edf2b27d12ca}"), 7, request, 2, 3}; }
+QRect coloredPixels(const QImage &image, QColor color, QRect area = {}, int tolerance = 0) {
+    if (area.isNull()) area = image.rect(); else area &= image.rect();
+    int left=image.width(),top=image.height(),right=-1,bottom=-1;
+    for(int y=area.top();y<=area.bottom();++y)for(int x=area.left();x<=area.right();++x){const auto p=image.pixelColor(x,y);if(qAbs(p.red()-color.red())+qAbs(p.green()-color.green())+qAbs(p.blue()-color.blue())<=tolerance){left=qMin(left,x);right=qMax(right,x);top=qMin(top,y);bottom=qMax(bottom,y);}}
+    return right<left?QRect():QRect(QPoint(left,top),QPoint(right,bottom));
+}
+qreal naturalInkImbalance(const QString &text, const QFont &font) {
+    // An independent, naturally spaced line distinguishes a font's own glyph
+    // bearings from extra line leading introduced by the preview renderer.
+    QTextLayout layout(text,font);layout.beginLayout();auto line=layout.createLine();line.setLineWidth(10000);layout.endLayout();QRectF ink;
+    for(const auto &run:layout.glyphRuns()){const auto glyphs=run.glyphIndexes();const auto positions=run.positions();for(int i=0;i<glyphs.size();++i)ink|=run.rawFont().boundingRect(glyphs[i]).translated(positions[i]);}
+    return ink.top()-(line.height()-ink.bottom());
+}
+QRect inkPixels(const QImage &image, QColor foreground, QColor background, QRect area) {
+    const double r=foreground.red()-background.red(),g=foreground.green()-background.green(),b=foreground.blue()-background.blue(),length=r*r+g*g+b*b;
+    int left=image.width(),top=image.height(),right=-1,bottom=-1;area&=image.rect();
+    for(int y=area.top();y<=area.bottom();++y)for(int x=area.left();x<=area.right();++x){const auto p=image.pixelColor(x,y);const double pr=p.red()-background.red(),pg=p.green()-background.green(),pb=p.blue()-background.blue(),alpha=(pr*r+pg*g+pb*b)/length;
+        if(alpha>.25&&qAbs(pr-alpha*r)+qAbs(pg-alpha*g)+qAbs(pb-alpha*b)<40){left=qMin(left,x);right=qMax(right,x);top=qMin(top,y);bottom=qMax(bottom,y);}}
+    return right<left?QRect():QRect(QPoint(left,top),QPoint(right,bottom));
+}
 }
 class NativePreviewViewTests final : public QObject {
     Q_OBJECT
@@ -79,7 +100,10 @@ private slots:
             QVERIFY(QDir().mkpath(evidence)); QVERIFY(view.grab().save(evidence + "/reader-" + theme + "-top.png"));
             view.verticalScrollBar()->setValue(view.verticalScrollBar()->maximum()); QVERIFY(view.grab().save(evidence + "/reader-" + theme + "-details.png"));
         }
-        QSignalSpy copy(&view, &NativePreviewView::copyTextRequested); view.selectAll(); view.copy(); QCOMPARE(copy.size(), 1); QCOMPARE(copy.first().first().toString(), before);
+        auto expectedCopy = before;
+        expectedCopy.replace(QStringLiteral("• "), QString());
+        expectedCopy.replace(QStringLiteral("☑ "), QString());
+        QSignalSpy copy(&view, &NativePreviewView::copyTextRequested); view.selectAll(); view.copy(); QCOMPARE(copy.size(), 1); QCOMPARE(copy.first().first().toString(), expectedCopy);
         QCOMPARE(data->text, before); QCOMPARE(view.statistics().deniedResources, 0); QVERIFY(view.statistics().peakCachedEstimatedBytes <= 8 * 1024 * 1024);
     }
     void sourceFontIsMonospacedAndEmojiHasGlyphFallback() {
@@ -89,6 +113,59 @@ private slots:
         int glyphs = 0;
         for (const auto &run : layout.glyphRuns()) for (const auto index : run.glyphIndexes()) { QVERIFY(index != 0); ++glyphs; }
         QVERIFY(glyphs > 0);
+    }
+    void quoteAndCodeDistributeLeadingAndPadding_data() {
+        QTest::addColumn<QString>("theme");QTest::addColumn<int>("size");QTest::addColumn<double>("height");QTest::addColumn<double>("zoom");
+        for(const auto*theme:{"light","dark"})for(const auto&sample:QList<QPair<int,double>>{{16,1.8},{22,2.4}})for(const auto zoom:{1.0,1.5})
+            QTest::newRow(qPrintable(QString("%1-%2-%3").arg(theme).arg(sample.first).arg(zoom)))<<QString(theme)<<sample.first<<sample.second<<zoom;
+    }
+    void quoteAndCodeDistributeLeadingAndPadding() {
+        QFETCH(QString,theme);QFETCH(int,size);QFETCH(double,height);QFETCH(double,zoom);Appearance a;QVERIFY(a.setPreferences(theme,"graphite"));QVERIFY(a.preferences()->setValues("reader",{{"fontSize",size},{"lineHeight",height}}));
+        for(const auto *kind:{"quote","code","table"}){
+            const bool quote=QString(kind)=="quote",code=QString(kind)=="code";
+            const auto data=content(quote?QStringLiteral("> 少一点干扰，多一点专注。\n").toUtf8():code?QStringLiteral("```\n田田\n```\n").toUtf8():QStringLiteral("|田田|田田|\n|--|--|\n|田田|田田|\n").toUtf8());QVERIFY(data);NativePreviewView view(&a,nullptr,32);view.resize(860,340);view.setZoomFactor(zoom);view.expect(stamp());QVERIFY(view.present(stamp(),data));view.show();QApplication::processEvents();const auto image=view.viewport()->grab().toImage();const auto dpr=image.devicePixelRatio();
+            const auto surface=coloredPixels(image,a.color(code?"codeSurface":"quoteSurface"));QVERIFY(!surface.isEmpty());const int contentTop=surface.top()+(code?qRound(32*dpr):0);
+            const auto ink=inkPixels(image,a.color(quote?"textSecondary":"text"),a.color(code?"codeSurface":"quoteSurface"),QRect(qRound(60*zoom*dpr),contentTop,qRound(300*zoom*dpr),surface.bottom()-contentTop+1));QVERIFY(!ink.isEmpty());
+            auto reference=code?sourceFont(qRound(14*zoom)):uiFont(qRound(size*zoom));if(!quote&&!code)reference.setWeight(QFont::DemiBold);
+            const auto natural=naturalInkImbalance(quote?QStringLiteral("少一点干扰，多一点专注。"):QStringLiteral("田田"),reference)*dpr;
+            const int top=ink.top()-contentTop,bottom=surface.bottom()-ink.bottom();qInfo()<<kind<<theme<<size<<zoom<<"physical padding"<<top<<bottom<<"natural font imbalance"<<natural;
+            QVERIFY2(qAbs(top-bottom-natural)<=qCeil(2*dpr)+1,qPrintable(QString("%1 top=%2 bottom=%3, font=%4, DPR=%5").arg(kind).arg(top).arg(bottom).arg(natural).arg(dpr)));
+            const auto before=data->text;view.selectAll();QVERIFY(view.selectedText().contains(QStringLiteral("田田"))||view.selectedText().contains(QStringLiteral("少一点")));QCOMPARE(data->text,before);
+        }
+    }
+    void quoteParagraphsShareSurfaceAndSeparateQuotesStaySeparate() {
+        Appearance a;const auto data=content(QStringLiteral("> 第一段\n>\n> 第二段\n\n普通段\n\n> 第三段\n").toUtf8());QVERIFY(data);NativePreviewView view(&a,nullptr,32);view.resize(700,400);view.expect(stamp());QVERIFY(view.present(stamp(),data));view.show();QApplication::processEvents();const auto image=view.viewport()->grab().toImage();const auto dpr=image.devicePixelRatio();
+        const auto first=view.viewport()->mapFromGlobal(view.characterRect(0).topLeft());const auto second=view.viewport()->mapFromGlobal(view.characterRect(data->text.indexOf(QStringLiteral("第二段"))).bottomLeft());const int x=qRound(42*dpr);
+        for(int y=qCeil(first.y()*dpr);y<=qFloor(second.y()*dpr);++y)QCOMPARE(image.pixelColor(x,y),a.color("quoteSurface"));
+        const auto plain=view.viewport()->mapFromGlobal(view.characterRect(data->text.indexOf(QStringLiteral("普通段"))).center());QVERIFY(image.pixelColor(x,qRound(plain.y()*dpr))!=a.color("quoteSurface"));
+    }
+    void tallInlineTextAndTableImagesKeepTheirFullHeight() {
+        Appearance a;QVERIFY(a.preferences()->setValues("editor",{{"fontSize",40}}));const auto mixed=content(QStringLiteral("正文 `田田Qgj` 后文\n\n下一段\n").toUtf8());QVERIFY(mixed);NativePreviewView view(&a,nullptr,32);view.resize(700,400);view.expect(stamp());QVERIFY(view.present(stamp(),mixed));view.show();QApplication::processEvents();
+        auto image=view.viewport()->grab().toImage();const auto dpr=image.devicePixelRatio();const auto ink=coloredPixels(image,a.color("syntaxCode"),{},20);QVERIFY(ink.height()>=32*dpr);const auto next=view.characterRect(mixed->text.indexOf(QStringLiteral("下一段")));QVERIFY(next.top()>view.characterRect(mixed->text.indexOf(QStringLiteral("田田"))).bottom());
+        QImage bitmap(64,96,QImage::Format_RGB32);bitmap.fill(QColor("#17A45B"));QByteArray png;QBuffer buffer(&png);QVERIFY(buffer.open(QIODevice::WriteOnly));QVERIFY(bitmap.save(&buffer,"PNG"));const auto table=content("|image|\n|---|\n|![test](one.png)|\n",QByteArray(1,char(1)));QVERIFY(table);view.expect(stamp(2));QVERIFY(view.present(stamp(2),table,{{0,png}}));QApplication::processEvents();image=view.viewport()->grab().toImage();const auto pixels=coloredPixels(image,QColor("#17A45B"));QVERIFY(!pixels.isEmpty());QVERIFY2(pixels.height()>=95*dpr,qPrintable(QString("Image clipped to %1 px").arg(pixels.height())));
+        const auto position=view.viewport()->mapFromGlobal(view.characterRect(table->images.first().start).center());const auto hit=view.offsetAtPoint(position);QVERIFY(hit>=table->images.first().start&&hit<=table->images.first().start+table->images.first().length);
+    }
+    void codeCopyButtonAnchorsToHeaderAcrossZoom_data() {
+        QTest::addColumn<QString>("theme");QTest::addColumn<double>("zoom");
+        for(const auto*theme:{"light","dark"})for(const auto zoom:{.5,1.0,1.5,2.0})QTest::newRow(qPrintable(QString("%1-%2").arg(theme).arg(zoom)))<<QString(theme)<<zoom;
+    }
+    void codeCopyButtonAnchorsToHeaderAcrossZoom() {
+        QFETCH(QString,theme);QFETCH(double,zoom);Appearance a;QVERIFY(a.setPreferences(theme,"graphite"));const auto data=content("```cpp\nconst int answer = 42;\n```\n");QVERIFY(data);NativePreviewView view(&a,nullptr,24);view.resize(731,300);view.setZoomFactor(zoom);view.expect(stamp());QVERIFY(view.present(stamp(),data));view.show();QApplication::processEvents();view.grab();
+        auto*button=view.findChild<QPushButton *>("nativeCodeCopy");QVERIFY(button&&button->isVisible());QCOMPARE(button->size(),QSize(32,32));
+        const auto image=view.viewport()->grab().toImage();const auto dpr=image.devicePixelRatio();const auto panel=coloredPixels(image,a.color("codeSurface"));QVERIFY(!panel.isEmpty());
+        const auto hit=button->geometry();const auto right=(panel.right()+1)/dpr;
+        QVERIFY(qAbs(right-(hit.right()+1)-4)<=1.5);QVERIFY(qAbs(hit.top()+hit.height()/2.0-(panel.top()/dpr+16))<=1.5);
+        const auto glyph=inkPixels(image,a.color("text"),a.color("codeSurface"),QRect(qRound(hit.x()*dpr),qRound(hit.y()*dpr),qRound(hit.width()*dpr),qRound(hit.height()*dpr)));QVERIFY(!glyph.isEmpty());
+        QVERIFY(qAbs(glyph.center().x()-(hit.x()+16)*dpr)<=2*dpr);QVERIFY(qAbs(glyph.center().y()-(hit.y()+16)*dpr)<=2*dpr);
+        auto*accessible=QAccessible::queryAccessibleInterface(&view);QVERIFY(accessible&&accessible->childCount()==1);QCOMPARE(accessible->child(0)->rect(),QRect(button->mapToGlobal(QPoint()),button->size()));
+        QSignalSpy copied(&view,&NativePreviewView::copyTextRequested);QTest::mouseClick(button,Qt::LeftButton);QCOMPARE(copied.size(),1);QCOMPARE(copied.first().first().toString(),QString("const int answer = 42;\n"));
+    }
+    void codeCopyButtonStaysWithHeaderDuringScrollAndResize() {
+        Appearance a;const auto data=content("```cpp\n"+QByteArray("long_code ").repeated(200)+"\n```\n\n"+QByteArray("paragraph\n\n").repeated(40));QVERIFY(data);NativePreviewView view(&a,nullptr,24);view.resize(700,320);view.expect(stamp());QVERIFY(view.present(stamp(),data));view.show();QApplication::processEvents();view.grab();
+        const auto visible=[&]()->QPushButton*{for(auto*b:view.findChildren<QPushButton *>("nativeCodeCopy"))if(b->isVisible())return b;return nullptr;};
+        QTRY_VERIFY(view.ready());QCOMPARE(view.verticalScrollBar()->value(),0);QTRY_VERIFY(visible());auto*button=visible();const auto original=button->geometry();QScrollBar*horizontal=nullptr;for(auto*bar:view.findChildren<QScrollBar*>())if(bar->orientation()==Qt::Horizontal&&bar->isVisible())horizontal=bar;QVERIFY(horizontal);horizontal->setValue(horizontal->maximum());QCOMPARE(button->geometry(),original);
+        view.resize(500,320);QTRY_VERIFY(view.ready());QTRY_VERIFY(visible());QVERIFY(visible()->x()<original.x());QCOMPARE(visible()->size(),QSize(32,32));
+        view.verticalScrollBar()->setValue(100);QTRY_VERIFY(!visible());view.verticalScrollBar()->setValue(0);QTRY_VERIFY(visible());QCOMPARE(visible()->size(),QSize(32,32));
     }
     void projectsGlobalSemanticsAndDraws() {
         const auto source = QStringLiteral("# 中文标题\n\n正文 **粗体** *斜体* ~~删除~~ `code` 😀。\n\n> - [x] 完成\n>   - 子项\n\n```cpp\nconst char *text = \"<script>literal</script>\";\n```\n\n|左|右|\n|:--|--:|\n|甲|乙|\n\n[跳转](#中文标题)\n").toUtf8();
@@ -103,8 +180,19 @@ private slots:
         const auto image = view.grab().toImage(); QVERIFY(!image.isNull());
         QVERIFY(view.statistics().cachedDocuments > 0); QVERIFY(view.statistics().flows > 0);
         QSignalSpy copied(&view, &NativePreviewView::copyTextRequested);
-        view.selectAll(); view.copy(); QCOMPARE(copied.size(), 1); QCOMPARE(copied.first().first().toString(), data->text);
+        view.selectAll(); view.copy(); QCOMPARE(copied.size(), 1);
+        QCOMPARE(copied.first().first().toString(), QStringLiteral("中文标题\n\n正文 粗体 斜体 删除 code 😀。\n\n完成\n\n子项\n\nconst char *text = \"<script>literal</script>\";\n\n左\t右\n甲\t乙\n\n跳转\n\n"));
         QVERIFY(view.navigateToHeading(QStringLiteral("中文标题"), stamp()));
+    }
+    void listDecorationsAreExcludedFromSelectionAndCopy() {
+        const auto data = content("3. ordered\n4. next\n\n- bullet\n- [x] task\n\n1\\. literal\n\n```\n1. code\n```\n"); QVERIFY(data);
+        Appearance appearance; NativePreviewView view(&appearance); view.resize(640, 720); view.expect(stamp()); QVERIFY(view.present(stamp(), data)); view.show(); QApplication::processEvents();
+        const auto before = data->text; QSignalSpy copied(&view, &NativePreviewView::copyTextRequested); view.selectAll(); view.copy();
+        QCOMPARE(copied.size(), 1); const auto text = copied.first().first().toString();
+        QVERIFY(text.startsWith("ordered\n\nnext\n\nbullet\n\ntask\n\n"));
+        QVERIFY(text.contains("1. literal")); QVERIFY(text.contains("1. code"));
+        QVERIFY(!text.contains("3. ordered")); QVERIFY(!text.contains(QStringLiteral("• bullet"))); QVERIFY(!text.contains(QStringLiteral("☑ task")));
+        QCOMPARE(data->text, before);
     }
     void projectionKeepsTightLooseAndNestedListOrder() {
         const auto data = content(QStringLiteral("1. **一**\n2. 二\n   - 子项\n\n> 引用\n\n- [ ] 待办\n\n- 段落一\n\n  段落二\n\n    ```\n    A\u2028B\u2029C\n    ```\n").toUtf8());

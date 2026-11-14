@@ -304,7 +304,7 @@ def main():
             evidence = build / "evidence/settings"; evidence.mkdir(parents=True, exist_ok=True)
             env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
             suffix = ".exe" if platform.system() == "Windows" else ""
-            groups = {"settings": [], "file": GROUPS["file"], "visual": ["appearanceStoragePreservesUnknownFieldsAndFailure", "themeGeometryAndEditing", "sharedAppearanceAndReloadPreserveTextUndoAndPosition"],
+            groups = {"settings": [], "control": [], "file": GROUPS["file"], "visual": ["appearanceStoragePreservesUnknownFieldsAndFailure", "themeGeometryAndEditing", "sharedAppearanceAndReloadPreserveTextUndoAndPosition"],
                       "workspace": ["sidebarWriteFailureFeedbackClearsAfterSuccessfulRetry", "sidebarSearchRecentFavoritesAndTabsKeepTheSameBuffer", "pendingWorkspaceCloseCancelsUnpublishedTab", "duplicateOpenAndReorderedInactiveTabCloseKeepUniqueDirtyBuffer"],
                       "native_preview": [], "pipeline": [], "scroll": []}
             result = {"ok": False, "scope": "fixed offscreen settings and affected session/layout regression", "buildIdentity": verify_build_identity(build, args.profile, qt), "tests": {}}
@@ -427,7 +427,7 @@ def main():
         env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
         ctest = str(Path(args.cmake).with_name("ctest" + (".exe" if platform.system() == "Windows" else ""))) if Path(args.cmake).is_absolute() else "ctest"
         # Verbose output retains Qt diagnostics even when QtTest itself passes.
-        native_reports = [build / name for name in ("desktop-qtest.txt", "file-qtest.txt", "visual-qtest.txt", "geometry-qtest.txt", "workspace-qtest.txt", "native-model-qtest.txt", "native-preview-qtest.txt", "scroll-qtest.txt", "pipeline-qtest.txt", "settings-qtest.txt")]
+        native_reports = [build / name for name in ("desktop-qtest.txt", "file-qtest.txt", "visual-qtest.txt", "geometry-qtest.txt", "workspace-qtest.txt", "native-model-qtest.txt", "native-preview-qtest.txt", "scroll-qtest.txt", "pipeline-qtest.txt", "settings-qtest.txt", "control-qtest.txt")]
         for report in native_reports:
             report.unlink(missing_ok=True)
         try:

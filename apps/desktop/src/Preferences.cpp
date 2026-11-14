@@ -8,6 +8,16 @@
 #include <cmath>
 
 namespace xdnote {
+namespace {
+QJsonObject preserveUnknown(QJsonObject next, const QJsonObject &stored, const QJsonObject &known) {
+    for (auto field = stored.begin(); field != stored.end(); ++field) {
+        if (!known.contains(field.key())) next[field.key()] = field.value();
+        else if (known[field.key()].isObject() && field.value().isObject())
+            next[field.key()] = preserveUnknown(next[field.key()].toObject(), field.value().toObject(), known[field.key()].toObject());
+    }
+    return next;
+}
+}
 Preferences::Preferences(QObject *parent, QString path) : QObject(parent), m_path(std::move(path)) {
     const auto fonts = visualTokens()["typography"].toObject();
     const auto source = fonts["source"].toObject(), reader = fonts["reader"].toObject();
@@ -93,6 +103,7 @@ bool Preferences::valid(const QString &section, const QString &key, const QJsonV
 }
 bool Preferences::fail(const QString &message) { m_error = message; emit writeFailed(message); return false; }
 bool Preferences::setValues(const QString &section, const QJsonObject &patch) {
+    m_retryWrite = false;
     if (!m_valid) return fail(m_error);
     const auto known = m_defaults[section].toObject();
     if (known.isEmpty() || patch.isEmpty()) return fail(QStringLiteral("设置项无效"));
@@ -114,14 +125,25 @@ bool Preferences::setValues(const QString &section, const QJsonObject &patch) {
     }
     if (!changed) return true;
     next[section] = values; next["schemaVersion"] = 1;
-    const auto bytes = QJsonDocument(next).toJson();
-    if (bytes.size() > 65536) return fail(QStringLiteral("设置文件过大，本次更改未生效"));
     if (!m_path.isEmpty()) {
+        m_failedSection = section; m_failedPatch = patch; m_retryWrite = true;
         if (!QDir().mkpath(QFileInfo(m_path).path())) return fail(QStringLiteral("无法创建设置目录，本次更改未生效"));
+        if (QFileInfo::exists(m_path)) {
+            QFile existing(m_path);
+            if (!existing.open(QIODevice::ReadOnly) || existing.size() > 65536)
+                return fail(QStringLiteral("无法读取当前设置，本次更改未生效；原配置已保留"));
+            const auto stored = QJsonDocument::fromJson(existing.readAll());
+            if (!stored.isObject() || stored.object()["schemaVersion"].toDouble(-1) != 1)
+                return fail(QStringLiteral("当前设置格式无效，本次更改未生效；原配置已保留"));
+            next = preserveUnknown(next, stored.object(), m_defaults);
+        }
+        const auto bytes = QJsonDocument(next).toJson();
+        if (bytes.size() > 65536) return fail(QStringLiteral("设置文件过大，本次更改未生效"));
         QSaveFile file(m_path); file.setDirectWriteFallback(false);
         if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
             return fail(QStringLiteral("无法保存设置，本次更改未生效：") + file.errorString());
     }
-    m_values = next; m_error.clear(); emit this->changed(section); return true;
+    m_values = next; m_error.clear(); m_retryWrite = false; m_failedSection.clear(); m_failedPatch = {}; emit this->changed(section); return true;
 }
+bool Preferences::retryWrite() { if (!m_retryWrite) return false; const auto section = m_failedSection; const auto patch = m_failedPatch; return setValues(section, patch); }
 }

@@ -9,6 +9,7 @@
 #include "SharedWidgets.h"
 #include "Appearance.h"
 #include "VisualTokens.h"
+#include "UiFonts.h"
 #include <QtConcurrentRun>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -203,24 +204,26 @@ void ResourceMaintenanceController::show(const QString &from) {
     auto *scroll = new QScrollArea(dialog.surface()); scroll->setWidgetResizable(true); scroll->setFrameShape(QFrame::NoFrame);
     const int bodyHeight = qBound(160, m_window->screen()->availableGeometry().height() - 200, 520);
     scroll->setMaximumHeight(bodyHeight); scroll->setMinimumHeight(qMin(400, bodyHeight)); scroll->setStyleSheet(themedScrollBars(appearance));
-    auto *body = new QWidget; scroll->setWidget(body); outer->addWidget(scroll, 1);
+    auto *body = new QWidget; body->setObjectName("resourceMaintenanceBody"); scroll->setWidget(body); outer->addWidget(scroll, 1);
     auto *layout = new QVBoxLayout(body); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(16);
-    auto *title = new QLabel(QStringLiteral("移动或重命名资源"), dialog.surface()); layout->addWidget(title);
-    auto *form = new QFormLayout; auto *source = new QLineEdit(from), *target = new QLineEdit;
+    auto *titleRow = new QHBoxLayout; auto *title = new QLabel(QStringLiteral("移动或重命名资源"), dialog.surface()); auto titleFont=uiFont(18);titleFont.setWeight(QFont::DemiBold);title->setFont(titleFont);titleRow->addWidget(title,1);
+    auto *close = new SharedButton({},"dialogClose",appearance,&dialog);close->setSymbol("close");close->setFixedWidth(32);close->setAccessibleName(QStringLiteral("关闭对话框"));titleRow->addWidget(close);outer->insertLayout(0,titleRow);connect(close,&QPushButton::clicked,&dialog,&QDialog::reject);
+    auto *form = new QFormLayout; auto *source = new SharedLineEdit(appearance,body), *target = new SharedLineEdit(appearance,body);source->setText(from);
     source->setObjectName("resourceMoveSource"); target->setObjectName("resourceMoveTarget");
     form->addRow(QStringLiteral("原位置"), source); form->addRow(QStringLiteral("新位置"), target); layout->addLayout(form);
     auto *description = new QLabel(QStringLiteral("使用工作区相对路径；目标父目录须已存在。先预览影响，再确认移动。")); description->setWordWrap(true); description->setTextFormat(Qt::PlainText); layout->addWidget(description);
-    auto *externalMove = new QCheckBox(QStringLiteral("原位置已在应用外移动：仅把引用改到我确认的新位置")); layout->addWidget(externalMove);
-    auto *tree = new QTreeWidget; tree->setHeaderLabels({QStringLiteral("文件／引用位置"), QStringLiteral("处理结果或新目标")}); tree->setMinimumHeight(200); tree->setMaximumHeight(280); tree->setObjectName("resourceMoveImpact"); layout->addWidget(tree);
+    auto *externalMove = new SharedCheckBox(QStringLiteral("原位置已在应用外移动：仅把引用改到我确认的新位置"),appearance,body); layout->addWidget(externalMove);
+    auto *tree = new QTreeWidget; tree->setHeaderLabels({QStringLiteral("文件／引用位置"), QStringLiteral("处理结果或新目标")}); tree->setColumnWidth(0,qMax(180,tree->fontMetrics().horizontalAdvance(tree->headerItem()->text(0))+24)); tree->setMinimumHeight(200); tree->setMaximumHeight(280); tree->setObjectName("resourceMoveImpact"); layout->addWidget(tree);
     const auto fields = QStringLiteral("QLineEdit,QTreeWidget{background:%1;color:%2;border:1px solid %3;border-radius:6px} QLineEdit{padding:4px 8px} QTreeWidget{outline:0} QTreeWidget::item{padding:4px} QHeaderView::section{background:%1;color:%2;border:0;border-bottom:1px solid %3;padding:6px} QTreeWidget::item:selected{background:%4}")
         .arg(appearance->color("surface").name(), appearance->color("text").name(), appearance->color("border").name(), appearance->color("sidebar").name());
-    source->setStyleSheet(fields); target->setStyleSheet(fields); tree->setStyleSheet(fields + themedScrollBars(appearance));
-    auto *maintain = new QCheckBox(QStringLiteral("维护已识别的引用（打开文档保留未保存状态）")); maintain->setChecked(true); layout->addWidget(maintain);
-    auto *ack = new QCheckBox(QStringLiteral("已了解未覆盖或跳过项目，以及仅移动可能造成的断链")); layout->addWidget(ack);
+    tree->setStyleSheet(fields + themedScrollBars(appearance));
+    auto *maintain = new SharedCheckBox(QStringLiteral("维护已识别的引用（打开文档保留未保存状态）"),appearance,body); maintain->setChecked(true); layout->addWidget(maintain);
+    auto *ack = new SharedCheckBox(QStringLiteral("已了解未覆盖或跳过项目，以及仅移动可能造成的断链"),appearance,body); layout->addWidget(ack);
     auto *buttons = new QHBoxLayout; auto *preview = new SharedButton(QStringLiteral("预览影响"), "previewResourceMove", appearance);
     auto *restore = new SharedButton(QStringLiteral("恢复上次已完成项"), "recoverResourceMove", appearance); restore->setEnabled(canRecover());
     auto *cancel = new SharedButton(QStringLiteral("取消"), "cancelResourceMove", appearance);
     auto *apply = new SharedButton(QStringLiteral("确认移动"), "applyResourceMove", appearance); apply->setProperty("primary", true); apply->setEnabled(false);
+    preview->setOutlined(true);restore->setOutlined(true);cancel->setOutlined(true);
     buttons->addWidget(preview); buttons->addWidget(restore); buttons->addStretch(); buttons->addWidget(cancel); buttons->addWidget(apply); outer->addLayout(buttons);
     if (!m_result.rows.isEmpty()) {
         description->setText(QStringLiteral("上次维护的逐项结果。可恢复已完成项，或填写路径后重新预览新的操作。"));

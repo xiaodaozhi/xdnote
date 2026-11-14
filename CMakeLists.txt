@@ -99,6 +99,8 @@ if(UNIX)
 endif()
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/DocumentExport.cpp apps/desktop/src/DocumentExport.h
+    apps/desktop/src/DocumentOutline.cpp apps/desktop/src/DocumentOutline.h
     apps/desktop/src/DocumentBreadcrumb.cpp apps/desktop/src/DocumentBreadcrumb.h
     apps/desktop/src/NavigationStore.cpp apps/desktop/src/NavigationStore.h
     apps/desktop/src/WorkspaceNavigation.cpp apps/desktop/src/WorkspaceNavigation.h
@@ -155,8 +157,9 @@ else()
     target_link_libraries(xdnote_desktop PUBLIC Threads::Threads ${CMAKE_DL_LIBS} m)
 endif()
 file(GLOB XDNOTE_UI_ICONS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/design/assets/ui-v2/icons/svg/*.svg")
+file(GLOB XDNOTE_UI_LICENSES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/LICENSES/third-party/*.txt")
 qt_add_resources(xdnote_desktop xdnote_assets PREFIX /xdnote BASE "${PROJECT_SOURCE_DIR}" FILES
-    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/logo-dark.svg design/assets/ui-v2/brand/app-icon.svg ${XDNOTE_UI_ICONS})
+    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/logo-dark.svg design/assets/ui-v2/brand/app-icon.svg THIRD_PARTY_NOTICES.md LICENSE LICENSES/CC-BY-4.0.txt LICENSES/third-party/manifest.json Cargo.lock docs/engineering/licensing.md tools/desktop-dependencies.json ${XDNOTE_UI_LICENSES} ${XDNOTE_UI_ICONS})
 
 qt_add_executable(xdnote WIN32 apps/desktop/main.cpp)
 target_link_libraries(xdnote PRIVATE xdnote_desktop)
@@ -234,6 +237,13 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME settings_workflow COMMAND xdnote_settings_tests -o -,txt -o "${CMAKE_BINARY_DIR}/settings-qtest.txt,txt")
     set_tests_properties(settings_workflow PROPERTIES TIMEOUT 180)
+    add_executable(xdnote_control_tests apps/desktop/tests/control_consistency_tests.cpp)
+    target_link_libraries(xdnote_control_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_control_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME control_consistency COMMAND xdnote_control_tests -o -,txt -o "${CMAKE_BINARY_DIR}/control-qtest.txt,txt")
+    set_tests_properties(control_consistency PROPERTIES TIMEOUT 180)
     add_executable(xdnote_scroll_tests apps/desktop/tests/scroll_sync_tests.cpp)
     target_link_libraries(xdnote_scroll_tests PRIVATE xdnote_desktop Qt6::Test)
     if(MSVC)

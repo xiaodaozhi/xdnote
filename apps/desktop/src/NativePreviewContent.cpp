@@ -181,9 +181,9 @@ std::optional<NativePreviewContent> NativePreviewContent::build(NativePreviewMod
                 if (kind == Kind::TaskMarker) {
                     // Task items replace their ordinary bullet, not the text or
                     // authoritative Markdown marker in the document session.
-                    if (flow >= 0 && result.text.mid(result.flows[flow].start) == QStringLiteral("• ")) {
-                        result.text.chop(2);
-                        if (!result.runs.isEmpty()) { result.runs.last().length -= 2; if (result.runs.last().length == 0) result.runs.removeLast(); }
+                    if (flow >= 0 && result.flows[flow].markerLength && result.text.size()-result.flows[flow].start==result.flows[flow].markerLength) {
+                        const int marker=result.flows[flow].markerLength;result.text.chop(marker);result.flows[flow].markerLength=2;
+                        if (!result.runs.isEmpty()) { result.runs.last().length -= marker; if (result.runs.last().length == 0) result.runs.removeLast(); }
                     }
                     append(node.detail ? QStringLiteral("☑") : QStringLiteral("☐"), style | Task, NativePreviewModel::NoParent);
                     separator(QStringLiteral(" "));

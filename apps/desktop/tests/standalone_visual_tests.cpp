@@ -120,7 +120,13 @@ private slots:
                 qInfo() << "font-request=" << font.families() << "resolved=" << QFontInfo(font).family() << "han=" << run.rawFont().familyName();
                 QVERIFY(!run.rawFont().familyName().contains("SimSun", Qt::CaseInsensitive));
 #ifdef Q_OS_WIN
-                QVERIFY(run.rawFont().familyName().contains("YaHei", Qt::CaseInsensitive) || run.rawFont().familyName().contains(QStringLiteral("微软雅黑")));
+                const auto family = run.rawFont().familyName();
+                const bool nativeSans = family.contains("YaHei", Qt::CaseInsensitive) || family.contains(QStringLiteral("微软雅黑"));
+                // The windowless font database uses installed DengXian for Han;
+                // the native Windows backend must still resolve the UI family.
+                const bool offscreenSans = QGuiApplication::platformName() == "offscreen" && family.contains("DengXian", Qt::CaseInsensitive);
+                QVERIFY(nativeSans || offscreenSans);
+                for (const auto glyph : run.glyphIndexes()) QVERIFY(glyph != 0);
 #endif
             }
         }
