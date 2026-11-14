@@ -93,9 +93,10 @@ def require_product_runtime(directory):
     """Reject accidental experimental Quick/QML deployment in product staging."""
     unexpected = [path.relative_to(directory).as_posix() for path in files_under(directory)
                   if path.name.lower().startswith(('qt6quick', 'qt6qml'))
+                  or path.name.lower() in ('d3dcompiler_47.dll', 'dxcompiler.dll', 'dxil.dll')
                   or path.relative_to(directory).parts[0].lower() in ('qml', 'qmltooling')]
     if unexpected:
-        raise ValueError('Product deployment contains unused admission dependencies: ' + ', '.join(unexpected))
+        raise ValueError('Product deployment contains unused admission modules or host graphics libraries: ' + ', '.join(unexpected))
 
 
 def dependency_closure(directory, system_directory):
@@ -170,6 +171,7 @@ def prepare(build, qt, destination, redist):
     for name in ("xdnote.exe", "xdnote_background_probe.exe", "xdnote_preview_product_probe.exe"):
         shutil.copy2(build / name, destination / name)
     execute([qt / "bin/windeployqt.exe", "--release", "--no-compiler-runtime", "--no-translations", "--no-patchqt",
+             "--no-system-d3d-compiler", "--no-system-dxc-compiler",
              "--include-plugins", "qoffscreen",
              "--exclude-plugins", "qtposition_nmea", "--dir", destination,
              destination / "xdnote.exe", destination / "xdnote_background_probe.exe", destination / "xdnote_preview_product_probe.exe"], env, evidence / "windeployqt.log", 180)
@@ -229,6 +231,8 @@ def prepare(build, qt, destination, redist):
               "imports": imports, "missingImports": missing, "qtSbom": sboms, "offscreenSmoke": smoke, "offscreenProductSmoke": product[0],
               "diagnosticOnly": ["xdnote_background_probe.exe", "xdnote_preview_product_probe.exe", "Qt6Test.dll", "platforms/qoffscreen.dll"],
               "excludedOptionalPlugins": {"qtposition_nmea": "No NMEA/GPS serial-device feature; QtSerialPort is not a prepared product dependency"},
+              "systemGraphicsPolicy": {"D3Dcompiler_47.dll": "provided by the supported Windows 10+ OS; no host OS DLL copy is bundled",
+                                       "systemDxcCopy": False},
               "releaseReady": False, "remaining": ["review actual Qt module third-party notices and fulfill selected LGPL source/replacement obligations",
                   "MSVC redistribution terms", "minimum Windows target execution; current-host system DLL availability is not minimum-OS proof",
                   "native installer/upgrade/uninstall and file association", "signing and platform delivery policy",

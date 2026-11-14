@@ -46,7 +46,8 @@ class DeploymentTests(unittest.TestCase):
             root = Path(name)
             (root / 'Qt6Widgets.dll').touch()
             deployment.require_product_runtime(root)
-            for relative in ('Qt6Quick.dll', 'Qt6Qml.dll', 'qml/QtQuick/Test.qml', 'qmltooling/debug.dll'):
+            for relative in ('Qt6Quick.dll', 'Qt6Qml.dll', 'qml/QtQuick/Test.qml', 'qmltooling/debug.dll',
+                             'D3Dcompiler_47.dll', 'dxcompiler.dll', 'dxil.dll'):
                 path = root / relative; path.parent.mkdir(parents=True, exist_ok=True); path.touch()
                 with self.assertRaisesRegex(ValueError, 'unused admission'):
                     deployment.require_product_runtime(root)

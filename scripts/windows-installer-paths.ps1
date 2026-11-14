@@ -39,18 +39,18 @@ public static class XdnoteInstallerPath {
 function Get-XdnoteCanonicalPath([string]$Path) {
     return [XdnoteInstallerPath]::Canonical($Path)
 }
-function Assert-XdnoteShortcut([string]$Executable) {
+function Assert-XdnoteShortcut([string]$Executable, [string]$EvidenceDirectory = 'build/installer-smoke') {
     $link = Join-Path ([Environment]::GetFolderPath('Programs')) 'xdnote.lnk'
     $exists = Test-Path -LiteralPath $link
     $target = if ($exists) { [XdnoteInstallerPath]::ReadShortcut($link) } else { '' }
     $diagnostic = @{ link_exists=$exists; target_exists=($target -and (Test-Path -LiteralPath $target)); target_uses_versions=($target -match '\\versions\\'); target_uses_short_alias=($target -match '~[0-9]'); expected_exists=(Test-Path -LiteralPath $Executable) }
-    New-Item -ItemType Directory -Force 'build/installer-smoke' | Out-Null
-    $diagnostic | ConvertTo-Json | Set-Content 'build/installer-smoke/windows-shortcut-diagnostic.json'
+    New-Item -ItemType Directory -Force $EvidenceDirectory | Out-Null
+    $diagnostic | ConvertTo-Json | Set-Content (Join-Path $EvidenceDirectory 'windows-shortcut-diagnostic.json')
     if (!$exists -or !$target) { throw 'Installed Start menu shortcut is missing or has no target' }
     $actual = Get-XdnoteCanonicalPath $target
     $expected = Get-XdnoteCanonicalPath $Executable
     $diagnostic.canonical_target_matches = $actual -eq $expected
     $diagnostic.expected_uses_versions = $expected -match '\\versions\\'
-    $diagnostic | ConvertTo-Json | Set-Content 'build/installer-smoke/windows-shortcut-diagnostic.json'
+    $diagnostic | ConvertTo-Json | Set-Content (Join-Path $EvidenceDirectory 'windows-shortcut-diagnostic.json')
     if ($actual -ne $expected) { throw 'Shortcut did not migrate to the app root' }
 }
