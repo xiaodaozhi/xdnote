@@ -4,6 +4,7 @@
 #include "FileManager.h"
 #include "AutoSaveController.h"
 #include "SettingsWindow.h"
+#include "WindowGeometry.h"
 #include "SingleFileWindow.h"
 #include "WorkspaceWindow.h"
 #include "SourceEditor.h"
@@ -28,6 +29,8 @@
 #include <QTest>
 #include <QScopeGuard>
 #include <QScrollBar>
+#include <QScrollArea>
+#include <QScreen>
 #include <cmath>
 #include <atomic>
 #include <future>
@@ -214,6 +217,32 @@ private slots:
             QVERIFY(appearance.setPreferences(theme, "graphite")); window.resize(1080, 820);
             for (int page = 0; page < 6; ++page) { window.selectPage(page); QTest::qWait(70); auto *done = window.findChild<SharedButton *>("settingsDone"); QVERIFY(done->isVisible()); QVERIFY(window.rect().contains(QRect(done->mapTo(&window, QPoint()), done->size()))); if (!evidence.isEmpty()) QVERIFY(window.grab().save(evidence + "/settings/" + theme + "-" + QString::number(page) + ".png")); }
             window.resize(860, 640); window.selectPage(1); QTest::qWait(70); auto *first = window.findChild<QAbstractButton *>("settings-accent-graphite"), *fourth = window.findChild<QAbstractButton *>("settings-accent-mauve"); QVERIFY(first && fourth); QVERIFY(fourth->y() > first->y()); if (!evidence.isEmpty()) QVERIFY(window.grab().save(evidence + "/settings/" + theme + "-compact.png"));
+        }
+    }
+    void shortcutCapsKeepNativeEditingAndEmptyBinding() {
+        QTemporaryDir dir;Appearance appearance(nullptr,dir.filePath("settings.json"));SettingsWindow w(&appearance,nullptr);w.show();w.selectPage(4);w.activateWindow();
+        auto*field=w.findChild<SharedLineEdit*>("shortcut-findAction");QVERIFY(field&&field->shortcutDisplay());
+        const auto original=field->text();field->setFocus(Qt::TabFocusReason);QTRY_VERIFY(field->hasFocus());
+        field->selectAll();QTest::keyClicks(field,"Ctrl+Alt+K, Ctrl+Alt+C");QCOMPARE(field->text(),QString("Ctrl+Alt+K, Ctrl+Alt+C"));
+        w.findChild<SharedButton*>("apply-findAction")->click();QCOMPARE(appearance.preferences()->value("shortcuts","findAction").toString(),field->text());
+        field->setFocus();field->selectAll();QTest::keyClick(field,Qt::Key_Backspace);w.findChild<SharedButton*>("apply-findAction")->click();QCOMPARE(field->text(),QString());QCOMPARE(field->placeholderText(),QStringLiteral("未分配"));QCOMPARE(appearance.preferences()->value("shortcuts","findAction").toString(),QString());
+        w.findChild<SharedButton*>("reset-findAction")->click();QCOMPARE(field->text(),original);
+        // Painting the idle keycaps must not mutate the editable text or undo.
+        field->setFocus();field->selectAll();QTest::keyClicks(field,"Ctrl+Alt+J");const auto entered=field->text();field->clearFocus();field->grab();QCOMPARE(field->text(),entered);field->setFocus();QVERIFY(field->isUndoAvailable());field->undo();QVERIFY(field->text()!=entered);
+    }
+    void constrainedSettingsKeepsNavigationAndActionsReachable() {
+        QTemporaryDir dir;Appearance appearance(nullptr,dir.filePath("settings.json"));SettingsWindow w(&appearance,nullptr);w.show();QTest::qWait(120);
+        const auto area=w.screen()->availableGeometry();QVERIFY(w.width()<=area.width());QVERIFY(w.height()<=area.height());
+        auto*geometry=w.findChild<WindowGeometry*>();QVERIFY(geometry);QCOMPARE(geometry->preferredClientSize(),QSize(1080,820));
+        auto*done=w.findChild<SharedButton*>("settingsDone");QVERIFY(w.rect().contains(QRect(done->mapTo(&w,QPoint()),done->size())));
+        auto*nav=w.findChild<QScrollArea*>("settingsNavigationScroll");QVERIFY(nav);
+        for(int page=0;page<6;++page){
+            auto*button=w.findChild<SharedButton*>("settingsPage-"+QString::number(page));nav->ensureWidgetVisible(button);QTest::qWait(10);QVERIFY(nav->viewport()->rect().contains(button->mapTo(nav->viewport(),button->rect().center())));button->click();
+            auto*pages=w.findChild<QStackedWidget*>("settingsPages");auto*scroll=qobject_cast<QScrollArea*>(pages->currentWidget());QVERIFY(scroll);QTest::qWait(30);
+            for(auto*action:scroll->widget()->findChildren<SharedButton*>())if(action->isVisible()){scroll->ensureWidgetVisible(action);QApplication::processEvents();QVERIFY2(scroll->viewport()->rect().contains(action->mapTo(scroll->viewport(),action->rect().center())),qPrintable(action->objectName()));}
+            scroll->verticalScrollBar()->setValue(0);scroll->horizontalScrollBar()->setValue(0);QApplication::processEvents();
+            const auto path=qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");if(!path.isEmpty()){QVERIFY(QDir().mkpath(path+"/small-settings"));QVERIFY(w.grab().save(path+"/small-settings/"+QString::number(page)+".png"));}
+            QVERIFY(w.rect().contains(QRect(done->mapTo(&w,QPoint()),done->size())));
         }
     }
 };

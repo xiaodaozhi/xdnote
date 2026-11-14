@@ -42,6 +42,9 @@
 #include <QTemporaryDir>
 #include <QTextBrowser>
 #include <QTimer>
+#include <QScreen>
+#include <QScrollArea>
+#include <QScopeGuard>
 #include <QVBoxLayout>
 #include <QtTest>
 
@@ -95,6 +98,26 @@ QJsonObject textInkSample(QWidget *widget, const QString &kind, const QString &v
 class ControlConsistencyTests final: public QObject {
     Q_OBJECT
 private slots:
+    void licenseDialogFitsAvailableArea() {
+        QTemporaryDir dir;Appearance appearance(nullptr,dir.filePath("settings.json"));SettingsWindow w(&appearance,nullptr);w.show();w.selectPage(5);
+        for(const auto theme:{QString("light"),QString("dark")}){
+            QVERIFY(appearance.setPreferences(theme,"graphite"));bool seen=false;
+            QTimer::singleShot(50,&w,[&]{auto*dialog=w.findChild<QDialog*>("thirdPartyLicenses");if(!dialog)return;const auto close=qScopeGuard([dialog]{dialog->reject();});seen=true;QVERIFY(dialog->screen()->availableGeometry().contains(dialog->geometry()));
+                auto*scroll=dialog->findChild<QScrollArea*>("dialogContentScroll");QVERIFY(scroll);
+                for(auto*button:dialog->findChildren<SharedButton*>())if(button->isVisible()){scroll->ensureWidgetVisible(button);QApplication::processEvents();QVERIFY2(scroll->viewport()->rect().contains(button->mapTo(scroll->viewport(),button->rect().center())),qPrintable(button->objectName()));}
+                evidence(dialog,theme+"-license-available-area");dialog->reject();});
+            QTest::mouseClick(w.findChild<SharedButton*>("settingsThirdPartyLicenses"),Qt::LeftButton);QVERIFY(seen);
+        }
+    }
+    void breadcrumbMatchesSameTextLabelBaseline() {
+        QTemporaryDir dir;Appearance appearance(nullptr,dir.filePath("settings.json"));QWidget owner;owner.setAttribute(Qt::WA_DontShowOnScreen);owner.resize(600,120);owner.show();
+        for(int size:{12,14})for(const auto &name:{QStringLiteral("写作 ABC.md"),QStringLiteral("gypq 123.md")}) {
+            DocumentBreadcrumb breadcrumb(&appearance,&owner);breadcrumb.setFont(uiFont(size));breadcrumb.setGeometry(0,0,580,32);breadcrumb.setDocumentPath("/workspace/"+name,"/workspace");breadcrumb.show();
+            QLabel reference(breadcrumb.fullText(),&owner);reference.setFont(uiFont(size));reference.setAlignment(Qt::AlignLeft|Qt::AlignVCenter);reference.setGeometry(0,40,580,32);reference.show();
+            const auto actual=textInkSample(&breadcrumb,"breadcrumb-same-text",breadcrumb.fullText(),appearance.color("text"),{},0,0);const auto expected=textInkSample(&reference,"breadcrumb-reference",reference.text(),appearance.color("text"),{},0,0);
+            QVERIFY(actual["found"].toBool()&&expected["found"].toBool());QVERIFY(qAbs(actual["inkCenter"].toDouble()-expected["inkCenter"].toDouble())<=1.0);
+        }
+    }
     void allUiIconsRenderAcrossSizesAndDensities() {
         const QDir assets(QStringLiteral(":/xdnote/design/assets/ui-v2/icons/svg"));
         const auto files=assets.entryList({"*.svg"},QDir::Files);QVERIFY(files.size()>=90);

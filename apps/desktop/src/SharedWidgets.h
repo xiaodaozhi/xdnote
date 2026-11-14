@@ -9,6 +9,7 @@
 #include <QSplitter>
 #include <QCheckBox>
 #include <QLineEdit>
+class QScrollArea;
 
 namespace xdnote {
 class Appearance;
@@ -68,6 +69,8 @@ class SharedLineEdit final : public QLineEdit {
     Q_OBJECT
 public:
     explicit SharedLineEdit(Appearance *appearance, QWidget *parent = nullptr);
+    void setShortcutDisplay(bool enabled) { m_shortcut = enabled; update(); }
+    bool shortcutDisplay() const { return m_shortcut; }
 protected:
     void paintEvent(QPaintEvent *) override;
     void focusInEvent(QFocusEvent *) override;
@@ -76,6 +79,7 @@ protected:
 private:
     QPointer<Appearance> m_appearance;
     bool m_tab = false;
+    bool m_shortcut = false;
 };
 class SharedCheckBox final : public QCheckBox {
     Q_OBJECT
@@ -147,6 +151,8 @@ protected:
 private:
     QPointer<Appearance> m_appearance;
     QWidget *m_surface;
+    QScrollArea *m_scroll;
+    int m_preferredSurfaceWidth;
     QPointer<QWidget> m_overlay;
 };
 class ElidedLabel final : public QLabel {

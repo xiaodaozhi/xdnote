@@ -67,9 +67,7 @@
         "explicit-session-recovery",
         "welcome-current-design"
       ],
-      "deferredStates": [
-        "manual-new-tools-acceptance"
-      ],
+      "deferredStates": [],
       "nativeValidation": "not-run"
     },
     {
@@ -144,14 +142,15 @@
         "six-accents",
         "compact-swatch-layout",
         "custom-shortcut-mapping",
-        "explicit-open-with-registration"
+        "explicit-open-with-registration",
+        "idle-shortcut-keycaps",
+        "scrollable-compact-navigation"
       ],
       "deferredStates": [
-        "native-association",
         "remote-images",
-        "manual-visual-acceptance",
         "native-association-acceptance"
-      ]
+      ],
+      "sizeRationale": "常规 1080×820、最小 860×640；可用区不足时显式支持 480×320 紧凑布局，侧栏和正文滚动，不覆盖正常尺寸偏好。"
     },
     {
       "id": "unsaved-confirmation",

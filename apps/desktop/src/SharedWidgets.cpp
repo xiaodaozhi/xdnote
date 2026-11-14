@@ -10,11 +10,14 @@
 #include <QFocusEvent>
 #include <QIconEngine>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QSvgRenderer>
 #include <QTimer>
 #include <QScreen>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QShowEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -251,7 +254,53 @@ SharedLineEdit::SharedLineEdit(Appearance *appearance, QWidget *parent) : QLineE
 void SharedLineEdit::focusInEvent(QFocusEvent *e) { m_tab = e->reason() == Qt::TabFocusReason || e->reason() == Qt::BacktabFocusReason; QLineEdit::focusInEvent(e); update(); }
 void SharedLineEdit::focusOutEvent(QFocusEvent *e) { m_tab = false; QLineEdit::focusOutEvent(e); update(); }
 void SharedLineEdit::keyPressEvent(QKeyEvent *e) { if (e->key() == Qt::Key_Escape || e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) { m_tab = false; InputModality::forApplication()->clear(); } QLineEdit::keyPressEvent(e); update(); }
-void SharedLineEdit::paintEvent(QPaintEvent *e) { QLineEdit::paintEvent(e); if (m_tab && hasFocus() && isEnabled() && InputModality::forApplication()->keyboardNavigation()) { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(m_appearance->accentColor(), control("focusRingWidth"))); p.setBrush(Qt::NoBrush); p.drawRoundedRect(QRectF(rect()).adjusted(2,2,-2,-2),4,4); } }
+void SharedLineEdit::paintEvent(QPaintEvent *e) {
+    QLineEdit::paintEvent(e);
+    if (m_shortcut && !hasFocus()) {
+        // Keep the actual QLineEdit, its value and accessibility intact. Only
+        // the idle presentation changes; focus restores native text editing.
+        QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen); p.setBrush(m_appearance->color(isEnabled() && !isReadOnly() ? "surface" : "sidebar"));
+        p.drawRoundedRect(QRectF(rect()).adjusted(1,1,-1,-1),5,5);
+        const QRect area = rect().adjusted(control("contentInset"),3,-control("contentInset"),-3);
+        p.setClipRect(area); p.setPen(m_appearance->color(isEnabled()?"text":"textSecondary"));
+        if (text().trimmed().isEmpty()) { p.setPen(m_appearance->color("textSecondary")); p.drawText(area,Qt::AlignVCenter,placeholderText()); }
+        else {
+            const auto sequence=QKeySequence::fromString(text(),QKeySequence::PortableText);
+            bool valid=!sequence.isEmpty();for(int i=0;i<sequence.count();++i)valid=valid&&sequence[i].key()!=Qt::Key_unknown&&sequence[i].key()!=Qt::Key(0);
+            const auto tokens=visualTokens()["settings"].toObject();
+            const int capHeight=tokens["keyCapHeight"].toInt(),gap=tokens["keyCapGap"].toInt();
+            int x=area.left();
+            for (int chord=0;valid&&chord<sequence.count();++chord) {
+                if(chord){p.drawText(QRect(x,area.y(),12,area.height()),Qt::AlignCenter,QStringLiteral(","));x+=16;}
+                const auto key=sequence[chord];QStringList labels;
+                // Let Qt supply platform-native modifier names/symbols.
+                const auto native=QKeySequence(key).toString(QKeySequence::NativeText);
+                const auto keyName=QKeySequence(key.key()).toString(QKeySequence::NativeText);
+                auto modifiers=native; if(modifiers.endsWith(keyName))modifiers.chop(keyName.size());
+                if(modifiers.endsWith('+'))modifiers.chop(1);
+                if(modifiers.contains('+'))labels=modifiers.split('+',Qt::SkipEmptyParts);
+                else if(!modifiers.isEmpty()) {
+#ifdef Q_OS_MACOS
+                    for(const auto symbol:modifiers)labels.append(QString(symbol));
+#else
+                    labels.append(modifiers);
+#endif
+                }
+                labels.append(keyName);
+                for(const auto &label:labels) {
+                    const int width=qMax(tokens["keyCapMinWidth"].toInt(),fontMetrics().horizontalAdvance(label)+2*tokens["keyCapPadding"].toInt());
+                    const QRectF cap(x,(height()-capHeight)/2.0,width,capHeight);
+                    p.setPen(QPen(m_appearance->color("border"),1));p.setBrush(m_appearance->color("sidebar"));
+                    p.drawRoundedRect(cap.adjusted(.5,.5,-.5,-.5),4,4);p.setPen(m_appearance->color(isEnabled()?"text":"textSecondary"));p.drawText(cap,Qt::AlignCenter,label);x+=width+gap;
+                }
+            }
+            if(!valid)p.drawText(area,Qt::AlignVCenter,fontMetrics().elidedText(text(),Qt::ElideRight,area.width()));
+            else if(x-gap>area.right()+1){p.fillRect(QRect(area.right()-14,area.top(),15,area.height()),m_appearance->color("surface"));p.drawText(QRect(area.right()-14,area.top(),15,area.height()),Qt::AlignCenter,QStringLiteral("…"));}
+        }
+    }
+    if (m_tab && hasFocus() && isEnabled() && InputModality::forApplication()->keyboardNavigation()) { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(m_appearance->accentColor(), control("focusRingWidth"))); p.setBrush(Qt::NoBrush); p.drawRoundedRect(QRectF(rect()).adjusted(2,2,-2,-2),4,4); }
+}
 SharedCheckBox::SharedCheckBox(const QString &text, Appearance *appearance, QWidget *parent) : QCheckBox(text,parent),m_appearance(appearance) {
     setFont(parent ? parent->font() : uiFont()); setFixedHeight(control("height")); setFocusPolicy(Qt::StrongFocus); setAttribute(Qt::WA_MacShowFocusRect,false); setAttribute(Qt::WA_Hover);
     connect(appearance,&Appearance::changed,this,qOverload<>(&QWidget::update)); connect(InputModality::forApplication(),&InputModality::changed,this,qOverload<>(&QWidget::update));
@@ -378,22 +427,29 @@ protected:
 };
 }
 SharedDialog::SharedDialog(Appearance *appearance, QWidget *owner, int surfaceWidth)
-    : QDialog(owner, Qt::Dialog | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint), m_appearance(appearance), m_surface(new QWidget(this)) {
+    : QDialog(owner, Qt::Dialog | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint), m_appearance(appearance), m_surface(new QWidget(this)), m_scroll(new QScrollArea(this)), m_preferredSurfaceWidth(surfaceWidth) {
     setAttribute(Qt::WA_TranslucentBackground); setWindowModality(Qt::WindowModal); setFont(owner->font());
     auto refresh=[this,appearance]{auto p=palette();p.setColor(QPalette::Window,appearance->color("surface"));p.setColor(QPalette::WindowText,appearance->color("text"));p.setColor(QPalette::Base,appearance->color("surface"));p.setColor(QPalette::Text,appearance->color("text"));setPalette(p);
-        setStyleSheet(QStringLiteral("QDialog{background:transparent} QWidget#dialogSurface{background:transparent} QLabel{color:%1;background:transparent} QLabel[secondary=true]{color:%2} QScrollArea{background:transparent;border:0} QScrollArea>QWidget>QWidget{background:%3;color:%1}").arg(appearance->color("text").name(),appearance->color("textSecondary").name(),appearance->color("surface").name()));update();};
-    auto *outer = new QVBoxLayout(this); outer->setContentsMargins(24, 24, 24, 24); outer->addWidget(m_surface);
+        setStyleSheet(QStringLiteral("QDialog{background:transparent} QWidget#dialogSurface{background:transparent} QLabel{color:%1;background:transparent} QLabel[secondary=true]{color:%2} QScrollArea{background:transparent;border:0} QScrollArea>QWidget>QWidget{background:%3;color:%1}").arg(appearance->color("text").name(),appearance->color("textSecondary").name(),appearance->color("surface").name())+themedScrollBars(appearance));update();};
+    auto *outer = new QVBoxLayout(this); outer->setContentsMargins(24, 24, 24, 24);outer->setSizeConstraint(QLayout::SetNoConstraint);
+    m_scroll->setObjectName("dialogContentScroll");m_scroll->setFrameShape(QFrame::NoFrame);m_scroll->setWidget(m_surface);m_scroll->setWidgetResizable(false);m_scroll->setMinimumSize(0,0);outer->addWidget(m_scroll);
     m_surface->setObjectName("dialogSurface"); m_surface->setFixedWidth(surfaceWidth); setFixedWidth(surfaceWidth + 48);
     connect(appearance, &Appearance::changed, this, refresh);refresh();
 }
-void SharedDialog::paintEvent(QPaintEvent *) { QPainter painter(this); painter.setCompositionMode(QPainter::CompositionMode_Source); painter.fillRect(rect(), Qt::transparent); painter.setCompositionMode(QPainter::CompositionMode_SourceOver); paintPopupShell(painter, m_surface->geometry(), m_appearance->color("surface"), m_appearance->color("border"), 12, 18); }
+void SharedDialog::paintEvent(QPaintEvent *) { QPainter painter(this); painter.setCompositionMode(QPainter::CompositionMode_Source); painter.fillRect(rect(), Qt::transparent); painter.setCompositionMode(QPainter::CompositionMode_SourceOver); paintPopupShell(painter, m_scroll->geometry(), m_appearance->color("surface"), m_appearance->color("border"), 12, 18); }
 void SharedDialog::showEvent(QShowEvent *event) {
+    const auto available=(parentWidget()?parentWidget()->screen():screen())->availableGeometry();
+    const int windowWidth=qMin(m_preferredSurfaceWidth+48,available.width());int bodyWidth=qMax(1,windowWidth-48);
+    auto bodyHeight=[&](int width){m_surface->setFixedWidth(width);m_surface->layout()->activate();const auto height=m_surface->layout()->totalHeightForWidth(width);return qMax(m_surface->minimumSizeHint().height(),height<0?m_surface->sizeHint().height():height);};
+    int contentHeight=bodyHeight(bodyWidth);
+    if(contentHeight>available.height()-48){bodyWidth=qMax(1,bodyWidth-m_scroll->verticalScrollBar()->sizeHint().width());contentHeight=bodyHeight(bodyWidth);}
+    m_surface->resize(bodyWidth,contentHeight);setFixedSize(windowWidth,qMin(contentHeight+48,available.height()));
     if (!m_overlay && parentWidget()) m_overlay = new DialogOverlay(parentWidget()); QDialog::showEvent(event);
     setGraphicsEffect(nullptr);
 #ifdef Q_OS_WIN
     const auto policy = DWMNCRP_DISABLED; DwmSetWindowAttribute(reinterpret_cast<HWND>(winId()), DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
 #endif
-    if (parentWidget()) move(parentWidget()->frameGeometry().center() - rect().center());
+    if (parentWidget()) {auto point=parentWidget()->frameGeometry().center()-rect().center();point.setX(qBound(available.left(),point.x(),available.right()-width()+1));point.setY(qBound(available.top(),point.y(),available.bottom()-height()+1));move(point);}
 }
 void SharedDialog::hideEvent(QHideEvent *event) { delete m_overlay; m_overlay = nullptr; QDialog::hideEvent(event); }
 ElidedLabel::ElidedLabel(QWidget *parent) : QLabel(parent) {

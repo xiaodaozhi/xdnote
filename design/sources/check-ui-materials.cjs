@@ -85,7 +85,7 @@ async function main() {
     }
     if (settingsPrototype) {
       assert(w.sizeToken === 'windows.settings' && w.implementationSource === 'apps/desktop/src/SettingsWindow.cpp', 'Settings window geometry and source');
-      assert(w.implementedStates?.includes('shared-preferences') && w.deferredStates?.includes('manual-visual-acceptance'), 'Settings prototype scope');
+      assert(w.implementedStates?.includes('shared-preferences') && w.implementedStates?.includes('custom-shortcut-mapping') && w.deferredStates?.includes('native-association-acceptance'), 'Settings prototype scope');
       await fs.access(path.join(ROOT, w.implementationSource));
     }
     if (resourcePrototype) {
