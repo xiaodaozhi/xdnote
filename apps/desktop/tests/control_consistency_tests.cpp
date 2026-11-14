@@ -12,12 +12,27 @@
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
 #include "WorkspaceWindow.h"
+#include "UiFonts.h"
+#include "DocumentBreadcrumb.h"
+#include "NavigationStore.h"
+#include "WorkspaceNavigation.h"
+#include "WorkspaceTree.h"
+#include "WindowGeometry.h"
+#include "DocumentSearch.h"
+#include "VisualTokens.h"
 #include "file_fixtures.h"
 #include <QAbstractItemModel>
 #include <QAccessible>
 #include <QAction>
 #include <QBuffer>
 #include <QJsonDocument>
+#include <QJsonArray>
+#include <QCryptographicHash>
+#include <QFontInfo>
+#include <QPainter>
+#include <QTextLayout>
+#include <QGlyphRun>
+#include <QRawFont>
 #include <QLabel>
 #include <QListView>
 #include <QMouseEvent>
@@ -45,10 +60,150 @@ void dragMove(QWidget *w, QPoint point) {
     QMouseEvent move(QEvent::MouseMove,point,w->mapToGlobal(point),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
     QApplication::sendEvent(w,&move);
 }
+QJsonObject textInkSample(QWidget *widget, const QString &kind, const QString &value, const QColor &foreground, QRect line = {}, int left = 5, int right = 5) {
+    widget->ensurePolished(); QApplication::processEvents();
+    const auto image = widget->grab().toImage().convertToFormat(QImage::Format_ARGB32); const qreal dpr = image.devicePixelRatio();
+    if (line.isNull()) line = widget->rect();
+    // A tight label can put ink on every edge. Use the modal surface color
+    // inside the text area instead of guessing one background pixel.
+    QHash<QRgb,int> colors;QRgb backgroundRgb=0;int largest=0;
+    for(int y=qMax(0,qRound(line.top()*dpr));y<qMin(image.height(),qRound((line.bottom()+1)*dpr));++y)
+        for(int x=qMax(0,qRound(left*dpr));x<qMin(image.width(),qRound((widget->width()-right)*dpr));++x){const auto rgb=image.pixel(x,y);const int count=++colors[rgb];if(count>largest){largest=count;backgroundRgb=rgb;}}
+    const QColor background=QColor::fromRgba(backgroundRgb);
+    const double dr=foreground.red()-background.red(),dg=foreground.green()-background.green(),db=foreground.blue()-background.blue(),den=dr*dr+dg*dg+db*db;
+    int top=image.height(),bottom=-1,x0=image.width(),x1=-1; double weight=0;
+    for(int y=qMax(0,qRound((line.top()+1)*dpr));y<qMin(image.height(),qRound((line.bottom())*dpr));++y)
+        for(int x=qMax(0,qRound(left*dpr));x<qMin(image.width(),qRound((widget->width()-right)*dpr));++x){
+            const auto c=image.pixelColor(x,y);const double r=c.red()-background.red(),g=c.green()-background.green(),b=c.blue()-background.blue();
+            const double alpha=den>0?(r*dr+g*dg+b*db)/den:0;
+            const double error=qAbs(r-alpha*dr)+qAbs(g-alpha*dg)+qAbs(b-alpha*db);
+            // Windows ClearType colors edge pixels independently in RGB. A
+            // grayscale-only match drops thin strokes and invents a shift.
+            if(alpha>=.30&&alpha<=1.1&&error<120){top=qMin(top,y);bottom=qMax(bottom,y);x0=qMin(x0,x);x1=qMax(x1,x);weight+=alpha;}
+        }
+    const auto font=widget->font(); const QFontMetricsF metrics(font,widget); const qreal center=line.top()+line.height()/2.0;
+    QJsonObject result{{"kind",kind},{"text",value},{"class",widget->metaObject()->className()},{"font",QFontInfo(font).family()},{"pixelSize",font.pixelSize()},{"weight",int(font.weight())},{"dpr",dpr},{"width",widget->width()},{"height",widget->height()},{"targetCenter",center},{"ascent",metrics.ascent()},{"descent",metrics.descent()},{"lineHeight",metrics.height()},{"found",bottom>=top},{"inkWeight",weight}};
+    QTextLayout shaped(value,font,widget);shaped.beginLayout();auto shapedLine=shaped.createLine();if(shapedLine.isValid())shapedLine.setLineWidth(widget->width());shaped.endLayout();
+    QRectF bounds;QJsonArray families;
+    for(const auto &run:shaped.glyphRuns()){families.append(run.rawFont().familyName());const auto ids=run.glyphIndexes();const auto positions=run.positions();for(qsizetype i=0;i<ids.size();++i){const auto box=run.rawFont().boundingRect(ids[i]).translated(positions[i]);if(!box.isEmpty())bounds=bounds.isNull()?box:bounds.united(box);}}
+    result["glyphFonts"]=families;result["layoutHeight"]=shapedLine.isValid()?shapedLine.height():0;result["layoutInkTop"]=bounds.top();result["layoutInkBottom"]=bounds.bottom();
+    if(bottom>=top){const qreal actual=(top+bottom+1)/(2*dpr);result["inkTop"]=top/dpr;result["inkBottom"]=(bottom+1)/dpr;result["inkCenter"]=actual;result["offsetDown"]=actual-center;}
+    const auto dir=qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");if(!dir.isEmpty()){const auto name=kind+"-"+widget->objectName()+"-"+QString::fromLatin1(QCryptographicHash::hash(value.toUtf8(),QCryptographicHash::Sha256).toHex().left(10))+"-"+QString::number(font.pixelSize());QDir().mkpath(dir+"/text-ink");const auto relative="text-ink/"+name+".png";image.save(dir+"/"+relative);result["capture"]=relative;}
+    return result;
+}
 }
 class ControlConsistencyTests final: public QObject {
     Q_OBJECT
 private slots:
+    void uiTextAlignmentSurvey() {
+        QTemporaryDir dir; Appearance appearance(nullptr,dir.filePath("settings.json")); QWidget fixture; fixture.setAttribute(Qt::WA_DontShowOnScreen);fixture.resize(640,320); fixture.setFont(uiFont()); fixture.setAutoFillBackground(true);
+        auto palette=fixture.palette();palette.setColor(QPalette::Window,appearance.color("background"));palette.setColor(QPalette::WindowText,appearance.color("text"));fixture.setPalette(palette);fixture.setFocusPolicy(Qt::StrongFocus);fixture.show();fixture.setFocus();
+        QJsonArray samples;const QStringList texts{QStringLiteral("保存"),QStringLiteral("打开文件"),QStringLiteral("Save"),QStringLiteral("100%"),QStringLiteral("写作 ABC"),QStringLiteral("gypq")};
+        for(int size:{12,14,16})for(const auto &value:texts){
+            const auto font=uiFont(size);
+            const auto key=value==texts[0]?QString("han2"):value==texts[1]?QString("han4"):value==texts[2]?QString("latin"):value==texts[3]?QString("digits"):value==texts[4]?QString("mixed"):QString("descenders");
+            SharedButton button(value,"textSurveyButton",&appearance,&fixture);button.setFont(font);button.setGeometry(20,20,220,32);button.show();
+            samples.append(textInkSample(&button,"button-"+key,value,appearance.color("text")));
+            button.setProperty("primary",true);samples.append(textInkSample(&button,"primary-"+key,value,appearance.accentColor("foreground")));
+            button.setEnabled(false);samples.append(textInkSample(&button,"disabled-"+key,value,appearance.color("textSecondary")));button.hide();
+            SharedLineEdit input(&appearance,&fixture);input.setFont(font);input.setText(value);input.setGeometry(20,20,220,32);input.show();input.clearFocus();fixture.setFocus();
+            samples.append(textInkSample(&input,"input-"+key,value,appearance.color("text"),{},12,32));input.hide();
+            SharedCheckBox check(value,&appearance,&fixture);check.setFont(font);check.setGeometry(20,20,220,32);check.show();samples.append(textInkSample(&check,"checkbox-"+key,value,appearance.color("text"),{},28,8));check.hide();
+            QLabel label(value,&fixture);label.setFont(font);label.setAlignment(Qt::AlignCenter);label.setGeometry(20,20,220,32);label.show();samples.append(textInkSample(&label,"label-"+key,value,appearance.color("text")));label.hide();
+            if(size==12){SharedButton footer(value,"textSurveyFooter",&appearance,&fixture);footer.setFont(font);footer.setProperty("footerControl",true);footer.setFixedHeight(20);footer.setGeometry(20,20,220,20);footer.show();samples.append(textInkSample(&footer,"footer-"+key,value,appearance.color("text")));footer.hide();}
+        }
+        QCOMPARE(samples.size(),114);
+        for(const auto &item:samples){
+            const auto sample=item.toObject();QVERIFY2(sample["found"].toBool(),qPrintable(sample["kind"].toString()));
+            for(const auto &reference:samples){const auto label=reference.toObject();
+                if(label["kind"].toString().startsWith("label-")&&label["text"]==sample["text"]&&label["pixelSize"]==sample["pixelSize"])
+                    QVERIFY2(qAbs(sample["offsetDown"].toDouble()-label["offsetDown"].toDouble())<=1.0,qPrintable(sample["kind"].toString()+": baseline differs from native QLabel reference"));
+            }
+        }
+        const auto output=qEnvironmentVariable("XDNOTE_TEST_EVIDENCE",dir.path());QDir().mkpath(output);QFile file(output+"/text-alignment-survey.json");QVERIFY(file.open(QIODevice::WriteOnly));file.write(QJsonDocument(QJsonObject{{"kind","controlled Qt raster survey; offsets are observations, not automatic defect classifications"},{"qpa",QGuiApplication::platformName()},{"samples",samples}}).toJson());
+    }
+    void uiTextAlignmentSurfaces() {
+        QTemporaryDir dir;
+        Appearance appearance(nullptr,dir.filePath("settings.json"));
+        WindowGeometryStore geometry(nullptr,dir.filePath("geometry.json"));
+        NavigationStore navigation(nullptr,dir.filePath("navigation.json"));
+        FileManager manager;
+        const auto path=dir.filePath(QStringLiteral("文字居中.md"));
+        QVERIFY(fileFixtures::write(path,QStringLiteral("# 文字居中\n\n正文\n\n```cpp\nint x = 1;\n```\n").toUtf8()));
+        manager.open(path); QTRY_COMPARE(manager.documentCount(),1);
+        QVERIFY(navigation.recordOpen(path));
+        QJsonArray samples, blocks;
+        QString surface, theme;
+        auto append=[&](QWidget *widget,const QString &kind,const QString &text,QColor color,QRect line=QRect(),int left=5,int right=5){
+            auto sample=textInkSample(widget,theme+"-"+surface+"-"+kind,text,color,line,left,right);sample["kind"]=kind;
+            sample["surface"]=surface;sample["theme"]=theme;sample["name"]=widget->objectName();
+            const auto point=widget->mapTo(widget->window(),QPoint());sample["windowX"]=point.x();sample["windowY"]=point.y();
+            samples.append(sample);
+        };
+        auto collect=[&](QWidget *window){
+            QApplication::processEvents();
+            for(auto *button:window->findChildren<SharedButton *>())if(button->isVisible()&&!button->text().isEmpty()){
+                const bool solid=button->property("primary").toBool()||button->isChecked();
+                append(button,"surface-button",button->text(),!button->isEnabled()?appearance.color("textSecondary"):solid?appearance.accentColor("foreground"):appearance.color("text"),{},button->property("navigationRow").toBool()?38:5,button->menu()?32:5);
+            }
+            for(auto *label:window->findChildren<QLabel *>())if(label->isVisible()&&!label->text().isEmpty()){
+                const bool multiline=label->text().contains('\n')||(label->wordWrap()&&label->fontMetrics().boundingRect(QRect(0,0,label->contentsRect().width(),10000),Qt::TextWordWrap,label->text()).height()>label->fontMetrics().height()+1);
+                if(multiline||label->textFormat()==Qt::RichText||!(label->alignment()&Qt::AlignVCenter)){
+                    blocks.append(QJsonObject{{"surface",surface},{"theme",theme},{"name",label->objectName()},{"text",label->text()},{"reason","paragraph/wrapped or intentionally non-centered label; inspect its line layout separately"}});continue;
+                }
+                append(label,"surface-label",label->text(),label->palette().color(QPalette::WindowText),{},0,0);
+            }
+            for(auto *field:window->findChildren<QLineEdit *>())if(field->isVisible()){
+                // A repeated full-height Han reference separates baseline placement
+                // from the shapes of short numbers, punctuation or descenders.
+                const QSignalBlocker blocked(field);const auto previous=field->text();field->setText(QStringLiteral("保存"));field->clearFocus();
+                append(field,"surface-input",field->text(),appearance.color("text"),{},4,32);
+                field->setText(previous);
+            }
+            for(auto *card:window->findChildren<QAbstractButton *>())if(card->isVisible()&&!qobject_cast<SharedButton *>(card)&&!card->text().isEmpty()&&card->height()>100){
+                const bool isTheme=card->objectName().startsWith("settings-theme-");
+                append(card,"surface-card",card->text(),appearance.color("text"),QRect(4,isTheme?88:70,card->width()-8,24),4,4);
+            }
+            evidence(window,theme+"-text-"+surface);
+        };
+        SettingsWindow settings(&appearance,&geometry);settings.setAttribute(Qt::WA_DontShowOnScreen);settings.resize(1080,820);
+        SingleFileWindow standalone(&manager,&appearance,&geometry);standalone.setAttribute(Qt::WA_DontShowOnScreen);standalone.resize(1000,760);standalone.setDocument(manager.documents().first());
+        WorkspaceWindow workspace(&appearance,&geometry,&navigation,&manager);workspace.setAttribute(Qt::WA_DontShowOnScreen);workspace.resize(1200,820);workspace.setRootPath(dir.path());
+        auto *pane=new SingleFileWindow(&manager,&appearance,&geometry);pane->setDocument(manager.documents().first());QVERIFY(workspace.addPane(pane));
+        for(const auto &scheme:{QString("light"),QString("dark")}){
+            theme=scheme;QVERIFY(appearance.setPreferences(scheme,"graphite"));
+            settings.show();
+            for(int page=0;page<6;++page){settings.selectPage(page);surface="settings-"+QString::number(page);collect(&settings);}
+            settings.hide();standalone.show();
+            for(const auto mode:{SingleFileWindow::ViewMode::Reading,SingleFileWindow::ViewMode::Source,SingleFileWindow::ViewMode::Split}){
+                standalone.setViewMode(mode);surface="standalone-"+QString::number(int(mode));collect(&standalone);
+            }
+            auto *find=standalone.findChild<DocumentSearch *>();QVERIFY(find);find->show();surface="document-search";collect(find);find->hide();standalone.hide();
+            workspace.show();
+            for(const auto mode:{SingleFileWindow::ViewMode::Reading,SingleFileWindow::ViewMode::Source,SingleFileWindow::ViewMode::Split}){
+                pane->setViewMode(mode);surface="workspace-"+QString::number(int(mode));collect(&workspace);
+            }
+            surface="workspace";
+            auto *tabs=workspace.findChild<QTabBar *>("workspaceTabs");QVERIFY(tabs);QVERIFY(tabs->count()>0);
+            const auto r=tabs->tabRect(0);const auto tokens=visualTokens()["tabs"].toObject();
+            append(tabs,"tab-title",tabs->tabText(0),appearance.color("text"),r,r.left()+tokens["padding"].toInt()+24,tabs->width()-r.right()+tokens["closeHit"].toInt()+tokens["closeInset"].toInt()+4);
+            auto *crumb=workspace.findChild<DocumentBreadcrumb *>();QVERIFY(crumb);append(crumb,"breadcrumb",crumb->fullText(),appearance.color("text"));
+            auto *tree=workspace.tree();QTRY_VERIFY(tree->model()->rowCount()>0);
+            const auto index=tree->model()->index(0,0);const auto row=tree->visualRect(index);QVERIFY(!row.isEmpty());
+            append(tree->viewport(),"tree-title",index.data().toString(),appearance.color("text"),row,row.left()+28,12);
+            workspace.hide();
+            WorkspaceNavigation recent(&appearance,&navigation,nullptr);recent.setAttribute(Qt::WA_DontShowOnScreen);recent.setFont(uiFont());recent.resize(700,420);recent.showPage(WorkspaceNavigation::Page::Recent,dir.path());recent.show();surface="recent";collect(&recent);
+            auto *list=recent.findChild<QListView *>("navigationResults");QVERIFY(list);QVERIFY(list->model()->rowCount()>1);const auto item=list->model()->index(1,0);const auto itemRect=list->visualRect(item);
+            append(list->viewport(),"recent-title",item.data().toString(),appearance.color("text"),QRect(itemRect.left(),itemRect.top()+12,itemRect.width(),22),56,140);
+            recent.hide();
+            SharedMenu menu(&appearance,&workspace);menu.setAttribute(Qt::WA_DontShowOnScreen);auto *action=menu.addAction(QStringLiteral("保存"));action->setShortcut(QKeySequence::Save);menu.addAction(QStringLiteral("打开文件"));menu.resize(menu.sizeHint());menu.show();surface="menu";
+            const auto actionRect=menu.actionGeometry(action);QVERIFY(!actionRect.isEmpty());append(&menu,"menu-title",action->text(),appearance.color("text"),actionRect,actionRect.left()+8,menu.width()-actionRect.left()-44);evidence(&menu,theme+"-text-menu");menu.hide();
+        }
+        QVERIFY(samples.size()>100);
+        for(const auto &item:samples)QVERIFY2(item.toObject()["found"].toBool(),qPrintable(item.toObject()["surface"].toString()+"/"+item.toObject()["name"].toString()));
+        const auto output=qEnvironmentVariable("XDNOTE_TEST_EVIDENCE",dir.path());QDir().mkpath(output);QFile file(output+"/text-alignment-surfaces.json");QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QJsonDocument(QJsonObject{{"kind","hidden controlled Qt widgets; no interaction with user windows or settings"},{"qpa",QGuiApplication::platformName()},{"samples",samples},{"paragraphLabels",blocks}}).toJson());
+    }
     void settingsFramesGroupsAndFailureRecovery_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light")<<QString("light"); QTest::newRow("dark")<<QString("dark"); }
     void settingsFramesGroupsAndFailureRecovery() {
         QFETCH(QString,theme); QTemporaryDir dir; const auto path=dir.filePath("settings.json");

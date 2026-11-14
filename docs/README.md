@@ -56,4 +56,4 @@
 - 持久设计材料与来源清单保留在仓库；具体运行截图、测量、测试输出进入本地或 CI 工件。
 - 任务进展与单次验收结论不在本目录逐日追加。后续接入任务系统后，任务引用精确提交与证据，文档保留方法和现行契约。
 
-控件逐项整改和证据边界见[控件一致性核对](qa/control-consistency.md)；专注、大纲及原生导出见[文档辅助操作](engineering/document-tools.md)。
+控件逐项整改和证据边界见[控件一致性核对](qa/control-consistency.md)，文字居中、基线与字形差异见[控件文字垂直对齐核查](qa/control-text-alignment.md)；专注、大纲及原生导出见[文档辅助操作](engineering/document-tools.md)。
