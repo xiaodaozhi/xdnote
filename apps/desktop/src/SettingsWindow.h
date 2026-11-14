@@ -7,6 +7,7 @@ class QLineEdit;
 class QStackedWidget;
 class QGridLayout;
 class QBoxLayout;
+class QScrollArea;
 class QLabel;
 namespace xdnote {
 class Preferences;
@@ -46,6 +47,9 @@ private:
     QList<QWidget *> m_bodies, m_rows;
     QList<std::function<void()>> m_bindings;
     QGridLayout *m_swatches = nullptr;
+    QGridLayout *m_themes = nullptr;
+    QList<QWidget *> m_themeCards;
+    QScrollArea *m_sidebarScroll = nullptr;
     QList<QWidget *> m_swatchCards;
     ElidedLabel *m_status;
     QBoxLayout *m_readerLayout = nullptr;

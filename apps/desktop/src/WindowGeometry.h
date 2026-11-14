@@ -49,7 +49,7 @@ private:
 class WindowGeometry final : public QObject, public QAbstractNativeEventFilter {
     Q_OBJECT
 public:
-    WindowGeometry(QWidget *window, WindowGeometryStore *store = nullptr, QString kind = {});
+    WindowGeometry(QWidget *window, WindowGeometryStore *store = nullptr, QString kind = {}, QSize compactMinimum = {});
     ~WindowGeometry() override;
     QSize preferredClientSize() const { return m_placement.normal.size(); }
     bool initialized() const { return m_initialized; }
@@ -75,6 +75,7 @@ private:
     QPointer<QWindow> m_handle;
     QString m_kind, m_layoutWarning;
     QSize m_minimum, m_maximum;
+    QSize m_compactMinimum;
     WindowPlacement m_placement;
     QTimer m_fit, m_save;
     bool m_initialized = false, m_applying = false, m_transition = false;

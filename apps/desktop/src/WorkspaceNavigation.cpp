@@ -45,9 +45,12 @@ public:
         painter->setRenderHint(QPainter::Antialiasing); painter->setPen(Qt::NoPen); painter->setBrush(selected || option.state & QStyle::State_MouseOver ? appearance->accentColor("soft") : appearance->color("background")); painter->drawRoundedRect(rect, 6, 6);
         themedIcon("document", appearance->color("text")).paint(painter, QRect(rect.left() + 16, rect.top() + (rect.height() - 24) / 2, 24, 24));
         const int left = rect.left() + 56, right = rect.right() - 140; const auto font = uiFont(14); painter->setFont(font); painter->setPen(appearance->color("text"));
-        painter->drawText(QRect(left, rect.top() + 10, qMax(0, right - left), 22), Qt::AlignVCenter, QFontMetrics(font).elidedText(index.data().toString(), Qt::ElideMiddle, qMax(0, right - left)));
+        const auto layout=visualTokens()["navigation"].toObject();
+        const int titleHeight=layout["resultTitleHeight"].toInt(),detailHeight=layout["resultDetailHeight"].toInt(),gap=layout["resultTextGap"].toInt();
+        const int textTop=rect.top()+(rect.height()-titleHeight-detailHeight-gap)/2;
+        painter->drawText(QRect(left, textTop, qMax(0, right - left), titleHeight), Qt::AlignVCenter, QFontMetrics(font).elidedText(index.data().toString(), Qt::ElideMiddle, qMax(0, right - left)));
         const auto secondary = uiFont(12); painter->setFont(secondary); painter->setPen(appearance->color("textSecondary"));
-        painter->drawText(QRect(left, rect.top() + 34, qMax(0, right - left), 18), Qt::AlignVCenter, QFontMetrics(secondary).elidedText(index.data(detailRole).toString(), Qt::ElideMiddle, qMax(0, right - left)));
+        painter->drawText(QRect(left, textTop+titleHeight+gap, qMax(0, right - left), detailHeight), Qt::AlignVCenter, QFontMetrics(secondary).elidedText(index.data(detailRole).toString(), Qt::ElideMiddle, qMax(0, right - left)));
         painter->drawText(QRect(rect.right() - 128, rect.top(), 76, rect.height()), Qt::AlignRight | Qt::AlignVCenter, index.data(timeRole).toString());
         themedIcon(store->favorite(index.data(pathRole).toString()) ? "star-filled" : "star", appearance->color("textSecondary")).paint(painter, QRect(rect.right() - 36, rect.top() + (rect.height() - 18) / 2, 18, 18));
         if (selected && option.state & QStyle::State_HasFocus && InputModality::forApplication()->keyboardNavigation()) { painter->setBrush(Qt::NoBrush); painter->setPen(QPen(appearance->accentColor(), 2)); painter->drawRoundedRect(rect.adjusted(2, 2, -2, -2), 5, 5); }

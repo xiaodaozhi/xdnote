@@ -162,8 +162,8 @@ bool WindowGeometryStore::save(const QString &kind, const WindowPlacement &place
     m_entries = entries; m_error.clear(); return true;
 }
 
-WindowGeometry::WindowGeometry(QWidget *window, WindowGeometryStore *store, QString kind)
-    : QObject(window), m_window(window), m_store(store), m_kind(std::move(kind)), m_minimum(window->minimumSize()), m_maximum(window->maximumSize()) {
+WindowGeometry::WindowGeometry(QWidget *window, WindowGeometryStore *store, QString kind, QSize compactMinimum)
+    : QObject(window), m_window(window), m_store(store), m_kind(std::move(kind)), m_minimum(window->minimumSize()), m_maximum(window->maximumSize()), m_compactMinimum(compactMinimum.isEmpty()?m_minimum:compactMinimum.boundedTo(m_minimum)) {
     const auto initial = window->geometry(); m_placement.normal = initial;
     if (store) if (const auto saved = store->placement(m_kind)) { m_placement = *saved; m_restoreMaximized = saved->maximized; m_hasSaved = true; }
 #ifdef Q_OS_WIN
@@ -250,10 +250,16 @@ void WindowGeometry::fitToScreen() {
     const auto frame = m_window->windowHandle()->frameMargins();
     if (m_fittedOnce && !m_restoreNormal && !m_constrained && !m_explicitSizePending && resemblesWindowTile(m_window->frameGeometry(), available)) return;
     const auto position = m_restorePosition ? m_placement.normal.topLeft() : m_window->geometry().topLeft();
-    const auto fit = fitWindowClient(QRect(position, m_placement.normal.size()), available, frame, m_minimum, m_maximum);
+    const QSize availableClient(qMax(1,available.width()-frame.left()-frame.right()),qMax(1,available.height()-frame.top()-frame.bottom()));
+    const auto effectiveMinimum=m_minimum.boundedTo(availableClient).expandedTo(m_compactMinimum);
+    const auto fit = fitWindowClient(QRect(position, m_placement.normal.size()), available, frame, effectiveMinimum, m_maximum);
     if (!fit.client.isValid()) return;
     QScopedValueRollback<bool> applying(m_applying, true);
     m_constrained = fit.client.size() != m_placement.normal.size();
+    // Only windows with an explicit compact layout may temporarily relax their
+    // normal minimum. Keep the original logical preference and restore limits
+    // when the work area grows; never infer this capability for other windows.
+    m_window->setMinimumSize(m_minimum.boundedTo(fit.client.size()));
     m_window->resize(fit.client.size());
     if (!wayland()) m_window->move(fit.client.topLeft() - QPoint(frame.left(), frame.top()));
     m_restorePosition = false; m_restoreNormal = false; m_nativeStateTransition = false; m_fittedOnce = true;

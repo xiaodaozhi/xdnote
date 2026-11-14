@@ -25,11 +25,13 @@ void DocumentBreadcrumb::paintEvent(QPaintEvent *) {
     QPainter painter(this); painter.setFont(font()); const auto metrics = fontMetrics();
     auto parts = m_segments; const auto separator = QStringLiteral(" / ");
     if (metrics.horizontalAdvance(parts.join(separator)) > width() && parts.size() > 2) parts = {parts.first(), QStringLiteral("…"), parts.last()};
-    int x = 0; const int baseline = (height() - metrics.height()) / 2 + metrics.ascent();
+    int x = 0;
     for (int i = 0; i < parts.size(); ++i) {
         painter.setPen(m_appearance->color(i == parts.size() - 1 ? "text" : "textSecondary"));
-        const auto text = metrics.elidedText(parts[i], Qt::ElideMiddle, qMax(0, width() - x)); painter.drawText(x, baseline, text); x += metrics.horizontalAdvance(text);
-        if (i + 1 < parts.size()) { painter.setPen(m_appearance->color("textSecondary")); painter.drawText(x, baseline, separator); x += metrics.horizontalAdvance(separator); }
+        const auto text = metrics.elidedText(parts[i], Qt::ElideMiddle, qMax(0, width() - x));
+        const int textWidth=metrics.horizontalAdvance(text);
+        painter.drawText(QRect(x,0,textWidth,height()),Qt::AlignLeft|Qt::AlignVCenter|Qt::TextSingleLine,text);x+=textWidth;
+        if (i + 1 < parts.size()) { painter.setPen(m_appearance->color("textSecondary")); const int gap=metrics.horizontalAdvance(separator);painter.drawText(QRect(x,0,gap,height()),Qt::AlignLeft|Qt::AlignVCenter|Qt::TextSingleLine,separator);x+=gap; }
     }
 }
 }
