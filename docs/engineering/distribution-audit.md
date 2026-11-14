@@ -18,6 +18,12 @@ Windows 最低目标为 Windows 10 1809+。`D3Dcompiler_47.dll` 使用目标系�
 
 报告绑定实际文件摘要和构建身份，单次结果记录在 Issue／PR 或构建工件中。完整许可、源码／替换材料与最终交付核验仍由 [Issue #4](https://github.com/xiaodaozhi/xdnote/issues/4) 跟踪。
 
+## Qt 源码与发行附件边界
+
+xdnote 的 GitHub Release 附件、安装包、应用压缩包及便携产品目录均不包含 Qt 源码归档或源码树。应用继续携带实际需要的 Qt 运行库、许可文本、版权与第三方声明；发行清单不得把 Qt 源码作为本项目 Release 的额外附件。
+
+Qt 对应源码获取和用户修改／替换库的适用要求另行通过独立方式落实，所选方式须与实际 Qt 版本、修改和分发条件相符，并核对获取渠道与必要说明的可用性。该项继续由 Issue #4 跟踪；记录链接或一份说明不直接视为全部要求已完成，也不因此移除当前 `licenseReviewComplete=false`／`releaseReady=false` 状态。依据见 [Qt LGPL 使用条件](https://www.qt.io/development/open-source-lgpl-obligations)。
+
 Windows 产品安装专项和 Unix 产品部署专项的诊断进程使用固定提交的 Noto Sans CJK SC 2.004 字体夹具，避免服务器缺少中文字体时跳过字形检查。`scripts/ci-font-materials.json` 锁定字体和原始 OFL 文本摘要，`prepare_ci_font.py` 准备到本项目 build；仅诊断入口通过应用级字体 API 显式载入，不安装到操作系统，不进入产品载荷。字体夹具结果不代替实际目标系统字体与可见桌面验收。
 
 Linux／macOS 的 `product_deployment_unix.py` 另保存纯产品逐文件材料：实际内容 SHA-256、内部相对链接目标、Qt SDK 路径和原始摘要、准确 SPDX 文件记录，以及目录内加载路径修正／ad-hoc 重新封印后的可执行节比较。`unix_binary_evidence.py` 只读解析 ELF64、Mach-O 及通用 Mach-O 的代码节；ICU 这类纯数据 ELF 改为核对只读数据节，截断文件、没有可核对内容或节内容变化会使检查失败。数据、加载命令和签名的变化另行记录，不将代码节核对当作完整文件等同或签名验证。全部文件必须分类，上游模块未确定字段仍保留；最终源码、替换、运行库与正式发行核验仍保持待办。
