@@ -16,6 +16,7 @@
 #include "UiFonts.h"
 #include "NavigationStore.h"
 #include "WorkspaceNavigation.h"
+#include "WorkspaceWelcome.h"
 #include <QTabBar>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -201,11 +202,13 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     auto *divider = new QWidget(bottom); divider->setObjectName("sidebarSettingsDivider"); divider->setFixedSize(1, 20); bottomLayout->addWidget(divider); m_theme = new SharedButton({}, "workspaceTheme", windowAppearance(), bottom); m_theme->setFixedWidth(32); bottomLayout->addWidget(m_theme); sidebar->addWidget(bottom);
     connect(m_theme, &QPushButton::clicked, this, [this] { windowAppearance()->setPreferences(windowAppearance()->dark() ? "light" : "dark", windowAppearance()->accent()); });
     setTabOrder(m_rootLabel, m_search); setTabOrder(m_search, m_recent); setTabOrder(m_recent, m_favorites); setTabOrder(m_favorites, m_tree); setTabOrder(m_tree, settings); setTabOrder(settings, m_theme);
-    m_welcome = new QWidget(m_pages); auto *welcome = new QVBoxLayout(m_welcome); welcome->setSpacing(16); welcome->addStretch(); auto *heading = new QLabel(QStringLiteral("开始你的写作"), m_welcome); heading->setFont(uiFont(24)); welcome->addWidget(heading, 0, Qt::AlignHCenter);
-    auto *description = new QLabel(QStringLiteral("打开一篇文档，或选择一个工作区目录。"), m_welcome); welcome->addWidget(description, 0, Qt::AlignHCenter);
-    auto *openFile = new SharedButton(QStringLiteral("打开文件…"), "workspaceOpenFile", windowAppearance(), m_welcome); openFile->setSymbol("document"); openFile->setProperty("primary", true); welcome->addWidget(openFile, 0, Qt::AlignHCenter); connect(openFile, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested);
-    auto *openDirectory = new SharedButton(QStringLiteral("打开工作区…"), "workspaceOpenDirectory", windowAppearance(), m_welcome); openDirectory->setSymbol("folder-open"); openDirectory->setOutlined(true); welcome->addWidget(openDirectory, 0, Qt::AlignHCenter); connect(openDirectory, &QPushButton::clicked, this, &WorkspaceWindow::chooseDirectoryRequested); welcome->addStretch(); m_pages->addWidget(m_welcome);
     m_navigationPage = new WorkspaceNavigation(windowAppearance(), m_navigation, m_pages); m_pages->addWidget(m_navigationPage); connect(m_navigationPage, &WorkspaceNavigation::openRequested, this, &WorkspaceWindow::openRequested); connect(m_navigationPage, &WorkspaceNavigation::clearSearchRequested, m_search, &QLineEdit::clear);
+    m_welcome = new WorkspaceWelcome(windowAppearance(), m_navigation, m_pages); m_pages->addWidget(m_welcome); m_pages->setCurrentWidget(m_welcome);
+    connect(m_welcome, &WorkspaceWelcome::chooseFileRequested, this, &WorkspaceWindow::chooseFileRequested);
+    connect(m_welcome, &WorkspaceWelcome::chooseDirectoryRequested, this, &WorkspaceWindow::chooseDirectoryRequested);
+    connect(m_welcome, &WorkspaceWelcome::newDocumentRequested, this, &WorkspaceWindow::newDocumentRequested);
+    connect(m_welcome, &WorkspaceWelcome::openRequested, this, &WorkspaceWindow::openRequested);
+    connect(m_welcome, &WorkspaceWelcome::recentRequested, this, [this] { showNavigation(false); });
     m_fullSearch=new WorkspaceSearch(windowAppearance(),manager,m_sidebarViews);m_sidebarViews->addWidget(m_fullSearch);connect(m_fullSearch,&WorkspaceSearch::backRequested,this,[this]{m_fullSearchWanted=false;m_sidebarViews->setCurrentIndex(0);});connect(m_fullSearch,&WorkspaceSearch::locationRequested,this,&WorkspaceWindow::referenceSourceRequested);
     auto *fullSearch=new SharedButton(QStringLiteral("全文搜索"),"workspaceFullSearchButton",windowAppearance(),m_sidebar);fullSearch->setSymbol("search");fullSearch->setOutlined(true);sidebar->insertWidget(3,fullSearch);auto openFullSearch=[this]{m_fullSearchWanted=true;setFocusMode(false);m_sidebarWanted=true;m_sidebarExplicit=true;updateSidebar();m_sidebarViews->setCurrentWidget(m_fullSearch);m_fullSearch->focusQuery();};connect(fullSearch,&QPushButton::clicked,this,openFullSearch);auto *fullSearchAction=new QAction(this);fullSearchAction->setObjectName("fullSearchAction");bindShortcut(fullSearchAction,windowAppearance()->preferences(),"fullSearchAction");addAction(fullSearchAction);connect(fullSearchAction,&QAction::triggered,this,openFullSearch);
     m_searchDelay.setSingleShot(true); m_searchDelay.setInterval(navToken("searchDelayMs")); connect(&m_searchDelay, &QTimer::timeout, this, &WorkspaceWindow::startSearch);
@@ -265,6 +268,7 @@ void WorkspaceWindow::setRootPath(const QString &path) {
     if (title.isEmpty()) title = path.isEmpty() ? QStringLiteral("我的文档") : QDir::toNativeSeparators(rootPath());
     m_rootLabel->setText(title); m_rootLabel->setAccessibleName(title + QStringLiteral("，选择工作区"));
     m_rootLabel->setToolTip(path); setWindowTitle(path.isEmpty() ? QStringLiteral("xdnote") : title + QStringLiteral(" — xdnote"));
+    m_welcome->setRootPath(rootPath());
 }
 void WorkspaceWindow::showNotice(const QString &message) { m_warning->setProperty("noticeSource", QVariant()); m_warning->setText(message); m_warning->setVisible(!message.isEmpty()); }
 int WorkspaceWindow::indexOf(const QUuid &id) const { for (int i = 0; i < m_tabs->count(); ++i) if (tabId(m_tabs, i) == id) return i; return -1; }

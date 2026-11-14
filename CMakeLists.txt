@@ -109,6 +109,7 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/DocumentBreadcrumb.cpp apps/desktop/src/DocumentBreadcrumb.h
     apps/desktop/src/NavigationStore.cpp apps/desktop/src/NavigationStore.h
     apps/desktop/src/WorkspaceNavigation.cpp apps/desktop/src/WorkspaceNavigation.h
+    apps/desktop/src/WorkspaceWelcome.cpp apps/desktop/src/WorkspaceWelcome.h
     apps/desktop/src/WorkspaceTree.cpp apps/desktop/src/WorkspaceTree.h
     apps/desktop/src/WorkspaceWindow.cpp apps/desktop/src/WorkspaceWindow.h
     apps/desktop/src/WindowChrome.cpp apps/desktop/src/WindowChrome.h
@@ -164,7 +165,7 @@ endif()
 file(GLOB XDNOTE_UI_ICONS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/design/assets/ui-v2/icons/svg/*.svg")
 file(GLOB XDNOTE_UI_LICENSES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/LICENSES/third-party/*.txt")
 qt_add_resources(xdnote_desktop xdnote_assets PREFIX /xdnote BASE "${PROJECT_SOURCE_DIR}" FILES
-    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/logo-dark.svg design/assets/ui-v2/brand/app-icon.svg THIRD_PARTY_NOTICES.md LICENSE LICENSES/CC-BY-4.0.txt LICENSES/third-party/manifest.json Cargo.lock docs/engineering/licensing.md tools/desktop-dependencies.json ${XDNOTE_UI_LICENSES} ${XDNOTE_UI_ICONS})
+    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/logo-dark.svg design/assets/ui-v2/brand/mark-light.svg design/assets/ui-v2/brand/mark-dark.svg design/assets/ui-v2/brand/app-icon.svg THIRD_PARTY_NOTICES.md LICENSE LICENSES/CC-BY-4.0.txt LICENSES/third-party/manifest.json Cargo.lock docs/engineering/licensing.md tools/desktop-dependencies.json ${XDNOTE_UI_LICENSES} ${XDNOTE_UI_ICONS})
 
 qt_add_executable(xdnote WIN32 apps/desktop/main.cpp)
 target_link_libraries(xdnote PRIVATE xdnote_desktop)

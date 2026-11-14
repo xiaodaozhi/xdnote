@@ -34,6 +34,7 @@ private:
     void trackWorkspaceRequest(const QUuid &intent, SingleFileWindow *pane, WorkspaceWindow *workspace);
     void chooseDirectory(WorkspaceWindow *owner);
     void chooseFile(WorkspaceWindow *owner, bool workspaceTab);
+    void newDocument();
     void retryTransfers();
     void advanceQuit();
     void captureRecovery();

@@ -18,6 +18,7 @@ public:
     QString path() const { return m_baseline->file()->path(); }
     QString identity() const { return m_baseline->file()->identity(); }
     bool untitled() const { return m_untitled; }
+    bool recoveredDraft() const { return m_untitled && m_recoveredDraft; }
     bool dirty() const { return m_session && m_session->isDirty(); }
     bool saving() const { return m_saving; }
     bool loading() const { return m_loading; }
@@ -49,6 +50,7 @@ private:
     QPointer<DocumentSession> m_session;
     std::shared_ptr<const FileBaseline> m_baseline;
     bool m_untitled = false;
+    bool m_recoveredDraft = false;
     bool m_saving = false, m_loading = false, m_conflict = false, m_error = false;
     bool m_closed = false, m_readOnly = false, m_checkPending = false, m_savedOnce = false;
     bool m_maintenance = false;
@@ -66,6 +68,7 @@ class FileManager final : public QObject {
 public:
     explicit FileManager(QObject *parent = nullptr, std::function<void(SaveStage)> observer = {}, bool monitoring = true);
     void createDraft(const QByteArray &utf8, const QUuid &intent, bool bom=false);
+    void createUntitled(const QUuid &intent);
     void open(const QString &path, const QUuid &intent = QUuid::createUuid());
     void openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &relativePath, const QUuid &intent, const QString &sourcePath = {}, const QString &sourceIdentity = {});
     QList<FileDocument *> documents() const;
@@ -85,6 +88,7 @@ signals:
     void openFailed(QUuid intent, QString path, QString message);
 private:
     friend class FileDocument;
+    void prepareDraft(const QByteArray &utf8, const QUuid &intent, bool bom, bool recovered);
     void openRequest(const QString &path, const QUuid &intent, std::shared_ptr<WorkspaceResourceReader> root = {}, QString relativePath = {}, QString sourcePath = {}, QString sourceIdentity = {});
     bool save(FileDocument *document, const QString &path, bool saveAs = false);
     bool reload(FileDocument *document);
@@ -103,7 +107,8 @@ private:
         });
         watcher->setFuture(QtConcurrent::run(std::move(job)));
     }
-    QHash<QUuid,QByteArray> m_draftRequests;
+    struct DraftRequest { QByteArray content; bool recovered; };
+    QHash<QUuid, DraftRequest> m_draftRequests;
     QList<std::shared_ptr<QTemporaryDir>> m_draftDirectories;
     SessionRegistry m_registry;
     QHash<QUuid, QPointer<FileDocument>> m_documents;

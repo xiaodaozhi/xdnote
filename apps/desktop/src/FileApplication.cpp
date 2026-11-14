@@ -68,6 +68,7 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath)
         const bool embed = workspaceRequested && !document->untitled() && workspace->tree()->containsPath(document->path());
         if (embed && !workspace->addPane(placeholder)) { if (!reused) m_manager.closeDocument(document); placeholder->finishOpen(); placeholder->close(); workspace->showNotice(QStringLiteral("无法准备文档标签，原有文档保持不变。")); return; }
         m_documents.insert(id, placeholder); placeholder->setDocument(document);
+        if (document->untitled() && !document->recoveredDraft()) placeholder->setViewMode(SingleFileWindow::ViewMode::Source);
         if(m_restoreRequests.contains(intent)){const auto entry=m_restoreRequests.take(intent);m_unrestored.remove(entry["id"].toString());applyRestoredState(placeholder,entry);refreshRecoveryActions();}
         connect(placeholder, &QObject::destroyed, this, [this, id] { m_documents.remove(id); });
         connect(document, &FileDocument::stateChanged, this, [this, document, path = document->path()]() mutable { if (path != document->path()) { path = document->path(); m_navigation.recordOpen(path); } QTimer::singleShot(0, this, &FileApplication::retryTransfers); });
@@ -128,6 +129,7 @@ WorkspaceWindow *FileApplication::createWorkspace() {
     connect(workspace, &WorkspaceWindow::openRequested, this, [this, workspace](const QString &path) { openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseFileRequested, this, [this, workspace] { chooseFile(workspace, false); });
     connect(workspace, &WorkspaceWindow::chooseWorkspaceFileRequested, this, [this, workspace] { chooseFile(workspace, true); });
+    connect(workspace, &WorkspaceWindow::newDocumentRequested, this, &FileApplication::newDocument);
     connect(workspace, &WorkspaceWindow::chooseDirectoryRequested, this, [this, workspace] { chooseDirectory(workspace); });
     connect(workspace, &WorkspaceWindow::closeCancelled, this, [this] { m_quitting = false; });
     connect(workspace, &WorkspaceWindow::quitRequested, this, &FileApplication::requestQuit);
@@ -151,6 +153,10 @@ void FileApplication::chooseFile(WorkspaceWindow *owner, bool workspaceTab) {
     if (workspaceTab && workspace) openInWorkspace(path, workspace); else open(path);
 }
 SingleFileWindow *FileApplication::emptyWindow() { auto *pane = createWindow(); pane->show(); return pane; }
+void FileApplication::newDocument() {
+    m_quitting = false; auto *pane = createWindow(); const auto intent = QUuid::createUuid();
+    m_requests.insert(intent, pane); pane->setLoading(QStringLiteral("未命名.md"), intent); m_manager.createUntitled(intent);
+}
 SettingsWindow *FileApplication::settingsWindow() {
     if (!m_settings) {
         m_settings = new SettingsWindow(&m_appearance, &m_geometryStore);

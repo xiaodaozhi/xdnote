@@ -19,6 +19,7 @@
 #include "DocumentBreadcrumb.h"
 #include "NavigationStore.h"
 #include "WorkspaceNavigation.h"
+#include "WorkspaceWelcome.h"
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QScreen>
@@ -52,6 +53,8 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QSplitterHandle>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QAction>
 #include <QtMath>
 #ifdef Q_OS_WIN
@@ -114,6 +117,63 @@ protected:
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void welcomeFollowsApprovedComposition_data() {
+        QTest::addColumn<QString>("theme"); QTest::addColumn<bool>("compact");
+        QTest::newRow("light") << QString("light") << false;
+        QTest::newRow("dark") << QString("dark") << false;
+        QTest::newRow("compact-light") << QString("light") << true;
+        QTest::newRow("compact-dark") << QString("dark") << true;
+    }
+    void welcomeFollowsApprovedComposition() {
+        QFETCH(QString, theme); QFETCH(bool, compact); QTemporaryDir dir;
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow();
+        QVERIFY(workspace->windowAppearance()->setPreferences(theme, "graphite")); QTRY_VERIFY(workspace->windowGeometry()->initialized());
+        workspace->resize(compact ? 960 : 1280, compact ? 640 : 820); QApplication::processEvents();
+        auto *welcome = workspace->findChild<WorkspaceWelcome *>(); QVERIFY(welcome && welcome->isVisible());
+        auto *panel = welcome->findChild<QWidget *>("welcomeContent"); auto *brand = welcome->findChild<QLabel *>("welcomeBrandMark");
+        auto *title = welcome->findChild<QLabel *>("welcomeHeading"); auto *description = welcome->findChild<QLabel *>("welcomeDescription");
+        auto *open = welcome->findChild<SharedButton *>("workspaceOpenFile"); auto *folder = welcome->findChild<SharedButton *>("workspaceOpenDirectory"); auto *create = welcome->findChild<SharedButton *>("workspaceNewDocument");
+        auto *empty = welcome->findChild<QLabel *>("welcomeEmptyRecent"); auto *scroll = welcome->findChild<QScrollArea *>();
+        QVERIFY(panel && brand && title && description && open && folder && create && empty && scroll); QVERIFY(!brand->pixmap().isNull());
+        QCOMPARE(title->text(), QStringLiteral("欢迎使用 xdnote")); QCOMPARE(description->text(), QStringLiteral("打开一个文件，开始阅读与写作。"));
+        QCOMPARE(title->font().pixelSize(), 24); QCOMPARE(description->font().pixelSize(), 16); QCOMPARE(open->text(), QStringLiteral("打开文件")); QCOMPARE(folder->text(), QStringLiteral("打开文件夹"));
+        const auto centerX = [panel](QWidget *widget) { return widget->mapTo(panel, widget->rect().center()).x(); };
+        for (auto *button : {open, folder, create}) { QCOMPARE(button->height(), 32); QCOMPARE(button->width(), 192); QVERIFY(qAbs(centerX(button) - panel->rect().center().x()) <= 1); }
+        QCOMPARE(open->geometry().left(), folder->geometry().left()); QCOMPARE(open->geometry().right(), folder->geometry().right());
+        QCOMPARE(open->geometry().left(), create->geometry().left()); QCOMPARE(open->geometry().right(), create->geometry().right());
+        QVERIFY(qAbs(centerX(brand) - centerX(open)) <= 1); QVERIFY(brand->geometry().bottom() < title->geometry().top());
+        QVERIFY(title->geometry().bottom() < description->geometry().top()); QVERIFY(description->geometry().bottom() < open->geometry().top());
+        QCOMPARE(folder->geometry().top() - open->geometry().bottom() - 1, 8); QCOMPARE(create->geometry().top() - folder->geometry().bottom() - 1, 8);
+        QVERIFY(panel->width() <= 480); QCOMPARE(scroll->horizontalScrollBar()->maximum(), 0); QVERIFY(empty->isVisible()); QCOMPARE(empty->text(), QStringLiteral("暂无最近文件"));
+        capture(workspace, "welcome-" + theme + (compact ? "-compact" : "-empty"));
+        auto *navigation = desktop.findChild<NavigationStore *>(); QVERIFY(navigation);
+        for (const auto &name : {QStringLiteral("更早的文档.md"), QStringLiteral("Markdown 使用手册.md"), QStringLiteral("写作，从这里开始.md"), QStringLiteral("产品计划.md")}) {
+            const auto path = dir.filePath(name); QVERIFY(fileFixtures::write(path, "# document")); QVERIFY(navigation->recordOpen(path));
+        }
+        auto *recent = welcome->findChild<QListWidget *>("welcomeRecentResults"); QVERIFY(recent); QTRY_COMPARE(recent->count(), 3); QVERIFY(recent->isVisible()); QVERIFY(!empty->isVisible());
+        QTRY_VERIFY(recent->parentWidget()->height() >= 3 * 64); QTRY_VERIFY(recent->viewport()->height() >= 3 * 64);
+        QTRY_VERIFY(recent->mapTo(panel, recent->rect().bottomRight()).y() <= panel->rect().bottom());
+        QCOMPARE(recent->item(0)->data(Qt::UserRole + 1).toString(), QStringLiteral("文档"));
+        QCOMPARE(recent->item(0)->text(), QStringLiteral("产品计划.md")); capture(workspace, "welcome-" + theme + (compact ? "-compact-recent" : "-recent"));
+        QTest::mouseClick(welcome->findChild<SharedButton *>("welcomeAllRecent"), Qt::LeftButton); QVERIFY(!welcome->isVisible());
+        auto *all = workspace->findChild<QListWidget *>("navigationResults"); QVERIFY(all && all->count() >= 4); QCOMPARE(workspace->panes().size(), 0);
+    }
+    void welcomeNewDocumentUsesStandaloneAndFirstSaveProtection() {
+        QTemporaryDir dir; FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        auto *create = workspace->findChild<SharedButton *>("workspaceNewDocument"); QVERIFY(create); QTest::mouseClick(create, Qt::LeftButton);
+        const auto untitled = []()->SingleFileWindow * { for (auto *widget : QApplication::topLevelWidgets()) if (auto *pane = qobject_cast<SingleFileWindow *>(widget)) if (pane->document() && pane->document()->untitled() && !pane->document()->recoveredDraft()) return pane; return nullptr; };
+        QTRY_VERIFY(untitled()); auto *pane = untitled(); auto *document = pane->document(); auto *session = document->session();
+        QVERIFY(!pane->embedded()); QVERIFY(workspace->panes().isEmpty()); QCOMPARE(pane->displayPath(), QStringLiteral("未命名.md"));
+        QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Source); QVERIFY(!document->dirty()); QCOMPARE(document->statusText(), QStringLiteral("未命名"));
+        QVERIFY(pane->findChild<QAction *>("saveAction")->isEnabled()); QVERIFY(session->snapshot().utf8.isEmpty());
+        QCOMPARE(session->replace(0, 0, QStringLiteral("新想法 😀"), session->revision()), EditResult::Applied); QVERIFY(document->dirty());
+        QCOMPARE(session->undo(), EditResult::Applied); QVERIFY(!document->dirty()); QCOMPARE(session->redo(), EditResult::Applied);
+        QTimer::singleShot(0, pane, [] { if (auto *dialog = QApplication::activeModalWidget()) { if (auto *cancel = dialog->findChild<QPushButton *>("choice0")) cancel->click(); else qobject_cast<QDialog *>(dialog)->reject(); } });
+        pane->close(); QVERIFY(pane->isVisible()); QVERIFY(document->dirty());
+        const auto path = dir.filePath(QStringLiteral("新笔记.md")); QVERIFY(document->saveAs(path)); QTRY_VERIFY(!document->saving());
+        QVERIFY(!document->untitled()); QVERIFY(!document->dirty()); QCOMPARE(document->session(), session); QCOMPARE(disk(path), QStringLiteral("新想法 😀").toUtf8());
+        QCOMPARE(pane->displayPath(), path); QCOMPARE(workspace->panes().size(), 0);
+    }
     void filePickerRoutesMenusToStandaloneAndPlusOnlyToInternalTabs_data() {
         QTest::addColumn<int>("entry"); QTest::addColumn<bool>("inside");
         for (int entry = 0; entry < 3; ++entry) for (bool inside : {false, true})

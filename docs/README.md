@@ -11,6 +11,7 @@
 | 控件 | [控件交互与焦点](product/control-interactions.md) | 点击反馈、Tab 外框、激活／取消后的清除与逻辑焦点 |
 | 设置 | [设置规格](product/settings.md) | 主题与六种强调色、默认值、作用域和持久化 |
 | 视觉 | [设计系统](visual/design-system.md) | 信息层级、跨界面公共组件一致性、缩放与材料权威 |
+| 欢迎页 | [工作区欢迎页](visual/workspace-welcome.md) | 现有原稿的布局、同宽操作、最近文档与路由边界 |
 | 参数 | [tokens.json](visual/tokens.json) | 精确颜色、逻辑尺寸和字体参数 |
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
