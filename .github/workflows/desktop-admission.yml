@@ -102,10 +102,17 @@ jobs:
           xdnote_qt_arch=gcc_64
           if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
           python scripts/check_product_linkage.py --executable build/desktop-admission/xdnote
-          python scripts/deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
+          python scripts/prepare_ci_font.py --output build/test-fonts
+          export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
+          python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
       - name: Validate installed developer payload without registration
         if: startsWith(inputs.scope, 'deployment-')
-        run: python scripts/validate_user_install.py --build-dir build/desktop-admission --payload build/cycle-112-deployment/staging --destination build/cycle-112-deployment/installed-check
+        shell: bash
+        run: |
+          xdnote_qt_arch=gcc_64
+          if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
+          export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
+          python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --payload build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --destination build/cycle-112-deployment/installed-check
       - name: Test document tools, recovery and shortcuts on Unix
         if: startsWith(inputs.scope, 'tools-')
         run: python scripts/desktop.py test --suite tools
@@ -183,6 +190,8 @@ jobs:
             build/desktop-*/evidence/
             build/cycle-112-deployment/staging-evidence/
             build/cycle-112-deployment/installed-check-evidence/
+            build/test-fonts/receipt.json
+            build/test-fonts/Noto-OFL.txt
           if-no-files-found: ignore
           retention-days: 7
 

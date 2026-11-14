@@ -2,6 +2,20 @@
 
 本入口生成独立诊断目录，核对实际动态库／插件闭包及随附许可输入。它不创建安装器、不进行发布者身份签名或发布、不注册文件关联。目录包含诊断探针、Qt Test 和 offscreen 插件，不能直接作为发行包；各平台实际通过情况以对应 Issue／PR 和工件为准。
 
+## Linux／macOS 纯产品入口
+
+`scripts/product_deployment_unix.py` 从实际应用和资源助手重新收集产品依赖，不从含测试程序的诊断目录删减猜测。Linux 保留所需 xcb／Wayland、图形集成、输入法、图片、TLS 与系统主题插件；macOS 不扫描准入 QML，仅部署产品 `.app` 的 framework／插件，保留内部相对链接、目录内加载路径和 ad-hoc 完整性封印。Quick／QML、主题、调试工具、Qt Test、测试程序或 offscreen 插件进入产品目录时失败。此处禁止的主题指 QML 主题，原生系统样式仍按实际依赖保留。
+
+```text
+python scripts/product_deployment_unix.py --build-dir <成功构建目录> --qt-prefix <本项目 Qt 6.8.2 目录> --destination <build 下的新产品目录>
+```
+
+封存前检查真实传递依赖、原始许可和实际文件；macOS 许可放在 `.app/Contents/Resources/licenses` 中，Linux 放在产品根目录 `licenses`。旁边的 evidence 目录保存清单、逐文件材料、明暗独立窗口与工作区截图及运行报告。无 Qt Test 依赖的外部部署探针和 offscreen 插件只存在于临时诊断目录，探针使用产品内的 Qt 与资源助手，验证自建图片、原文编辑／撤销／保存以及唯一会话接管，并核对实际加载位置和运行前后的产品摘要。临时探针退出后删除，不进入产品或证据工件。
+
+Qt 库经过加载路径修正和 macOS 重新封印，最终摘要可能与 SDK 不同。逐文件保留 SDK 原始摘要、SPDX 文件声明、交付摘要及两者的可执行节摘要对照（ICU 纯数据 ELF 核对只读数据节），不把代码节一致扩展为整个文件一致或签名信任链结论。完整发行许可仍按[分发证据](distribution-audit.md)核验。
+
+同一入口提供 `--payload <已封存产品目录> --audit <evidence/inventory.json> --destination <build 下的新安装验证目录>`，执行安装／升级后的明暗探针、修改文件和未知文件拒绝维护、卸载及自建数据保留。只操作专用目录，系统注册关闭；含未知文件时保持原安装不变，测试只移除自己创建的未知样本后继续卸载。
+
 ## Windows 诊断入口
 
 先使用默认 VS2022 配置构建，提供同一项目的构建、Qt SDK、全新目标目录及系统 VS2022 安装中的 x64 CRT 再分发目录：
@@ -34,7 +48,7 @@ Unix 诊断目录仍保留含 Quick 准入用例的测试程序及其依赖，�
 
 产品没有 Qt SQL 数据库功能。macOS 部署工具扫描带入的 `sqldrivers` 不进入诊断候选，避免无关数据库客户端成为隐含依赖；排除原因写入报告，不以开发机器上另行安装数据库库来掩盖外部依赖。
 
-手动选择桌面工作流的 `scope=deployment-unix`，仅在 Linux x86_64、macOS Intel／ARM 构建并执行本项诊断；`scope=deployment-linux` 只补验 Linux 专属变动。不运行完整桌面测试矩阵。CI 仅上传诊断证据，不上传安装包或发布产品。
+手动选择桌面工作流的 `scope=deployment-unix`，仅在 Linux x86_64、macOS Intel／ARM 执行上文纯产品部署与安装验证；`scope=deployment-linux` 只补验 Linux 专属变动。旧诊断入口保留给明确需要测试依赖的研发场景。专项不运行完整桌面测试矩阵，仅上传证据，不上传安装包或发布产品。
 
 ## 许可材料与发行边界
 
