@@ -14,7 +14,10 @@ class RecoveryStore;
 class FileApplication final : public QObject {
     Q_OBJECT
 public:
-    explicit FileApplication(QObject *parent = nullptr, QString settingsPath = {});
+    // HiddenNative is only for controlled probes. It preserves native Qt
+    // windows and services without showing or activating the user's desktop.
+    enum class Presentation { Visible, HiddenNative };
+    explicit FileApplication(QObject *parent = nullptr, QString settingsPath = {}, Presentation presentation = Presentation::Visible);
     ~FileApplication() override;
     void open(const QString &path, SingleFileWindow *empty = nullptr);
     void openExternal(const QString &path);
@@ -29,6 +32,7 @@ protected:
     bool eventFilter(QObject *target, QEvent *event) override;
 private:
     SingleFileWindow *createWindow();
+    Presentation m_presentation;
     WorkspaceWindow *createWorkspace();
     void activatePane(SingleFileWindow *pane);
     void trackWorkspaceRequest(const QUuid &intent, SingleFileWindow *pane, WorkspaceWindow *workspace);

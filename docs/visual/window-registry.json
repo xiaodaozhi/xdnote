@@ -291,6 +291,15 @@
   ],
   "platformOwnedSurfaces": [
     {
+      "id": "windows-graphical-installer",
+      "kind": "native-installer-engine",
+      "purpose": "当前用户安装、许可、目录、可选候选关联与卸载；使用原生安装引擎界面。",
+      "sizing": "installer-engine-owned",
+      "designStatus": "platform-convention",
+      "implementationSource": "apps/desktop/packaging/windows/installer.iss.in",
+      "nativeValidation": "tracked-in-issue-131"
+    },
+    {
       "id": "open-save-dialog",
       "kind": "native-file-dialog",
       "sizing": "platform-owned"

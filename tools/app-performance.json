@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "repeats": 5,
+  "scenarios": [
+    {"name": "empty", "documents": 0, "bytesPerDocument": 0},
+    {"name": "reading", "documents": 1, "bytesPerDocument": 65536},
+    {"name": "editing", "documents": 1, "bytesPerDocument": 524288},
+    {"name": "split", "documents": 1, "bytesPerDocument": 524288},
+    {"name": "multitab", "documents": 8, "bytesPerDocument": 65536}
+  ]
+}

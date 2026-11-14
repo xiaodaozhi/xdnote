@@ -14,6 +14,7 @@ SPEC.loader.exec_module(background)
 
 class BackgroundTests(unittest.TestCase):
     def test_offscreen_environment_cannot_inherit_native_platform(self):
+        (background.ROOT / "build").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=background.ROOT / "build") as directory:
             source = {"QT_QPA_PLATFORM": "windows", "PATH": "keep", "QT_SCALE_FACTOR": "2"}
             env = background.offscreen_environment(source, Path(directory))

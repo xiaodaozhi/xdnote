@@ -19,7 +19,10 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, scroll-unix, settings-unix, tools-unix, tools-macos]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, scroll-unix, settings-unix, tools-unix, tools-macos, installer-windows]", text)
+        self.assertIn("if: inputs.scope != 'installer-windows'", text)
+        self.assertIn("if: inputs.scope == 'installer-windows'", text)
+        self.assertIn("uses: ./.github/workflows/windows-installer.yml", text)
         self.assertIn("(inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux')", text)
         self.assertIn("Workspace resources - Linux only", text)
         self.assertIn("failure() && runner.os == 'Linux' && inputs.scope == 'workspace-linux'", text)

@@ -1,0 +1,48 @@
+name: Windows installer verification
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-installer:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Check installer input and workflow contracts
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Prepare pinned official installer compiler
+        shell: pwsh
+        run: ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
+      - name: Extract pinned runtime and original agreement without installation
+        run: python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
+      - name: Compile isolated installer fixtures
+        run: python scripts/installer_fixtures.py --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --output build/installer-smoke
+      - name: Validate native install upgrade uninstall and candidate registration
+        shell: pwsh
+        run: ./scripts/test-windows-installer-native.ps1
+      - name: Upload bounded installer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-installer-evidence
+          path: |
+            build/installer-smoke/*.json
+            build/installer-smoke/*.log
+            build/installer-smoke/*.iss
+            build/installer-smoke/*.files
+          retention-days: 7
+          if-no-files-found: warn

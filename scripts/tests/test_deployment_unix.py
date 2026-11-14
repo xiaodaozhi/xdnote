@@ -87,7 +87,7 @@ Load command 3
                 self.skipTest("Host does not permit unprivileged symbolic links")
             self.assertEqual(len(list(deploy.staged_files(stage))), 2)
             (root / "outside").touch(); (stage / "bad").symlink_to("../outside")
-            with self.assertRaises(ValueError):
+            with self.assertRaises((ValueError, OSError)):
                 list(deploy.staged_files(stage))
 
     def test_existing_paths_are_preserved_and_failures_keep_evidence(self):

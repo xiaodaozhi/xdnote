@@ -177,6 +177,8 @@ def source_fingerprint():
     # Compiled Qt vectors must invalidate a stale build just like C++ source.
     for folder in ("design/assets/ui-v2/icons/svg", "design/assets/ui-v2/brand"):
         paths.extend(path for path in (ROOT / folder).glob("*.svg") if path.is_file())
+    # Windows embeds the approved application icon through the native resource.
+    paths.extend((ROOT / "design/assets/ui-v2/brand").glob("*.ico"))
     vendor = BUILD / f"scintilla-{DEPS['scintilla']['version']}" / "scintilla"
     paths.extend(path for path in vendor.rglob("*") if path.suffix in (".h", ".cxx", ".cpp"))
     paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py"))
