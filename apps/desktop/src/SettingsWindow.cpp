@@ -158,7 +158,9 @@ SettingsWindow::SettingsWindow(Appearance *appearance, WindowGeometryStore *stor
     m_content=new QStackedWidget(middle);m_content->setObjectName("settingsContent");m_pages = new QStackedWidget(m_content); m_pages->setObjectName("settingsPages");m_content->addWidget(m_pages);m_searchResults=new QWidget(m_content);m_searchResults->setObjectName("settingsSearchResults");m_content->addWidget(m_searchResults);columns->addWidget(m_content, 1); root->addWidget(middle, 1);
     auto *general = page(titles[0], QStringLiteral("基本使用行为、打开偏好与保存保护。"));
     group(general, QStringLiteral("打开与窗口"));
-    row(general, QStringLiteral("双击文件时打开为"), choice("desktop", "externalOpenTarget", {{QStringLiteral("独立窗口"), "standalone"}, {QStringLiteral("工作区标签"), "workspace-tab"}}));
+    auto *externalTarget = choice("desktop", "externalOpenTarget", {{QStringLiteral("独立窗口"), "standalone"}, {QStringLiteral("工作区标签"), "workspace-tab"}});
+    externalTarget->setToolTip(QStringLiteral("工作区标签仅适用于已打开工作区目录内的文件；目录外文件和菜单打开使用独立窗口。"));
+    row(general, QStringLiteral("双击文件时打开为"), externalTarget);
     auto *modes = new SharedSegment(appearance,general);modes->setObjectName("settingsDefaultMode");auto *modeGroup = new QButtonGroup(modes);
     for (const auto &option : QList<QPair<QString, QString>>{{QStringLiteral("阅读"), "reading"}, {QStringLiteral("编辑"), "source"}}) {
         auto *button = new SharedButton(option.first, "settings-default-" + option.second, appearance, modes); button->setCheckable(true); modeGroup->addButton(button);modes->addButton(button);

@@ -130,12 +130,16 @@ void WorkspaceTree::refresh() {
     if (root.isSymLink() || root.isJunction()) { setState(State::Unreadable, QStringLiteral("请选择普通目录，暂不浏览链接目录")); return; }
     setState(State::Loading, QStringLiteral("正在读取目录…")); fetchDirectory(m_root, nullptr, m_generation);
 }
-bool WorkspaceTree::acceptsFile(const QString &path) const {
+bool WorkspaceTree::containsPath(const QString &path) const {
     if (m_root.isEmpty() || path.isEmpty()) return false;
     const auto relative = QDir(m_root).relativeFilePath(QFileInfo(path).absoluteFilePath());
     if (QDir::isAbsolutePath(relative) || relative == ".." || relative.startsWith("../")) return false;
     auto current = m_root; const QFileInfo root(m_root); if (!root.isDir() || root.isSymLink() || root.isJunction()) return false;
     for (const auto &part : relative.split('/')) { current = QDir(current).filePath(part); const QFileInfo info(current); if (info.isSymLink() || info.isJunction()) return false; }
+    return relative != ".";
+}
+bool WorkspaceTree::acceptsFile(const QString &path) const {
+    if (!containsPath(path)) return false;
     const QFileInfo file(path); const auto suffix = file.suffix().toLower(); return file.isFile() && (suffix == "md" || suffix == "markdown");
 }
 void WorkspaceTree::fetchDirectory(const QString &path, QStandardItem *parent, quint64 generation) {

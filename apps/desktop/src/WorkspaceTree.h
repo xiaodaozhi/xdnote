@@ -20,6 +20,7 @@ public:
     QString rootPath() const { return m_root; }
     State state() const { return m_state; }
     QString message() const { return m_message; }
+    bool containsPath(const QString &path) const;
     bool acceptsFile(const QString &path) const;
     void selectPath(const QString &path);
     void searchFiles(const QString &query);

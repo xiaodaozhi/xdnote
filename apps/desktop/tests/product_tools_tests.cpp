@@ -55,7 +55,22 @@ private slots:
         QTemporaryDir dir;const auto original=dir.filePath("original.md"),settings=dir.filePath("settings.json");QFile file(original);QVERIFY(file.open(QIODevice::WriteOnly));file.write("disk");file.close();
         {FileApplication app(nullptr,settings);auto *workspace=app.workspaceWindow(dir.path());app.openInWorkspace(original,workspace);QTRY_VERIFY(workspace->activePane()&&workspace->activePane()->document());auto *pane=workspace->activePane();auto *session=pane->document()->session();QCOMPARE(session->replace(0,4,QStringLiteral("未保存😀"),session->revision()),EditResult::Applied);pane->setViewMode(SingleFileWindow::ViewMode::Source);pane->setContentZoom(150);}
         RecoveryStore evidence(settings+".recovery");QCOMPARE(evidence.state()["drafts"].toArray().size(),1);
-        {FileApplication app(nullptr,settings);auto *welcome=app.workspaceWindow();auto *restore=welcome->findChild<QPushButton*>("restoreLastSession");QVERIFY(restore);restore->click();QTRY_VERIFY(([&]{for(auto *w:QApplication::topLevelWidgets())if(auto *workspace=qobject_cast<WorkspaceWindow*>(w))for(auto *pane:workspace->panes())if(pane->document()&&pane->document()->untitled())return true;return false;})());SingleFileWindow *recovered=nullptr;for(auto *w:QApplication::topLevelWidgets())if(auto *workspace=qobject_cast<WorkspaceWindow*>(w))for(auto *pane:workspace->panes())if(pane->document()&&pane->document()->untitled())recovered=pane;QVERIFY(recovered);QCOMPARE(recovered->document()->session()->snapshot().utf8,QStringLiteral("未保存😀").toUtf8());QCOMPARE(recovered->contentZoom(),150);QVERIFY(file.open(QIODevice::ReadOnly));QCOMPARE(file.readAll(),QByteArray("disk"));file.close();}
+        {
+            FileApplication app(nullptr,settings);auto *welcome=app.workspaceWindow();auto *restore=welcome->findChild<QPushButton*>("restoreLastSession");QVERIFY(restore);restore->click();
+            const auto findDraft=[]()->SingleFileWindow*{for(auto *w:QApplication::topLevelWidgets())if(auto *pane=qobject_cast<SingleFileWindow*>(w))if(pane->document()&&pane->document()->untitled())return pane;return nullptr;};
+            QTRY_VERIFY(findDraft());auto *recovered=findDraft();QVERIFY(recovered->isWindow());QVERIFY(!recovered->embedded());
+            for(auto *w:QApplication::topLevelWidgets())if(auto *workspace=qobject_cast<WorkspaceWindow*>(w))QVERIFY(workspace->panes().isEmpty());
+            QCOMPARE(recovered->document()->session()->snapshot().utf8,QStringLiteral("未保存😀").toUtf8());QCOMPARE(recovered->contentZoom(),150);QVERIFY(file.open(QIODevice::ReadOnly));QCOMPARE(file.readAll(),QByteArray("disk"));file.close();
+        }
+    }
+    void legacyOutsideWorkspaceSessionRestoresInStandaloneWithoutRewritingSettings(){
+        QTemporaryDir dir,outside;const auto path=outside.filePath("outside.md"),settings=dir.filePath("settings.json");QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write("outside");file.close();
+        const QJsonObject entry{{"id",QUuid::createUuid().toString()},{"path",path},{"root",dir.path()}};
+        {RecoveryStore store(settings+".recovery");store.save({{"schemaVersion",1},{"documents",QJsonArray{entry}},{"drafts",QJsonArray{}}});QVERIFY(store.flush());}
+        FileApplication app(nullptr,settings);auto *welcome=app.workspaceWindow();welcome->findChild<QPushButton*>("restoreLastSession")->click();
+        const auto findPane=[&]()->SingleFileWindow*{for(auto *w:QApplication::topLevelWidgets())if(auto *pane=qobject_cast<SingleFileWindow*>(w))if(pane->document()&&pane->document()->path()==path)return pane;return nullptr;};
+        QTRY_VERIFY(findPane());QVERIFY(!findPane()->embedded());QCOMPARE(findPane()->document()->session()->snapshot().utf8,QByteArray("outside"));
+        for(auto *w:QApplication::topLevelWidgets())if(auto *workspace=qobject_cast<WorkspaceWindow*>(w))QVERIFY(workspace->panes().isEmpty());
     }
     void registrationOnlyOffersOpenWithAndDoesNotTakeDefaults(){
         const auto entries=associationValues(QStringLiteral("C:/程序/xdnote.exe"));QCOMPARE(entries.size(),13);for(const auto &entry:entries){QVERIFY(!entry.path.contains("UserChoice"));QVERIFY(!entry.path.endsWith("\\.md"));QVERIFY(!entry.path.endsWith("\\.markdown"));}QVERIFY(entries[2].value.endsWith("\" \"%1\""));QVERIFY(associationValues("bad\"path").isEmpty());

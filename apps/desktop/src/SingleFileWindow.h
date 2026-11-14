@@ -75,6 +75,7 @@ public:
     QString resourceDocumentPath() const;
 signals:
     void openRequested(QString path);
+    void standaloneOpenRequested(QString path);
     void cancelOpenRequested(QUuid intent);
     void quitRequested();
     void closeCancelled();
