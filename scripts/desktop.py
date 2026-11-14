@@ -174,6 +174,9 @@ def source_fingerprint():
     paths = [ROOT / name for name in ("CMakeLists.txt", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "docs/visual/tokens.json")]
     for folder in ("apps/desktop", "crates", "cmake", "tools"):
         paths.extend(path for path in (ROOT / folder).rglob("*") if path.is_file())
+    # Compiled Qt vectors must invalidate a stale build just like C++ source.
+    for folder in ("design/assets/ui-v2/icons/svg", "design/assets/ui-v2/brand"):
+        paths.extend(path for path in (ROOT / folder).glob("*.svg") if path.is_file())
     vendor = BUILD / f"scintilla-{DEPS['scintilla']['version']}" / "scintilla"
     paths.extend(path for path in vendor.rglob("*") if path.suffix in (".h", ".cxx", ".cpp"))
     paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py"))

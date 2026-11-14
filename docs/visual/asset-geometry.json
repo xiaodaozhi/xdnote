@@ -10,8 +10,8 @@
   ],
   "focusPadding": 4,
   "icon": {
-    "viewBox": 24,
-    "strokeWidth": 1.75,
+    "viewBox": 16,
+    "strokeWidth": 1.25,
     "sizeToken": "controls.iconSize",
     "lineCap": "round",
     "lineJoin": "round"

@@ -95,6 +95,23 @@ QJsonObject textInkSample(QWidget *widget, const QString &kind, const QString &v
 class ControlConsistencyTests final: public QObject {
     Q_OBJECT
 private slots:
+    void allUiIconsRenderAcrossSizesAndDensities() {
+        const QDir assets(QStringLiteral(":/xdnote/design/assets/ui-v2/icons/svg"));
+        const auto files=assets.entryList({"*.svg"},QDir::Files);QVERIFY(files.size()>=90);
+        for(const auto &file:files)for(const QColor color:{QColor("#1F2937"),QColor("#E4E7EC")})
+            for(int size:{12,16,20,24})for(qreal dpr:{1.0,1.5,2.0,3.0}){
+                const auto icon=themedIcon(file.chopped(4),color);QVERIFY2(!icon.isNull(),qPrintable(file));
+                const auto pixmap=icon.pixmap(QSize(size,size),dpr);const auto image=pixmap.toImage();QVERIFY(!image.isNull());
+                QCOMPARE(image.width(),qRound(size*dpr));QCOMPARE(image.height(),qRound(size*dpr));
+                bool ink=false,transparent=false;
+                for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x){const int alpha=qAlpha(image.pixel(x,y));ink|=alpha>100;transparent|=alpha==0;}
+                QVERIFY2(ink&&transparent,qPrintable(file+": empty glyph or opaque background"));
+                const auto disabled=icon.pixmap(QSize(size,size),dpr,QIcon::Disabled);QVERIFY(!disabled.isNull());
+            }
+        QCOMPARE(themedIcon("status-dirty",Qt::red).pixmap(16,16).toImage(),themedIcon("dirty",Qt::red).pixmap(16,16).toImage());
+        QCOMPARE(colorSwatch(Qt::red).pixmap(16,16).toImage(),themedIcon("accent-swatch",Qt::red).pixmap(16,16).toImage());
+        QVERIFY(themedIcon("does-not-exist",Qt::red).isNull());
+    }
     void uiTextAlignmentSurvey() {
         QTemporaryDir dir; Appearance appearance(nullptr,dir.filePath("settings.json")); QWidget fixture; fixture.setAttribute(Qt::WA_DontShowOnScreen);fixture.resize(640,320); fixture.setFont(uiFont()); fixture.setAutoFillBackground(true);
         auto palette=fixture.palette();palette.setColor(QPalette::Window,appearance.color("background"));palette.setColor(QPalette::WindowText,appearance.color("text"));fixture.setPalette(palette);fixture.setFocusPolicy(Qt::StrongFocus);fixture.show();fixture.setFocus();

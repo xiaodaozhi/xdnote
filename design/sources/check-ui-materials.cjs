@@ -4,6 +4,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const sharp = require('sharp');
+const {checkIconGeometry} = require('./review-ui-icons.cjs');
+const iconPaths = require('./ui-icon-paths.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const DESIGN = path.join(ROOT, 'design');
 const OUT = path.join(DESIGN, 'assets/ui-v2');
@@ -27,6 +29,15 @@ async function main() {
   const assets = await read(path.join(OUT, 'manifest.json'));
   const tokens = await read(path.join(ROOT, 'docs/visual/tokens.json'));
   const geometry = await read(path.join(ROOT, 'docs/visual/asset-geometry.json'));
+  const iconReferences=await read(path.join(DESIGN,'sources/ui-icon-reference.json'));
+  const iconNames=Object.keys(require('./ui-icon-paths.cjs'));
+  assert(new Set(iconReferences.icons.map(i=>i.id)).size===iconNames.length&&iconReferences.icons.length===iconNames.length,'Icon reference inventory');
+  for(const icon of iconReferences.icons)assert(iconNames.includes(icon.id)&&iconReferences.references[icon.reference],'Missing icon design reference '+icon.id);
+  for(const [id,reference] of Object.entries(iconReferences.references)){
+    const source=path.join(DESIGN,reference.sourcePath),bytes=await fs.readFile(source),metadata=await sharp(bytes).metadata(),r=reference.pixelRect;
+    assert(sha(bytes)===reference.sourceSha256&&reference.resizeApplied===false,'Icon reference source identity '+id);
+    assert(r.left>=0&&r.top>=0&&r.width>0&&r.height>0&&r.left+r.width<=metadata.width&&r.top+r.height<=metadata.height,'Icon reference bounds '+id);
+  }
   const registry = await read(path.join(ROOT, 'docs/visual/window-registry.json'));
   const surfaces = await read(path.join(ROOT, 'docs/visual/surface-registry-v2.json'));
   const brandPlacements = await read(path.join(DESIGN, 'sources/brand-placements.json'));
@@ -152,7 +163,7 @@ async function main() {
       pngChecks++;
       const density = Number(p.match(/@(\d)x\.png$/)?.[1]);
       if (density && record.logicalCanvas) assert(m.width === record.logicalCanvas.width * density && m.height === record.logicalCanvas.height * density, 'Density geometry ' + p);
-      if (['editable-vector-with-transparent-png', 'original-outline-icon', 'approved-brand-vector'].includes(record.kind)) {
+      if (['editable-vector-with-transparent-png', 'original-outline-icon', 'original-ui-icon', 'approved-brand-vector'].includes(record.kind)) {
         assert(m.hasAlpha, 'Missing alpha channel ' + p);
         const stats = await sharp(file).ensureAlpha().stats();
         assert(stats.channels[3].min === 0, 'Nontransparent outer background ' + p);
@@ -164,6 +175,17 @@ async function main() {
     }
     for (const p of record.files.filter(p => p.endsWith('.svg'))) {
       const source = await fs.readFile(path.join(OUT, p), 'utf8');
+      if(record.id.startsWith('icon/')){
+        const id=record.id.slice(5),definition=iconPaths[id];
+        assert(definition&&source.includes(definition[1]),'Icon SVG differs from current path source '+id);
+        assert(record.svgViewBox===geometry.icon.viewBox&&record.strokeWidthInViewBox===geometry.icon.strokeWidth,'Icon metadata geometry '+id);
+        const ref=iconReferences.icons.find(item=>item.id===id);assert(ref&&record.designReference?.basis===ref.basis&&record.designReference?.reference===ref.reference,'Icon reference metadata '+id);
+        for(const png of record.files.filter(file=>file.endsWith('.png'))){
+          const density=Number(png.match(/@(\d)x\.png$/)[1]),theme=png.includes('/dark/')?'dark':'light';
+          const expected=await sharp(Buffer.from(source.replaceAll('currentColor',tokens.themes[theme].text))).resize(16*density,16*density).ensureAlpha().raw().toBuffer();
+          const actual=await sharp(path.join(OUT,png)).ensureAlpha().raw().toBuffer();assert(expected.equals(actual),'Icon PNG differs from current SVG '+png);
+        }
+      }
       assert(!/<script|@font-face|<image|https?:\/\//i.test(source.replace('http://www.w3.org/2000/svg', '')), 'External or executable SVG content ' + p);
       if (record.textBakedIn === false) assert(!/<text\b/i.test(source), 'Baked control text ' + p);
       await sharp(Buffer.from(source)).metadata();
@@ -181,6 +203,7 @@ async function main() {
   }
   await pixel('feedback/light/banner-error@1x.png', 9, 20, tokens.semantic.light.error);
   assert(exactCrops === assets.counts.referenceSlices, 'Crop count');
+  const iconGeometry=await checkIconGeometry();assert(iconGeometry.length===assets.counts.icons,'Icon geometry inventory');
   const summary = { scope: 'static-design-material-integrity', boards: catalog.boards.length, surfaces: frames.length, currentBoardImages: boardFiles.length, brandPlacementRegions: brandPlacements.boards.reduce((n, b) => n + b.regions.length, 0), provenanceReceipts: catalog.boards.reduce((n, b) => n + b.generationHistory.length, 0), icons: assets.counts.icons, componentVariants: assets.counts.componentVariants, exactPixelCrops: exactCrops, fileIdentities: assets.files.length, pngDimensionChecks: pngChecks, alphaChecks, jsonFiles, localLinks, errors, applicationTestsRun: false, nativePlatformValidationRun: false };
   await fs.mkdir(path.join(ROOT, 'build/design-v2'), { recursive: true });
   await fs.writeFile(path.join(ROOT, 'build/design-v2/material-check.json'), JSON.stringify(summary, null, 2) + '\n');

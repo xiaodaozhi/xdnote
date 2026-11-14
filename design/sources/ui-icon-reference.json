@@ -1,0 +1,1166 @@
+{
+  "schemaVersion": 1,
+  "policy": "Original board pixels are context evidence, not a runtime skin or logical geometry. Derived glyphs extend the listed family; they are not claimed to occur in the source crop.",
+  "logicalCanvas": 16,
+  "strokeWidth": 1.25,
+  "references": {
+    "document": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 310,
+        "top": 31,
+        "width": 28,
+        "height": 30
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "folder": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 56,
+        "top": 364,
+        "width": 34,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "search": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 47,
+        "top": 150,
+        "width": 30,
+        "height": 30
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "clock": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 40,
+        "top": 215,
+        "width": 31,
+        "height": 31
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "star": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 38,
+        "top": 263,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "settings": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 38,
+        "top": 900,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "focus": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 1320,
+        "top": 91,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "bold": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 449,
+        "top": 154,
+        "width": 26,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "italic": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 505,
+        "top": 154,
+        "width": 25,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "heading": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 559,
+        "top": 155,
+        "width": 26,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "link": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 651,
+        "top": 154,
+        "width": 28,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "checklist": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 714,
+        "top": 155,
+        "width": 30,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "code": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 768,
+        "top": 155,
+        "width": 30,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "copy": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 1445,
+        "top": 795,
+        "width": 28,
+        "height": 29
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "plus": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 800,
+        "top": 32,
+        "width": 28,
+        "height": 28
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "close": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 538,
+        "top": 33,
+        "width": 24,
+        "height": 25
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "minimize": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 1341,
+        "top": 28,
+        "width": 26,
+        "height": 24
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "maximize": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 1404,
+        "top": 26,
+        "width": 26,
+        "height": 26
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "chevron-down": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 1472,
+        "top": 97,
+        "width": 21,
+        "height": 20
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "outline": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 1460,
+        "top": 156,
+        "width": 30,
+        "height": 30
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "check-circle": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 39,
+        "top": 965,
+        "width": 30,
+        "height": 30
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "sun": {
+      "sourcePath": "hifi/v2/boards/01-workspace-light.png",
+      "pixelRect": {
+        "left": 243,
+        "top": 900,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "6c46cd5b35d459accb4a8e85cd42664a7cde062149fca52d89382a7c51426273",
+      "resizeApplied": false
+    },
+    "palette": {
+      "sourcePath": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "pixelRect": {
+        "left": 34,
+        "top": 247,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "resizeApplied": false
+    },
+    "edit": {
+      "sourcePath": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "pixelRect": {
+        "left": 34,
+        "top": 298,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "resizeApplied": false
+    },
+    "read": {
+      "sourcePath": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "pixelRect": {
+        "left": 34,
+        "top": 348,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "resizeApplied": false
+    },
+    "keyboard": {
+      "sourcePath": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "pixelRect": {
+        "left": 34,
+        "top": 400,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "resizeApplied": false
+    },
+    "info": {
+      "sourcePath": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "pixelRect": {
+        "left": 34,
+        "top": 452,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "resizeApplied": false
+    },
+    "accent-swatch": {
+      "sourcePath": "hifi/v2/boards/12-settings-appearance-reader.png",
+      "pixelRect": {
+        "left": 253,
+        "top": 489,
+        "width": 56,
+        "height": 56
+      },
+      "sourceSha256": "0e61488ceb9aa7ce9557640bcc626e60e0dd5c71c62fca4ad28ddd1688e9104b",
+      "resizeApplied": false
+    },
+    "dirty": {
+      "sourcePath": "hifi/v2/boards/09-file-tab-menus.png",
+      "pixelRect": {
+        "left": 515,
+        "top": 75,
+        "width": 14,
+        "height": 14
+      },
+      "sourceSha256": "875d79520f40d9b93fc948b0151661faafbabc53fa8f0e185d9912908ef90154",
+      "resizeApplied": false
+    },
+    "trash": {
+      "sourcePath": "hifi/v2/boards/09-file-tab-menus.png",
+      "pixelRect": {
+        "left": 289,
+        "top": 547,
+        "width": 25,
+        "height": 27
+      },
+      "sourceSha256": "875d79520f40d9b93fc948b0151661faafbabc53fa8f0e185d9912908ef90154",
+      "resizeApplied": false
+    },
+    "document-new": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 237,
+        "top": 103,
+        "width": 25,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "save": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 237,
+        "top": 224,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "save-as": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 237,
+        "top": 258,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "undo": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 1042,
+        "top": 104,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "redo": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 1042,
+        "top": 139,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "cut": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 1042,
+        "top": 186,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "paste": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 1042,
+        "top": 254,
+        "width": 25,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "select-all": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 1042,
+        "top": 289,
+        "width": 25,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "replace": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 1042,
+        "top": 378,
+        "width": 25,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "split": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 336,
+        "top": 651,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "sidebar": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 336,
+        "top": 740,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "zoom-in": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 336,
+        "top": 831,
+        "width": 26,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "zoom-out": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 336,
+        "top": 865,
+        "width": 26,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "window-new": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 1201,
+        "top": 650,
+        "width": 26,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "exit": {
+      "sourcePath": "hifi/v2/boards/28-application-menus.png",
+      "pixelRect": {
+        "left": 237,
+        "top": 347,
+        "width": 26,
+        "height": 26
+      },
+      "sourceSha256": "1e65b41124d7ef21f6c3129eeaf0b89a5a354fb6c13933a5318516c2b1d92b0c",
+      "resizeApplied": false
+    },
+    "list-bullet": {
+      "sourcePath": "hifi/v2/boards/10-insert-popovers.png",
+      "pixelRect": {
+        "left": 335,
+        "top": 336,
+        "width": 22,
+        "height": 22
+      },
+      "sourceSha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+      "resizeApplied": false
+    },
+    "list-ordered": {
+      "sourcePath": "hifi/v2/boards/10-insert-popovers.png",
+      "pixelRect": {
+        "left": 335,
+        "top": 366,
+        "width": 22,
+        "height": 22
+      },
+      "sourceSha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+      "resizeApplied": false
+    },
+    "quote": {
+      "sourcePath": "hifi/v2/boards/10-insert-popovers.png",
+      "pixelRect": {
+        "left": 334,
+        "top": 305,
+        "width": 23,
+        "height": 23
+      },
+      "sourceSha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+      "resizeApplied": false
+    },
+    "image": {
+      "sourcePath": "hifi/v2/boards/10-insert-popovers.png",
+      "pixelRect": {
+        "left": 415,
+        "top": 639,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+      "resizeApplied": false
+    },
+    "table": {
+      "sourcePath": "hifi/v2/boards/10-insert-popovers.png",
+      "pixelRect": {
+        "left": 1215,
+        "top": 639,
+        "width": 25,
+        "height": 25
+      },
+      "sourceSha256": "5f010792320f6afeea9d366330a2552cc9349a4e77015556eeeb87f61b3e10eb",
+      "resizeApplied": false
+    },
+    "external": {
+      "sourcePath": "hifi/v2/boards/26-feedback-states.png",
+      "pixelRect": {
+        "left": 1077,
+        "top": 795,
+        "width": 32,
+        "height": 32
+      },
+      "sourceSha256": "c3f7b744cbf85d94ed3cd4edf36be3c4ee7fbba1d62e90c8cd6d13dedb251922",
+      "resizeApplied": false
+    },
+    "spinner": {
+      "sourcePath": "hifi/v2/boards/26-feedback-states.png",
+      "pixelRect": {
+        "left": 269,
+        "top": 204,
+        "width": 33,
+        "height": 33
+      },
+      "sourceSha256": "c3f7b744cbf85d94ed3cd4edf36be3c4ee7fbba1d62e90c8cd6d13dedb251922",
+      "resizeApplied": false
+    },
+    "warning": {
+      "sourcePath": "hifi/v2/boards/17-save-readonly-errors.png",
+      "pixelRect": {
+        "left": 1019,
+        "top": 720,
+        "width": 42,
+        "height": 42
+      },
+      "sourceSha256": "c815cb7a808e93420b763f1d39ed4eb87f8445b850e327be0186b335b91f1475",
+      "resizeApplied": false
+    },
+    "lock": {
+      "sourcePath": "hifi/v2/boards/17-save-readonly-errors.png",
+      "pixelRect": {
+        "left": 205,
+        "top": 601,
+        "width": 24,
+        "height": 24
+      },
+      "sourceSha256": "c815cb7a808e93420b763f1d39ed4eb87f8445b850e327be0186b335b91f1475",
+      "resizeApplied": false
+    },
+    "error-message": {
+      "sourcePath": "hifi/v2/boards/17-save-readonly-errors.png",
+      "pixelRect": {
+        "left": 277,
+        "top": 210,
+        "width": 42,
+        "height": 42
+      },
+      "sourceSha256": "c815cb7a808e93420b763f1d39ed4eb87f8445b850e327be0186b335b91f1475",
+      "resizeApplied": false
+    },
+    "warning-filled": {
+      "sourcePath": "hifi/v2/boards/16-external-conflict.png",
+      "pixelRect": {
+        "left": 77,
+        "top": 769,
+        "width": 44,
+        "height": 44
+      },
+      "sourceSha256": "f689c676a4b9fbd9a4151f0024a9d09102b51b4e6f688d665d4ca018cb58218c",
+      "resizeApplied": false
+    }
+  },
+  "icons": [
+    {
+      "id": "document",
+      "label": "文档",
+      "basis": "direct-board-reference",
+      "reference": "document"
+    },
+    {
+      "id": "document-new",
+      "label": "新建文档",
+      "basis": "direct-board-reference",
+      "reference": "document-new"
+    },
+    {
+      "id": "document-search",
+      "label": "查找文档",
+      "basis": "same-family-derived",
+      "reference": "document"
+    },
+    {
+      "id": "document-missing",
+      "label": "文件不存在",
+      "basis": "same-family-derived",
+      "reference": "document"
+    },
+    {
+      "id": "folder",
+      "label": "文件夹",
+      "basis": "direct-board-reference",
+      "reference": "folder"
+    },
+    {
+      "id": "folder-open",
+      "label": "打开文件夹",
+      "basis": "same-family-derived",
+      "reference": "folder"
+    },
+    {
+      "id": "folder-add",
+      "label": "添加文件夹",
+      "basis": "same-family-derived",
+      "reference": "folder"
+    },
+    {
+      "id": "search",
+      "label": "搜索",
+      "basis": "direct-board-reference",
+      "reference": "search"
+    },
+    {
+      "id": "star",
+      "label": "收藏",
+      "basis": "direct-board-reference",
+      "reference": "star"
+    },
+    {
+      "id": "star-filled",
+      "label": "已收藏",
+      "basis": "same-family-derived",
+      "reference": "star"
+    },
+    {
+      "id": "clock",
+      "label": "最近打开",
+      "basis": "direct-board-reference",
+      "reference": "clock"
+    },
+    {
+      "id": "settings",
+      "label": "设置",
+      "basis": "direct-board-reference",
+      "reference": "settings"
+    },
+    {
+      "id": "palette",
+      "label": "配色",
+      "basis": "direct-board-reference",
+      "reference": "palette"
+    },
+    {
+      "id": "edit",
+      "label": "编辑",
+      "basis": "direct-board-reference",
+      "reference": "edit"
+    },
+    {
+      "id": "read",
+      "label": "阅读",
+      "basis": "direct-board-reference",
+      "reference": "read"
+    },
+    {
+      "id": "split",
+      "label": "双栏",
+      "basis": "direct-board-reference",
+      "reference": "split"
+    },
+    {
+      "id": "sidebar",
+      "label": "侧栏",
+      "basis": "direct-board-reference",
+      "reference": "sidebar"
+    },
+    {
+      "id": "outline",
+      "label": "大纲",
+      "basis": "direct-board-reference",
+      "reference": "outline"
+    },
+    {
+      "id": "focus",
+      "label": "专注模式",
+      "basis": "direct-board-reference",
+      "reference": "focus"
+    },
+    {
+      "id": "focus-exit",
+      "label": "退出专注",
+      "basis": "same-family-derived",
+      "reference": "focus"
+    },
+    {
+      "id": "chevron-down",
+      "label": "展开",
+      "basis": "direct-board-reference",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "chevron-up",
+      "label": "收起",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "chevron-left",
+      "label": "上一项",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "chevron-right",
+      "label": "下一项",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "arrow-up",
+      "label": "上一个结果",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "arrow-down",
+      "label": "下一个结果",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "close",
+      "label": "关闭",
+      "basis": "direct-board-reference",
+      "reference": "close"
+    },
+    {
+      "id": "minimize",
+      "label": "最小化",
+      "basis": "direct-board-reference",
+      "reference": "minimize"
+    },
+    {
+      "id": "maximize",
+      "label": "最大化",
+      "basis": "direct-board-reference",
+      "reference": "maximize"
+    },
+    {
+      "id": "restore-window",
+      "label": "还原窗口",
+      "basis": "same-family-derived",
+      "reference": "maximize"
+    },
+    {
+      "id": "plus",
+      "label": "添加",
+      "basis": "direct-board-reference",
+      "reference": "plus"
+    },
+    {
+      "id": "minus",
+      "label": "减少",
+      "basis": "same-family-derived",
+      "reference": "plus"
+    },
+    {
+      "id": "more",
+      "label": "更多",
+      "basis": "same-family-derived",
+      "reference": "plus"
+    },
+    {
+      "id": "menu",
+      "label": "菜单",
+      "basis": "same-family-derived",
+      "reference": "plus"
+    },
+    {
+      "id": "check",
+      "label": "确认",
+      "basis": "same-family-derived",
+      "reference": "check-circle"
+    },
+    {
+      "id": "check-circle",
+      "label": "已保存",
+      "basis": "direct-board-reference",
+      "reference": "check-circle"
+    },
+    {
+      "id": "dirty",
+      "label": "未保存",
+      "basis": "direct-board-reference",
+      "reference": "dirty"
+    },
+    {
+      "id": "accent-swatch",
+      "label": "强调色样本",
+      "basis": "direct-board-reference",
+      "reference": "accent-swatch"
+    },
+    {
+      "id": "link",
+      "label": "链接",
+      "basis": "direct-board-reference",
+      "reference": "link"
+    },
+    {
+      "id": "external",
+      "label": "在外部打开",
+      "basis": "direct-board-reference",
+      "reference": "external"
+    },
+    {
+      "id": "image",
+      "label": "图片",
+      "basis": "direct-board-reference",
+      "reference": "image"
+    },
+    {
+      "id": "image-off",
+      "label": "图片未加载",
+      "basis": "same-family-derived",
+      "reference": "code"
+    },
+    {
+      "id": "table",
+      "label": "表格",
+      "basis": "direct-board-reference",
+      "reference": "table"
+    },
+    {
+      "id": "code",
+      "label": "代码",
+      "basis": "direct-board-reference",
+      "reference": "code"
+    },
+    {
+      "id": "bold",
+      "label": "粗体",
+      "basis": "direct-board-reference",
+      "reference": "bold"
+    },
+    {
+      "id": "italic",
+      "label": "斜体",
+      "basis": "direct-board-reference",
+      "reference": "italic"
+    },
+    {
+      "id": "heading",
+      "label": "标题",
+      "basis": "direct-board-reference",
+      "reference": "heading"
+    },
+    {
+      "id": "list-bullet",
+      "label": "无序列表",
+      "basis": "direct-board-reference",
+      "reference": "list-bullet"
+    },
+    {
+      "id": "list-ordered",
+      "label": "有序列表",
+      "basis": "direct-board-reference",
+      "reference": "list-ordered"
+    },
+    {
+      "id": "checklist",
+      "label": "任务列表",
+      "basis": "direct-board-reference",
+      "reference": "checklist"
+    },
+    {
+      "id": "quote",
+      "label": "引用",
+      "basis": "direct-board-reference",
+      "reference": "quote"
+    },
+    {
+      "id": "undo",
+      "label": "撤销",
+      "basis": "direct-board-reference",
+      "reference": "undo"
+    },
+    {
+      "id": "redo",
+      "label": "重做",
+      "basis": "direct-board-reference",
+      "reference": "redo"
+    },
+    {
+      "id": "copy",
+      "label": "复制",
+      "basis": "direct-board-reference",
+      "reference": "copy"
+    },
+    {
+      "id": "cut",
+      "label": "剪切",
+      "basis": "direct-board-reference",
+      "reference": "cut"
+    },
+    {
+      "id": "paste",
+      "label": "粘贴",
+      "basis": "direct-board-reference",
+      "reference": "paste"
+    },
+    {
+      "id": "trash",
+      "label": "移到回收站",
+      "basis": "direct-board-reference",
+      "reference": "trash"
+    },
+    {
+      "id": "save",
+      "label": "保存",
+      "basis": "direct-board-reference",
+      "reference": "save"
+    },
+    {
+      "id": "save-as",
+      "label": "另存为",
+      "basis": "direct-board-reference",
+      "reference": "save-as"
+    },
+    {
+      "id": "export",
+      "label": "导出",
+      "basis": "same-family-derived",
+      "reference": "copy"
+    },
+    {
+      "id": "info",
+      "label": "信息",
+      "basis": "direct-board-reference",
+      "reference": "info"
+    },
+    {
+      "id": "warning",
+      "label": "警告",
+      "basis": "direct-board-reference",
+      "reference": "warning"
+    },
+    {
+      "id": "warning-filled",
+      "label": "冲突警告",
+      "basis": "direct-board-reference",
+      "reference": "warning-filled"
+    },
+    {
+      "id": "error-message",
+      "label": "错误提示",
+      "basis": "direct-board-reference",
+      "reference": "error-message"
+    },
+    {
+      "id": "error",
+      "label": "错误",
+      "basis": "same-family-derived",
+      "reference": "info"
+    },
+    {
+      "id": "pin",
+      "label": "固定",
+      "basis": "same-family-derived",
+      "reference": "star"
+    },
+    {
+      "id": "sun",
+      "label": "浅色主题",
+      "basis": "direct-board-reference",
+      "reference": "sun"
+    },
+    {
+      "id": "moon",
+      "label": "深色主题",
+      "basis": "same-family-derived",
+      "reference": "sun"
+    },
+    {
+      "id": "monitor",
+      "label": "跟随系统",
+      "basis": "same-family-derived",
+      "reference": "sun"
+    },
+    {
+      "id": "keyboard",
+      "label": "快捷键",
+      "basis": "direct-board-reference",
+      "reference": "keyboard"
+    },
+    {
+      "id": "lock",
+      "label": "只读与保护",
+      "basis": "direct-board-reference",
+      "reference": "lock"
+    },
+    {
+      "id": "refresh",
+      "label": "重试",
+      "basis": "same-family-derived",
+      "reference": "clock"
+    },
+    {
+      "id": "spinner",
+      "label": "处理中",
+      "basis": "direct-board-reference",
+      "reference": "spinner"
+    },
+    {
+      "id": "zoom-in",
+      "label": "放大",
+      "basis": "direct-board-reference",
+      "reference": "zoom-in"
+    },
+    {
+      "id": "zoom-out",
+      "label": "缩小",
+      "basis": "direct-board-reference",
+      "reference": "zoom-out"
+    },
+    {
+      "id": "replace",
+      "label": "替换",
+      "basis": "direct-board-reference",
+      "reference": "replace"
+    },
+    {
+      "id": "line-wrap",
+      "label": "软换行",
+      "basis": "same-family-derived",
+      "reference": "outline"
+    },
+    {
+      "id": "path",
+      "label": "文件位置",
+      "basis": "same-family-derived",
+      "reference": "info"
+    },
+    {
+      "id": "window-new",
+      "label": "在独立窗口打开",
+      "basis": "direct-board-reference",
+      "reference": "window-new"
+    },
+    {
+      "id": "exit",
+      "label": "退出应用",
+      "basis": "direct-board-reference",
+      "reference": "exit"
+    },
+    {
+      "id": "workspace",
+      "label": "工作区",
+      "basis": "same-family-derived",
+      "reference": "folder"
+    },
+    {
+      "id": "globe",
+      "label": "网络资源",
+      "basis": "same-family-derived",
+      "reference": "info"
+    },
+    {
+      "id": "encoding",
+      "label": "编码",
+      "basis": "same-family-derived",
+      "reference": "outline"
+    },
+    {
+      "id": "sort",
+      "label": "排序",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "filter",
+      "label": "筛选",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "compare",
+      "label": "比较差异",
+      "basis": "same-family-derived",
+      "reference": "outline"
+    },
+    {
+      "id": "shield",
+      "label": "关闭保护",
+      "basis": "same-family-derived",
+      "reference": "info"
+    },
+    {
+      "id": "select-all",
+      "label": "全选",
+      "basis": "direct-board-reference",
+      "reference": "select-all"
+    },
+    {
+      "id": "scroll-horizontal",
+      "label": "横向滚动",
+      "basis": "same-family-derived",
+      "reference": "chevron-down"
+    },
+    {
+      "id": "help",
+      "label": "帮助",
+      "basis": "same-family-derived",
+      "reference": "info"
+    }
+  ]
+}
