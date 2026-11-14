@@ -84,9 +84,9 @@ def clean_environment():
     return result
 
 
-def copy_programs(build, target):
+def copy_programs(build, target, programs=PROGRAMS):
     target.mkdir(parents=True)
-    for name in PROGRAMS:
+    for name in programs:
         source = build / name
         if not source.is_file():
             source = build / (name + ".app") / "Contents/MacOS" / name
@@ -95,13 +95,15 @@ def copy_programs(build, target):
         shutil.copy2(source, target / name)
 
 
-def linux_stage(build, qt, destination, evidence):
+def linux_stage(build, qt, destination, evidence, product=False):
     bindir, libdir, plugins = destination / "bin", destination / "lib", destination / "plugins"
-    copy_programs(build, bindir)
+    copy_programs(build, bindir, ("xdnote", "xdnote-resource-helper") if product else PROGRAMS)
     # Keep the native platform candidates and the diagnostic plugin. Other
     # device backends are outside this prototype's delivery scope.
     wanted = ("platforms/libqoffscreen.so", "platforms/libqxcb.so", "platforms/libqwayland-generic.so", "platforms/libqwayland-egl.so",
               "imageformats/libqjpeg.so", "imageformats/libqsvg.so", "iconengines/libqsvgicon.so")
+    if product:
+        wanted = tuple(name for name in wanted if "offscreen" not in name)
     for relative in wanted:
         source = qt / "plugins" / relative
         if not source.is_file():
@@ -111,7 +113,10 @@ def linux_stage(build, qt, destination, evidence):
         target = plugins / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    for category in ("wayland-decoration-client", "wayland-graphics-integration-client", "xcbglintegrations"):
+    categories = ("wayland-decoration-client", "wayland-graphics-integration-client", "xcbglintegrations")
+    if product:
+        categories += ("platforminputcontexts", "platformthemes", "styles", "tls", "networkinformation")
+    for category in categories:
         source = qt / "plugins" / category
         if source.is_dir():
             shutil.copytree(source, plugins / category, symlinks=False)
@@ -144,15 +149,16 @@ def linux_stage(build, qt, destination, evidence):
     return bindir, plugins, libdir
 
 
-def mac_stage(build, qt, destination, evidence):
+def mac_stage(build, qt, destination, evidence, product=False):
     bundle = destination / "xdnote.app"
     contents = bundle / "Contents"
     bindir = contents / "MacOS"
-    copy_programs(build, bindir)
+    programs = ("xdnote", "xdnote-resource-helper") if product else PROGRAMS
+    copy_programs(build, bindir, programs)
     resources = contents / "Resources"
     resources.mkdir()
     with (contents / "Info.plist").open("wb") as file:
-        plistlib.dump({"CFBundleExecutable": "xdnote", "CFBundleIdentifier": "io.github.xiaodaozhi.xdnote.diagnostic",
+        plistlib.dump({"CFBundleExecutable": "xdnote", "CFBundleIdentifier": "io.github.xiaodaozhi.xdnote" + ("" if product else ".diagnostic"),
                       "CFBundleName": "xdnote", "CFBundlePackageType": "APPL", "CFBundleVersion": "0",
                       "LSMinimumSystemVersion": "13.0", "NSHighResolutionCapable": True,
                       "CFBundleDocumentTypes": [{"CFBundleTypeName": "Markdown", "CFBundleTypeRole": "Editor", "LSHandlerRank": "Alternate", "LSItemContentTypes": ["net.daringfireball.markdown"]}],
@@ -161,8 +167,9 @@ def mac_stage(build, qt, destination, evidence):
     # Ad-hoc integrity seals permit relocated arm64 code to execute. No identity,
     # entitlements, timestamp, notarization, disk image or release is requested.
     command = [qt / "bin/macdeployqt", bundle, "-verbose=2", "-no-strip", "-codesign=-"]
-    command += ["-executable=" + str(bindir / name) for name in PROGRAMS[1:]]
-    command += ["-qmldir=" + str(desktop.ROOT / "apps/desktop/ui")]
+    command += ["-executable=" + str(bindir / name) for name in programs[1:]]
+    if not product:
+        command += ["-qmldir=" + str(desktop.ROOT / "apps/desktop/ui")]
     execute(command, env, evidence / "macdeployqt.log", 240)
     plugins, frameworks = contents / "PlugIns", contents / "Frameworks"
     # macdeployqt scans all SDK SQL drivers, including commercial database
@@ -174,7 +181,7 @@ def mac_stage(build, qt, destination, evidence):
         shutil.rmtree(sql)
     # macdeployqt may not infer the offscreen backend from GUI dependencies.
     offscreen = plugins / "platforms/libqoffscreen.dylib"
-    if not offscreen.is_file():
+    if not product and not offscreen.is_file():
         offscreen.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(qt / "plugins/platforms/libqoffscreen.dylib", offscreen)
     (resources / "qt.conf").write_text("[Paths]\nPlugins=PlugIns\nQmlImports=Resources/qml\n", encoding="utf-8")

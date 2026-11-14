@@ -21,7 +21,7 @@ Linux 生成当前用户的 `.desktop` 入口，`Exec` 保留文件参数；不�
 
 ## 独立运行目录的安装闭环
 
-`python scripts/validate_user_install.py --build-dir <已构建目录> --payload <独立部署目录> --destination <build 下的专用验证目录>` 在本项目构建目录中执行实际文件复制、隔离原生探针、升级与卸载，并验证旁边的自建配置／草稿样本摘要不变。真实注册始终关闭；成功后移除临时安装，保留报告。Unix 复用部署检查的明暗、文件会话、图片及资源助手探针，Windows 使用三项独立探针。手动 `deployment-unix`／`deployment-linux` 在部署闭包检查后接入相同安装验证，不触发完整桌面用例或用户目录安装。
+`python scripts/validate_user_install.py --build-dir <已构建目录> --payload <独立诊断目录> --destination <build 下的专用验证目录>` 保留原诊断目录的复制、隔离探针、升级与卸载验证。Unix 纯产品改用 [product_deployment_unix.py](deployment.md) 的 `--payload`／`--audit` 入口：安装与升级后分别从目录外验证明暗阅读、图片、编辑撤销保存和会话接管；修改文件或新增未知文件时维护拒绝继续，自建数据摘要保持不变。真实注册关闭，成功后移除临时安装，保留证据。手动 `deployment-unix`／`deployment-linux` 接入纯产品验证，不运行完整桌面用例或用户目录安装。
 
 ## Windows 图形开发安装器
 
@@ -37,7 +37,7 @@ python scripts/installer_payload.py --source <诊断载荷目录> --audit <诊�
 python scripts/build-windows-installer.py --root <产品载荷目录> --audit <产品清单.json> --toolchain build/toolchain/installer --output <新安装器.exe> --report <安装器报告.json>
 ```
 
-产品载荷去掉诊断程序、Qt Test 和离屏平台插件，保留产品需要的 Qt 依赖、字体和许可，图形系统组件按[Windows 基线](distribution-audit.md)由目标系统提供。精简后重新检查 PE 普通及延迟导入，封存每项大小与摘要；编译前后再次验证载荷，缺失、额外或被修改的文件均拒绝。原始 Microsoft 运行库协议在安装器许可页展示，适用范围在中英说明中区分；其他组件继续遵守各自许可，不以此替代 Qt 等组件的义务核验。
+产品载荷去掉诊断程序、Qt Test 和离屏平台插件，保留产品需要的 Qt 依赖与许可材料，当前不捆绑字体，图形系统组件按[Windows 基线](distribution-audit.md)由目标系统提供。精简后重新检查 PE 普通及延迟导入，封存每项大小与摘要；编译前后再次验证载荷，缺失、额外或被修改的文件均拒绝。原始 Microsoft 运行库协议在安装器许可页展示，适用范围在中英说明中区分；其他组件继续遵守各自许可，不以此替代 Qt 等组件的义务核验。
 
 “加入打开方式候选”默认不勾选。显式选择时仅注册 `.md`、`.markdown` 的当前用户 ProgID、Capabilities、OpenWith 和 RegisteredApplications，不写扩展名默认值、UserChoice 或用户 PATH。文件命令保留带引号的路径及 `--` 分隔。卸载只撤销仍归属于此副本的注册，后来被其他副本接管的命令予以保留。
 
