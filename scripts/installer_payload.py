@@ -26,6 +26,16 @@ def verify_payload(root, audit):
         raise ValueError('Payload no longer matches its sealed file inventory')
 
 
+def product_qt_records(records, files):
+    shipped = {Path(item['path']).name.casefold() for item in files}
+    result = []
+    for record in records:
+        matched = [name for name in record['matchedBinaryNames'] if name.casefold() in shipped]
+        if matched:
+            result.append(dict(record, matchedBinaryNames=matched))
+    return result
+
+
 def prepare(source, source_audit, destination, toolchain, runtime, build, qt):
     build, qt = build.resolve(), qt.resolve()
     source, toolchain, runtime = (build_output(path) for path in (source, toolchain, runtime))
@@ -72,7 +82,9 @@ def prepare(source, source_audit, destination, toolchain, runtime, build, qt):
     if missing:
         raise ValueError('Product-only payload has unresolved imports: ' + ', '.join(missing))
     result = dict(source_audit)
-    result.update(kind='unsigned product-only Windows installer payload', files=inventory(destination),
+    files = inventory(destination)
+    result.update(kind='unsigned product-only Windows installer payload', files=files,
+                  qtSbom=product_qt_records(source_audit['qtSbom'], files),
                   imports=imports, missingImports=missing, removedDiagnosticFiles=sorted(DIAGNOSTIC_FILES),
                   diagnosticOnly=[], offscreenSmoke=[], offscreenProductSmoke=None)
     return result

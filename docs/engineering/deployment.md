@@ -10,7 +10,7 @@
 python scripts/deployment_inventory.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --destination build/cycle-delivery/staging --redist-dir "<已安装 VS2022>/VC/Redist/MSVC/<版本>/x64/Microsoft.VC143.CRT"
 ```
 
-`<版本>` 按实际安装填写。目标必须在本项目 `build/` 内，已有目标或证据目录拒绝覆盖，不跨项目寻找缺失依赖。工具核对构建身份，使用同一 SDK 的 `windeployqt` 分析实际产品与诊断入口的 Qt 导入和插件，保留软件图形回退库，按实际导入复制显式指定的 CRT 文件。无 NMEA／GPS 功能，不部署可选 `qtposition_nmea` 插件；任何浏览器运行文件均导致失败。产品不使用 Quick／QML，Windows 诊断入口不扫描准入窗口的 QML 目录；若载荷出现 Qt Quick、QML 模块、主题或 QML 调试工具则拒绝。`scripts/check_product_linkage.py` 另外只读检查产品二进制的直接导入，Unix 定向部署也执行此项，随后分别核对实际传递依赖。
+`<版本>` 按实际安装填写。目标必须在本项目 `build/` 内，已有目标或证据目录拒绝覆盖，不跨项目寻找缺失依赖。工具核对构建身份，使用同一 SDK 的 `windeployqt` 分析实际产品与诊断入口的 Qt 导入和插件，按实际导入复制显式指定的 CRT 文件。Windows 10+ 已提供 D3DCompiler，明确禁止复制宿主系统 D3D／DXC 文件，详见[实际分发证据](distribution-audit.md)。无 NMEA／GPS 功能，不部署可选 `qtposition_nmea` 插件；任何浏览器运行文件均导致失败。产品不使用 Quick／QML，Windows 诊断入口不扫描准入窗口的 QML 目录；若载荷出现 Qt Quick、QML 模块、主题或 QML 调试工具则拒绝。`scripts/check_product_linkage.py` 另外只读检查产品二进制的直接导入，Unix 定向部署也执行此项，随后分别核对实际传递依赖。
 
 正常与延迟导入采用只读 PE 解析，不加载被分析 DLL。未找到的依赖、损坏导入表、路径链接均导致失败。宿主系统库和 Windows API set 单独分类；宿主能解析不能证明最低 Windows 版本可运行。
 

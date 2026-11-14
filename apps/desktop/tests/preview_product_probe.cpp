@@ -4,6 +4,7 @@
 #include "GuiRuntime.h"
 #include "SourceEditor.h"
 #include "preview_fixtures.h"
+#include "probe_fonts.h"
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
@@ -17,6 +18,7 @@
 using namespace xdnote;
 int main(int argc, char **argv) {
     initializeGuiRuntime(); QApplication app(argc, argv); configureGuiApplication(); SourceEditor::installAccessibility(); app.setQuitOnLastWindowClosed(false);
+    if (!installProbeFont()) return 2;
     const auto args = app.arguments(); if (args.size() != 4) return 2;
     bool valid = false; const int size = args[1].toInt(&valid);
     if (!valid || size < 10240 || size > 2 * 1024 * 1024) return 2;

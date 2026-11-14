@@ -32,7 +32,7 @@
 
 桌面工作流手动选择 `scope=workspace-linux` 时，仅运行单套 Linux 的文件、引用扫描与链接导航定向回归及 Rust 检查；运行名称和汇总检查会标明范围，不运行五平台完整矩阵。`scope=resources-unix` 仅运行 Linux、macOS Intel 与 ARM 的受影响文件、图片、引用路径维护定向测试，不执行完整桌面用例或 Windows 兼容配置；本机可用 `test --suite resources` 复现同一范围。`scope=resources-macos` 仅复验 macOS 两种架构的相同资源用例，用于 Darwin 专属修正，不重复已通过的 Linux；`scope=resources-linux` 仅补验 Linux 的同一资源范围，用于 Linux 专属修正。资源定向失败保留该范围的报告，不自动再用调试器执行全部工作区用例；既有崩溃诊断仅用于 `workspace-linux` 专项。`scope=preview-unix` 只运行 Linux 和 macOS 双架构的原生预览／实际产品定向回归，使用 `test --suite preview`。`scope=background-unix` 只运行 Linux、macOS 双架构的[固定离屏回归与性能检查](../qa/background-validation.md)，使用 `test --suite background`，不依赖解锁桌面。`scope=full` 保留完整矩阵。普通提交、合并或仅同步分支不构成重复运行完整桌面 CI 的理由；以影响路径的本机验证及必要平台补充为准，不将定向结果记为全平台通过。
 
-CI 使用只读仓库权限和固定依赖；不签名、发布、写入真实用户安装目录或配置系统文件关联。开发安装验证只在 `build/` 的专用目录中操作自有部署副本和自建数据样本。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
+CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发安装验证只在 `build/` 的专用目录中操作自有部署副本和自建数据样本；Windows 原生安装专项在一次性 CI 账户中使用专用临时安装目录，允许创建并核对应用拥有的候选关联和快捷方式，不更改默认应用或 UserChoice。专项不得在个人账户中运行。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
 
 `scope=scroll-unix` 仅在 Linux、macOS Intel／ARM 执行[双栏段落映射](scroll-synchronization.md)与受影响的预览／接管离屏回归，使用 `test --suite scroll`；不包含完整桌面矩阵或物理滚动验收。
 
@@ -46,7 +46,7 @@ CI 使用只读仓库权限和固定依赖；不签名、发布、写入真实�
 
 ## 工具、诊断与周期收尾
 
-`windows-installer.yml` 手动验证 Windows 原生安装引擎、升级／卸载和候选关联保护，使用不可执行的自建文件夹具，不构建或运行完整桌面矩阵。`desktop-admission.yml` 的 `scope=installer-windows` 仅转调这项专用工作流，并跳过整个桌面矩阵，供新工作流首次合并前验证；日常提交和 main 合并仍仅触发材料 CI。
+`windows-installer.yml` 手动选择 `scope=fixtures` 时，使用不可执行的自建文件验证 Windows 原生安装引擎、升级／卸载和候选关联保护；选择 `scope=product` 时，只运行一个 Windows 产品任务，构建实际载荷、核对逐文件许可材料并执行真实安装包的安装／升级／卸载和安装目录运行。产品专项使用自建文档、应用级诊断字体及隐藏原生窗口，上传证据而不上传产品二进制；不代替可见向导、文件管理器或默认应用界面验收，也不运行完整桌面测试或跨平台矩阵。`desktop-admission.yml` 的 `scope=installer-windows` 仅转调默认夹具模式，并跳过整个桌面矩阵，供新工作流首次合并前验证；日常提交和 main 合并仍仅触发材料 CI。
 
 项目专用 SDK、虚拟环境、构建工具和缓存归本项目所有，放在 `build/`；禁止从其他项目目录执行、导入或链接工具、SDK、库及产物，也不复制其他项目的虚拟环境充作独立安装。系统安装的 Python、Rust、Node 和编译器可以使用。同项目 worktree 可共享主工作区的 `build/toolchain/` 与 Qt；共享前核对真实路径与 Git 共同目录，不能借此访问其他项目的工具。工具缺失时使用系统运行时在本项目显式准备，不跨项目回退。迁移后重新配置活动构建目录，检查 CMake、Ninja 和 Python 路径，旧缓存不能继续指向其他项目。
 

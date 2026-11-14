@@ -2,7 +2,17 @@ name: Windows installer verification
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 'fixtures checks engine guards; product builds and tests the actual installer payload'
+        type: choice
+        options: [fixtures, product]
+        default: fixtures
   workflow_call:
+    inputs:
+      scope:
+        type: string
+        default: fixtures
 
 permissions:
   contents: read
@@ -13,6 +23,7 @@ concurrency:
 
 jobs:
   native-installer:
+    if: inputs.scope != 'product'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -44,5 +55,72 @@ jobs:
             build/installer-smoke/*.log
             build/installer-smoke/*.iss
             build/installer-smoke/*.files
+          retention-days: 7
+          if-no-files-found: warn
+  product-installer:
+    if: inputs.scope == 'product'
+    runs-on: windows-2022
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: '1'
+      XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: '1.99.0'
+      - name: Prepare locked build tools
+        run: python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+      - name: Check input and workflow contracts
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Prepare application-local diagnostic font
+        run: python scripts/prepare_ci_font.py --output build/test-fonts
+      - name: Prepare pinned Qt and editor inputs
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64
+          python scripts/desktop.py prepare --download
+      - name: Build the actual product and diagnostic entry points
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
+          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+          ctest --test-dir build/desktop-admission -R '^installation_guard$' --output-on-failure
+          python scripts/check_product_linkage.py --executable build/desktop-admission/xdnote.exe
+      - name: Prepare pinned installer tools and runtime materials
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
+          python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
+      - name: Seal actual product payload and bind license evidence
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python scripts/deployment_inventory.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --destination build/product-install/staging --redist-dir build/toolchain/windows-runtime/runtime
+          python scripts/installer_payload.py --source build/product-install/staging --audit build/product-install/staging-evidence/inventory.json --destination build/product-install/payload --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/payload-inventory.json
+          python scripts/distribution_audit.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/license-evidence.json
+          python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
+      - name: Validate actual native package roundtrip
+        shell: pwsh
+        run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
+      - name: Upload product integration evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-product-install-evidence
+          path: |
+            build/product-install/*.json
+            build/product-install/staging-evidence/
+            build/product-install/roundtrip-evidence/
+            build/desktop-admission/build-identity.json
+            build/test-fonts/receipt.json
+            build/test-fonts/Noto-OFL.txt
           retention-days: 7
           if-no-files-found: warn
