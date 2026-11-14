@@ -26,6 +26,7 @@ class WorkspaceReferenceController;
 class FileManager;
 class ResourceMaintenanceController;
 class DocumentOutline;
+class WorkspaceSearch;
 class WorkspaceWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
@@ -60,6 +61,8 @@ protected:
     bool event(QEvent *) override;
     bool eventFilter(QObject *, QEvent *) override;
 private:
+    WorkspaceSearch *m_fullSearch = nullptr;
+    bool m_fullSearchWanted = false;
     void installTabClose(int index, const QUuid &id);
     void refreshPane(const QUuid &id);
     void selectCurrent();

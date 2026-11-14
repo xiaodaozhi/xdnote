@@ -7,6 +7,7 @@
 | 产品 | [需求](product/requirements.md) | 用户场景、需求来源、首版与后续范围 |
 | 交互 | [交互规格](product/interaction-spec.md) | 打开路由、文档状态、窗口迁移、保存和关闭 |
 | 工作区资源 | [图片与文档链接](product/workspace-resources.md) | 集中图片目录、相对链接、引用索引、移动维护与授权 |
+| 查找与搜索 | [文档工具](product/document-tools.md) | 原文字面匹配、会话替换、工作区有界全文搜索与恢复边界 |
 | 控件 | [控件交互与焦点](product/control-interactions.md) | 点击反馈、Tab 外框、激活／取消后的清除与逻辑焦点 |
 | 设置 | [设置规格](product/settings.md) | 主题与六种强调色、默认值、作用域和持久化 |
 | 视觉 | [设计系统](visual/design-system.md) | 信息层级、跨界面公共组件一致性、缩放与材料权威 |
@@ -19,6 +20,7 @@
 | 原生预览 | [全局语义模型](engineering/native-preview-model.md)、[阅读控件准入](engineering/native-preview-view.md) | 只读块树、布局／交互、资源和版本边界及未完成项 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
 | 后台验证 | [无交互桌面自动化](qa/background-validation.md) | 固定离屏回归、自有样本性能、证据与真实桌面边界 |
+| 用户安装 | [开发安装维护](engineering/user-installation.md) | 清单归属、升级／卸载与打开方式，保留发行边界 |
 | 部署 | [实际依赖与诊断目录](engineering/deployment.md) | 各平台诊断入口、隔离运行、动态库闭包、Qt 模块许可输入与发行剩余项 |
 | 文件基础 | [文件读取与会话登记](engineering/file-read-baseline.md) | 原生身份、严格字节基线、请求失效与当前限制 |
 | 文件闭环 | [真实文件保存与冲突](engineering/file-save-workflow.md) | 冻结快照、替换保存、硬链接保护、冲突和关闭 |

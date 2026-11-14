@@ -61,10 +61,13 @@
         "appearance-menu",
         "resources-and-links",
         "mapped-scroll-sync",
-        "settings-window"
+        "settings-window",
+        "source-find-replace",
+        "bounded-full-text-search",
+        "explicit-session-recovery"
       ],
       "deferredStates": [
-        "full-text-search"
+        "manual-new-tools-acceptance"
       ],
       "nativeValidation": "not-run"
     },
@@ -93,7 +96,9 @@
         "open-error",
         "read-only",
         "save-error",
-        "content-zoom"
+        "content-zoom",
+        "source-find-replace",
+        "recovered-draft-save-as"
       ],
       "deferredStates": [
         "native-platform-acceptance"
@@ -135,13 +140,15 @@
         "auto-save",
         "light-and-dark",
         "six-accents",
-        "compact-swatch-layout"
+        "compact-swatch-layout",
+        "custom-shortcut-mapping",
+        "explicit-open-with-registration"
       ],
       "deferredStates": [
         "native-association",
-        "custom-shortcut-mapping",
         "remote-images",
-        "manual-visual-acceptance"
+        "manual-visual-acceptance",
+        "native-association-acceptance"
       ]
     },
     {

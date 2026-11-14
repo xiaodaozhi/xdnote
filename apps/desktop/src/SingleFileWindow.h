@@ -27,6 +27,7 @@ class SharedSpinner;
 class DocumentBreadcrumb;
 class DocumentBody;
 class DocumentOutline;
+class DocumentSearch;
 class WorkspaceResourceReader;
 class SingleFileWindow final : public ApplicationWindow {
     Q_OBJECT
@@ -43,6 +44,7 @@ public:
     QWidget *footer() const { return m_footer; }
     void activateDocument();
     void reportHostMessage(const QString &message);
+    void clearHostMessage(const QString &expected);
     ViewMode viewMode() const { return m_mode; }
     void setViewMode(ViewMode mode);
     void setFocusMode(bool enabled);
@@ -95,6 +97,7 @@ protected:
     bool eventFilter(QObject *target, QEvent *event) override;
     void keyPressEvent(QKeyEvent *) override;
 private:
+    DocumentSearch *m_find = nullptr;
     void updateState();
     void chooseOpen();
     void reloadDisk();

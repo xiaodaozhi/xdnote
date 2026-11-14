@@ -32,7 +32,7 @@
 
 桌面工作流手动选择 `scope=workspace-linux` 时，仅运行单套 Linux 的文件、引用扫描与链接导航定向回归及 Rust 检查；运行名称和汇总检查会标明范围，不运行五平台完整矩阵。`scope=resources-unix` 仅运行 Linux、macOS Intel 与 ARM 的受影响文件、图片、引用路径维护定向测试，不执行完整桌面用例或 Windows 兼容配置；本机可用 `test --suite resources` 复现同一范围。`scope=resources-macos` 仅复验 macOS 两种架构的相同资源用例，用于 Darwin 专属修正，不重复已通过的 Linux；`scope=resources-linux` 仅补验 Linux 的同一资源范围，用于 Linux 专属修正。资源定向失败保留该范围的报告，不自动再用调试器执行全部工作区用例；既有崩溃诊断仅用于 `workspace-linux` 专项。`scope=preview-unix` 只运行 Linux 和 macOS 双架构的原生预览／实际产品定向回归，使用 `test --suite preview`。`scope=background-unix` 只运行 Linux、macOS 双架构的[固定离屏回归与性能检查](../qa/background-validation.md)，使用 `test --suite background`，不依赖解锁桌面。`scope=full` 保留完整矩阵。普通提交、合并或仅同步分支不构成重复运行完整桌面 CI 的理由；以影响路径的本机验证及必要平台补充为准，不将定向结果记为全平台通过。
 
-CI 使用只读仓库权限和固定依赖；不打包、签名、发布或安装产品，也不配置系统文件关联。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
+CI 使用只读仓库权限和固定依赖；不签名、发布、写入真实用户安装目录或配置系统文件关联。开发安装验证只在 `build/` 的专用目录中操作自有部署副本和自建数据样本。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
 
 `scope=scroll-unix` 仅在 Linux、macOS Intel／ARM 执行[双栏段落映射](scroll-synchronization.md)与受影响的预览／接管离屏回归，使用 `test --suite scroll`；不包含完整桌面矩阵或物理滚动验收。
 
@@ -40,7 +40,7 @@ CI 使用只读仓库权限和固定依赖；不打包、签名、发布或安�
 
 `scope=settings-unix` 仅补验 Linux、macOS Intel／ARM 的[设置、偏好及自动保存](settings-window.md)受影响路径，使用 `test --suite settings` 固定离屏运行；不执行真实文件选择器、原生辅助技术或完整桌面矩阵。新设置窗口的人工视觉验收另行记录，未验收时不宣称通过。
 
-`scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入、四项自有离屏探针和资源助手定向用例，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、安装或发行许可验收。
+`scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[独立部署诊断](deployment.md)：构建后检查重定位目录的动态依赖、Qt 许可输入、四项自有离屏探针和资源助手定向用例，再在 `build/` 中完成[开发安装闭环](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、真实用户目录安装、系统关联或发行许可验收。
 
 桌面工作流的 Ubuntu 22.04 依赖准备使用显式 jammy／updates／security 源与 Ubuntu 归档密钥；主站域名解析失败时改用 [Linux Kernel Archives 的 Ubuntu 镜像](https://mirrors.kernel.org/)，实际地址写入日志，签名与有效期检查保持启用。APT 配置只对该命令生效，不沿用宿主预设的镜像优先级。DNS 探测、索引更新、包下载及整个准备步骤均有时限；网络故障作为基础设施失败记录，不无限等待或计为产品测试结果。
 
@@ -68,3 +68,7 @@ python scripts/cleanup_cycles.py --stale-days 30 --apply --yes
 脚本只处理 `build/` 下直接创建且带标记的 `cycle-*` 目录；不接管已有目录，不处理共享 SDK、缓存或未标记的旧文件。活动 Git worktree、路径链接及内部链接或 Windows 重解析点会被拒绝；年龄扫描按目录内最新修改时间筛选。脚本不能识别所有运行进程或证据价值，执行者须先检查；不要在并发修改目录时运行，不得递归删除整个 `build/`。托管 CI 无法清理开发者本机，兜底由本机手动执行。
 
 项目尚无发行工作流。后续设计发行流程时，应将版本、源码提交、验证记录和工件绑定；同一候选尽可能在一次受控运行中构建并复用产物，避免标签、草稿和手动触发造成重复构建。不同提交、输入或平台的结果不能混用；正式发布仍需单独完成发行要求和授权。
+
+`scope=tools-unix` 只在 Linux、macOS Intel／ARM 执行文档查找搜索、恢复副本、快捷键与受影响设置／文件的固定离屏验证，使用 `test --suite tools`。它不执行真实系统关联、不安装用户目录，也不扩大为完整桌面矩阵；工作流仍只允许手动触发。
+
+`scope=tools-macos` 仅补验相同文档工具范围的 macOS Intel／ARM，用于 Darwin 路径或平台差异修复；已有有效 Linux 产品结果不因 macOS 补验重复构建。两种 tools 范围均保留 Python 安装维护回归，不执行真实系统默认应用变更。

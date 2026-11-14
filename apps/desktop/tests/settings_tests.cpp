@@ -96,7 +96,7 @@ private slots:
         QCOMPARE(appearance.theme(), QString("dark")); QCOMPARE(appearance.accent(), QString("olive"));
         const auto input = QJsonDocument::fromJson(original).object();
         for (const auto &section : {QString("editor"), QString("reader")}) {
-            const auto value = input[section].toObject()["fontSize"];
+            const auto value = input[section].toObject().value("fontSize");
             if (value.isDouble()) QCOMPARE(prefs->value(section, "fontSize"), value);
         }
         if (input["editor"].toObject()["autoSave"].toObject().contains("delayMs")) {
