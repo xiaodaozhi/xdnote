@@ -51,6 +51,7 @@ signals:
     void chooseDirectoryRequested();
     void closeCancelled();
     void quitRequested();
+    void settingsRequested();
 protected:
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;

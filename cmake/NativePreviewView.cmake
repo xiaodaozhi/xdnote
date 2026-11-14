@@ -14,6 +14,8 @@ if(BUILD_TESTING)
     # target does not link the product's legacy preview or duplicate UI at runtime.
     add_library(xdnote_native_preview_test_ui STATIC
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/Appearance.cpp"
+        "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/Preferences.cpp"
+        "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/Preferences.h"
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/UiFonts.cpp"
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/VisualTokens.cpp"
         "${XDNOTE_PREVIEW_ROOT}/apps/desktop/src/InputModality.cpp"

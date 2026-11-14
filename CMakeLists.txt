@@ -108,6 +108,9 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/WindowGeometry.cpp apps/desktop/src/WindowGeometry.h
     apps/desktop/src/UiFonts.cpp apps/desktop/src/UiFonts.h
     apps/desktop/src/Appearance.cpp apps/desktop/src/Appearance.h
+    apps/desktop/src/Preferences.cpp apps/desktop/src/Preferences.h
+    apps/desktop/src/AutoSaveController.cpp apps/desktop/src/AutoSaveController.h
+    apps/desktop/src/SettingsWindow.cpp apps/desktop/src/SettingsWindow.h
     apps/desktop/src/SharedWidgets.cpp apps/desktop/src/SharedWidgets.h
     apps/desktop/src/FileManager.cpp apps/desktop/src/FileManager.h
     apps/desktop/src/SingleFileWindow.cpp apps/desktop/src/SingleFileWindow.h
@@ -224,6 +227,13 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME workspace_workflow COMMAND xdnote_workspace_tests -o -,txt -o "${CMAKE_BINARY_DIR}/workspace-qtest.txt,txt")
     set_tests_properties(workspace_workflow PROPERTIES TIMEOUT 180)
+    add_executable(xdnote_settings_tests apps/desktop/tests/settings_tests.cpp)
+    target_link_libraries(xdnote_settings_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_settings_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME settings_workflow COMMAND xdnote_settings_tests -o -,txt -o "${CMAKE_BINARY_DIR}/settings-qtest.txt,txt")
+    set_tests_properties(settings_workflow PROPERTIES TIMEOUT 180)
     add_executable(xdnote_scroll_tests apps/desktop/tests/scroll_sync_tests.cpp)
     target_link_libraries(xdnote_scroll_tests PRIVATE xdnote_desktop Qt6::Test)
     if(MSVC)

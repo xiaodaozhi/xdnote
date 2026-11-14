@@ -7,12 +7,16 @@
 namespace xdnote {
 class SingleFileWindow;
 class WorkspaceWindow;
+class SettingsWindow;
+class AutoSaveController;
 class FileApplication final : public QObject {
     Q_OBJECT
 public:
     explicit FileApplication(QObject *parent = nullptr, QString settingsPath = {});
     ~FileApplication() override;
     void open(const QString &path, SingleFileWindow *empty = nullptr);
+    void openExternal(const QString &path);
+    SettingsWindow *settingsWindow();
     SingleFileWindow *emptyWindow();
     WorkspaceWindow *workspaceWindow(const QString &root = {});
     void openInWorkspace(const QString &path, WorkspaceWindow *workspace);
@@ -47,6 +51,8 @@ private:
     WindowGeometryStore m_geometryStore;
     NavigationStore m_navigation;
     FileManager m_manager;
+    QPointer<SettingsWindow> m_settings;
+    AutoSaveController *m_autoSave = nullptr;
     QSet<SingleFileWindow *> m_windows;
     QSet<WorkspaceWindow *> m_workspaces;
     struct Transfer { QPointer<SingleFileWindow> pane; QPointer<WorkspaceWindow> target; bool explicitTarget; };

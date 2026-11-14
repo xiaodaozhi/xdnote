@@ -24,6 +24,7 @@
 | 文件闭环 | [真实文件保存与冲突](engineering/file-save-workflow.md) | 冻结快照、替换保存、硬链接保护、冲突和关闭 |
 | 独立窗口 | [视觉、交互与自动验证](engineering/standalone-window.md) | 共享控件、主题、阅读位置、反馈与验证边界 |
 | 工作区基础 | [导航、标签与会话接管](engineering/workspace-foundation.md) | 显式目录、唯一会话、视图、关闭和自动化边界 |
+| 设置工程 | [统一偏好与设置窗口](engineering/settings-window.md) | 兼容存储、即时生效、打开偏好、排版、自动保存与离屏验证 |
 | 双栏同步 | [段落映射滚动](engineering/scroll-synchronization.md) | 语义范围、显示行、重排锚点、版本门控和离屏验证 |
 | 资源基础 | [受控读取与引用分析](engineering/workspace-resource-foundation.md) | 路径、引用快照、实际对象授权与当前平台限制 |
 | 窗口几何 | [跨显示器缩放与窗口几何](engineering/window-geometry.md) | 逻辑客户区、原生 DPI 约束、可用区、窗口状态与恢复 |

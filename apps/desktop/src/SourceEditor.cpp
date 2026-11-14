@@ -193,7 +193,9 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent, Appearance
     const qreal points = source.value(QStringLiteral("size")).toDouble() * 72.0 / logicalDpiY();
     send(SCI_STYLESETSIZEFRACTIONAL, STYLE_DEFAULT, qRound(points * 100));
     connect(m_appearance, &Appearance::changed, this, &SourceEditor::applyAppearance);
+    connect(m_appearance->preferences(), &Preferences::changed, this, [this](const QString &section) { if (section == "editor") applyPreferences(); });
     applyAppearance();
+    applyPreferences();
     send(SCI_SETMARGINLEFT, 0, 16);
     setTextZoom(100);
     connect(session, &DocumentSession::stateChanged, this, [this] {
@@ -222,8 +224,8 @@ SourceEditor::SourceEditor(DocumentSession *session, QWidget *parent, Appearance
 
 void SourceEditor::setTextZoom(int percent) {
     m_textZoom = qBound(50, percent, 200);
-    const auto source = visualTokens().value("typography").toObject().value("source").toObject();
-    const auto size = source.value("size").toDouble() * m_textZoom / 100.0;
+    const auto source = m_appearance->preferences()->section("editor");
+    const auto size = source.value("fontSize").toDouble() * m_textZoom / 100.0;
     const auto points = qRound(size * 72.0 / logicalDpiY() * 100);
     for (const auto style : {STYLE_DEFAULT, STYLE_LINENUMBER, 0, 1, 2, 3}) send(SCI_STYLESETSIZEFRACTIONAL, uptr_t(style), points);
     send(SCI_SETEXTRAASCENT, 0); send(SCI_SETEXTRADESCENT, 0);
@@ -232,12 +234,31 @@ void SourceEditor::setTextZoom(int percent) {
 }
 void SourceEditor::acknowledgeNavigation() { m_lastAnchor = send(SCI_GETANCHOR); m_lastCursor = send(SCI_GETCURRENTPOS); }
 
+void SourceEditor::applyPreferences() {
+    auto values = m_appearance->preferences()->section("editor"); values.remove("autoSave");
+    if (values == m_editorPreferences) return; m_editorPreferences = values;
+    const auto firstLine = send(SCI_DOCLINEFROMVISIBLE, uptr_t(send(SCI_GETFIRSTVISIBLELINE)));
+    const auto horizontal = send(SCI_GETXOFFSET);
+    auto font = sourceFont(values["fontSize"].toInt());
+    if (!values["fontFamily"].toString().isEmpty()) font.setFamily(values["fontFamily"].toString());
+    setFont(font);
+    const auto family = font.family().toUtf8();
+    for (const auto style : {STYLE_DEFAULT, STYLE_LINENUMBER, 0, 1, 2, 3}) send(SCI_STYLESETFONT, uptr_t(style), reinterpret_cast<sptr_t>(family.constData()));
+    send(SCI_SETWRAPMODE, values["wordWrap"].toBool() ? SC_WRAP_WORD : SC_WRAP_NONE);
+    send(SCI_SETMARGINWIDTHN, 0, values["lineNumbers"].toBool() ? visualTokens()["controls"].toObject()["lineNumberWidth"].toInt() : 0);
+    send(SCI_SETTABWIDTH, values["indentWidth"].toInt()); send(SCI_SETINDENT, values["indentWidth"].toInt());
+    send(SCI_SETUSETABS, !values["useSpaces"].toBool()); setTextZoom(m_textZoom);
+    send(SCI_SETFIRSTVISIBLELINE, uptr_t(send(SCI_VISIBLEFROMDOCLINE, uptr_t(firstLine))));
+    send(SCI_SETXOFFSET, values["wordWrap"].toBool() ? 0 : uptr_t(horizontal));
+}
+
 void SourceEditor::applyAppearance() {
     setStyleSheet(themedScrollBars(m_appearance));
     const auto ref = [](const QColor &color) { return color.red() | (color.green() << 8) | (color.blue() << 16); };
     send(SCI_STYLESETFORE, STYLE_DEFAULT, ref(m_appearance->color("text")));
     send(SCI_STYLESETBACK, STYLE_DEFAULT, ref(m_appearance->color("background")));
     send(SCI_STYLECLEARALL);
+    m_editorPreferences = {};
     send(SCI_STYLESETFORE, STYLE_LINENUMBER, ref(m_appearance->color("textSecondary")));
     send(SCI_STYLESETBACK, STYLE_LINENUMBER, ref(m_appearance->color("background")));
     send(SCI_STYLESETFORE, 1, ref(m_appearance->color("syntaxHeading"))); send(SCI_STYLESETBOLD, 1, true);
@@ -246,6 +267,7 @@ void SourceEditor::applyAppearance() {
     send(SCI_SETCARETFORE, ref(m_appearance->color("text")));
     send(SCI_SETSELBACK, true, ref(m_appearance->accentColor("soft")));
     send(SCI_SETSELFORE, true, ref(m_appearance->color("text")));
+    applyPreferences();
     restyle();
 }
 void SourceEditor::restyle() {

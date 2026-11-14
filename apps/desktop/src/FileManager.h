@@ -30,6 +30,8 @@ public:
     QString statusText() const;
     const FileSaveResult &lastSave() const { return m_lastSave; }
     bool save();
+    bool saveAutomatically();
+    bool automaticSave() const { return m_automaticSave; }
     bool saveAs(const QString &path);
     bool reload();
     void checkExternal();
@@ -47,6 +49,7 @@ private:
     bool m_saving = false, m_loading = false, m_conflict = false, m_error = false;
     bool m_closed = false, m_readOnly = false, m_checkPending = false, m_savedOnce = false;
     bool m_maintenance = false;
+    bool m_automaticSave = false;
     QString m_message;
     QUuid m_operation;
     FileSaveResult m_lastSave;

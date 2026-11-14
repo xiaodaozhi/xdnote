@@ -247,6 +247,7 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     connect(m_referencesMenu, &QMenu::aboutToShow, this, [this] { emit referencesRequested(m_referencesMenu); });
     m_menu->addSeparator();
     m_menu->addMenu(createAppearanceMenu(m_appearance, m_menu));
+    action(QStringLiteral("设置…"), "settingsAction", {}, [this] { emit settingsRequested(); });
     m_menu->addSeparator(); action(QStringLiteral("关闭文档"), "closeAction", QKeySequence::Close, [this] { close(); });
     action(QStringLiteral("退出 xdnote"), "quitAction", QKeySequence::Quit, [this] { emit quitRequested(); }); more->setMenu(m_menu);
     connect(modes, &QButtonGroup::idClicked, this, [this](int mode) { setViewMode(mode == 2 ? ViewMode::Split : mode == 1 ? ViewMode::Source : ViewMode::Reading); }); connect(m_save, &QPushButton::clicked, m_saveAction, &QAction::trigger); layout->addWidget(toolbar);
@@ -366,7 +367,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     tools->addStretch(); layout->addWidget(format);
     m_editor = new SourceEditor(document->session(), m_editorPage, m_appearance); m_editor->setObjectName("sourceEditor");
     connect(m_editor, &SourceEditor::imagePasteRequested, this, [this](const QImage &image) { importClipboardImage(image); });
-    m_editor->send(SCI_SETMARGINWIDTHN, 0, token("controls", "lineNumberWidth")); m_editor->send(SCI_SETMARGINTYPEN, 0, SC_MARGIN_NUMBER);
+    m_editor->send(SCI_SETMARGINWIDTHN, 0, m_appearance->preferences()->value("editor", "lineNumbers").toBool() ? token("controls", "lineNumberWidth") : 0); m_editor->send(SCI_SETMARGINTYPEN, 0, SC_MARGIN_NUMBER);
     const auto bytes = document->session()->snapshot().utf8; const int lf = int(bytes.indexOf('\n')), cr = int(bytes.indexOf('\r'));
     m_editor->send(SCI_SETEOLMODE, cr >= 0 && (lf < 0 || cr < lf) ? (lf == cr + 1 ? SC_EOL_CRLF : SC_EOL_CR) : SC_EOL_LF);
     connect(m_editor, &ScintillaEditBase::updateUi, this, [this] { updateCaret(); });
@@ -375,7 +376,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     connect(document, &FileDocument::stateChanged, this, &SingleFileWindow::updateState); connect(document, &QObject::destroyed, this, &SingleFileWindow::updateState);
     connect(document, &FileDocument::operationFinished, this, [this](bool success) {
         const bool saving = m_observedSave; m_observedSave = false;
-        if (saving && !success && m_document && m_document->hasError()) QTimer::singleShot(0, this, &SingleFileWindow::showSaveError);
+        if (saving && !success && m_document && m_document->hasError() && !m_document->automaticSave()) QTimer::singleShot(0, this, &SingleFileWindow::showSaveError);
         if (!m_closeAfterOperation) return; m_closeAfterOperation = false; if (success) QTimer::singleShot(0, this, [this] { close(); }); else emit closeCancelled();
     });
     connect(m_preview, &MarkdownPreview::previewError, this, [this](const QString &message) { m_previewError = message; updateState(); });
@@ -385,7 +386,7 @@ void SingleFileWindow::setDocument(FileDocument *document) {
     connect(m_preview, &MarkdownPreview::fragmentNavigationMessage, this, [this](const QString &message) {
         m_navigationMessage = message; if (!message.isEmpty()) m_dismissedNotice.clear(); updateState();
     });
-    m_documentUiReady = true; setEditing(false); updateState();
+    m_documentUiReady = true; setEditing(!m_embedded && m_appearance->preferences()->value("desktop", "standaloneDefaultMode").toString() == "source"); updateState();
 }
 SingleFileWindow::~SingleFileWindow() {
     delete m_scrollSync; m_scrollSync = nullptr;

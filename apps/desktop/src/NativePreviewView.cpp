@@ -99,6 +99,7 @@ struct NativePreviewView::State {
     int padding;
     qreal zoom = 1, left = 24, width = 760, totalHeight = 0, dpr = 1;
     QHash<QByteArray, QColor> colors, accents;
+    QJsonObject readerSettings, editorSettings;
     bool asynchronous = false, planning = false, pendingPlan = false, runningPlan = false;
     quint64 layoutGeneration = 0;
     int restoreOffset = 0;
@@ -107,6 +108,7 @@ struct NativePreviewView::State {
     void plan(QSize viewportSize);
     void freeze() {
         dpr = q->devicePixelRatioF();
+        readerSettings = appearance->preferences()->section("reader"); editorSettings = appearance->preferences()->section("editor"); editorSettings.remove("autoSave");
         for (const auto *name : {"text", "textSecondary", "syntaxHeading", "syntaxCode", "border", "background", "codeSurface", "link", "quoteSurface", "tableStripe"}) colors.insert(name, appearance->color(name));
         for (const auto *name : {"solid", "foreground"}) accents.insert(name, appearance->accentColor(name));
     }
@@ -150,9 +152,12 @@ struct NativePreviewView::State {
         const quint32 key = fontKey(value, style);
         const auto found = fonts.constFind(key); if (found != fonts.cend()) return *found;
         const auto typography = visualTokens()["typography"].toObject();
-        int size = typography[value.kind == Content::FlowKind::CodeLine || (style & Content::Mono) ? "source" : "reader"].toObject()["size"].toInt();
-        if (value.heading) size = typography["headings"].toObject()[value.heading == 1 ? "documentH1" : value.heading == 2 ? "documentH2" : value.heading == 3 ? "documentH3" : ""].toInt(16);
-        auto result = value.kind == Content::FlowKind::CodeLine || (style & Content::Mono) ? sourceFont(qMax(1, qRound(size * zoom))) : uiFont(qMax(1, qRound(size * zoom)));
+        const bool code = value.kind == Content::FlowKind::CodeLine || (style & Content::Mono);
+        const auto settings = code ? editorSettings : readerSettings;
+        qreal size = settings["fontSize"].toDouble();
+        if (value.heading) size *= typography["headings"].toObject()[value.heading == 1 ? "documentH1" : value.heading == 2 ? "documentH2" : value.heading == 3 ? "documentH3" : ""].toDouble(16) / typography["reader"].toObject()["size"].toDouble();
+        auto result = code ? sourceFont(qMax(1, qRound(size * zoom))) : uiFont(qMax(1, qRound(size * zoom)));
+        if (!settings["fontFamily"].toString().isEmpty()) result.setFamily(settings["fontFamily"].toString());
         result.setWeight(value.heading || value.header || (style & Content::Bold) ? QFont::DemiBold : QFont::Normal);
         result.setItalic(style & Content::Italic); result.setStrikeOut(style & Content::Strike);
         if (value.kind == Content::FlowKind::CodeLine) result.setKerning(false);
@@ -161,7 +166,7 @@ struct NativePreviewView::State {
     }
     qreal lineHeight(const Content::Flow &value) const {
         const auto reader = visualTokens()["typography"].toObject()["reader"].toObject();
-        const qreal factor = reader[value.heading ? "headingLineHeight" : value.kind == Content::FlowKind::CodeLine ? "codeLineHeight" : "lineHeight"].toDouble();
+        const qreal factor = value.heading ? reader["headingLineHeight"].toDouble() : value.kind == Content::FlowKind::CodeLine ? reader["codeLineHeight"].toDouble() : readerSettings["lineHeight"].toDouble();
         return qMax(QFontMetricsF(font(value)).height(), font(value).pixelSize() * factor);
     }
     QSizeF imageDimensions(const Content::Image &image, const Content::Flow &flow, qreal room) const {
@@ -601,6 +606,10 @@ NativePreviewView::NativePreviewView(Appearance *appearance, QWidget *parent, in
     setFocusPolicy(Qt::StrongFocus); setFrameShape(QFrame::NoFrame); viewport()->setMouseTracking(true);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     connect(d->appearance, &Appearance::changed, this, [this] { rebuild(true); });
+    connect(d->appearance->preferences(), &Preferences::changed, this, [this](const QString &section) {
+        auto editor = d->appearance->preferences()->section("editor"); editor.remove("autoSave");
+        if (section == "reader" || (section == "editor" && editor != d->editorSettings)) rebuild(true);
+    });
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { updateControls(); viewport()->update(); });
 }
 NativePreviewView::~NativePreviewView() { if (d->cancelled) d->cancelled->store(true); }
@@ -671,7 +680,7 @@ void NativePreviewView::State::plan(QSize viewportSize) {
         const auto &content = *this->content;
         this->geometry.reserve(content.flows.size());
         const qreal inset = this->padding * this->zoom;
-        const int maximum = visualTokens()["typography"].toObject()["reader"].toObject()["maxContentWidth"].toInt();
+        const int maximum = readerSettings["maxWidth"].toInt();
         this->width = qMax(48.0, qMin(viewportSize.width() - inset * 2, maximum * this->zoom));
         this->left = qMax(inset, (viewportSize.width() - this->width) / 2);
         this->groups.resize(content.owners.size());
@@ -808,7 +817,7 @@ void NativePreviewView::rebuild(bool keepPosition) {
     setStyleSheet(themedScrollBars(d->appearance));
     if (!d->content) return;
     const qreal inset = d->padding * d->zoom;
-    const int maximum = visualTokens()["typography"].toObject()["reader"].toObject()["maxContentWidth"].toInt();
+    const int maximum = d->readerSettings["maxWidth"].toInt();
     d->width = qMax(48.0, qMin(viewport()->width() - inset * 2, maximum * d->zoom));
     d->left = qMax(inset, (viewport()->width() - d->width) / 2);
     if (d->asynchronous) {
@@ -851,12 +860,14 @@ void NativePreviewView::scheduleLayout() {
     // on this worker; no QWidget, session or Appearance QObject is accessed.
     const auto content = d->content; const auto info = d->imageInfo;
     const auto colors = d->colors, accents = d->accents;
+    const auto readerSettings = d->readerSettings, editorSettings = d->editorSettings;
     const qreal zoom = d->zoom, width = d->width, left = d->left, dpr = d->dpr;
     const int padding = d->padding; const auto size = viewport()->size();
     d->worker->setProperty("generation", QVariant::fromValue(generation));
-    d->worker->setFuture(QtConcurrent::run([content, info, colors, accents, zoom, width, left, dpr, padding, size, cancelled] {
+    d->worker->setFuture(QtConcurrent::run([content, info, colors, accents, readerSettings, editorSettings, zoom, width, left, dpr, padding, size, cancelled] {
         State worker(nullptr, nullptr, padding);
         worker.content = content; worker.imageInfo = info; worker.colors = colors; worker.accents = accents;
+        worker.readerSettings = readerSettings; worker.editorSettings = editorSettings;
         worker.zoom = zoom; worker.width = width; worker.left = left; worker.dpr = dpr; worker.cancelled = cancelled;
         worker.plan(size);
         auto result = std::make_shared<LayoutPlan>();

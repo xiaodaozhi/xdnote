@@ -2,6 +2,7 @@
 #include <QColor>
 #include <QJsonObject>
 #include <QObject>
+#include "Preferences.h"
 
 namespace xdnote {
 class Appearance final : public QObject {
@@ -17,14 +18,13 @@ public:
     QColor semantic(const char *name) const;
     bool setPreferences(const QString &theme, const QString &accent);
     QString error() const { return m_error; }
+    Preferences *preferences() const { return m_preferences; }
 signals:
     void changed();
     void preferenceFailed(const QString &message);
 private:
-    bool fail(const QString &message);
     QString m_theme = QStringLiteral("system"), m_accent = QStringLiteral("graphite");
-    QString m_path, m_error;
-    QJsonObject m_settings;
-    bool m_storageValid = true;
+    QString m_error;
+    Preferences *m_preferences;
 };
 }
