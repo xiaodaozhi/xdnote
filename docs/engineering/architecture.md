@@ -1,6 +1,8 @@
 # 技术架构与实施基线
 
-**状态：架构方向已确认，单文件功能原型已接入真实文件，具体能力按准入条件验证。** 用户已确认本页的职责分工与实施路线。Qt 桌面框架、单会话原文与撤销所有权、独立保存服务和统一构建入口作为研发基线；当前产品窗口与共享控件使用 Qt Widgets，原文控件使用 Scintilla，预览使用 Rust 全局语义模型和 Qt 原生阅读控件；真实输入法、辅助技术和平台交付仍须满足下文准入条件。默认 `xdnote` 提供工作区基础及独立文件的打开、编辑、保存、冲突与关闭确认，基础工作区支持原会话接管，边界见[工作区基础](workspace-foundation.md)；内存准入窗口独立保留；源码、依赖与入口见[开发构建](developer-build.md)，保存保证和范围见[保存闭环](file-save-workflow.md)，已有独立开发运行目录和隔离安装维护，尚无图形安装器或正式发行包。产品约束见[需求](../product/requirements.md)，行为见[交互规格](../product/interaction-spec.md)，工作区资源见[图片与文档链接](../product/workspace-resources.md)。
+**状态：架构方向已确认，单文件功能原型已接入真实文件，具体能力按准入条件验证。** 用户已确认本页的职责分工与实施路线。Qt 桌面框架、单会话原文与撤销所有权、独立保存服务和统一构建入口作为研发基线；当前产品窗口与共享控件使用 Qt Widgets，原文控件使用 Scintilla，预览使用 Rust 全局语义模型和 Qt 原生阅读控件；真实输入法、辅助技术和平台交付仍须满足下文准入条件。默认 `xdnote` 提供工作区基础及独立文件的打开、编辑、保存、冲突与关闭确认，基础工作区支持原会话接管，边界见[工作区基础](workspace-foundation.md)；内存准入窗口独立保留；源码、依赖与入口见[开发构建](developer-build.md)，保存保证和范围见[保存闭环](file-save-workflow.md)，已有独立开发运行目录、隔离安装维护及 Windows 图形开发安装器，正式发行仍待验收。产品约束见[需求](../product/requirements.md)，行为见[交互规格](../product/interaction-spec.md)，工作区资源见[图片与文档链接](../product/workspace-resources.md)。
+
+产品库 `xdnote_desktop` 只链接实际使用的 Widgets、原生阅读、会话和服务依赖。Qt Quick 准入窗口及其 QML 资源、辅助功能桥和图形初始化由独立目标 `xdnote_admission_ui` 持有，仅准入运行器与对应测试链接；产品初始化不加载 Quick／QML。部署扫描实际产品入口，不因保留试验源码而携带试验主题或工具。
 
 ## 已确认的架构取舍
 

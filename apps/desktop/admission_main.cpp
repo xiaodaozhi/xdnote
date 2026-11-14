@@ -2,14 +2,12 @@
 #include "DocumentSession.h"
 #include "SourceEditor.h"
 #include "GuiRuntime.h"
+#include "AdmissionRuntime.h"
 
 #include <QApplication>
-#include <QQuickStyle>
-#include <QQuickWindow>
-#include <QSGRendererInterface>
 
 int main(int argc, char **argv) {
-    xdnote::initializeGuiRuntime();
+    xdnote::initializeAdmissionRuntime();
     QApplication application(argc, argv);
     xdnote::configureGuiApplication();
     application.setApplicationName(QStringLiteral("xdnote-admission"));

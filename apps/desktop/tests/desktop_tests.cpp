@@ -1,4 +1,5 @@
 #include "AdmissionWindow.h"
+#include "AdmissionRuntime.h"
 #include "DocumentSession.h"
 #include "MarkdownPreview.h"
 #include "MarkdownReferences.h"
@@ -1304,7 +1305,7 @@ private slots:
 };
 
 int main(int argc, char **argv) {
-    initializeGuiRuntime();
+    initializeAdmissionRuntime();
     QApplication app(argc, argv);
     configureGuiApplication();
     SourceEditor::installAccessibility();

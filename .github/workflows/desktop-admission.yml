@@ -101,6 +101,7 @@ jobs:
         run: |
           xdnote_qt_arch=gcc_64
           if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
+          python scripts/check_product_linkage.py --executable build/desktop-admission/xdnote
           python scripts/deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
       - name: Validate installed developer payload without registration
         if: startsWith(inputs.scope, 'deployment-')

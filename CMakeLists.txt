@@ -147,15 +147,13 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/ImageImport.cpp apps/desktop/src/ImageImport.h
     apps/desktop/src/VisualTokens.cpp apps/desktop/src/VisualTokens.h
     apps/desktop/src/InputModality.cpp apps/desktop/src/InputModality.h
-    apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h
-    apps/desktop/src/QuickAccessibleRoot.cpp apps/desktop/src/QuickAccessibleRoot.h
-    apps/desktop/src/AdmissionWindow.cpp apps/desktop/src/AdmissionWindow.h)
+    apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h)
 target_include_directories(xdnote_desktop PUBLIC apps/desktop/src)
 if(UNIX)
     add_dependencies(xdnote_desktop xdnote_resource_helper)
 endif()
 target_link_libraries(xdnote_desktop PUBLIC xdnote_scintilla xdnote_markdown
-    Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::QuickControls2 xdnote_native_preview Qt6::Concurrent Qt6::Network Qt6::Svg)
+    Qt6::Widgets xdnote_native_preview Qt6::Concurrent Qt6::Network Qt6::Svg)
 if(WIN32)
     target_link_libraries(xdnote_desktop PUBLIC ws2_32 userenv bcrypt ntdll advapi32 dwmapi)
 else()
@@ -165,7 +163,16 @@ endif()
 file(GLOB XDNOTE_UI_ICONS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/design/assets/ui-v2/icons/svg/*.svg")
 file(GLOB XDNOTE_UI_LICENSES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/LICENSES/third-party/*.txt")
 qt_add_resources(xdnote_desktop xdnote_assets PREFIX /xdnote BASE "${PROJECT_SOURCE_DIR}" FILES
-    docs/visual/tokens.json apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/logo-dark.svg design/assets/ui-v2/brand/mark-light.svg design/assets/ui-v2/brand/mark-dark.svg design/assets/ui-v2/brand/app-icon.svg THIRD_PARTY_NOTICES.md LICENSE LICENSES/CC-BY-4.0.txt LICENSES/third-party/manifest.json Cargo.lock docs/engineering/licensing.md tools/desktop-dependencies.json ${XDNOTE_UI_LICENSES} ${XDNOTE_UI_ICONS})
+    docs/visual/tokens.json design/assets/ui-v2/brand/logo-light.svg design/assets/ui-v2/brand/logo-dark.svg design/assets/ui-v2/brand/mark-light.svg design/assets/ui-v2/brand/mark-dark.svg design/assets/ui-v2/brand/app-icon.svg THIRD_PARTY_NOTICES.md LICENSE LICENSES/CC-BY-4.0.txt LICENSES/third-party/manifest.json Cargo.lock docs/engineering/licensing.md tools/desktop-dependencies.json ${XDNOTE_UI_LICENSES} ${XDNOTE_UI_ICONS})
+
+# Keep experimental QML and its accessibility bridge out of product linkage.
+add_library(xdnote_admission_ui STATIC
+    apps/desktop/src/AdmissionRuntime.cpp apps/desktop/src/AdmissionRuntime.h
+    apps/desktop/src/QuickAccessibleRoot.cpp apps/desktop/src/QuickAccessibleRoot.h
+    apps/desktop/src/AdmissionWindow.cpp apps/desktop/src/AdmissionWindow.h)
+target_link_libraries(xdnote_admission_ui PUBLIC xdnote_desktop Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::QuickControls2)
+qt_add_resources(xdnote_admission_ui xdnote_admission_assets PREFIX /xdnote BASE "${PROJECT_SOURCE_DIR}" FILES
+    apps/desktop/ui/Chrome.qml apps/desktop/ui/SharedButton.qml)
 
 qt_add_executable(xdnote WIN32 apps/desktop/main.cpp)
 target_link_libraries(xdnote PRIVATE xdnote_desktop)
@@ -177,9 +184,9 @@ endif()
 
 add_executable(xdnote_admission apps/desktop/admission_main.cpp)
 set_target_properties(xdnote_admission PROPERTIES OUTPUT_NAME xdnote-admission)
-target_link_libraries(xdnote_admission PRIVATE xdnote_desktop)
+target_link_libraries(xdnote_admission PRIVATE xdnote_admission_ui)
 if(MSVC)
-    foreach(target xdnote_scintilla xdnote_desktop xdnote_admission xdnote)
+    foreach(target xdnote_scintilla xdnote_desktop xdnote_admission_ui xdnote_admission xdnote)
         target_compile_options(${target} PRIVATE /utf-8 /EHsc)
     endforeach()
 endif()
@@ -212,7 +219,7 @@ if(BUILD_TESTING)
         configure_file(apps/desktop/tests/windows_uia_client.ps1 "${CMAKE_BINARY_DIR}/windows_uia_client.ps1" COPYONLY)
     endif()
     add_executable(xdnote_desktop_tests apps/desktop/tests/desktop_tests.cpp)
-    target_link_libraries(xdnote_desktop_tests PRIVATE xdnote_desktop Qt6::Test)
+    target_link_libraries(xdnote_desktop_tests PRIVATE xdnote_admission_ui Qt6::Test)
     if(MSVC)
         target_compile_options(xdnote_desktop_tests PRIVATE /utf-8 /EHsc)
     endif()

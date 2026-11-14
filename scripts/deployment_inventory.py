@@ -89,6 +89,15 @@ def files_under(directory):
             yield path
 
 
+def require_product_runtime(directory):
+    """Reject accidental experimental Quick/QML deployment in product staging."""
+    unexpected = [path.relative_to(directory).as_posix() for path in files_under(directory)
+                  if path.name.lower().startswith(('qt6quick', 'qt6qml'))
+                  or path.relative_to(directory).parts[0].lower() in ('qml', 'qmltooling')]
+    if unexpected:
+        raise ValueError('Product deployment contains unused admission dependencies: ' + ', '.join(unexpected))
+
+
 def dependency_closure(directory, system_directory):
     files = list(files_under(directory))
     binaries = [path for path in files if path.suffix.lower() in (".dll", ".exe")]
@@ -161,7 +170,7 @@ def prepare(build, qt, destination, redist):
     for name in ("xdnote.exe", "xdnote_background_probe.exe", "xdnote_preview_product_probe.exe"):
         shutil.copy2(build / name, destination / name)
     execute([qt / "bin/windeployqt.exe", "--release", "--no-compiler-runtime", "--no-translations", "--no-patchqt",
-             "--qmldir", desktop.ROOT / "apps/desktop/ui", "--include-plugins", "qoffscreen",
+             "--include-plugins", "qoffscreen",
              "--exclude-plugins", "qtposition_nmea", "--dir", destination,
              destination / "xdnote.exe", destination / "xdnote_background_probe.exe", destination / "xdnote_preview_product_probe.exe"], env, evidence / "windeployqt.log", 180)
     (destination / "qt.conf").write_text("[Paths]\nPrefix=.\nPlugins=.\nQmlImports=qml\nTranslations=translations\n", encoding="utf-8")
@@ -189,6 +198,7 @@ def prepare(build, qt, destination, redist):
                  if any(token in path.as_posix().lower() for token in ("webengine", "chromium", "chrome_elf", "libcef", "electron", "webview2"))]
     if forbidden:
         raise RuntimeError("Forbidden browser runtime in diagnostic staging: " + ", ".join(forbidden))
+    require_product_runtime(destination)
     sboms = collect_qt_notices(qt, destination)
     # Run only the diagnostic worker from the staged directory, with no SDK,
     # compiler or inherited DLL paths. Do not launch the product window.
