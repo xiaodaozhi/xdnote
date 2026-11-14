@@ -97,7 +97,7 @@ python scripts/desktop.py run --admission
 - `AdmissionWindow` 采用 QWidget 容器，QQuickWidget 承载共享操作，Scintilla 与原生阅读控件保持各自公开 QWidget 端口。共享控件从同一视觉参数读取尺寸、字体、颜色与 Tab 焦点外框；此窗口只验证承载，原生装饰和主界面复刻另行验收。
 - 组件准入窗口的 QML 根节点通过公开辅助功能接口连接到 QQuickWidget，按钮继续使用 Qt 自身的辅助功能接口。自动测试检查父子导航、多窗口销毁和动作；Windows 另由独立 UI Automation 客户端检查控件树、文本读写、撤销／重做和只读保护。这些受控测试不代表真实读屏或其他平台的原生辅助技术验收，后续范围见 [Issue #87](https://github.com/xiaodaozhi/xdnote/issues/87)。
 
-运行器与测试共用图形和交互初始化。Windows 选择 D3D11，CI 显式偏好系统 WARP 软件适配器；Linux／macOS 当前使用 OpenGL。图形初始化发生在应用对象建立前，同一顶层窗口共享图形 API。应用对象建立后设置本应用的 `TabFocusAllControls` 策略，使按钮也可参与 Tab 循环，不修改系统偏好。Linux CI 安装 Noto CJK 作为镜像的系统字体，应用仍使用系统字体及回退，不随此工程分发该字体；测试检查常规与等宽字体的中文成形不存在缺字。不得以跳过截图、隐藏图形错误或只检查 QML 加载状态代替渲染验证；硬件 GPU、远程会话和其他图形后端仍须分别验证。
+产品与产品测试共用 `GuiRuntime` 的 Widgets 初始化，不链接 Quick／QML。独立准入目标 `xdnote_admission_ui` 另持有 `AdmissionRuntime`、Quick 窗口、辅助功能桥和 QML 资源；准入运行器及对应测试调用它，在应用对象建立前选择 Windows D3D11 或 Linux／macOS OpenGL，Windows CI 可显式偏好系统 WARP 软件适配器。应用对象建立后设置本应用的 `TabFocusAllControls` 策略，使按钮也可参与 Tab 循环，不修改系统偏好。Linux CI 安装 Noto CJK 作为镜像的系统字体，应用仍使用系统字体及回退，不随此工程分发该字体；测试检查常规与等宽字体的中文成形不存在缺字。不得以跳过截图、隐藏图形错误或只检查 QML 加载状态代替渲染验证；硬件 GPU、远程会话和其他图形后端仍须分别验证。
 
 首轮真实文件只接受 2 MiB 以内的严格 UTF-8 正文，编码 BOM 另计三字节，含 NUL 或无效 UTF-8 的文件明确拒绝。保留混合换行与字符，不猜测编码。预览使用只读语义模型与原生局部文档；派生内容、图片和缓存保护见[原生控件](native-preview-view.md)。控件原生输入可能暂时超过快照额度，此时保存／预览明确拒绝，当前内容和撤销仍保留，须缩小后重试。这是当前原型的明确容量边界，不是任意长文承诺。
 

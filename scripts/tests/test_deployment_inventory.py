@@ -9,6 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 deployment = importlib.import_module("deployment_inventory")
+linkage = importlib.import_module("check_product_linkage")
 
 
 def image(normal="missing.dll", delayed="delay.dll"):
@@ -32,6 +33,25 @@ def image(normal="missing.dll", delayed="delay.dll"):
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_product_import_guard_accepts_widgets_and_rejects_quick(self):
+        with tempfile.TemporaryDirectory() as name:
+            path = Path(name) / 'product.exe'
+            path.write_bytes(image('Qt6Widgets.dll', 'Qt6Svg.dll'))
+            self.assertTrue(linkage.check(path, 'Windows')['ok'])
+            path.write_bytes(image('Qt6Widgets.dll', 'Qt6Qml.dll'))
+            with self.assertRaisesRegex(ValueError, 'experimental'):
+                linkage.check(path, 'Windows')
+    def test_product_deployment_rejects_unused_quick_and_qml(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            (root / 'Qt6Widgets.dll').touch()
+            deployment.require_product_runtime(root)
+            for relative in ('Qt6Quick.dll', 'Qt6Qml.dll', 'qml/QtQuick/Test.qml', 'qmltooling/debug.dll'):
+                path = root / relative; path.parent.mkdir(parents=True, exist_ok=True); path.touch()
+                with self.assertRaisesRegex(ValueError, 'unused admission'):
+                    deployment.require_product_runtime(root)
+                path.unlink()
+
     def test_normal_and_delay_imports_and_missing_dependencies(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

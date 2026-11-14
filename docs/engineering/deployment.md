@@ -10,7 +10,7 @@
 python scripts/deployment_inventory.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --destination build/cycle-delivery/staging --redist-dir "<已安装 VS2022>/VC/Redist/MSVC/<版本>/x64/Microsoft.VC143.CRT"
 ```
 
-`<版本>` 按实际安装填写。目标必须在本项目 `build/` 内，已有目标或证据目录拒绝覆盖，不跨项目寻找缺失依赖。工具核对构建身份，使用同一 SDK 的 `windeployqt` 分析 Qt／QML 和插件，保留软件图形回退库，按实际导入复制显式指定的 CRT 文件。无 NMEA／GPS 功能，不部署可选 `qtposition_nmea` 插件；任何浏览器运行文件均导致失败。
+`<版本>` 按实际安装填写。目标必须在本项目 `build/` 内，已有目标或证据目录拒绝覆盖，不跨项目寻找缺失依赖。工具核对构建身份，使用同一 SDK 的 `windeployqt` 分析实际产品与诊断入口的 Qt 导入和插件，保留软件图形回退库，按实际导入复制显式指定的 CRT 文件。无 NMEA／GPS 功能，不部署可选 `qtposition_nmea` 插件；任何浏览器运行文件均导致失败。产品不使用 Quick／QML，Windows 诊断入口不扫描准入窗口的 QML 目录；若载荷出现 Qt Quick、QML 模块、主题或 QML 调试工具则拒绝。`scripts/check_product_linkage.py` 另外只读检查产品二进制的直接导入，Unix 定向部署也执行此项，随后分别核对实际传递依赖。
 
 正常与延迟导入采用只读 PE 解析，不加载被分析 DLL。未找到的依赖、损坏导入表、路径链接均导致失败。宿主系统库和 Windows API set 单独分类；宿主能解析不能证明最低 Windows 版本可运行。
 
@@ -28,7 +28,7 @@ python scripts/deployment_unix.py --build-dir build/desktop-admission --qt-prefi
 
 Linux 的 SDK 准备显式包含独立 `qtwayland` 归档；按 ELF 的 `NEEDED` 递归复制当前 SDK 动态库，保留版本文件及相对 SONAME 链接，将每份已部署 ELF 的搜索路径改为目录内 `$ORIGIN`。候选包含 offscreen、xcb、Wayland 及其图形集成插件；宿主系统库单独记录，不复制 glibc 或声称无需系统依赖。依赖核对读取动态表，不执行 `ldd`。未解析依赖、外部库路径或 SDK／构建搜索路径均导致失败。
 
-macOS 创建诊断 `xdnote.app`，产品、两个探针、资源助手及资源定向测试程序均进入 `Contents/MacOS`；`macdeployqt` 部署 frameworks／插件与 QML 输入，随后清除构建／SDK 搜索路径，核对每份 Mach-O 导入。framework 链接只允许指向诊断目录内。为允许重定位后的 ARM64 二进制执行，使用本机 ad-hoc 完整性封印；它不含发布者身份、不公证、不生成 DMG，也不是发行签名。系统 dyld 共享缓存库按系统依赖记录，不能用磁盘单文件缺失来判为丢库。
+Unix 诊断目录仍保留含 Quick 准入用例的测试程序及其依赖，不能据整个诊断目录的模块清单判断产品本身依赖；产品直接导入检查单列。macOS 创建诊断 `xdnote.app`，产品、两个探针、资源助手及资源定向测试程序均进入 `Contents/MacOS`；`macdeployqt` 部署 frameworks／插件与 QML 输入，随后清除构建／SDK 搜索路径，核对每份 Mach-O 导入。framework 链接只允许指向诊断目录内。为允许重定位后的 ARM64 二进制执行，使用本机 ad-hoc 完整性封印；它不含发布者身份、不公证、不生成 DMG，也不是发行签名。系统 dyld 共享缓存库按系统依赖记录，不能用磁盘单文件缺失来判为丢库。
 
 两平台均清除继承的 Qt／QML、动态库预加载与 SDK 路径，只使用诊断目录内的库／插件及系统目录运行自有样本：明暗阅读、真实临时 Markdown 的文件／会话入口，以及经资源助手读取的自生成图片。固定离屏，不激活用户窗口。旁边的 `<目标名>-evidence/` 保留日志、三张截图及 `inventory.json`；失败也写入错误与已完成元数据。清单记录实际文件摘要、内部链接、依赖定位、宿主、源码／构建身份、工具摘要和许可输入。宿主仍可能有开发环境，静态路径闭包和隔离搜索验证不等同于干净系统安装验收。
 
