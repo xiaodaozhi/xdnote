@@ -1,0 +1,29 @@
+#include <windows.h>
+IDI_ICON1 ICON "@PROJECT_SOURCE_DIR@/design/assets/ui-v2/brand/app-icon.ico"
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,1,0,0
+ PRODUCTVERSION 0,1,0,0
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS VS_FF_PRERELEASE
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904b0"
+  BEGIN
+   VALUE "CompanyName", "xiaodaozhi\0"
+   VALUE "FileDescription", "xdnote Markdown editor (development)\0"
+   VALUE "FileVersion", "0.1.0-dev\0"
+   VALUE "InternalName", "xdnote\0"
+   VALUE "OriginalFilename", "xdnote.exe\0"
+   VALUE "ProductName", "xdnote\0"
+   VALUE "ProductVersion", "0.1.0-dev\0"
+   VALUE "LegalCopyright", "Copyright (C) 2026 xiaodaozhi\0"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0409, 1200
+ END
+END

@@ -1,0 +1,179 @@
+[Setup]
+AppId={{460D7C68-C989-45F0-B312-40AE18428155}
+AppName=xdnote
+AppVersion=@VERSION@
+VersionInfoVersion=0.1.0.0
+AppPublisher=xiaodaozhi
+AppCopyright=Copyright (C) 2026 xiaodaozhi
+DefaultDirName={localappdata}\Programs\xdnote
+DefaultGroupName=xdnote
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0.17763
+OutputDir=@OUTPUT@
+OutputBaseFilename=@FILENAME@
+SetupIconFile=@APPICON@
+UninstallDisplayIcon={app}\xdnote.exe
+Compression=lzma2
+SolidCompression=yes
+AppMutex=Local\xdnote.desktop.running
+SetupMutex=Local\xdnote.desktop.installing
+CloseApplications=no
+RestartApplications=no
+ChangesAssociations=yes
+UninstallLogMode=append
+WizardStyle=modern
+DisableWelcomePage=no
+LicenseFile=@PAYLOAD@\share\notices\Microsoft-VC-runtime\license.rtf
+InfoBeforeFile=@PAYLOAD@\share\notices\Windows-runtime-NOTICE.txt
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "@CHINESE@"
+
+[Messages]
+english.LicenseLabel3=This agreement covers only the bundled Microsoft VC++ runtime. Other components retain their own licenses.
+chinesesimplified.LicenseLabel3=以下协议仅适用于附带的 Microsoft VC++ 运行库。xdnote 及其他组件遵守各自许可证。
+
+[CustomMessages]
+english.InvalidInstalledFiles=The installation manifest is invalid or the destination is not owned by this installer. Choose an empty directory or repair the existing installation.
+chinesesimplified.InvalidInstalledFiles=安装清单无效，或目标目录不属于此安装器。请选择空目录，或修复现有安装。
+english.ModifiedInstalledFiles=An installed file was modified or cannot be verified. The operation was stopped to preserve it.
+chinesesimplified.ModifiedInstalledFiles=安装文件已被修改或无法核验。为保留文件，已停止操作。
+english.InstalledFilesCleanupFailed=Some owned files could not be removed and were preserved. Close programs using the directory and retry.
+chinesesimplified.InstalledFilesCleanupFailed=部分安装文件无法移除，已予以保留。请关闭占用目录的程序后重试。
+english.RegisterMarkdown=Offer xdnote in Open with (does not change your default app)
+chinesesimplified.RegisterMarkdown=将 xdnote 加入“打开方式”候选（不更改默认应用）
+english.IncompatibleSettings=This installation uses a newer installer schema. Downgrade was refused to protect your data.
+chinesesimplified.IncompatibleSettings=现有安装使用了更新的安装格式。为保护数据，已拒绝回退。
+
+[Tasks]
+Name: "markdown"; Description: "{cm:RegisterMarkdown}"; Flags: unchecked
+
+[Files]
+Source: "@MANIFEST@"; DestName: "xdnote-package-files.txt"; Flags: dontcopy
+Source: "@MANIFEST@"; DestDir: "{app}"; DestName: "install-manifest.txt"; Flags: ignoreversion uninsneveruninstall
+Source: "@PAYLOAD@\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs uninsneveruninstall
+
+[Icons]
+Name: "{userprograms}\xdnote"; Filename: "{app}\xdnote.exe"
+
+[Registry]
+Root: HKCU; Subkey: "Software\xdnote\Install"; ValueType: dword; ValueName: "SchemaVersion"; ValueData: "1"
+Root: HKCU; Subkey: "Software\xdnote\Install"; ValueType: string; ValueName: "Location"; ValueData: "{app}"
+Root: HKCU; Subkey: "Software\Classes\xdnote.Markdown"; ValueType: string; ValueData: "xdnote Markdown"; Tasks: markdown; AfterInstall: PreventSilentDefault
+Root: HKCU; Subkey: "Software\Classes\xdnote.Markdown\DefaultIcon"; ValueType: string; ValueData: """{app}\xdnote.exe"",0"; Tasks: markdown
+Root: HKCU; Subkey: "Software\Classes\xdnote.Markdown\shell\open\command"; ValueType: string; ValueData: """{app}\xdnote.exe"" -- ""%1"""; Tasks: markdown
+Root: HKCU; Subkey: "Software\Classes\Applications\xdnote.exe\shell\open\command"; ValueType: string; ValueData: """{app}\xdnote.exe"" -- ""%1"""; Tasks: markdown
+Root: HKCU; Subkey: "Software\Classes\Applications\xdnote.exe\SupportedTypes"; ValueType: string; ValueName: ".md"; Tasks: markdown
+Root: HKCU; Subkey: "Software\Classes\Applications\xdnote.exe\SupportedTypes"; ValueType: string; ValueName: ".markdown"; Tasks: markdown
+Root: HKCU; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; ValueName: "xdnote.Markdown"; Tasks: markdown
+Root: HKCU; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: string; ValueName: "xdnote.Markdown"; Tasks: markdown
+Root: HKCU; Subkey: "Software\xdnote\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "xdnote"; Tasks: markdown
+Root: HKCU; Subkey: "Software\xdnote\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Markdown editor"; Tasks: markdown
+Root: HKCU; Subkey: "Software\xdnote\Capabilities\FileAssociations"; ValueType: string; ValueName: ".md"; ValueData: "xdnote.Markdown"; Tasks: markdown
+Root: HKCU; Subkey: "Software\xdnote\Capabilities\FileAssociations"; ValueType: string; ValueName: ".markdown"; ValueData: "xdnote.Markdown"; Tasks: markdown
+Root: HKCU; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "xdnote"; ValueData: "Software\xdnote\Capabilities"; Tasks: markdown
+
+[Code]
+function RegOpenKeyEx(hKey: LongWord; lpSubKey: String; ulOptions, samDesired: LongWord; var phkResult: LongWord): Longint;
+  external 'RegOpenKeyExW@advapi32.dll stdcall';
+function RegSetValueEx(hKey: LongWord; lpValueName: String; Reserved, dwType: LongWord; lpData: LongWord; cbData: LongWord): Longint;
+  external 'RegSetValueExW@advapi32.dll stdcall';
+function RegCloseKey(hKey: LongWord): Longint;
+  external 'RegCloseKey@advapi32.dll stdcall';
+
+procedure PreventSilentDefault;
+var Key: LongWord;
+begin
+  if RegOpenKeyEx($80000001, 'Software\Classes\xdnote.Markdown', 0, $0002, Key) = 0 then begin
+    RegSetValueEx(Key, 'AllowSilentDefaultTakeOver', 0, 0, 0, 0);
+    RegCloseKey(Key);
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+var Schema: Cardinal;
+begin
+  Result := not (RegQueryDWordValue(HKCU, 'Software\xdnote\Install', 'SchemaVersion', Schema) and (Schema > 1));
+  if not Result then SuppressibleMsgBox(CustomMessage('IncompatibleSettings'), mbError, MB_OK, IDOK);
+end;
+
+@CLEANUP_CODE@
+
+procedure RemoveValueIfEqual(const Key, Name, Expected: String);
+var Actual: String;
+begin
+  if RegQueryStringValue(HKCU, Key, Name, Actual) and (Actual = Expected) then begin
+    RegDeleteValue(HKCU, Key, Name);
+    RegDeleteKeyIfEmpty(HKCU, Key);
+  end;
+end;
+
+procedure RemoveOwnedRegistration;
+var Command, Actual, Key: String;
+begin
+  Command := ExpandConstant('"{app}\xdnote.exe" -- "%1"');
+  Key := 'Software\Classes\xdnote.Markdown';
+  if RegQueryStringValue(HKCU, Key + '\shell\open\command', '', Actual) and (Actual = Command) then begin
+    RemoveValueIfEqual('Software\Classes\.md\OpenWithProgids', 'xdnote.Markdown', '');
+    RemoveValueIfEqual('Software\Classes\.markdown\OpenWithProgids', 'xdnote.Markdown', '');
+    RemoveValueIfEqual(Key + '\shell\open\command', '', Command);
+    RegDeleteKeyIfEmpty(HKCU, Key + '\shell\open');
+    RegDeleteKeyIfEmpty(HKCU, Key + '\shell');
+    RemoveValueIfEqual(Key + '\DefaultIcon', '', ExpandConstant('"{app}\xdnote.exe",0'));
+    RemoveValueIfEqual(Key, '', 'xdnote Markdown');
+    RegDeleteValue(HKCU, Key, 'AllowSilentDefaultTakeOver');
+    RegDeleteKeyIfEmpty(HKCU, Key);
+    RemoveValueIfEqual('Software\xdnote\Capabilities\FileAssociations', '.md', 'xdnote.Markdown');
+    RemoveValueIfEqual('Software\xdnote\Capabilities\FileAssociations', '.markdown', 'xdnote.Markdown');
+    RemoveValueIfEqual('Software\xdnote\Capabilities', 'ApplicationName', 'xdnote');
+    RemoveValueIfEqual('Software\xdnote\Capabilities', 'ApplicationDescription', 'Markdown editor');
+    RemoveValueIfEqual('Software\RegisteredApplications', 'xdnote', 'Software\xdnote\Capabilities');
+  end;
+  Key := 'Software\Classes\Applications\xdnote.exe';
+  if RegQueryStringValue(HKCU, Key + '\shell\open\command', '', Actual) and (Actual = Command) then begin
+    RemoveValueIfEqual(Key + '\shell\open\command', '', Command);
+    RegDeleteKeyIfEmpty(HKCU, Key + '\shell\open');
+    RegDeleteKeyIfEmpty(HKCU, Key + '\shell');
+    RemoveValueIfEqual(Key + '\SupportedTypes', '.md', '');
+    RemoveValueIfEqual(Key + '\SupportedTypes', '.markdown', '');
+    RegDeleteKeyIfEmpty(HKCU, Key);
+  end;
+  if RegQueryStringValue(HKCU, 'Software\xdnote\Install', 'Location', Actual) and (CompareText(Actual, ExpandConstant('{app}')) = 0) then begin
+    RegDeleteValue(HKCU, 'Software\xdnote\Install', 'SchemaVersion');
+    RemoveValueIfEqual('Software\xdnote\Install', 'Location', Actual);
+    RegDeleteKeyIfEmpty(HKCU, 'Software\xdnote');
+  end;
+end;
+
+function InitializeUninstall(): Boolean;
+var Entries: TArrayOfString; I: Integer; Name: String;
+begin
+  Result := ReadManifest(ExpandConstant('{app}\install-manifest.txt'), Entries);
+  if Result then for I := 1 to GetArrayLength(Entries) - 1 do begin
+    Name := ExpandConstant('{app}\') + EntryPath(Entries[I]);
+    if FileOrDirExists(Name) and not UnchangedFile(Name, Entries[I]) then Result := False;
+  end;
+  if not Result then SuppressibleMsgBox(CustomMessage('ModifiedInstalledFiles'), mbError, MB_OK, IDOK);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var Entries: TArrayOfString; I: Integer; Name: String; Complete: Boolean;
+begin
+  if CurUninstallStep <> usUninstall then exit;
+  if not ReadManifest(ExpandConstant('{app}\install-manifest.txt'), Entries) then exit;
+  Complete := True;
+  for I := 1 to GetArrayLength(Entries) - 1 do begin
+    Name := ExpandConstant('{app}\') + EntryPath(Entries[I]);
+    if FileOrDirExists(Name) then begin
+      if UnchangedFile(Name, Entries[I]) and DeleteFile(Name) then RemoveEmptyParents(Name)
+      else begin Complete := False; Log('Preserved an unverifiable or locked owned file.'); end;
+    end;
+  end;
+  if Complete then DeleteFile(ExpandConstant('{app}\install-manifest.txt'))
+  else SuppressibleMsgBox(CustomMessage('InstalledFilesCleanupFailed'), mbError, MB_OK, IDOK);
+  RemoveOwnedRegistration;
+end;

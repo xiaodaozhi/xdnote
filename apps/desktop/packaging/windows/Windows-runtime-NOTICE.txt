@@ -1,0 +1,21 @@
+xdnote Windows 第三方运行库说明
+
+xdnote 自有代码采用 Apache License 2.0，自有文档与原创设计采用 CC BY 4.0。Qt、字体和其他第三方组件分别遵守其原始许可证，相关文本位于本目录。下述 Microsoft 组件不适用项目的 Apache-2.0 许可，不限制用户依法修改和替换 Qt 等开源组件的权利。
+
+本包携带正式版 Microsoft Visual C++ x64 运行库。安装器的许可页展示该运行库的原始协议，仅适用于 Microsoft 运行库。使用便携包时也请先阅读并遵守 Microsoft-VC-runtime/license.rtf；不同意适用条款时，请勿使用这些 Microsoft 组件。
+
+Microsoft 运行库的再分发受适用开发工具许可及 REDIST 清单约束。下游分发者须满足相应资格和条件，保持这些 DLL 未修改，并向下游保留适用的保护条款；下载本包或拥有项目的 Apache-2.0 许可本身不授予独立的 Microsoft 再分发权。普通用户运行 xdnote 无需安装 Visual Studio。
+
+VC++ 运行库原始条款：https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/
+VS 2022 可分发清单：https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
+
+xdnote Windows third-party runtime notice
+
+Original xdnote code is licensed under Apache License 2.0; original documentation and designs use CC BY 4.0. Qt, fonts and other third-party components retain their respective licenses in this directory. The Microsoft components below are not relicensed under Apache-2.0. This notice does not restrict your rights to modify or replace open-source components such as Qt under their licenses.
+
+This package includes release Microsoft Visual C++ x64 runtime files. Setup presents the original runtime agreement, which applies only to the Microsoft runtime. Portable users must also read and comply with Microsoft-VC-runtime/license.rtf before use. Do not use these Microsoft components if you do not agree to the applicable terms.
+
+Redistribution of the Microsoft runtime requires compliance with the applicable developer-tool license and REDIST list. Downstream distributors must satisfy those conditions, preserve these DLLs unmodified and retain terms protecting the code downstream. Downloading this package or receiving the project's Apache-2.0 license does not itself grant independent Microsoft redistribution rights. End users do not need Visual Studio to run xdnote.
+
+Original VC++ runtime terms: https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/
+VS 2022 REDIST: https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution

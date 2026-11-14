@@ -16,6 +16,7 @@
 | 图标 | [图标规范与原稿依据](visual/iconography.md) | 全套矢量、语义变体、原稿出处、光学留白及实际加载验证 |
 | 窗口 | [window-registry.json](visual/window-registry.json) | 窗口身份、建议尺寸、原稿与待补状态 |
 | 工程 | [技术架构与实施基线](engineering/architecture.md) | 已确认取舍、模块契约、关键时序及待验证准入 |
+| 整应用测量 | [启动与进程资源](engineering/application-performance.md) | 隔离原生窗口、独立进程样本与编辑保存完整性边界 |
 | 预览选型 | [非 Chromium 预览方案评估](engineering/preview-alternatives.md) | 约束、候选、成本边界与后续准入 |
 | Markdown 解析 | [Rust 原生解析方案](engineering/markdown-parsing.md) | 当前链路、候选、源码范围、增量与取消限制及复核方法 |
 | 预览流水线 | [分析与刷新](engineering/preview-pipeline.md) | 共享分析、有界缓存、资源重验、阶段取消和分阶段测量 |

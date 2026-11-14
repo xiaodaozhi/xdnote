@@ -34,8 +34,8 @@ QString rootKey(const QString &path) { const QFileInfo info(path); auto key = in
     return QDir::cleanPath(key);
 }
 }
-FileApplication::FileApplication(QObject *parent, QString settingsPath)
-    : QObject(parent), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
+FileApplication::FileApplication(QObject *parent, QString settingsPath, Presentation presentation)
+    : QObject(parent), m_presentation(presentation), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
     qApp->installEventFilter(this);
     m_recovery=new RecoveryStore(settingsPath.isEmpty()?QString():settingsPath+".recovery",this);
     const auto stored=m_recovery->state();m_lastSession=stored["documents"].toArray();
@@ -101,7 +101,7 @@ FileApplication::~FileApplication() {
     for (auto pane : panes) if (pane) delete pane;
 }
 SingleFileWindow *FileApplication::createWindow() {
-    auto *pane = new SingleFileWindow(&m_manager, &m_appearance, &m_geometryStore); m_windows.insert(pane);if(!m_recovery->error().isEmpty())pane->reportHostMessage(m_recovery->error());
+    auto *pane = new SingleFileWindow(&m_manager, &m_appearance, &m_geometryStore); pane->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative); m_windows.insert(pane);if(!m_recovery->error().isEmpty())pane->reportHostMessage(m_recovery->error());
     connect(pane, &SingleFileWindow::copyPathRequested, this, [](const QString &path) { QGuiApplication::clipboard()->setText(path); });
     connect(pane, &SingleFileWindow::copyTextRequested, this, [](const QString &text) { QGuiApplication::clipboard()->setText(text); });
     connect(pane, &SingleFileWindow::revealRequested, this, [](const QString &path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
@@ -116,7 +116,7 @@ SingleFileWindow *FileApplication::createWindow() {
     connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
 }
 WorkspaceWindow *FileApplication::createWorkspace() {
-    auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_navigation, &m_manager); m_workspaces.insert(workspace);
+    auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_navigation, &m_manager); workspace->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative); m_workspaces.insert(workspace);
     connect(workspace, &WorkspaceWindow::settingsRequested, this, [this] { settingsWindow(); });
     connect(workspace, &WorkspaceWindow::referenceSourceRequested, this, [this, workspace](const QString &path, const QString &identity, const QByteArray &sha, qsizetype start, qsizetype end) {
         LinkNavigation navigation; navigation.sourceLocation = true; navigation.workspace = workspace; navigation.root = workspace->resourceRoot();
@@ -160,6 +160,7 @@ void FileApplication::newDocument() {
 SettingsWindow *FileApplication::settingsWindow() {
     if (!m_settings) {
         m_settings = new SettingsWindow(&m_appearance, &m_geometryStore);
+        m_settings->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative);
         connect(m_settings, &QObject::destroyed, this, [this] { if (!m_destroying && m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); });
     }
     if (m_settings->isMinimized()) m_settings->showNormal(); m_settings->show(); m_settings->raise(); m_settings->activateWindow(); return m_settings;

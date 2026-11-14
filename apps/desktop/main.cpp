@@ -3,6 +3,7 @@
 #include "SourceEditor.h"
 #include "SingleInstance.h"
 #include "VisualTokens.h"
+#include "InstallationGuard.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
@@ -12,12 +13,17 @@
 #include <cstdio>
 
 int main(int argc, char **argv) {
+    xdnote::InstallationGuard installation;
     xdnote::initializeGuiRuntime();
     QApplication application(argc, argv);
     application.setApplicationName(QStringLiteral("xdnote")); application.setOrganizationName(QStringLiteral("xiaodaozhi"));
     xdnote::configureGuiApplication(); xdnote::SourceEditor::installAccessibility();
     xdnote::visualTokens(); application.setWindowIcon(QIcon(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/app-icon.svg")));
     application.setQuitOnLastWindowClosed(false);
+    if (!installation.allowed()) {
+        QMessageBox::critical(nullptr, QStringLiteral("xdnote"), QStringLiteral("安装维护正在进行，或无法建立运行保护。请完成安装后重试。"));
+        return 1;
+    }
     QCommandLineParser parser; parser.setApplicationDescription(QStringLiteral("xdnote Markdown 阅读与编辑")); parser.addHelpOption();
     parser.addPositionalArgument("files", QStringLiteral("要打开的本地 Markdown 文件"), "[files…]"); parser.process(application);
     QStringList paths;
