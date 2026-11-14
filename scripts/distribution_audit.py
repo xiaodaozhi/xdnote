@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import struct
 from pathlib import Path, PurePosixPath
 
 from check_third_party_licenses import audit as source_audit
@@ -12,6 +13,33 @@ from installer_payload import verify_payload, product_qt_records
 def checked_bytes(path, expected):
     if not path.is_file() or digest(path) != expected:
         raise ValueError('Material or supplier byte mismatch: ' + str(path))
+
+
+def unsigned_pe_match(data, expected):
+    """Compare a reconstructed pre-certificate file; never alter the DLL.
+
+    This only compares bytes. It does not validate certificate trust or license
+    compliance. Original vendor checksums and delivered hashes remain intact.
+    """
+    try:
+        if data[:2] != b'MZ': return False
+        pe, = struct.unpack_from('<I', data, 0x3c)
+        if data[pe:pe + 4] != b'PE\0\0': return False
+        optional = pe + 24
+        if struct.unpack_from('<H', data, optional)[0] != 0x20b: return False
+        security = optional + 112 + 4 * 8
+        offset, size = struct.unpack_from('<II', data, security)
+        if not size or offset < security + 8 or offset + size != len(data): return False
+        unsigned = bytearray(data[:offset])
+        unsigned[optional + 64:optional + 68] = bytes(4)
+        unsigned[security:security + 8] = bytes(8)
+        for padding in range(8):
+            if padding and any(unsigned[-padding:]): continue
+            candidate = unsigned[:-padding] if padding else unsigned
+            if hashlib.sha1(candidate).hexdigest() == expected: return True
+    except (struct.error, IndexError):
+        return False
+    return False
 
 
 def qt_files(root, qt, records, shipped):
@@ -33,7 +61,8 @@ def qt_files(root, qt, records, shipped):
             source = qt / relative
             checked_bytes(source, shipped[target]['sha256'])
             checksums = {entry['algorithm']: entry['checksumValue'] for entry in item.get('checksums', [])}
-            actual_sha1 = hashlib.sha1((root / target).read_bytes()).hexdigest()
+            data = (root / target).read_bytes()
+            actual_sha1 = hashlib.sha1(data).hexdigest()
             if target in result:
                 raise ValueError('Ambiguous Qt file evidence: ' + target)
             result[target] = {'kind': 'Qt runtime or plugin', 'sdkFile': relative.as_posix(),
@@ -41,7 +70,8 @@ def qt_files(root, qt, records, shipped):
                 'licenseOptions': item.get('licenseConcluded', 'NOASSERTION'),
                 'copyright': item.get('copyrightText', 'NOASSERTION'),
                 'upstreamFileChecksums': checksums, 'deliveredSha1': actual_sha1,
-                'upstreamSha1Matches': actual_sha1 == checksums.get('SHA1') if 'SHA1' in checksums else None}
+                'upstreamSha1Matches': actual_sha1 == checksums.get('SHA1') if 'SHA1' in checksums else None,
+                'unsignedPeSha1Matches': unsigned_pe_match(data, checksums.get('SHA1'))}
     return result
 
 
@@ -120,13 +150,15 @@ def audit(root, metadata, qt):
             raise ValueError('Unclassified delivered file: ' + name)
         evidence[name] = record
     checksums = [name for name, item in evidence.items() if item.get('upstreamSha1Matches') is False]
+    unexplained = [name for name in checksums if not evidence[name]['unsignedPeSha1Matches']]
     unresolved = [{'module': item['sbom'], 'packages': item['packagesWithUnresolvedLicenseFields'],
                    'scope': 'full upstream module; not a list of proven delivered third-party components'} for item in records]
     return {'schemaVersion': 1, 'kind': 'actual payload license evidence; not a legal-compliance determination',
             'ok': True, 'buildIdentity': metadata['buildIdentity'], 'files': [dict(shipped[name], evidence=evidence[name]) for name in sorted(shipped)],
             'qtModules': records, 'qtUpstreamUnresolvedFields': unresolved, 'qtUpstreamFileChecksumDifferences': checksums,
+            'qtUnexplainedFileChecksumDifferences': unexplained,
             'pending': ['review Qt corresponding sources, replacement obligations and actual compiled-in components',
-                        'explain upstream SPDX file-checksum differences; do not infer signing or other causes',
+                        'review any unexplained upstream file-checksum differences; PE comparison does not validate signing trust',
                         'Rust standard library and compiler runtime materials',
                         'bind final platform delivery artifacts and complete release review'],
             'systemGraphicsPolicy': 'Windows 10+ supplies D3Dcompiler_47.dll; host system DLLs are not distributed',

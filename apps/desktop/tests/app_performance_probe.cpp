@@ -6,6 +6,7 @@
 #include "SingleInstance.h"
 #include "MarkdownPreview.h"
 #include "VisualTokens.h"
+#include "probe_fonts.h"
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -65,6 +66,7 @@ int main(int argc, char **argv) {
     initializeGuiRuntime(); QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("xdnote")); app.setOrganizationName(QStringLiteral("xiaodaozhi"));
     configureGuiApplication(); SourceEditor::installAccessibility(); visualTokens();
+    if (!installProbeFont()) return 2;
     app.setWindowIcon(QIcon(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/app-icon.svg")));
     app.setQuitOnLastWindowClosed(false);
     const auto args = app.arguments(); if (args.size() != 5) return 2;

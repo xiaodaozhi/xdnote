@@ -1,5 +1,6 @@
 import hashlib
 import json
+import struct
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +12,17 @@ from installer_payload import inventory, product_qt_records
 
 
 class DistributionAuditTests(unittest.TestCase):
+    def test_pre_certificate_comparison_checks_bytes_without_hiding_code_changes(self):
+        data = bytearray(1024); data[:2] = b'MZ'; struct.pack_into('<I', data, 0x3c, 128)
+        data[128:132] = b'PE\0\0'; struct.pack_into('<H', data, 152, 0x20b)
+        expected = hashlib.sha1(data).hexdigest()
+        signed = data + b'controlled certificate fixture'
+        struct.pack_into('<I', signed, 216, 1234)
+        struct.pack_into('<II', signed, 296, len(data), len(signed) - len(data))
+        self.assertTrue(material.unsigned_pe_match(signed, expected))
+        signed[600] = 1
+        self.assertFalse(material.unsigned_pe_match(signed, expected))
+        self.assertFalse(material.unsigned_pe_match(b'MZ truncated', expected))
     def test_product_metadata_removes_diagnostics_without_rewriting_module_coverage(self):
         original = [{'sbom': 'base.json', 'matchedBinaryNames': ['Qt6Core.dll', 'Qt6Test.dll', 'qoffscreen.dll'],
                      'packagesWithUnresolvedLicenseFields': ['Test_Attribution'], 'upstreamPackages': 12}]

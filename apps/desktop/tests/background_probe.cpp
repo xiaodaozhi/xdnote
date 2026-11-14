@@ -3,6 +3,7 @@
 #include "DocumentSession.h"
 #include "FileService.h"
 #include "GuiRuntime.h"
+#include "probe_fonts.h"
 #include "ImageAdmission.h"
 #include "MarkdownBridge.h"
 #include "MarkdownPreview.h"
@@ -167,6 +168,7 @@ QJsonObject preview(const QString &theme, const QString &evidence) {
 }
 int main(int argc, char **argv) {
     initializeGuiRuntime(); QApplication app(argc, argv); configureGuiApplication();
+    if (!installProbeFont()) return 2;
     app.setApplicationName("xdnote-background-probe"); app.setQuitOnLastWindowClosed(false);
     QJsonObject result;
     try {

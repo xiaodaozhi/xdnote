@@ -125,6 +125,8 @@ def main():
               'exclusions': ['visible compositor presentation', 'IME and real input latency', 'other processes',
                              'cold disk/cache conditions', 'installer/signing/lowest-OS acceptance'],
               'budget': 'measurement baseline only; no whole-application budget has been approved', 'scenarios': {}}
+    fixture_font = os.environ.get('XDNOTE_TEST_FONT_FILE')
+    report['diagnosticFont'] = {'file': Path(fixture_font).name, 'sha256': digest(Path(fixture_font))} if fixture_font else None
     for scenario in config['scenarios']:
         if a.scenario and scenario['name'] != a.scenario:
             continue
