@@ -17,6 +17,16 @@ from installer_common import digest
 from unix_binary_evidence import code_sections
 
 
+def runtime_notices(root=desktop.ROOT):
+    value = json.loads((root / 'tools/unix-runtime-notices.json').read_text(encoding='utf-8'))
+    if value.get('qtVersion') != desktop.DEPS['qt']['version']: raise ValueError('Runtime notice Qt version changed')
+    for record in value['runtime']:
+        source = (root / record['licenseFile']).resolve()
+        if not source.is_relative_to((root / 'tools/notices').resolve()) or digest(source) != record['sha256']:
+            raise ValueError('Pinned native runtime license changed')
+    return value
+
+
 def inventory(root):
     return [{'path': path.relative_to(root).as_posix(), 'link': os.readlink(path)} if path.is_symlink()
             else {'path': path.relative_to(root).as_posix(), 'bytes': path.stat().st_size, 'sha256': digest(path)}
@@ -42,12 +52,14 @@ def locations(root, system):
 def material_evidence(root, qt, records, system):
     """Supplier hashes and executable code identity; rewritten data is separate."""
     bindir, plugins, libraries, notices = locations(root, system)
-    supplier = {}
+    supplier = {}; upstream_packages = []; runtime = runtime_notices()
     for record in records:
         raw = notices / 'licenses/qt' / record['sbom']
         if digest(raw) != record['sha256'] or digest(qt / 'sbom' / record['sbom']) != record['sha256']:
             raise ValueError('Upstream SBOM changed')
-        for item in json.loads(raw.read_text(encoding='utf-8')).get('files', []):
+        sbom = json.loads(raw.read_text(encoding='utf-8'))
+        upstream_packages.extend({'sbom': record['sbom'], **item} for item in sbom.get('packages', []))
+        for item in sbom.get('files', []):
             name = item.get('fileName', '').removeprefix('./')
             if Path(name).is_absolute() or '..' in Path(name).parts: raise ValueError('Unbounded supplier path')
             supplier[name] = {'sbom': record['sbom'], 'spdxId': item['SPDXID'],
@@ -75,6 +87,10 @@ def material_evidence(root, qt, records, system):
                 source = desktop.ROOT / ('LICENSE' if relative == 'Apache-2.0.txt' else relative)
             elif relative.startswith('qt/') and path.name in {r['sbom'] for r in records}:
                 source = qt / 'sbom' / path.name
+            elif relative == 'native-runtime/manifest.json':
+                source = desktop.ROOT / 'tools/unix-runtime-notices.json'
+            elif relative.startswith('native-runtime/') and path.name in {Path(r['licenseFile']).name for r in runtime['runtime']}:
+                source = desktop.ROOT / next(r['licenseFile'] for r in runtime['runtime'] if Path(r['licenseFile']).name == path.name)
             elif relative == 'DESIGN-ATTRIBUTION.txt':
                 if 'CC BY 4.0' not in path.read_text(encoding='utf-8'): raise ValueError('Design attribution missing')
             elif relative != 'qt/UPSTREAM-NOTICES.txt':
@@ -96,10 +112,25 @@ def material_evidence(root, qt, records, system):
                 name = origin.relative_to(qt).as_posix()
                 record.update(sdkFile=name, sdkSha256=digest(origin), byteIdenticalToSdk=digest(origin) == item['sha256'])
                 if deploy.binary(path, system):
-                    before, after = code_sections(origin.read_bytes()), code_sections(path.read_bytes())
+                    try:
+                        before, after = code_sections(origin.read_bytes()), code_sections(path.read_bytes())
+                    except ValueError as error:
+                        raise ValueError('Native section evidence failed for ' + item['path'] + ': ' + str(error)) from error
                     if before != after: raise ValueError('Deployed Qt executable sections differ: ' + item['path'])
-                    if name not in supplier: raise ValueError('Qt binary lacks exact SPDX file evidence: ' + name)
-                    record.update(supplier=supplier[name], executableSections=after, executableSectionsMatchSdk=True,
+                    if name in supplier:
+                        record['supplier'] = supplier[name]
+                    elif origin.name.startswith(('libQt', 'Qt')) or path.is_relative_to(plugins):
+                        raise ValueError('Qt binary lacks exact SPDX file evidence: ' + name)
+                    else:
+                        dependency = next((r for r in runtime['runtime'] if origin.name in r['sdkFiles'] and r['platform'] == system), None)
+                        if dependency is None: raise ValueError('Unrecorded SDK native dependency: ' + name)
+                        material = notices / 'licenses/native-runtime' / Path(dependency['licenseFile']).name
+                        if not material.is_file() or digest(material) != dependency['sha256']: raise ValueError('Native runtime license missing or changed')
+                        record.update(kind='SDK third-party native dependency', dependency=dependency, exactSpdxFileAvailable=False, licenseOptions='see original supplier license and embedded third-party notices',
+                                      upstreamPackageCandidates=[p for p in upstream_packages if 'icu' in origin.name.lower() and 'icu' in p.get('name', '').lower()],
+                                      pending='review exact third-party distribution scope and supplier license material')
+                    record.update(nativeSections=after, nativeSectionsMatchSdk=True,
+                                  sectionScope='read-only data-only ELF payload' if any(k.startswith('elf-readonly-data:') for k in after) else 'executable instructions',
                                   transformations='directory-local rpath and imports; macdeployqt/ad-hoc seal on macOS; no claim of complete file-byte equivalence')
         result.append(dict(item, evidence=record))
     return {'ok': True, 'files': result, 'qtModules': records, 'licenseReviewComplete': False, 'releaseReady': False,
@@ -131,6 +162,7 @@ def run_probe(root, build, qt, evidence, system, harness):
     probe = harness / 'xdnote_deployment_probe'
     shutil.copy2(build / probe.name, probe)
     (harness / 'xdnote-resource-helper').symlink_to(bindir / 'xdnote-resource-helper')
+    (harness / 'qt.conf').write_text('[Paths]\nPrefix=' + str(root) + '\nPlugins=' + str(plugins) + '\nLibraries=' + str(libraries) + '\n', encoding='utf-8')
     backend = harness / 'platforms' / ('libqoffscreen.so' if system == 'Linux' else 'libqoffscreen.dylib')
     backend.parent.mkdir()
     shutil.copy2(qt / 'plugins/platforms' / backend.name, backend)
@@ -171,6 +203,12 @@ def prepare(build, qt, root):
         shutil.copy2(desktop.ROOT / 'THIRD_PARTY_NOTICES.md', licenses / 'THIRD_PARTY_NOTICES.md')
         (licenses / 'DESIGN-ATTRIBUTION.txt').write_text('xdnote 项目及其贡献者；https://github.com/xiaodaozhi/xdnote\n文档与原创设计：CC BY 4.0；https://creativecommons.org/licenses/by/4.0/\n', encoding='utf-8')
         records = deploy.collect_qt_notices(qt, notices, names)
+        runtime = runtime_notices()
+        relevant = [r for r in runtime['runtime'] if r['platform'] == system and any((root / 'lib' / name).is_file() for name in r['sdkFiles'])]
+        if relevant:
+            target = licenses / 'native-runtime'; target.mkdir()
+            shutil.copy2(desktop.ROOT / 'tools/unix-runtime-notices.json', target / 'manifest.json')
+            for record in relevant: shutil.copy2(desktop.ROOT / record['licenseFile'], target / Path(record['licenseFile']).name)
         if system == 'Darwin':
             deploy.inspect(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', root / 'xdnote.app'])
             deploy.inspect(['/usr/bin/codesign', '--verify', '--deep', '--strict', root / 'xdnote.app'])
@@ -205,6 +243,7 @@ def validate_install(payload, destination, build, qt, metadata):
         user_install.checked_installation(destination)
         for phase in ('installed', 'upgraded'):
             if phase == 'upgraded': steps.append(user_install.install(payload, destination, apply=True, registration=False))
+            if system == 'Darwin': deploy.inspect(['/usr/bin/codesign', '--verify', '--deep', '--strict', destination / 'xdnote.app'])
             probes.extend(smoke(destination, build, qt, evidence / phase, system))
         bindir, _, _, _ = locations(destination, system)
         application = bindir / 'xdnote'; original = application.read_bytes()

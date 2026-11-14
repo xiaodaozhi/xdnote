@@ -12,7 +12,7 @@ python scripts/product_deployment_unix.py --build-dir <成功构建目录> --qt-
 
 封存前检查真实传递依赖、原始许可和实际文件；macOS 许可放在 `.app/Contents/Resources/licenses` 中，Linux 放在产品根目录 `licenses`。旁边的 evidence 目录保存清单、逐文件材料、明暗独立窗口与工作区截图及运行报告。无 Qt Test 依赖的外部部署探针和 offscreen 插件只存在于临时诊断目录，探针使用产品内的 Qt 与资源助手，验证自建图片、原文编辑／撤销／保存以及唯一会话接管，并核对实际加载位置和运行前后的产品摘要。临时探针退出后删除，不进入产品或证据工件。
 
-Qt 库经过加载路径修正和 macOS 重新封印，最终摘要可能与 SDK 不同。逐文件保留 SDK 原始摘要、SPDX 文件声明、交付摘要及两者的可执行节摘要对照，不把代码节一致扩展为整个文件一致或签名信任链结论。完整发行许可仍按[分发证据](distribution-audit.md)核验。
+Qt 库经过加载路径修正和 macOS 重新封印，最终摘要可能与 SDK 不同。逐文件保留 SDK 原始摘要、SPDX 文件声明、交付摘要及两者的可执行节摘要对照（ICU 纯数据 ELF 核对只读数据节），不把代码节一致扩展为整个文件一致或签名信任链结论。完整发行许可仍按[分发证据](distribution-audit.md)核验。
 
 同一入口提供 `--payload <已封存产品目录> --audit <evidence/inventory.json> --destination <build 下的新安装验证目录>`，执行安装／升级后的明暗探针、修改文件和未知文件拒绝维护、卸载及自建数据保留。只操作专用目录，系统注册关闭；含未知文件时保持原安装不变，测试只移除自己创建的未知样本后继续卸载。
 

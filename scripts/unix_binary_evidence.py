@@ -1,4 +1,4 @@
-"""Compare executable sections before/after deployment, without running code."""
+"""Compare instructions or data-only ELF payloads, without running code."""
 import hashlib
 import struct
 
@@ -17,10 +17,15 @@ def code_sections(data):
         if data[4:6] != b'\x02\x01': raise ValueError('Expected little-endian ELF64')
         offset, = unpack('<Q', 40); width, count = unpack('<HH', 58)
         if width < 64 or count > 65535: raise ValueError('Invalid ELF section table')
+        readonly = {}
         for index in range(count):
             row = unpack('<IIQQQQIIQQ', offset + index * width)
             if row[1] == 1 and row[2] & 4:
                 result['elf:' + str(index)] = section(row[4], row[5])
+            elif row[1] == 1 and row[2] & 2 and not row[2] & 1 and row[5]:
+                readonly['elf-readonly-data:' + str(index)] = section(row[4], row[5])
+        # ICU ships its database as a data-only ELF, without instruction sections.
+        if not result: result = readonly
     elif data[:4] in (b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca'):
         endian = '>' if data[:4] == b'\xca\xfe\xba\xbe' else '<'
         count, = unpack(endian + 'I', 4)

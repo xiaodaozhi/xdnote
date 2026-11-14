@@ -28,6 +28,15 @@ def macho():
 
 
 class UnixProductTests(unittest.TestCase):
+    def test_pinned_native_runtime_license_rejects_modified_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root / 'tools/notices').mkdir(parents=True)
+            source = root / 'tools/notices/icu.txt'; source.write_bytes(b'original license')
+            config = {'qtVersion':product.desktop.DEPS['qt']['version'], 'runtime':[{'licenseFile':'tools/notices/icu.txt','sha256':product.digest(source)}]}
+            (root / 'tools/unix-runtime-notices.json').write_text(json.dumps(config))
+            product.runtime_notices(root); source.write_bytes(b'changed license')
+            with self.assertRaisesRegex(ValueError, 'license changed'): product.runtime_notices(root)
+
     def test_rejects_diagnostic_and_quick_artifacts_on_both_platforms(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -52,6 +61,13 @@ class UnixProductTests(unittest.TestCase):
         self.assertEqual(len(code_sections(fat)), 1)
         with self.assertRaises(ValueError): code_sections(fat[:-1])
 
+    def test_data_only_elf_compares_payload_and_detects_data_changes(self):
+        data = elf(); struct.pack_into('<Q', data, 72, 2)
+        original = code_sections(data)
+        self.assertTrue(next(iter(original)).startswith('elf-readonly-data:'))
+        data[-1] ^= 1; self.assertNotEqual(code_sections(data), original)
+        with self.assertRaises(ValueError): code_sections(data[:-1])
+
     def test_supplier_code_change_and_unclassified_files_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); stage, qt = root / 'stage', root / 'qt'
@@ -64,7 +80,7 @@ class UnixProductTests(unittest.TestCase):
             records = [{'sbom':'base.spdx.json','sha256':product.digest(qt / 'sbom/base.spdx.json')}]
             evidence = product.material_evidence(stage, qt, records, 'Linux')
             core = next(f for f in evidence['files'] if f['path'].startswith('lib/'))
-            self.assertFalse(core['evidence']['byteIdenticalToSdk']); self.assertTrue(core['evidence']['executableSectionsMatchSdk'])
+            self.assertFalse(core['evidence']['byteIdenticalToSdk']); self.assertTrue(core['evidence']['nativeSectionsMatchSdk'])
             deployed[-1] ^= 1; (stage / 'lib/libQt6Core.so.6.8.2').write_bytes(deployed)
             with self.assertRaisesRegex(ValueError, 'executable sections differ'): product.material_evidence(stage, qt, records, 'Linux')
             (stage / 'lib/libQt6Core.so.6.8.2').write_bytes(original); (stage / 'unexpected.bin').touch()

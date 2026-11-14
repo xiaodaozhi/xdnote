@@ -20,4 +20,6 @@ Windows 最低目标为 Windows 10 1809+。`D3Dcompiler_47.dll` 使用目标系�
 
 Windows 产品安装专项和 Unix 产品部署专项的诊断进程使用固定提交的 Noto Sans CJK SC 2.004 字体夹具，避免服务器缺少中文字体时跳过字形检查。`scripts/ci-font-materials.json` 锁定字体和原始 OFL 文本摘要，`prepare_ci_font.py` 准备到本项目 build；仅诊断入口通过应用级字体 API 显式载入，不安装到操作系统，不进入产品载荷。字体夹具结果不代替实际目标系统字体与可见桌面验收。
 
-Linux／macOS 的 `product_deployment_unix.py` 另保存纯产品逐文件材料：实际内容 SHA-256、内部相对链接目标、Qt SDK 路径和原始摘要、准确 SPDX 文件记录，以及目录内加载路径修正／ad-hoc 重新封印后的可执行节比较。`unix_binary_evidence.py` 只读解析 ELF64、Mach-O 及通用 Mach-O 的代码节；截断文件、没有代码节或代码节变化会使检查失败。数据、加载命令和签名的变化另行记录，不将代码节核对当作完整文件等同或签名验证。全部文件必须分类，上游模块未确定字段仍保留；最终源码、替换、运行库与正式发行核验仍保持待办。
+Linux／macOS 的 `product_deployment_unix.py` 另保存纯产品逐文件材料：实际内容 SHA-256、内部相对链接目标、Qt SDK 路径和原始摘要、准确 SPDX 文件记录，以及目录内加载路径修正／ad-hoc 重新封印后的可执行节比较。`unix_binary_evidence.py` 只读解析 ELF64、Mach-O 及通用 Mach-O 的代码节；ICU 这类纯数据 ELF 改为核对只读数据节，截断文件、没有可核对内容或节内容变化会使检查失败。数据、加载命令和签名的变化另行记录，不将代码节核对当作完整文件等同或签名验证。全部文件必须分类，上游模块未确定字段仍保留；最终源码、替换、运行库与正式发行核验仍保持待办。
+
+Linux SDK 附带的 ICU 73.2 三份库以 `tools/unix-runtime-notices.json` 单列来源和原始许可摘要，只有实际出现对应 SDK 文件时才随包收集。完整许可取自 ICU 官方固定提交，包含其第三方声明；不把 Qt 模块 SPDX 缺少精确 ICU 文件条目写成文件已被覆盖，也不把数据文件无指令节误判为损坏。ICU 仍按实际 SDK 字节、重定位后的节摘要和独立许可材料核对，最终编入范围及发行核验继续保留。

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "qtVersion": "6.8.2",
+  "runtime": [
+    {
+      "name": "ICU",
+      "version": "73.2",
+      "platform": "Linux",
+      "sdkFiles": [
+        "libicudata.so.73.2",
+        "libicui18n.so.73.2",
+        "libicuuc.so.73.2"
+      ],
+      "licenseFile": "tools/notices/ICU-73.2-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/unicode-org/icu/680f521746a3bd6a86f25f25ee50a62d88b489cf/icu4c/LICENSE",
+      "sourceCommit": "680f521746a3bd6a86f25f25ee50a62d88b489cf",
+      "sha256": "f3005e195ff74d8812cc1f182a1c446fab678d70a10e3dada497585befee5416",
+      "scope": "original ICU release license including its third-party notices; actual compiled-in scope remains subject to release review"
+    }
+  ]
+}
