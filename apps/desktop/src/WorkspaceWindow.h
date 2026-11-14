@@ -21,6 +21,7 @@ class ElidedLabel;
 class SharedButton;
 class NavigationStore;
 class WorkspaceNavigation;
+class WorkspaceWelcome;
 class WorkspaceResourceReader;
 class WorkspaceReferenceController;
 class FileManager;
@@ -52,6 +53,7 @@ signals:
     void openRequested(QString path);
     void chooseFileRequested();
     void chooseWorkspaceFileRequested();
+    void newDocumentRequested();
     void chooseDirectoryRequested();
     void closeCancelled();
     void quitRequested();
@@ -96,7 +98,8 @@ private:
     bool m_navigationVisible = false, m_searchTab = false;
     QLabel *m_treeState, *m_warning;
     QStackedWidget *m_pages = nullptr, *m_footers = nullptr;
-    QWidget *m_welcome, *m_emptyFooter;
+    WorkspaceWelcome *m_welcome;
+    QWidget *m_emptyFooter;
     WindowGeometry *m_geometry;
     QAction *m_emptyOpen, *m_emptyQuit;
     bool m_closingAll = false, m_sidebarWanted = true;

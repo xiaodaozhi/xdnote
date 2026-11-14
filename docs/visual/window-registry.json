@@ -64,7 +64,8 @@
         "settings-window",
         "source-find-replace",
         "bounded-full-text-search",
-        "explicit-session-recovery"
+        "explicit-session-recovery",
+        "welcome-current-design"
       ],
       "deferredStates": [
         "manual-new-tools-acceptance"
@@ -98,7 +99,8 @@
         "save-error",
         "content-zoom",
         "source-find-replace",
-        "recovered-draft-save-as"
+        "recovered-draft-save-as",
+        "new-untitled"
       ],
       "deferredStates": [
         "native-platform-acceptance"

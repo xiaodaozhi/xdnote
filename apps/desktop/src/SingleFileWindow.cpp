@@ -422,7 +422,7 @@ SingleFileWindow::~SingleFileWindow() {
     if (m_preview) disconnect(m_preview, nullptr, this, nullptr);
     if (m_footer && m_footer->parentWidget() != this) delete m_footer;
 }
-QString SingleFileWindow::displayPath() const { return m_document ? m_document->untitled()?QStringLiteral("恢复文档.md"):m_document->path() : m_openPath; }
+QString SingleFileWindow::displayPath() const { return m_document ? m_document->untitled() ? m_document->recoveredDraft() ? QStringLiteral("恢复文档.md") : QStringLiteral("未命名.md") : m_document->path() : m_openPath; }
 bool SingleFileWindow::canTransfer() const { return !m_imageImportPending && !m_prompting && !m_saveErrorDialog && m_document && !m_document->closed() && !m_document->saving() && !m_document->loading() && !m_document->session()->isBusy() && !m_document->session()->isComposing() && (!m_editor || !m_editor->dispatching()); }
 bool SingleFileWindow::embedIn(QWidget *parent) {
     if (!parent || m_embedded || (m_document && !canTransfer())) return false;
@@ -557,7 +557,7 @@ void SingleFileWindow::updateState() {
     m_exportButton->setEnabled(ready&&!m_exporting);m_focusAction->setEnabled(ready);m_outlineAction->setEnabled(ready);
     if (ready && m_document->saving()) m_observedSave = true;
     m_read->setEnabled(ready); m_edit->setEnabled(ready && !m_document->readOnly()); m_read->setChecked(m_mode == ViewMode::Reading); m_edit->setChecked(m_mode == ViewMode::Source); m_split->setEnabled(ready); m_split->setChecked(m_mode == ViewMode::Split);
-    m_pathButton->setEnabled(ready); m_zoomButton->setEnabled(ready); m_save->setEnabled(ready && !busy && (m_document->dirty() || m_document->conflict()) && (!m_document->readOnly() || m_document->conflict()));
+    m_pathButton->setEnabled(ready); m_zoomButton->setEnabled(ready); m_save->setEnabled(ready && !busy && (m_document->dirty() || m_document->conflict() || m_document->untitled()) && (!m_document->readOnly() || m_document->conflict()));
     m_save->setProperty("primary", m_editing && ready && m_document->dirty()); m_save->setText(busy ? QStringLiteral("处理中…") : QStringLiteral("保存")); static_cast<SharedButton *>(m_save)->setBusy(busy); m_save->update();
     m_saveSpinner->setVisible(busy); m_saveSpinner->setRunning(busy); m_statusIcon->setVisible(!busy);
     m_saveAction->setEnabled(m_save->isEnabled()); m_saveAsAction->setEnabled(ready && !busy); m_reloadAction->setEnabled(ready && !busy && !m_document->untitled());
@@ -579,8 +579,8 @@ void SingleFileWindow::updateState() {
         const auto notice = m_appearanceError.isEmpty() ? m_geometryError : m_appearanceError;
         m_notice->setText(notice); m_banner->setVisible(!notice.isEmpty()); m_resolve->hide(); m_retry->hide(); m_later->hide(); return;
     }
-    m_header->setTitle(QFileInfo(m_document->path()).fileName(), m_document->dirty()); setWindowTitle(QFileInfo(m_document->path()).fileName() + QStringLiteral("[*] — xdnote")); setWindowModified(m_document->dirty());
-    m_path->setFullText(m_document->untitled()?QStringLiteral("恢复副本 · 请另存为"):QFileInfo(m_document->path()).path()); m_status->setFullText(m_document->statusText()); m_encoding->setText(m_document->bom() ? "UTF-8 BOM" : "UTF-8");
+    m_header->setTitle(QFileInfo(displayPath()).fileName(), m_document->dirty()); setWindowTitle(QFileInfo(displayPath()).fileName() + QStringLiteral("[*] — xdnote")); setWindowModified(m_document->dirty());
+    m_path->setFullText(m_document->untitled() ? m_document->recoveredDraft() ? QStringLiteral("恢复副本 · 请另存为") : QStringLiteral("尚未保存 · 首次保存时选择位置") : QFileInfo(m_document->path()).path()); m_status->setFullText(m_document->statusText()); m_encoding->setText(m_document->bom() ? "UTF-8 BOM" : "UTF-8");
     const bool warning = m_document->dirty() || m_document->conflict(); const bool error = m_document->hasError();
     const auto statusColor = busy || (m_document->readOnly() && !error && !warning) ? m_appearance->color("textSecondary") : m_appearance->semantic(error ? "error" : warning ? "warning" : "success");
     m_statusIcon->setProperty("semanticColor", statusColor.name());
@@ -611,7 +611,7 @@ void SingleFileWindow::chooseOpen() {
 }
 void SingleFileWindow::chooseSaveAs() {
     if (!m_document || m_document->saving() || m_document->loading()) return;
-    const auto path = QFileDialog::getSaveFileName(window(), QStringLiteral("另存为"), m_document->untitled()?QDir::home().filePath(QStringLiteral("恢复文档.md")):m_document->path(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)"));
+    const auto path = QFileDialog::getSaveFileName(window(), QStringLiteral("另存为"), m_document->untitled()?QDir::home().filePath(displayPath()):m_document->path(), QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)"));
     InputModality::forApplication()->clear(); if (!path.isEmpty()) m_document->saveAs(path);
 }
 void SingleFileWindow::showSaveError() {

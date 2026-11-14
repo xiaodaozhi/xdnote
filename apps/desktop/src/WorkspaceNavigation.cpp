@@ -56,7 +56,7 @@ public:
     Appearance *appearance; NavigationStore *store;
 };
 }
-WorkspaceNavigation::WorkspaceNavigation(Appearance *appearance, NavigationStore *store, QWidget *parent) : QWidget(parent), m_appearance(appearance), m_store(store) {
+WorkspaceNavigation::WorkspaceNavigation(Appearance *appearance, NavigationStore *store, QWidget *parent, int previewLimit) : QWidget(parent), m_appearance(appearance), m_store(store), m_previewLimit(qMax(0, previewLimit)) {
     setObjectName("workspaceNavigation"); auto *layout = new QVBoxLayout(this); layout->setContentsMargins(nav("pageInset"), 16, nav("pageInset"), 16); layout->setSpacing(16);
     m_heading = new QLabel(this); m_heading->setObjectName("navigationHeading"); auto titleFont = uiFont(20); titleFont.setWeight(QFont::DemiBold); m_heading->setFont(titleFont); layout->addWidget(m_heading);
     m_summary = new QLabel(this); m_summary->setObjectName("navigationSummary"); m_summary->setFont(uiFont(12)); m_summary->setWordWrap(true); layout->addWidget(m_summary);
@@ -64,6 +64,12 @@ WorkspaceNavigation::WorkspaceNavigation(Appearance *appearance, NavigationStore
     list->toggleFavorite = [this](const QString &path) { m_store->setFavorite(path, !m_store->favorite(path)); };
     connect(list, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) { const auto path = item->data(pathRole).toString(); if (!path.isEmpty()) emit openRequested(path); });
     connect(list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) { const auto path = item->data(pathRole).toString(); if (!path.isEmpty()) emit openRequested(path); });
+    if (m_previewLimit) {
+        setObjectName("workspaceRecentPreview"); list->setObjectName("welcomeRecentResults"); list->setAccessibleName(QStringLiteral("最近文档预览"));
+        m_heading->hide(); m_summary->hide(); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
+        list->setResizeMode(QListView::Adjust); list->setWrapping(false);
+        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    }
     list->setContextMenuPolicy(Qt::CustomContextMenu); connect(list, &QWidget::customContextMenuRequested, this, [this](QPoint point) {
         if (point.x() >= 0) if (auto *item = m_list->itemAt(point)) m_list->setCurrentItem(item);
         const auto path = selectedPath(); if (path.isEmpty()) return; SharedMenu menu(m_appearance, m_list); auto *star = menu.addAction(m_store->favorite(path) ? QStringLiteral("取消收藏") : QStringLiteral("添加到收藏")); star->setObjectName("toggleFavorite"); star->setIcon(themedIcon("star", m_appearance->color("text")));
@@ -74,6 +80,10 @@ WorkspaceNavigation::WorkspaceNavigation(Appearance *appearance, NavigationStore
     m_empty = new QLabel(m_emptyPane); m_empty->setObjectName("navigationEmpty"); auto emptyFont = uiFont(24); emptyFont.setWeight(QFont::DemiBold); m_empty->setFont(emptyFont); m_empty->setAlignment(Qt::AlignCenter); m_empty->setWordWrap(true); emptyLayout->addWidget(m_empty);
     m_emptyDetails = new QLabel(m_emptyPane); m_emptyDetails->setObjectName("navigationEmptyDetails"); m_emptyDetails->setAlignment(Qt::AlignCenter); m_emptyDetails->setWordWrap(true); emptyLayout->addWidget(m_emptyDetails);
     auto *clear = new SharedButton(QStringLiteral("清除搜索"), "clearWorkspaceSearch", appearance, m_emptyPane); clear->setOutlined(true); m_clear = clear; emptyLayout->addWidget(clear, 0, Qt::AlignHCenter); emptyLayout->addStretch(); layout->addWidget(m_emptyPane, 1); connect(clear, &QPushButton::clicked, this, &WorkspaceNavigation::clearSearchRequested);
+    if (m_previewLimit) for (auto *child : findChildren<QObject *>()) {
+        const auto name = child->objectName();
+        if (child != m_list && !name.isEmpty() && !name.startsWith("qt_")) child->setObjectName("welcomePreview_" + name);
+    }
     connect(store, &NavigationStore::changed, this, &WorkspaceNavigation::refresh); connect(appearance, &Appearance::changed, this, &WorkspaceNavigation::applyAppearance); connect(InputModality::forApplication(), &InputModality::changed, list->viewport(), qOverload<>(&QWidget::update)); applyAppearance(); refresh();
 }
 void WorkspaceNavigation::applyAppearance() { setStyleSheet(QStringLiteral("QWidget#workspaceNavigation{background:%1} QLabel{background:transparent;color:%2} QLabel#navigationSummary,QLabel#navigationEmptyDetails{color:%3} QListWidget{background:%1;border:0;outline:0}").arg(m_appearance->color("background").name(), m_appearance->color("text").name(), m_appearance->color("textSecondary").name()) + themedScrollBars(m_appearance)); m_list->viewport()->update(); refresh(); }
@@ -92,16 +102,18 @@ void WorkspaceNavigation::refreshContent() {
     QStringList paths; const auto recent = m_store->recent();
     if (m_page == Page::Recent) for (const auto &entry : recent) paths.append(entry.path);
     else if (m_page == Page::Favorites) paths = m_store->favorites(); else paths = m_searchPaths;
+    if (m_previewLimit) paths = paths.mid(0, m_previewLimit);
     QString previousSection;
     for (const auto &path : paths) {
-        if (m_page == Page::Recent) for (const auto &entry : recent) if (entry.path == path) { const auto date = entry.opened.toLocalTime().date(); const auto section = date == QDate::currentDate() ? QStringLiteral("今天") : date == QDate::currentDate().addDays(-1) ? QStringLiteral("昨天") : QStringLiteral("更早"); if (section != previousSection) { auto *heading = new QListWidgetItem(section, m_list); heading->setData(sectionRole, true); heading->setFlags(Qt::NoItemFlags); previousSection = section; } break; }
+        if (!m_previewLimit && m_page == Page::Recent) for (const auto &entry : recent) if (entry.path == path) { const auto date = entry.opened.toLocalTime().date(); const auto section = date == QDate::currentDate() ? QStringLiteral("今天") : date == QDate::currentDate().addDays(-1) ? QStringLiteral("昨天") : QStringLiteral("更早"); if (section != previousSection) { auto *heading = new QListWidgetItem(section, m_list); heading->setData(sectionRole, true); heading->setFlags(Qt::NoItemFlags); previousSection = section; } break; }
         const QFileInfo file(path); auto *item = new QListWidgetItem(file.fileName(), m_list); item->setData(pathRole, path); item->setToolTip(path);
         auto detail = m_root.isEmpty() ? QStringLiteral("文档") : QDir(m_root).relativeFilePath(file.path());
-        if (detail == ".") detail = QStringLiteral("文档"); else if (QDir::isAbsolutePath(detail) || detail == ".." || detail.startsWith("../")) detail = QStringLiteral("工作区外"); else detail = QStringLiteral("文档 / ") + detail.replace('/', QStringLiteral(" / "));
+        if (m_root.isEmpty() || detail == ".") detail = QStringLiteral("文档"); else if (QDir::isAbsolutePath(detail) || detail == ".." || detail.startsWith("../")) detail = QStringLiteral("工作区外"); else detail = QStringLiteral("文档 / ") + detail.replace('/', QStringLiteral(" / "));
         if (!file.exists()) detail += QStringLiteral(" · 文件已不存在"); item->setData(detailRole, detail);
         for (const auto &entry : recent) if (entry.path == path) { const auto local = entry.opened.toLocalTime(); item->setData(timeRole, local.date() == QDate::currentDate() ? local.toString("HH:mm") : local.toString("MM-dd HH:mm")); break; }
         item->setData(Qt::AccessibleTextRole, item->text() + QStringLiteral("，") + detail + (m_store->favorite(path) ? QStringLiteral("，已收藏") : QString())); if (path == selection) m_list->setCurrentItem(item);
     }
+    if (m_previewLimit) { const int height = qMax(1, int(paths.size())) * nav("resultRowHeight"); m_list->setFixedHeight(height); setFixedHeight(height); }
     m_list->verticalScrollBar()->setValue(scroll); const bool empty = paths.isEmpty(), searching = m_page == Page::Search && m_loading, incomplete = m_page == Page::Search && !m_searchWarning.isEmpty(); m_list->setVisible(!empty); m_emptyPane->setVisible(empty);
     m_empty->setText(m_page == Page::Recent ? QStringLiteral("还没有最近打开的文档") : m_page == Page::Favorites ? QStringLiteral("还没有收藏的文档") : searching ? QStringLiteral("正在按文件名搜索…") : incomplete ? QStringLiteral("搜索未完整完成") : QStringLiteral("没有找到匹配的文档"));
     m_emptyDetails->setText(m_page == Page::Recent ? QStringLiteral("打开一篇 Markdown 文档，稍后可以在这里继续。") : m_page == Page::Favorites ? QStringLiteral("在最近打开或文档菜单中添加收藏。") : searching ? QStringLiteral("正在检查工作区中的 Markdown 文件名。") : incomplete ? m_searchWarning : QStringLiteral("试试其他关键词。")); m_spinner->setVisible(searching); m_spinner->setRunning(searching); m_emptyIcon->setVisible(!searching); m_emptyIcon->setPixmap(themedIcon(m_page == Page::Recent ? "clock" : m_page == Page::Favorites ? "star" : "document-search", m_appearance->color("textSecondary")).pixmap(QSize(nav("emptyIconSize"), nav("emptyIconSize")), devicePixelRatioF()));

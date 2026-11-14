@@ -10,7 +10,7 @@ class WorkspaceNavigation final : public QWidget {
     Q_OBJECT
 public:
     enum class Page { Recent, Favorites, Search };
-    WorkspaceNavigation(Appearance *appearance, NavigationStore *store, QWidget *parent);
+    WorkspaceNavigation(Appearance *appearance, NavigationStore *store, QWidget *parent, int previewLimit = 0);
     void showPage(Page page, const QString &root);
     void showSearch(const QString &query, const QStringList &paths, const QString &warning, bool loading = false);
     Page page() const { return m_page; }
@@ -30,6 +30,7 @@ private:
     QStringList m_searchPaths;
     bool m_loading = false;
     bool m_refreshing = false, m_refreshAgain = false;
+    int m_previewLimit = 0;
     QLabel *m_heading, *m_summary, *m_empty, *m_emptyDetails, *m_emptyIcon;
     QWidget *m_emptyPane;
     SharedSpinner *m_spinner;

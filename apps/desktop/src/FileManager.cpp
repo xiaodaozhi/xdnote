@@ -33,6 +33,7 @@ QString FileDocument::statusText() const {
     if (m_conflict) return QStringLiteral("磁盘内容已变化");
     if (m_error) return m_automaticSave && m_lastSave.status != SaveStatus::Committed ? QStringLiteral("自动保存失败，已暂停；内容已保留") : QStringLiteral("保存或读取失败，内容已保留");
     if (dirty()) return QStringLiteral("未保存");
+    if (m_untitled && !m_recoveredDraft) return QStringLiteral("未命名");
     if (m_readOnly) return QStringLiteral("只读");
     return m_savedOnce ? QStringLiteral("已保存") : QStringLiteral("未修改");
 }
@@ -51,12 +52,17 @@ FileManager::FileManager(QObject *parent, std::function<void(SaveStage)> observe
     if (monitoring) m_poll.start();
 }
 void FileManager::createDraft(const QByteArray &utf8,const QUuid &intent,bool bom) {
+    prepareDraft(utf8, intent, bom, true);
+}
+void FileManager::createUntitled(const QUuid &intent) { prepareDraft({}, intent, false, false); }
+void FileManager::prepareDraft(const QByteArray &utf8, const QUuid &intent, bool bom, bool recovered) {
     bool valid=false;decodeUtf8Literal(utf8,&valid);
-    if(!valid||utf8.size()>DocumentSession::AdmissionSourceLimit||m_draftDirectories.size()>=128){emit openFailed(intent,{},QStringLiteral("恢复草稿内容无效或达到本次会话上限"));return;}
+    if(!valid||utf8.size()>DocumentSession::AdmissionSourceLimit||m_draftDirectories.size()>=128){emit openFailed(intent,{},QStringLiteral("临时文档内容无效或达到本次会话上限"));return;}
     auto directory=std::make_shared<QTemporaryDir>(QDir::tempPath()+"/xdnote-draft-XXXXXX");
     if(!directory->isValid()){emit openFailed(intent,{},QStringLiteral("无法准备恢复副本目录"));return;}
-    QFile file(directory->filePath(QStringLiteral("恢复文档.md")));if(!file.open(QIODevice::WriteOnly)){emit openFailed(intent,{},QStringLiteral("无法创建恢复副本"));return;}if(bom&&file.write("\xef\xbb\xbf",3)!=3){emit openFailed(intent,{},QStringLiteral("无法准备恢复副本编码"));return;}file.close();
-    m_draftDirectories.append(directory);m_draftRequests[intent]=utf8;open(directory->filePath(QStringLiteral("恢复文档.md")),intent);
+    const auto name = recovered ? QStringLiteral("恢复文档.md") : QStringLiteral("未命名.md");
+    QFile file(directory->filePath(name));if(!file.open(QIODevice::WriteOnly)){emit openFailed(intent,{},QStringLiteral("无法创建临时文档"));return;}if(bom&&file.write("\xef\xbb\xbf",3)!=3){emit openFailed(intent,{},QStringLiteral("无法准备临时文档编码"));return;}file.close();
+    m_draftDirectories.append(directory);m_draftRequests[intent]={utf8,recovered};open(directory->filePath(name),intent);
 }
 void FileManager::enqueue(std::function<void()> job) { m_jobs.push_back(std::move(job)); pump(); }
 void FileManager::pump() {
@@ -141,7 +147,7 @@ void FileManager::openRequest(const QString &path, const QUuid &intent, std::sha
                 const auto id = registered.session->documentId();
                 m_documents.insert(id, document);
                 connect(document, &QObject::destroyed, this, [this, id] { m_documents.remove(id); emit documentsChanged(); });
-                if(m_draftRequests.contains(intent)){document->m_untitled=true;const auto content=m_draftRequests.take(intent);document->session()->replace(0,0,decodeUtf8Literal(content),document->session()->revision());}
+                if(m_draftRequests.contains(intent)){const auto draft=m_draftRequests.take(intent);document->m_untitled=true;document->m_recoveredDraft=draft.recovered;document->session()->replace(0,0,decodeUtf8Literal(draft.content),document->session()->revision());}
                 emit documentsChanged();
                 emit opened(intent, document, false);
                 finish();

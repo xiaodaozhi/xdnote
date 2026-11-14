@@ -19,6 +19,8 @@
 #include "DocumentBreadcrumb.h"
 #include "NavigationStore.h"
 #include "WorkspaceNavigation.h"
+#include "WorkspaceWelcome.h"
+#include "WorkspaceSearch.h"
 #include "file_fixtures.h"
 #include <QApplication>
 #include <QScreen>
@@ -52,6 +54,9 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QSplitterHandle>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QHBoxLayout>
 #include <QAction>
 #include <QtMath>
 #ifdef Q_OS_WIN
@@ -114,6 +119,92 @@ protected:
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void emptyCaptionAndFlushTabsFollowTheDesign_data() {
+        QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark");
+    }
+    void emptyCaptionAndFlushTabsFollowTheDesign() {
+        QFETCH(QString, theme); QTemporaryDir dir; const auto path = dir.filePath("tab.md"); QVERIFY(fileFixtures::write(path, "# title"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        QVERIFY(workspace->windowAppearance()->setPreferences(theme, "graphite")); QTRY_VERIFY(workspace->windowGeometry()->initialized()); workspace->resize(1280, 820); QApplication::processEvents();
+        QVERIFY(!workspace->findChild<QPushButton *>("workspaceFullSearchButton"));
+        auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); auto *strip = workspace->findChild<QWidget *>("workspaceTabStrip");
+        auto *add = workspace->findChild<SharedButton *>("workspaceAddTab"); auto *header = workspace->findChild<QWidget *>("documentHeader"); QVERIFY(tabs && strip && add && header);
+        QCOMPARE(tabs->count(), 0); QVERIFY(!tabs->isVisible()); QVERIFY(!add->isVisible()); QVERIFY(strip->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QCOMPARE(workspace->childAt(QPoint(400, 24)), header); QCOMPARE(header->height(), 48);
+        auto *fullSearch = workspace->findChild<QAction *>("fullSearchAction"); auto *selector = workspace->findChild<SharedButton *>("workspaceSelector"); QVERIFY(fullSearch && selector && selector->menu());
+        QVERIFY(selector->menu()->actions().contains(fullSearch)); fullSearch->trigger(); auto *search = workspace->findChild<WorkspaceSearch *>(); QVERIFY(search && search->isVisible());
+        search->findChild<QPushButton *>("fullSearchBack")->click(); QVERIFY(!search->isVisible()); capture(workspace, "welcome-" + theme + "-empty-caption");
+        desktop.openInWorkspace(path, workspace); auto *pane = waitPane(workspace, path); QVERIFY(pane); QTRY_VERIFY(tabs->isVisible()); QVERIFY(add->isVisible()); QVERIFY(!strip->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QCOMPARE(tabs->mapTo(header, QPoint()).y(), 0); QCOMPARE(tabs->tabRect(0).top(), 0);
+        const auto image = tabs->grab().toImage(); QVERIFY(hasColorNear(image, QPointF(tabs->tabRect(0).center().x(), 0), workspace->windowAppearance()->color("border")));
+        QCOMPARE(tabs->tabButton(0, QTabBar::RightSide)->geometry().center().y(), add->mapTo(tabs, add->rect().center()).y()); capture(workspace, "welcome-" + theme + "-flush-tabs");
+        QPointer<SingleFileWindow> guarded = pane; pane->close(); QTRY_VERIFY(!guarded); QTRY_COMPARE(tabs->count(), 0);
+        QVERIFY(!tabs->isVisible()); QVERIFY(!add->isVisible()); QVERIFY(strip->testAttribute(Qt::WA_TransparentForMouseEvents)); QCOMPARE(workspace->childAt(QPoint(400, 24)), header);
+        workspace->findChild<SharedButton *>("workspaceRecent")->click(); QTRY_COMPARE(tabs->count(), 1); QVERIFY(tabs->isVisible()); QVERIFY(add->isVisible());
+        workspace->closePane(tabs->tabData(0).toMap().value("id").toUuid()); QTRY_COMPARE(tabs->count(), 0); QVERIFY(!add->isVisible());
+    }
+    void welcomeFollowsApprovedComposition_data() {
+        QTest::addColumn<QString>("theme"); QTest::addColumn<bool>("compact");
+        QTest::newRow("light") << QString("light") << false;
+        QTest::newRow("dark") << QString("dark") << false;
+        QTest::newRow("compact-light") << QString("light") << true;
+        QTest::newRow("compact-dark") << QString("dark") << true;
+    }
+    void welcomeFollowsApprovedComposition() {
+        QFETCH(QString, theme); QFETCH(bool, compact); QTemporaryDir dir;
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow();
+        QVERIFY(workspace->windowAppearance()->setPreferences(theme, "graphite")); QTRY_VERIFY(workspace->windowGeometry()->initialized());
+        workspace->resize(compact ? 960 : 1280, compact ? 640 : 820); QApplication::processEvents();
+        auto *welcome = workspace->findChild<WorkspaceWelcome *>(); QVERIFY(welcome && welcome->isVisible());
+        auto *panel = welcome->findChild<QWidget *>("welcomeContent"); auto *brand = welcome->findChild<QLabel *>("welcomeBrandMark");
+        auto *title = welcome->findChild<QLabel *>("welcomeHeading"); auto *description = welcome->findChild<QLabel *>("welcomeDescription");
+        auto *open = welcome->findChild<SharedButton *>("workspaceOpenFile"); auto *folder = welcome->findChild<SharedButton *>("workspaceOpenDirectory"); auto *create = welcome->findChild<SharedButton *>("workspaceNewDocument");
+        auto *empty = welcome->findChild<QLabel *>("welcomeEmptyRecent"); auto *scroll = welcome->findChild<QScrollArea *>();
+        QVERIFY(panel && brand && title && description && open && folder && create && empty && scroll); QVERIFY(!brand->pixmap().isNull());
+        QCOMPARE(title->text(), QStringLiteral("欢迎使用 xdnote")); QCOMPARE(description->text(), QStringLiteral("打开一个文件，开始阅读与写作。"));
+        QCOMPARE(title->font().pixelSize(), 24); QCOMPARE(description->font().pixelSize(), 16); QCOMPARE(open->text(), QStringLiteral("打开文件")); QCOMPARE(folder->text(), QStringLiteral("打开文件夹"));
+        const auto centerX = [panel](QWidget *widget) { return widget->mapTo(panel, widget->rect().center()).x(); };
+        for (auto *button : {open, folder, create}) { QCOMPARE(button->height(), 32); QCOMPARE(button->width(), 192); QVERIFY(qAbs(centerX(button) - panel->rect().center().x()) <= 1); }
+        QCOMPARE(open->geometry().left(), folder->geometry().left()); QCOMPARE(open->geometry().right(), folder->geometry().right());
+        QCOMPARE(open->geometry().left(), create->geometry().left()); QCOMPARE(open->geometry().right(), create->geometry().right());
+        QVERIFY(qAbs(centerX(brand) - centerX(open)) <= 1); QVERIFY(brand->geometry().bottom() < title->geometry().top());
+        QVERIFY(title->geometry().bottom() < description->geometry().top()); QVERIFY(description->geometry().bottom() < open->geometry().top());
+        QCOMPARE(folder->geometry().top() - open->geometry().bottom() - 1, 8); QCOMPARE(create->geometry().top() - folder->geometry().bottom() - 1, 8);
+        QVERIFY(panel->width() <= 480); QCOMPARE(scroll->horizontalScrollBar()->maximum(), 0); QVERIFY(empty->isVisible()); QCOMPARE(empty->text(), QStringLiteral("暂无最近文件"));
+        capture(workspace, "welcome-" + theme + (compact ? "-compact" : "-empty"));
+        auto *navigation = desktop.findChild<NavigationStore *>(); QVERIFY(navigation);
+        for (const auto &name : {QStringLiteral("更早的文档.md"), QStringLiteral("Markdown 使用手册.md"), QStringLiteral("写作，从这里开始.md"), QStringLiteral("产品计划.md")}) {
+            const auto path = dir.filePath(name); QVERIFY(fileFixtures::write(path, "# document")); QVERIFY(navigation->recordOpen(path));
+        }
+        auto *recent = welcome->findChild<QListWidget *>("welcomeRecentResults"); QVERIFY(recent); QTRY_COMPARE(recent->count(), 3); QVERIFY(recent->isVisible()); QVERIFY(!empty->isVisible());
+        QTRY_VERIFY(recent->parentWidget()->height() >= 3 * 64); QTRY_VERIFY(recent->viewport()->height() >= 3 * 64);
+        QTRY_VERIFY(recent->mapTo(panel, recent->rect().bottomRight()).y() <= panel->rect().bottom());
+        auto *recentHeader = welcome->findChild<QHBoxLayout *>("welcomeRecentHeaderRow"); QVERIFY(recentHeader);
+        const auto rowBounds = [&] { const auto row = recent->visualItemRect(recent->item(0)); return QRect(recent->viewport()->mapTo(panel, row.topLeft()), row.size()); };
+        QTRY_COMPARE(rowBounds().left(), recentHeader->geometry().left()); QTRY_COMPARE(rowBounds().right(), recentHeader->geometry().right());
+        QCOMPARE(recent->item(0)->data(Qt::UserRole + 1).toString(), QStringLiteral("文档"));
+        QCOMPARE(recent->item(0)->text(), QStringLiteral("产品计划.md")); capture(workspace, "welcome-" + theme + (compact ? "-compact-recent" : "-recent"));
+        QTest::mouseMove(recent->viewport(), recent->visualItemRect(recent->item(0)).center()); QApplication::processEvents();
+        capture(workspace, "welcome-" + theme + (compact ? "-compact-recent-hover" : "-recent-hover"));
+        QTest::mouseClick(welcome->findChild<SharedButton *>("welcomeAllRecent"), Qt::LeftButton); QVERIFY(!welcome->isVisible());
+        auto *all = workspace->findChild<QListWidget *>("navigationResults"); QVERIFY(all && all->count() >= 4); QCOMPARE(workspace->panes().size(), 0);
+    }
+    void welcomeNewDocumentUsesStandaloneAndFirstSaveProtection() {
+        QTemporaryDir dir; FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        auto *create = workspace->findChild<SharedButton *>("workspaceNewDocument"); QVERIFY(create); QTest::mouseClick(create, Qt::LeftButton);
+        const auto untitled = []()->SingleFileWindow * { for (auto *widget : QApplication::topLevelWidgets()) if (auto *pane = qobject_cast<SingleFileWindow *>(widget)) if (pane->document() && pane->document()->untitled() && !pane->document()->recoveredDraft()) return pane; return nullptr; };
+        QTRY_VERIFY(untitled()); auto *pane = untitled(); auto *document = pane->document(); auto *session = document->session();
+        QVERIFY(!pane->embedded()); QVERIFY(workspace->panes().isEmpty()); QCOMPARE(pane->displayPath(), QStringLiteral("未命名.md"));
+        QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Source); QVERIFY(!document->dirty()); QCOMPARE(document->statusText(), QStringLiteral("未命名"));
+        QVERIFY(pane->findChild<QAction *>("saveAction")->isEnabled()); QVERIFY(session->snapshot().utf8.isEmpty());
+        QCOMPARE(session->replace(0, 0, QStringLiteral("新想法 😀"), session->revision()), EditResult::Applied); QVERIFY(document->dirty());
+        QCOMPARE(session->undo(), EditResult::Applied); QVERIFY(!document->dirty()); QCOMPARE(session->redo(), EditResult::Applied);
+        QTimer::singleShot(0, pane, [] { if (auto *dialog = QApplication::activeModalWidget()) { if (auto *cancel = dialog->findChild<QPushButton *>("choice0")) cancel->click(); else qobject_cast<QDialog *>(dialog)->reject(); } });
+        pane->close(); QVERIFY(pane->isVisible()); QVERIFY(document->dirty());
+        const auto path = dir.filePath(QStringLiteral("新笔记.md")); QVERIFY(document->saveAs(path)); QTRY_VERIFY(!document->saving());
+        QVERIFY(!document->untitled()); QVERIFY(!document->dirty()); QCOMPARE(document->session(), session); QCOMPARE(disk(path), QStringLiteral("新想法 😀").toUtf8());
+        QCOMPARE(pane->displayPath(), path); QCOMPARE(workspace->panes().size(), 0);
+    }
     void filePickerRoutesMenusToStandaloneAndPlusOnlyToInternalTabs_data() {
         QTest::addColumn<int>("entry"); QTest::addColumn<bool>("inside");
         for (int entry = 0; entry < 3; ++entry) for (bool inside : {false, true})
@@ -129,7 +220,7 @@ private slots:
         QVERIFY(fileFixtures::write(base, "base")); QVERIFY(fileFixtures::write(path, "chosen"));
         FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
         SingleFileWindow *source = nullptr;
-        if (entry == 1) { desktop.openInWorkspace(base, workspace); source = waitPane(workspace, base); QVERIFY(source); }
+        if (entry != 0) { desktop.openInWorkspace(base, workspace); source = waitPane(workspace, base); QVERIFY(source); }
         // A controlled Qt dialog, never the operating system's file picker.
         QStringList selected; QTimer select; select.setInterval(20);
         connect(&select, &QTimer::timeout, &select, [&] {
@@ -150,8 +241,8 @@ private slots:
         else workspace->findChild<SharedButton *>("workspaceAddTab")->click();
         select.stop(); QCOMPARE(selected, QStringList{path});
         if (entry == 2 && inside) QVERIFY(waitPane(workspace, path)); else QVERIFY(waitStandalone(path));
-        QCOMPARE(workspace->panes().size(), (entry == 1 ? 1 : 0) + (entry == 2 && inside ? 1 : 0));
-        QCOMPARE(desktop.findChild<FileManager *>()->documentCount(), entry == 1 ? 2 : 1);
+        QCOMPARE(workspace->panes().size(), (entry != 0 ? 1 : 0) + (entry == 2 && inside ? 1 : 0));
+        QCOMPARE(desktop.findChild<FileManager *>()->documentCount(), entry != 0 ? 2 : 1);
     }
     void outsideNavigationAndDropsReuseStandaloneDirtySession() {
         QTemporaryDir dir, outside; const auto a = dir.filePath("inside.md"), b = outside.filePath("outside.md");
@@ -650,7 +741,7 @@ private slots:
         QCOMPARE(tabs->mapTo(workspace, QPoint()).x(), border->mapTo(workspace, QPoint()).x());
         auto *button = qobject_cast<SharedButton *>(tabs->tabButton(0, QTabBar::RightSide)); QVERIFY(button); QCOMPARE(button->size(), QSize(24, 24));
         const auto tab = tabs->tabRect(0); QVERIFY(tab.contains(button->geometry()));
-        QCOMPARE(button->geometry().center().y(), QRect(0, 6, tab.width(), tabs->height() - 6).center().y());
+        QCOMPARE(button->geometry().center().y(), QRect(0, 0, tab.width(), tabs->height()).center().y());
         QVERIFY(button->geometry().right() <= tab.right() - 7);
         for (const auto *theme : {"light", "dark"}) {
             QVERIFY(pane->appearance()->setPreferences(theme, "graphite"));
@@ -694,7 +785,7 @@ private slots:
                 return false;
             }
         } moves;
-        moves.expectedY = (tabs->height() + 6 - 24) / 2;
+        moves.expectedY = (tabs->height() - 24) / 2;
         for (int i = 0; i < tabs->count(); ++i) tabs->tabButton(i, QTabBar::RightSide)->installEventFilter(&moves);
         const auto check = [&] {
             for (int i = 0; i < tabs->count(); ++i) {
@@ -1131,7 +1222,7 @@ private slots:
         const auto divider = handle->grab().toImage(); const auto ratio = divider.devicePixelRatio(); QCOMPARE(divider.pixelColor(int((handle->width() / 2.0) * ratio), qRound(60 * ratio)), pane->appearance()->color("border")); QCOMPARE(divider.pixelColor(0, qRound(60 * ratio)), pane->appearance()->color("background"));
         const auto original = splitter->sizes(); QTest::mousePress(handle, Qt::LeftButton); QTest::mouseMove(handle, handle->rect().center() + QPoint(40, 0), 30); QTest::mouseRelease(handle, Qt::LeftButton); QVERIFY(splitter->sizes().first() != original.first()); splitter->setSizes(original);
         auto *tabs = workspace->findChild<QTabBar *>("workspaceTabs"); const auto tabImage = tabs->grab().toImage(); const auto active = tabs->tabRect(tabs->currentIndex()), inactive = tabs->tabRect(1 - tabs->currentIndex()); const auto border = pane->appearance()->color("border"), background = pane->appearance()->color("background");
-        QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), 6), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.left() + .5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.right() - .5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), background)); QVERIFY(!hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), border));
+        QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), 0), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.left() + .5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.right() - .5, 24), border)); QVERIFY(hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), background)); QVERIFY(!hasColorNear(tabImage, QPointF(active.center().x(), tabs->height() - 1), border));
         QVERIFY(hasColorNear(tabImage, QPointF(inactive.center().x(), tabs->height() - 1), border)); auto *header = workspace->findChild<QWidget *>("documentHeader"); auto *tabStrip = workspace->findChild<QWidget *>("workspaceTabStrip"); const auto headerImage = header->grab().toImage(); QVERIFY(hasColorNear(headerImage, QPointF(tabStrip->geometry().right() - 12, header->height() - 1), border));
         auto *edge = workspace->findChild<QWidget *>("workspaceSidebarBorder"); QVERIFY(edge); QCOMPARE(edge->height(), workspace->findChild<QWidget *>("workspaceSidebar")->height()); const auto edgeImage = edge->grab().toImage(); for (const int y : {2, edge->height() / 2, edge->height() - 3}) QVERIFY(hasColorNear(edgeImage, QPointF(0, y), border));
         capture(workspace, theme + "-split");
