@@ -10,6 +10,7 @@
 #include "MarkdownPreview.h"
 #include "FileService.h"
 #include "Appearance.h"
+#include "Preferences.h"
 #include "SharedWidgets.h"
 #include "GuiRuntime.h"
 #include "InputModality.h"
@@ -45,6 +46,7 @@
 #include <QFileDialog>
 #include <QElapsedTimer>
 #include <QScopeGuard>
+#include <QScopedPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLineEdit>
@@ -112,6 +114,101 @@ protected:
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void filePickerRoutesMenusToStandaloneAndPlusOnlyToInternalTabs_data() {
+        QTest::addColumn<int>("entry"); QTest::addColumn<bool>("inside");
+        for (int entry = 0; entry < 3; ++entry) for (bool inside : {false, true})
+            QTest::newRow(qPrintable(QString("%1-%2").arg(entry).arg(inside))) << entry << inside;
+    }
+    void filePickerRoutesMenusToStandaloneAndPlusOnlyToInternalTabs() {
+        QFETCH(int, entry); QFETCH(bool, inside);
+        const bool native = QApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+        const auto restore = qScopeGuard([&] { QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, native); });
+        QTemporaryDir dir, outside; const auto base = dir.filePath("base.md");
+        const auto path = inside ? dir.filePath("chosen.md") : outside.filePath("chosen.md");
+        QVERIFY(fileFixtures::write(base, "base")); QVERIFY(fileFixtures::write(path, "chosen"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        SingleFileWindow *source = nullptr;
+        if (entry == 1) { desktop.openInWorkspace(base, workspace); source = waitPane(workspace, base); QVERIFY(source); }
+        // A controlled Qt dialog, never the operating system's file picker.
+        QStringList selected; QTimer select; select.setInterval(20);
+        connect(&select, &QTimer::timeout, &select, [&] {
+            for (auto *widget : QApplication::topLevelWidgets()) if (auto *dialog = qobject_cast<QFileDialog *>(widget); dialog && dialog->isVisible()) {
+                select.stop();
+                // As with the document-link fixture, clear the filename edit's
+                // focus before Qt 6.8.2 selectFile replaces its current text.
+                if (auto *focused = dialog->focusWidget()) focused->clearFocus();
+                dialog->selectFile(path); selected = dialog->selectedFiles();
+                if (selected == QStringList{path}) QMetaObject::invokeMethod(dialog, "accept", Qt::QueuedConnection); else dialog->reject();
+                return;
+            }
+        });
+        QTimer::singleShot(3000, &select, [] { if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) dialog->reject(); });
+        select.start();
+        if (entry == 0) workspace->findChild<SharedButton *>("workspaceOpenFile")->click();
+        else if (entry == 1) source->findChild<QAction *>("openAction")->trigger();
+        else workspace->findChild<SharedButton *>("workspaceAddTab")->click();
+        select.stop(); QCOMPARE(selected, QStringList{path});
+        if (entry == 2 && inside) QVERIFY(waitPane(workspace, path)); else QVERIFY(waitStandalone(path));
+        QCOMPARE(workspace->panes().size(), (entry == 1 ? 1 : 0) + (entry == 2 && inside ? 1 : 0));
+        QCOMPARE(desktop.findChild<FileManager *>()->documentCount(), entry == 1 ? 2 : 1);
+    }
+    void outsideNavigationAndDropsReuseStandaloneDirtySession() {
+        QTemporaryDir dir, outside; const auto a = dir.filePath("inside.md"), b = outside.filePath("outside.md");
+        QVERIFY(fileFixtures::write(a, "inside")); QVERIFY(fileFixtures::write(b, "outside"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        desktop.openInWorkspace(a, workspace); auto *source = waitPane(workspace, a); QVERIFY(source);
+        workspace->openRequested(b); auto *pane = waitStandalone(b); QVERIFY(pane); auto *session = pane->document()->session();
+        QCOMPARE(session->replace(0, 0, "dirty ", session->revision()), EditResult::Applied);
+        QVERIFY(fileFixtures::write(b, "disk changed")); source->openRequested(b); desktop.openInWorkspace(b, workspace);
+        auto *manager = desktop.findChild<FileManager *>(); QTRY_VERIFY(manager->idle());
+        QCOMPARE(manager->documentCount(), 2); QCOMPARE(workspace->panes().size(), 1);
+        QCOMPARE(waitStandalone(b), pane); QCOMPARE(session->snapshot().utf8, QByteArray("dirty outside"));
+        QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, QByteArray("outside"));
+    }
+    void externalPreferenceRequiresAnAlreadySelectedContainingWorkspace() {
+        QTemporaryDir dir, outside; const auto a = dir.filePath("inside.md"), b = outside.filePath("outside.md"), c = outside.filePath("no-root.md");
+        QVERIFY(fileFixtures::write(a, "inside")); QVERIFY(fileFixtures::write(b, "outside")); QVERIFY(fileFixtures::write(c, "rootless"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        QVERIFY(workspace->windowAppearance()->preferences()->setValues("desktop", {{"externalOpenTarget", "workspace-tab"}}));
+        desktop.openExternal(a); QVERIFY(waitPane(workspace, a)); desktop.openExternal(b); auto *pane = waitStandalone(b); QVERIFY(pane);
+        QVERIFY(!desktop.transferToWorkspace(pane, workspace)); QVERIFY(!workspace->addPane(pane)); QVERIFY(pane->isWindow());
+        auto *welcome = desktop.workspaceWindow(); desktop.openInWorkspace(c, welcome); QVERIFY(waitStandalone(c));
+        QVERIFY(welcome->panes().isEmpty()); QCOMPARE(workspace->panes().size(), 1); QVERIFY(welcome->rootPath().isEmpty());
+        QCOMPARE(workspace->windowAppearance()->preferences()->value("desktop", "externalOpenTarget").toString(), QString("workspace-tab"));
+    }
+    void pendingOpenRechecksMembershipAfterRootChanges() {
+        QTemporaryDir dir, replacement; const auto path = dir.filePath("pending.md"); QVERIFY(fileFixtures::write(path, "pending"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        auto *pool = QThreadPool::globalInstance(); const int previous = pool->maxThreadCount(); pool->setMaxThreadCount(1);
+        QSemaphore entered, release; auto worker = QtConcurrent::run([&] { entered.release(); release.acquire(); }); bool released = false;
+        const auto restore = qScopeGuard([&] { if (!released) release.release(); worker.waitForFinished(); pool->setMaxThreadCount(previous); });
+        QVERIFY(entered.tryAcquire(1, 5000)); desktop.openInWorkspace(path, workspace); workspace->setRootPath(replacement.path());
+        release.release(); released = true; worker.waitForFinished(); QVERIFY(waitStandalone(path)); QVERIFY(workspace->panes().isEmpty());
+        QCOMPARE(workspace->findChild<QTabBar *>("workspaceTabs")->count(), 0);
+    }
+    void pendingTransferRechecksChangedDestinationWithoutMovingBuffer() {
+        QTemporaryDir dir, replacement; const auto path = dir.filePath("pending.md"); QVERIFY(fileFixtures::write(path, "base"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); pane->setEditing(true);
+        auto *workspace = desktop.workspaceWindow(dir.path()); QInputMethodEvent preedit(QStringLiteral("pin"), {}); QApplication::sendEvent(pane->editor(), &preedit);
+        QVERIFY(!desktop.transferToWorkspace(pane, workspace)); workspace->setRootPath(replacement.path());
+        QInputMethodEvent commit; commit.setCommitString(QStringLiteral("中")); QApplication::sendEvent(pane->editor(), &commit);
+        QTRY_VERIFY(!pane->document()->session()->isComposing()); QTest::qWait(50); QVERIFY(pane->isWindow()); QVERIFY(workspace->panes().isEmpty());
+        QVERIFY(pane->document()->session()->snapshot().utf8.contains(QStringLiteral("中").toUtf8())); QCOMPARE(disk(path), QByteArray("base"));
+    }
+    void workspaceMembershipRejectsSiblingPrefixesAndLinkedParents() {
+        QTemporaryDir dir; const auto root = dir.filePath("notes"), outside = dir.filePath("notes-other");
+        QVERIFY(QDir().mkdir(root)); QVERIFY(QDir().mkdir(outside)); QVERIFY(fileFixtures::write(outside + "/outside.md", "outside"));
+#ifdef Q_OS_WIN
+        fileFixtures::Junction link; QVERIFY(link.create(root + "/link", outside));
+#else
+        QVERIFY(::symlink(outside.toUtf8().constData(), (root + "/link").toUtf8().constData()) == 0);
+#endif
+        Appearance appearance; WorkspaceTree tree(&appearance, nullptr); tree.setRootPath(root);
+        QVERIFY(tree.containsPath(root + "/missing.md")); QVERIFY(!tree.containsPath(root));
+        QVERIFY(!tree.containsPath(outside + "/outside.md")); QVERIFY(!tree.containsPath(root + "/../notes-other/outside.md"));
+        QVERIFY(!tree.containsPath(root + "/link/outside.md")); tree.setRootPath({}); QVERIFY(!tree.containsPath(root + "/missing.md"));
+    }
     void resourceMoveRewritesOnlyParsedTargetsAndRecovers() {
         QTemporaryDir dir; QVERIFY(dir.isValid()); QVERIFY(QDir().mkpath(dir.filePath("old"))); QVERIFY(QDir().mkpath(dir.filePath("nested")));
         const QByteArray a = "# A\r\n[B](../b.md \"keep title\")\r\n`[B](../b.md)`\r\n";
@@ -520,7 +617,7 @@ private slots:
             for (auto *label : footer->findChildren<QLabel *>()) if (!label->text().isEmpty() && label->font().pixelSize() != zoom->font().pixelSize()) return false;
             return zoom->geometry().top() >= 3 && footer->height() - zoom->geometry().bottom() - 1 >= 3;
         };
-        QApplication::processEvents(); QVERIFY(check()); QVERIFY(desktop.transferToWorkspace(pane)); QApplication::processEvents(); QVERIFY(check()); capture(pane->window(), "footer-compact");
+        QApplication::processEvents(); QVERIFY(check()); auto *workspace = desktop.workspaceWindow(dir.path()); QVERIFY(desktop.transferToWorkspace(pane, workspace)); QApplication::processEvents(); QVERIFY(check()); capture(pane->window(), "footer-compact");
     }
     void windowsWorkspaceNativeResizeAndRestoreKeepPreference() {
 #ifdef Q_OS_WIN
@@ -663,14 +760,14 @@ private slots:
         QTemporaryDir dir; const auto path = dir.filePath("keyboard.md"); QVERIFY(fileFixtures::write(path, "keyboard")); FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
         auto *read = pane->findChild<SharedButton *>("readMode"), *edit = pane->findChild<SharedButton *>("editMode"), *split = pane->findChild<SharedButton *>("splitMode"); QVERIFY(!split->isVisible());
         QTest::keyClick(read, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Source); QTest::keyClick(edit, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Reading);
-        QVERIFY(desktop.transferToWorkspace(pane)); QTest::keyClick(edit, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Split); QTest::keyClick(split, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Reading);
+        auto *workspace = desktop.workspaceWindow(dir.path()); QVERIFY(desktop.transferToWorkspace(pane, workspace)); QTest::keyClick(edit, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Split); QTest::keyClick(split, Qt::Key_Right); QCOMPARE(pane->viewMode(), SingleFileWindow::ViewMode::Reading);
         QCOMPARE(pane->findChild<QWidget *>("modeSwitch")->font().pixelSize(), 14);
     }
     void directVisibleWindowDestructionFlushesControllersBeforeBaseTeardown() {
         FileManager manager; Appearance appearance; WindowGeometryStore store;
         auto *standalone = new SingleFileWindow(&manager, &appearance, &store); standalone->show(); QTRY_VERIFY(standalone->windowGeometry()->initialized()); QPointer<WindowGeometry> first = standalone->windowGeometry(); QVERIFY(first); delete standalone; QVERIFY(first.isNull()); QVERIFY(store.placement("standalone"));
-        auto *workspace = new WorkspaceWindow(&appearance, &store); workspace->show(); QTRY_VERIFY(workspace->windowGeometry()->initialized()); auto *header = workspace->findChild<QWidget *>("documentHeader"); QVERIFY(hasColorNear(header->grab().toImage(), QPointF(500, 47), appearance.color("border")));
-        auto *pane = new SingleFileWindow(&manager, &appearance, &store); QVERIFY(workspace->addPane(pane)); auto *welcome = pane->findChild<SharedButton *>("welcomeWorkspace"); QTRY_VERIFY(welcome->width() >= QFontMetricsF(welcome->font(), welcome).horizontalAdvance(welcome->text()) + 48); QSignalSpy chooseTab(workspace, &WorkspaceWindow::chooseFileRequested); auto *addTab = workspace->findChild<SharedButton *>("workspaceAddTab"); QTest::mouseClick(addTab, Qt::LeftButton); QCOMPARE(chooseTab.size(), 1); QTest::keyClick(addTab, Qt::Key_Tab); QVERIFY(InputModality::forApplication()->keyboardNavigation()); QPointer<WindowGeometry> second = workspace->windowGeometry(); QPointer<SingleFileWindow> child = pane; delete workspace; QVERIFY(second.isNull()); QVERIFY(child.isNull()); QVERIFY(store.placement("main"));
+        QScopedPointer<WorkspaceWindow> owner(new WorkspaceWindow(&appearance, &store)); auto *workspace = owner.data(); workspace->show(); QTRY_VERIFY(workspace->windowGeometry()->initialized()); auto *header = workspace->findChild<QWidget *>("documentHeader"); QVERIFY(hasColorNear(header->grab().toImage(), QPointF(500, 47), appearance.color("border")));
+        auto *pane = new SingleFileWindow(&manager, &appearance, &store); QVERIFY(workspace->addPane(pane)); auto *welcome = pane->findChild<SharedButton *>("welcomeWorkspace"); QTRY_VERIFY(welcome->width() >= QFontMetricsF(welcome->font(), welcome).horizontalAdvance(welcome->text()) + 48); QSignalSpy chooseTab(workspace, &WorkspaceWindow::chooseWorkspaceFileRequested); auto *addTab = workspace->findChild<SharedButton *>("workspaceAddTab"); QTest::mouseClick(addTab, Qt::LeftButton); QCOMPARE(chooseTab.size(), 1); QTest::keyClick(addTab, Qt::Key_Tab); QVERIFY(InputModality::forApplication()->keyboardNavigation()); QPointer<WindowGeometry> second = workspace->windowGeometry(); QPointer<SingleFileWindow> child = pane; owner.reset(); QVERIFY(second.isNull()); QVERIFY(child.isNull()); QVERIFY(store.placement("main"));
     }
     void documentInitializationToleratesSynchronousWindowWarning() {
         QTemporaryDir dir; const auto path = dir.filePath("reentrant.md"); QVERIFY(fileFixtures::write(path, "hello"));
@@ -724,7 +821,8 @@ private slots:
         QTemporaryDir dir; const auto path = dir.filePath(QStringLiteral("接管.md")); QByteArray original; for (int i = 0; i < 150; ++i) original += "line\n"; QVERIFY(fileFixtures::write(path, original));
         FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); pane->setEditing(true); auto *editor = pane->editor(); auto *session = pane->document()->session(); const auto id = session->documentId();
         QCOMPARE(session->replace(0, 0, "dirty\n", session->revision()), EditResult::Applied); editor->send(SCI_SETSEL, 3, 9); editor->send(SCI_SETFIRSTVISIBLELINE, 20); const auto line = editor->send(SCI_GETFIRSTVISIBLELINE);
-        QVERIFY(desktop.transferToWorkspace(pane)); QVERIFY(pane->embedded()); auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window()); QVERIFY(workspace); QVERIFY(workspace->rootPath().isEmpty()); QCOMPARE(workspace->tree()->state(), WorkspaceTree::State::Unselected);
+        QVERIFY(!desktop.transferToWorkspace(pane)); QVERIFY(pane->isWindow());
+        auto *workspace = desktop.workspaceWindow(dir.path()); QVERIFY(desktop.transferToWorkspace(pane, workspace)); QVERIFY(pane->embedded()); QCOMPARE(pane->window(), static_cast<QWidget *>(workspace)); QCOMPARE(workspace->rootPath(), dir.path());
         QCOMPARE(pane->editor(), editor); QCOMPARE(pane->document()->session(), session); QCOMPARE(session->documentId(), id); QCOMPARE(editor->send(SCI_GETANCHOR), sptr_t(3)); QCOMPARE(editor->send(SCI_GETCURRENTPOS), sptr_t(9)); QCOMPARE(editor->send(SCI_GETFIRSTVISIBLELINE), line);
         QCOMPARE(session->snapshot().utf8, QByteArray("dirty\n") + original); QCOMPARE(disk(path), original); QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, original); QVERIFY(!QFileInfo::exists(dir.filePath("assets")));
     }
@@ -974,19 +1072,19 @@ private slots:
     void compositionDefersTransferAndClosedDestinationPreservesStandalone() {
         qInfo() << "transfer-fixture: starting";
         QTemporaryDir dir; const auto path = dir.filePath("composition.md"); QVERIFY(fileFixtures::write(path, "base")); FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane); pane->setEditing(true);
-        auto *target = desktop.workspaceWindow(); QInputMethodEvent preedit(QStringLiteral("pin"), {}); QApplication::sendEvent(pane->editor(), &preedit); QVERIFY(pane->document()->session()->isComposing()); QVERIFY(!desktop.transferToWorkspace(pane, target)); QVERIFY(pane->isWindow()); QVERIFY(target->panes().isEmpty());
+        auto *target = desktop.workspaceWindow(dir.path()); QInputMethodEvent preedit(QStringLiteral("pin"), {}); QApplication::sendEvent(pane->editor(), &preedit); QVERIFY(pane->document()->session()->isComposing()); QVERIFY(!desktop.transferToWorkspace(pane, target)); QVERIFY(pane->isWindow()); QVERIFY(target->panes().isEmpty());
         qInfo() << "transfer-fixture: preedit deferred";
         QInputMethodEvent commit; commit.setCommitString(QStringLiteral("中")); QApplication::sendEvent(pane->editor(), &commit); QTRY_VERIFY(pane->embedded()); QCOMPARE(pane->window(), static_cast<QWidget *>(target)); QVERIFY(pane->document()->session()->snapshot().utf8.contains(QStringLiteral("中").toUtf8()));
         qInfo() << "transfer-fixture: transferred";
         const auto otherPath = dir.filePath("preserve.md"); QVERIFY(fileFixtures::write(otherPath, "preserved")); desktop.open(otherPath); auto *other = waitStandalone(otherPath); QVERIFY(other);
-        auto *closing = desktop.workspaceWindow(dir.path()); qInfo() << "transfer-fixture: closing destination"; closing->close(); qInfo() << "transfer-fixture: destination closed"; QVERIFY(closing->closingWorkspace()); QVERIFY(!desktop.transferToWorkspace(other, closing)); QVERIFY(other->isWindow()); QCOMPARE(other->document()->session()->snapshot().utf8, QByteArray("preserved"));
+        QTemporaryDir otherRoot; auto *closing = desktop.workspaceWindow(otherRoot.path()); qInfo() << "transfer-fixture: closing destination"; closing->close(); qInfo() << "transfer-fixture: destination closed"; QVERIFY(closing->closingWorkspace()); QVERIFY(!desktop.transferToWorkspace(other, closing)); QVERIFY(other->isWindow()); QCOMPARE(other->document()->session()->snapshot().utf8, QByteArray("preserved"));
         qInfo() << "transfer-fixture: leaving scope";
     }
     void readingPositionSurvivesNativeHostTransfer() {
         QTemporaryDir dir; const auto path = dir.filePath("reader.md"); QByteArray text; for (int i = 0; i < 180; ++i) text += "paragraph\n\n"; QVERIFY(fileFixtures::write(path, text)); FileApplication desktop; desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
         QTRY_VERIFY(pane->preview()->view()->contentsSize().height() > 1000);
         pane->preview()->restoreReadingPosition({0, 500}); QTRY_VERIFY(pane->preview()->view()->readingPosition().y() >= 490);
-        const auto position = pane->preview()->readingPosition(); auto *view = pane->preview()->view(); QVERIFY(desktop.transferToWorkspace(pane)); QCOMPARE(pane->preview()->view(), view); QTest::qWait(200); QTRY_VERIFY(qAbs(view->readingPosition().y() - position.y()) <= 2); capture(pane->window(), "transferred-reader"); QCOMPARE(disk(path), text);
+        const auto position = pane->preview()->readingPosition(); auto *view = pane->preview()->view(); auto *workspace = desktop.workspaceWindow(dir.path()); QVERIFY(desktop.transferToWorkspace(pane, workspace)); QCOMPARE(pane->preview()->view(), view); QTest::qWait(200); QTRY_VERIFY(qAbs(view->readingPosition().y() - position.y()) <= 2); capture(pane->window(), "transferred-reader"); QCOMPARE(disk(path), text);
     }
     void failedOpenTabsOverflowAndKeyboardCloseRemainUsable_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
     void failedOpenTabsOverflowAndKeyboardCloseRemainUsable() {

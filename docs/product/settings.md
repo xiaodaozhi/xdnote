@@ -42,7 +42,7 @@
 
 | 字段／策略 | 默认值 | 生效边界 |
 | --- | --- | --- |
-| `desktop.externalOpenTarget` | `standalone` | 外部入口可选择 `standalone` 或 `workspace-tab`，仅影响新会话 |
+| `desktop.externalOpenTarget` | `standalone` | 外部入口可选择 `standalone` 或 `workspace-tab`；后者仅用于已打开且包含目标文件的工作区，否则使用独立窗口。菜单打开始终使用独立窗口，仅影响新会话 |
 | `desktop.standaloneDefaultMode` | `reading` | 可选 `reading`／`source`，已有文档视图不随设置跳转 |
 | 重复文件策略 | 激活已有会话 | 首版固定安全行为，不提供创建独立可覆盖副本的选项 |
 | `editor.wordWrap` | `true` | 仅影响源文呈现，不插入换行 |

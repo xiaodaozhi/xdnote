@@ -173,7 +173,7 @@ WorkspaceWindow::WorkspaceWindow(Appearance *appearance, WindowGeometryStore *st
     m_maintenance = new ResourceMaintenanceController(manager, this);
     setObjectName("workspaceWindow"); setAttribute(Qt::WA_DeleteOnClose); const auto tokens = mainTokens(); resize(tokens.value("defaultWidth").toInt(), tokens.value("defaultHeight").toInt()); setMinimumSize(tokens.value("minWidth").toInt(), tokens.value("minHeight").toInt()); setFont(uiFont(visualTokens().value("typography").toObject().value("ui").toObject().value("size").toInt()));
     auto *layout = new QVBoxLayout(this); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
-    m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabStrip = new WorkspaceTabStrip(windowAppearance(), m_header); auto *tabs = tabStrip->tabs; m_tabs = tabs; connect(tabStrip->add, &QPushButton::clicked, this, &WorkspaceWindow::chooseFileRequested); m_header->setCenter(tabStrip, tokens.value("sidebarWidth").toInt() - visualTokens()["controls"].toObject()["borderWidth"].toInt()); layout->addWidget(m_header);
+    m_header = new WindowTitleBar(windowAppearance(), this); setTitleBar(m_header); auto *tabStrip = new WorkspaceTabStrip(windowAppearance(), m_header); auto *tabs = tabStrip->tabs; m_tabs = tabs; connect(tabStrip->add, &QPushButton::clicked, this, &WorkspaceWindow::chooseWorkspaceFileRequested); m_header->setCenter(tabStrip, tokens.value("sidebarWidth").toInt() - visualTokens()["controls"].toObject()["borderWidth"].toInt()); layout->addWidget(m_header);
     tabs->closeRequested = [this](QUuid id) { closePane(id); }; connect(tabs, &QTabBar::currentChanged, this, [this] { m_navigationVisible = false; if (m_search) { const QSignalBlocker block(m_search); m_search->clear(); m_searchDelay.stop(); m_tree->cancelSearch(); } selectCurrent(); }); connect(tabs, &QTabBar::tabBarClicked, this, [this](int index) { if (index >= 0) activatePane(tabId(m_tabs, index)); });
     m_warning = new QLabel(this); m_warning->setObjectName("workspaceNotice"); m_warning->setWordWrap(true); m_warning->setTextFormat(Qt::PlainText); m_warning->setContentsMargins(16, 8, 16, 8); m_warning->hide(); layout->addWidget(m_warning);
     auto *content = new QWidget(this); auto *row = new QHBoxLayout(content); row->setContentsMargins(0, 0, 0, 0); row->setSpacing(0); layout->addWidget(content, 1);
@@ -271,6 +271,7 @@ int WorkspaceWindow::indexOf(const QUuid &id) const { for (int i = 0; i < m_tabs
 SingleFileWindow *WorkspaceWindow::activePane() const { return m_panes.value(tabId(m_tabs, m_tabs->currentIndex())); }
 QList<SingleFileWindow *> WorkspaceWindow::panes() const { QList<SingleFileWindow *> result; for (int i = 0; i < m_tabs->count(); ++i) if (auto *pane = m_panes.value(tabId(m_tabs, i)).data()) result.append(pane); return result; }
 bool WorkspaceWindow::addPane(SingleFileWindow *pane) {
+    if (pane && pane->document() && (pane->document()->untitled() || !m_tree->containsPath(pane->document()->path()))) return false;
     if (!pane || m_closingAll || m_panes.contains(pane->paneId()) || !pane->embedIn(m_pages)) return false;
     pane->setWorkspaceRoot(rootPath());
     pane->setWorkspaceResourceRoot(m_resourceRoot, rootPath());

@@ -51,6 +51,7 @@ signals:
     void referenceSourceRequested(QString path, QString identity, QByteArray sha256, qsizetype start, qsizetype end);
     void openRequested(QString path);
     void chooseFileRequested();
+    void chooseWorkspaceFileRequested();
     void chooseDirectoryRequested();
     void closeCancelled();
     void quitRequested();

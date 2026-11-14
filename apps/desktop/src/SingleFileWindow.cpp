@@ -607,7 +607,7 @@ void SingleFileWindow::updateState() {
 }
 void SingleFileWindow::chooseOpen() {
     const auto path = QFileDialog::getOpenFileName(window(), QStringLiteral("打开 Markdown 文件"), {}, QStringLiteral("Markdown 文档 (*.md *.markdown);;所有文件 (*)"));
-    InputModality::forApplication()->clear(); if (!path.isEmpty()) emit openRequested(path);
+    InputModality::forApplication()->clear(); if (!path.isEmpty()) emit standaloneOpenRequested(path);
 }
 void SingleFileWindow::chooseSaveAs() {
     if (!m_document || m_document->saving() || m_document->loading()) return;

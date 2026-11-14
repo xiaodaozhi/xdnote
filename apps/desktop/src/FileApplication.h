@@ -33,6 +33,7 @@ private:
     void activatePane(SingleFileWindow *pane);
     void trackWorkspaceRequest(const QUuid &intent, SingleFileWindow *pane, WorkspaceWindow *workspace);
     void chooseDirectory(WorkspaceWindow *owner);
+    void chooseFile(WorkspaceWindow *owner, bool workspaceTab);
     void retryTransfers();
     void advanceQuit();
     void captureRecovery();
