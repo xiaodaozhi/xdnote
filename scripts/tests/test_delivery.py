@@ -6,6 +6,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from contextlib import nullcontext
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import compatibility_audit as abi
@@ -75,6 +76,15 @@ class DeliveryTests(unittest.TestCase):
             result=archive.build(payload,metadata,compatibility,root/'developer.zip')
             self.assertTrue(result['archiveReproducible']); self.assertFalse(result['publicationAllowed']); self.assertFalse(result['releaseReady'])
             archive.build(payload,metadata,compatibility,root/'developer.tar.xz')
+
+    def test_extraction_directory_alias_is_compared_by_real_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve(); payload,metadata,_=self.fixture(root)
+            output=root/'archive.zip'; archive.write_archive(payload,metadata,output)
+            (root/'intermediate').mkdir(); (root/'extract').mkdir()
+            alias=root/'intermediate/../extract'
+            with patch.object(archive.tempfile,'TemporaryDirectory',return_value=nullcontext(str(alias))):
+                archive.check_extraction(payload,metadata,output)
 
     def test_qt_sources_or_stale_and_incomplete_inputs_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
