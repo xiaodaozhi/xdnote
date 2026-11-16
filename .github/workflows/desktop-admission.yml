@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, scroll-unix, settings-unix, tools-unix, tools-macos, installer-windows]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, installer-windows]
 
 permissions:
   contents: read
@@ -32,7 +32,7 @@ jobs:
         include: >-
           ${{ fromJSON((inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
-          (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos') &&
+          (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos' || inputs.scope == 'deployment-macos') &&
           '[{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           (inputs.scope == 'resources-unix' || inputs.scope == 'preview-unix' || inputs.scope == 'background-unix' || inputs.scope == 'ui-unix' || inputs.scope == 'deployment-unix' || inputs.scope == 'scroll-unix' || inputs.scope == 'settings-unix' || inputs.scope == 'tools-unix') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||

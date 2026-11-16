@@ -29,3 +29,5 @@ python scripts/developer_archive.py --root <纯产品目录> --audit <封存清�
 Windows 使用 ZIP，含 framework／SONAME 相对链接的 Unix 产品使用 tar.xz。输入必须与已封存清单逐项一致，兼容报告必须覆盖所有原生文件。源码／SDK 目录、编译头文件、静态库及嵌套压缩包被拒绝；许可文本与源码获取元数据继续保留。归档采用固定时间和规范化权限，重复生成核对 SHA-256；在自有临时目录解包后复核内容、链接与执行权限，macOS 再核对 ad-hoc 完整性。
 
 归档旁保存 `.manifest.json` 和 `.sha256`，记录提交、dirty 标志、实际文件摘要与开发限制。修改、遗漏或额外文件均失败；旧目标不覆盖。现有 Windows 产品安装专项及 Unix 部署专项生成并验证候选，仅上传清单、摘要和原始证据，完整许可与发行门槛满足前不上传归档本体，不自动发布。日常 main 提交仍只运行材料 CI。
+
+`deployment-unix` 覆盖三套 Unix 配置；`deployment-linux` 仅补验 Linux，`deployment-macos` 仅补验 macOS Intel／ARM。平台专属修正优先使用相应范围，不重复无影响的平台。临时目录按真实路径核对，支持系统目录别名，同时继续拒绝越界成员。

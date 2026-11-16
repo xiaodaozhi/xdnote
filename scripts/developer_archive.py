@@ -45,7 +45,7 @@ def write_archive(root, metadata, output):
 
 def check_extraction(root, metadata, archive):
     with tempfile.TemporaryDirectory(prefix='archive-check-',dir=archive.parent) as directory:
-        target=Path(directory)
+        target=Path(directory).resolve()
         if str(archive).endswith('.zip'):
             with zipfile.ZipFile(archive) as bundle:
                 if any(not (target/i.filename).resolve().is_relative_to(target) for i in bundle.infolist()): raise ValueError('Archive path escaped')

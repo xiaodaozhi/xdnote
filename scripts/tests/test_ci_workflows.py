@@ -19,7 +19,8 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, scroll-unix, settings-unix, tools-unix, tools-macos, installer-windows]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, installer-windows]", text)
+        self.assertIn("inputs.scope == 'deployment-macos'", text)
         self.assertIn("if: inputs.scope != 'installer-windows'", text)
         self.assertIn("if: inputs.scope == 'installer-windows'", text)
         self.assertIn("uses: ./.github/workflows/windows-installer.yml", text)
