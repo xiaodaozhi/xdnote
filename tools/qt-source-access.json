@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "qtVersion": "6.8.2",
+  "sourceCodeInRelease": false,
+  "modules": [
+    {
+      "module": "qtbase",
+      "version": "6.8.2",
+      "archive": "qtbase-everywhere-src-6.8.2.tar.xz",
+      "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qtbase-everywhere-src-6.8.2.tar.xz",
+      "sha256": "012043ce6d411e6e8a91fdc4e05e6bedcfa10fcb1347d3c33908f7fdd10dfe05"
+    },
+    {
+      "module": "qt5compat",
+      "version": "6.8.2",
+      "archive": "qt5compat-everywhere-src-6.8.2.tar.xz",
+      "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qt5compat-everywhere-src-6.8.2.tar.xz",
+      "sha256": "b53154bc95ec08e2ddc266bef250fbd684b4eb2df96bc8c27d26b1e953495316"
+    },
+    {
+      "module": "qtsvg",
+      "version": "6.8.2",
+      "archive": "qtsvg-everywhere-src-6.8.2.tar.xz",
+      "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qtsvg-everywhere-src-6.8.2.tar.xz",
+      "sha256": "aa2579f21ca66d19cbcf31d87e9067e07932635d36869c8239d4decd0a9dc1fa"
+    },
+    {
+      "module": "qtwayland",
+      "version": "6.8.2",
+      "archive": "qtwayland-everywhere-src-6.8.2.tar.xz",
+      "url": "https://download.qt.io/archive/qt/6.8/6.8.2/submodules/qtwayland-everywhere-src-6.8.2.tar.xz",
+      "sha256": "5e46157908295f2bf924462d8c0855b0508ba338ced9e810891fefa295dc9647"
+    }
+  ]
+}

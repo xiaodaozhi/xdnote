@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import runtime_materials
+import qt_source_access
 
 import desktop
 from deployment_inventory import dependency_closure, files_under
@@ -78,6 +80,9 @@ def prepare(source, source_audit, destination, toolchain, runtime, build, qt):
         'Installer: Inno Setup 6.7.3; see InnoSetup-license.txt.\n'
         'Uses RemObjects Pascal Script (https://www.remobjects.com/ps); '
         'see InnoSetup-PascalScript-license.md.\n', encoding='utf-8')
+    runtime_materials.collect(destination / 'licenses/rust-runtime')
+    records = product_qt_records(source_audit['qtSbom'], inventory(destination))
+    qt_source_access.collect(destination / 'licenses/qt', records)
     imports, missing = dependency_closure(destination, Path(os.environ['SystemRoot']) / 'System32')
     if missing:
         raise ValueError('Product-only payload has unresolved imports: ' + ', '.join(missing))

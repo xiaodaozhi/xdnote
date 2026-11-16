@@ -12,7 +12,7 @@ Qt DLL 和插件按照 SDK SPDX 中的相对路径对应到实际分发文件，
 
 模块级 SPDX 可能包含构建工具与未分发组件。精简产品元数据的 `matchedBinaryNames` 只列实际文件，移除的 Qt Test、offscreen 不再出现在其中；上游完整模块的包条目和未确定许可字段不据此删改，不把它们误报成产品实际引入的全部组件。
 
-应用主程序单列自有代码与静态链接的锁定 Rust 包、Scintilla 材料；Rust 标准库及编译器运行时、Qt 对应源码与用户替换等适用要求、实际编入的第三方组件和最终交付绑定仍需核验。Microsoft VC++ 协议仅用于其覆盖的运行库，不推定它覆盖其他 Microsoft 文件。
+应用主程序单列自有代码与静态链接的锁定 Rust 包、Scintilla 材料；Rust 标准库原始版权清单及运行时许可按固定编译器提交与文本摘要收集，包级材料不直接代表精确静态链接范围。实际编入的 Rust／运行时组件、Qt 对应源码与用户替换等适用要求和最终交付绑定仍需核验，方法见[开发交付](developer-delivery.md)。Microsoft VC++ 协议仅用于其覆盖的运行库，不推定它覆盖其他 Microsoft 文件。
 
 Windows 最低目标为 Windows 10 1809+。`D3Dcompiler_47.dll` 使用目标系统提供的版本，依据[微软组件说明](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/packaging/packaging-framework-packages?view=gdk-2604)；部署工具使用 `--no-system-d3d-compiler`、`--no-system-dxc-compiler`，不将宿主 Windows 的图形 DLL 复制进载荷。图形 API 继续由目标系统提供，静态导入与实际运行仍分别核对；最低系统真机验收单独记录。
 

@@ -8,6 +8,8 @@ from pathlib import Path, PurePosixPath
 from check_third_party_licenses import audit as source_audit
 from installer_common import ROOT, build_output, digest
 from installer_payload import verify_payload, product_qt_records
+import runtime_materials
+import qt_source_access
 
 
 def checked_bytes(path, expected):
@@ -77,6 +79,8 @@ def qt_files(root, qt, records, shipped):
 
 def audit(root, metadata, qt):
     verify_payload(root, metadata)
+    rust_runtime = runtime_materials.verify(root / 'licenses/rust-runtime')
+    source_access = qt_source_access.verify(root / 'licenses/qt')
     problems = source_audit(ROOT)
     if problems:
         raise ValueError('Source materials failed: ' + '; '.join(problems))
@@ -115,7 +119,11 @@ def audit(root, metadata, qt):
             record = {'kind': 'project application with static dependencies', 'projectCodeLicense': 'Apache-2.0',
                       'rustPackages': [{'name': item['name'], 'version': item['version'], 'license': item['selectedLicense']}
                                        for item in manifest['rust']], 'scintillaVersion': manifest['scintilla']['version'],
-                      'compilerRuntimeAndStandardLibraryReview': 'pending'}
+                      'compilerRuntimeAndStandardLibraryReview': 'pinned upstream material collected; exact static component scope pending'}
+        elif name.startswith('licenses/rust-runtime/'):
+            record = {'kind': 'pinned Rust standard-library/runtime material', 'toolchain': rust_runtime['version'], 'actualStaticComponentReviewComplete': False}
+        elif name in ('licenses/qt/source-access.json','licenses/qt/REPLACEMENT.md'):
+            record = {'kind': 'independent Qt source access or replacement instructions', 'sourceCodeInRelease': False}
         elif name.startswith('licenses/project-and-source-dependencies/'):
             source = ROOT / 'LICENSES' / name.removeprefix('licenses/project-and-source-dependencies/')
             checked_bytes(file, digest(source))
@@ -159,9 +167,10 @@ def audit(root, metadata, qt):
             'qtUnexplainedFileChecksumDifferences': unexplained,
             'pending': ['review Qt corresponding sources, replacement obligations and actual compiled-in components',
                         'review any unexplained upstream file-checksum differences; PE comparison does not validate signing trust',
-                        'Rust standard library and compiler runtime materials',
+                        'review exact Rust/runtime static component scope against preserved upstream materials',
                         'bind final platform delivery artifacts and complete release review'],
             'systemGraphicsPolicy': 'Windows 10+ supplies D3Dcompiler_47.dll; host system DLLs are not distributed',
+            'rustRuntimeMaterials': rust_runtime, 'qtSourceAccess': source_access,
             'licenseReviewComplete': False, 'releaseReady': False}
 
 

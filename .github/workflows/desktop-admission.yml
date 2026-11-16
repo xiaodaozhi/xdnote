@@ -105,6 +105,7 @@ jobs:
           python scripts/prepare_ci_font.py --output build/test-fonts
           export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
           python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
+          python scripts/compatibility_audit.py --root build/cycle-112-deployment/staging --report build/cycle-112-deployment/staging-evidence/compatibility.json
       - name: Validate installed developer payload without registration
         if: startsWith(inputs.scope, 'deployment-')
         shell: bash
@@ -113,6 +114,7 @@ jobs:
           if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
           export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
           python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --payload build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --destination build/cycle-112-deployment/installed-check
+          python scripts/developer_archive.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --compatibility build/cycle-112-deployment/staging-evidence/compatibility.json --output build/cycle-112-deployment/xdnote-${{ runner.os }}-${{ runner.arch }}-dev.tar.xz
       - name: Test document tools, recovery and shortcuts on Unix
         if: startsWith(inputs.scope, 'tools-')
         run: python scripts/desktop.py test --suite tools
@@ -190,6 +192,8 @@ jobs:
             build/desktop-*/evidence/
             build/cycle-112-deployment/staging-evidence/
             build/cycle-112-deployment/installed-check-evidence/
+            build/cycle-112-deployment/*.manifest.json
+            build/cycle-112-deployment/*.sha256
             build/test-fonts/receipt.json
             build/test-fonts/Noto-OFL.txt
           if-no-files-found: ignore
