@@ -30,6 +30,8 @@ def inspect(command):
 def staged_files(root):
     """Framework links are allowed only when relative and contained in staging."""
     for path in sorted(root.rglob("*")):
+        if path.is_junction():
+            raise ValueError("Staging cannot contain directory junctions")
         if path.is_symlink():
             target = os.readlink(path)
             if Path(target).is_absolute() or not path.resolve(strict=True).is_relative_to(root):

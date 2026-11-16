@@ -5,6 +5,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import product_deployment_unix as product
 from unix_binary_evidence import code_sections
@@ -69,6 +70,8 @@ class UnixProductTests(unittest.TestCase):
         with self.assertRaises(ValueError): code_sections(data[:-1])
 
     def test_supplier_code_change_and_unclassified_files_are_rejected(self):
+        self.enterContext(patch.object(product.runtime_materials,'verify',return_value={'version':'fixture'}))
+        self.enterContext(patch.object(product.qt_source_access,'verify',return_value={'sourceCodeInRelease':False}))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); stage, qt = root / 'stage', root / 'qt'
             for folder in (stage / 'lib', stage / 'licenses/qt', qt / 'lib', qt / 'sbom'): folder.mkdir(parents=True)

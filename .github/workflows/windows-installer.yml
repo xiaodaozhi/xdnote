@@ -106,6 +106,8 @@ jobs:
           python scripts/deployment_inventory.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --destination build/product-install/staging --redist-dir build/toolchain/windows-runtime/runtime
           python scripts/installer_payload.py --source build/product-install/staging --audit build/product-install/staging-evidence/inventory.json --destination build/product-install/payload --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/payload-inventory.json
           python scripts/distribution_audit.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/license-evidence.json
+          python scripts/compatibility_audit.py --root build/product-install/payload --report build/product-install/compatibility.json
+          python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-windows-x86_64-dev.zip
           python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
       - name: Validate actual native package roundtrip
         shell: pwsh
@@ -117,6 +119,7 @@ jobs:
           name: windows-product-install-evidence
           path: |
             build/product-install/*.json
+            build/product-install/*.sha256
             build/product-install/staging-evidence/
             build/product-install/roundtrip-evidence/
             build/desktop-admission/build-identity.json

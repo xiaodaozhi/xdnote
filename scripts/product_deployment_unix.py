@@ -11,6 +11,8 @@ import tempfile
 import desktop
 import deployment_unix as deploy
 import user_install
+import runtime_materials
+import qt_source_access
 from background_validation import execute, offscreen_environment
 from check_third_party_licenses import audit as source_audit
 from installer_common import digest
@@ -53,6 +55,8 @@ def material_evidence(root, qt, records, system):
     """Supplier hashes and executable code identity; rewritten data is separate."""
     bindir, plugins, libraries, notices = locations(root, system)
     supplier = {}; upstream_packages = []; runtime = runtime_notices()
+    rust_runtime = runtime_materials.verify(notices / 'licenses/rust-runtime')
+    source_access = qt_source_access.verify(notices / 'licenses/qt')
     for record in records:
         raw = notices / 'licenses/qt' / record['sbom']
         if digest(raw) != record['sha256'] or digest(qt / 'sbom' / record['sbom']) != record['sha256']:
@@ -77,12 +81,16 @@ def material_evidence(root, qt, records, system):
             origin = qt / 'plugins' / path.relative_to(plugins)
             record = {'kind': 'Qt plugin'}
         elif path.is_relative_to(bindir) and path.name in ('xdnote', 'xdnote-resource-helper'):
-            record = {'kind': 'project application or resource helper', 'staticDependencies': 'locked Rust and Scintilla source materials; standard library/runtime review pending'}
+            record = {'kind': 'project application or resource helper', 'staticDependencies': 'locked Rust/Scintilla and pinned toolchain materials collected; exact static component scope pending'}
         elif path.is_relative_to(notices / 'licenses'):
             relative = path.relative_to(notices / 'licenses').as_posix()
             source = None
             if relative.startswith('project-and-source-dependencies/'):
                 source = desktop.ROOT / 'LICENSES' / relative.removeprefix('project-and-source-dependencies/')
+            elif relative.startswith('rust-runtime/'):
+                pass # The complete pinned directory was verified above.
+            elif relative in ('qt/source-access.json', 'qt/REPLACEMENT.md'):
+                pass # The source locators and exact instruction bytes were verified above.
             elif relative in ('Apache-2.0.txt', 'THIRD_PARTY_NOTICES.md'):
                 source = desktop.ROOT / ('LICENSE' if relative == 'Apache-2.0.txt' else relative)
             elif relative.startswith('qt/') and path.name in {r['sbom'] for r in records}:
@@ -133,8 +141,8 @@ def material_evidence(root, qt, records, system):
                                   sectionScope='read-only data-only ELF payload' if any(k.startswith('elf-readonly-data:') for k in after) else 'executable instructions',
                                   transformations='directory-local rpath and imports; macdeployqt/ad-hoc seal on macOS; no claim of complete file-byte equivalence')
         result.append(dict(item, evidence=record))
-    return {'ok': True, 'files': result, 'qtModules': records, 'licenseReviewComplete': False, 'releaseReady': False,
-            'pending': ['final compiled-in third-party scope and license options', 'Qt corresponding source and replacement obligations', 'Rust standard library and compiler runtime', 'final release artifact review'],
+    return {'ok': True, 'files': result, 'qtModules': records, 'rustRuntimeMaterials': rust_runtime, 'qtSourceAccess': source_access, 'licenseReviewComplete': False, 'releaseReady': False,
+            'pending': ['final compiled-in third-party scope and license options', 'Qt corresponding source and replacement obligations', 'exact Rust/runtime static component scope', 'final release artifact review'],
             'scope': 'actual file hashes, supplier paths and code sections; metadata/signature changes recorded separately; no signing trust or final license determination'}
 
 
@@ -203,6 +211,8 @@ def prepare(build, qt, root):
         shutil.copy2(desktop.ROOT / 'THIRD_PARTY_NOTICES.md', licenses / 'THIRD_PARTY_NOTICES.md')
         (licenses / 'DESIGN-ATTRIBUTION.txt').write_text('xdnote 项目及其贡献者；https://github.com/xiaodaozhi/xdnote\n文档与原创设计：CC BY 4.0；https://creativecommons.org/licenses/by/4.0/\n', encoding='utf-8')
         records = deploy.collect_qt_notices(qt, notices, names)
+        runtime_materials.collect(licenses / 'rust-runtime')
+        qt_source_access.collect(licenses / 'qt', records)
         runtime = runtime_notices()
         relevant = [r for r in runtime['runtime'] if r['platform'] == system and any((root / 'lib' / name).is_file() for name in r['sdkFiles'])]
         if relevant:

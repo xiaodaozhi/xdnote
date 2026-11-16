@@ -28,7 +28,7 @@
 
 正式工程的自动化矩阵应覆盖 Windows x86_64、macOS x86_64、macOS arm64 和 Linux x86_64，并记录构建主机、SDK、目标系统、输出架构及依赖身份。Linux 至少有最低参考环境的构建验证；对可自动运行的 X11／Wayland 场景分别记录真实执行入口。
 
-现有 GitHub Actions 只验证材料和技术试验。Windows Server runner 不等于 Windows 10 1809 运行验收，macOS runner 标签不等于已核对输出架构和最低部署目标，Ubuntu 离屏测试也不等于 GNOME、Wayland 或 X11 的真实桌面验收。不能将当前 CI 描述为正式产品构建或已认证的支持矩阵。
+产品构建和受控部署专项分别记录实际文件、宿主与工具链，[静态兼容审计](developer-delivery.md)另行核对输出架构和系统／ABI 声明。Windows Server runner 不等于 Windows 10 1809 运行验收，macOS runner 标签本身不能代替输出核验，Ubuntu 离屏测试也不等于 GNOME、Wayland 或 X11 的真实桌面验收。不能将当前 CI 描述为已认证的支持矩阵或正式发行验收。
 
 按用户此前安排，macOS／Linux 实机、真实中文输入法和屏幕阅读器验收暂缓，继续推进自动化及工程准备。每次运行的证据和未执行项记录在 Issue、PR 或 CI；本页保留目标和通用约束。发布前仍须核对最低系统上的实际产品、安装和运行结果。
 
