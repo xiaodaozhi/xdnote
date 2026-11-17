@@ -16,7 +16,7 @@ from installer_common import ROOT, build_output, digest
 def selected_members(text):
     # Apple and GNU archive members; MSVC emits library:object in its map.
     result = set(re.findall(r'(?:lib)?xdnote_services\.(?:a|lib)\(([^)]+)\)', text))
-    result.update(re.findall(r'xdnote_services\.lib:([^\s]+)', text, re.IGNORECASE))
+    result.update(re.findall(r'\bxdnote_services(?:\.lib)?:([^\s]+)', text, re.IGNORECASE))
     if not result: raise ValueError('No Rust service archive members in link map')
     return sorted(result)
 
@@ -26,6 +26,10 @@ def classify(members, registry, toolchain_units=()):
     toolchain={'std','core','alloc','panic_unwind','panic_abort','compiler_builtins','unwind','rustc_std_workspace_core','rustc_std_workspace_alloc',
                'object','addr2line','gimli','rustc_demangle','hashbrown','memchr','libc','cfg_if','miniz_oxide','adler2','rustc_std_workspace_std','windows_link'}
     for member in members:
+        if re.fullmatch(r'[A-Za-z0-9_.-]+\.dll', member, re.IGNORECASE):
+            result.append({'member': member, 'kind': 'PE import descriptor', 'name': member,
+                           'materials': 'linker-selected import name; does not attribute the external DLL bytes or their obligations'})
+            continue
         match=re.match(r'([A-Za-z0-9_]+)-([0-9a-f]+)\.', member)
         if not match: result.append({'member':member,'kind':'unclassified native/archive object'}); continue
         name=match[1]

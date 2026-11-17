@@ -71,11 +71,7 @@ int main(int argc, char **argv) {
         require(waitFor(ready) && workspace->grab().save(args[3]), "workspace split preview failed");
         result["editUndoSaveIntegrity"] = true; result["uniqueSessionTransfer"] = true;
         result["nativeImages"] = pane->preview()->view()->admittedImageCount();
-        QString helperName = "xdnote-resource-helper";
-#ifdef Q_OS_WIN
-        helperName += ".exe";
-#endif
-        result["resourceHelper"] = QFileInfo(QCoreApplication::applicationDirPath() + '/' + helperName).canonicalFilePath();
+        result["resourceHelper"] = QFileInfo(QCoreApplication::applicationDirPath() + "/xdnote-resource-helper").canonicalFilePath();
 #ifdef Q_OS_UNIX
         Dl_info info{};
         require(dladdr(reinterpret_cast<void *>(&qVersion), &info) != 0, "actual Qt Core location unavailable");

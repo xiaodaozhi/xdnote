@@ -32,6 +32,8 @@ Linux SDK 附带的 ICU 73.2 三份库以 `tools/unix-runtime-notices.json` 单�
 
 桌面主程序生成 `xdnote-link.map`，可通过 `scripts/linkage_audit.py --build-dir <当前构建目录> --output <build 下的报告.json>` 将被链接器选择的 Rust 服务归档成员关联到固定 Cargo 材料或编译器自带 rlib 身份。原始 map 摘要、构建身份和成员列表共同保留；成员被选入不表示其中每一行、内嵌库或代码都未被优化移除，仍须复核对应组件范围。该报告不自动将完整许可或发行状态改为通过。
 
+MSVC map 的 `library:member` 可省略 `.lib` 后缀；其中 DLL 导入描述符单独分类，表示链接器选择的导入名称，不将外部 DLL 的内容或许可归属推定为已核对。
+
 macOS Sparkle 实际 framework／helper 的供应方文件、arm64 指令节及原始许可和构建回执纳入纯产品部署证据；重建签名数据与 SDK 字节一致分别记录。Qt 的隔离源码修改／替换探针通过实际加载路径及仅修改库导出的证明函数核对来源，并继续验证阅读、图片、编辑、撤销、保存及同会话接管；该工程验证不改变固定 Qt SDK，也不替代全部对应源码提供条件的最终核验。
 
 源码 Core 构建与替换入口覆盖 Windows／Linux／macOS，方法见[自行替换说明](qt-library-replacement.md)。PE／ELF／Mach-O 读取实际指令节，运行报告保留实际 Core 加载路径、证明函数、SDK 与输入摘要及维护拒绝；三平台的最终结论须以各次原始报告为准，不从某个平台通过推定其他平台或全部 Qt 模块通过。

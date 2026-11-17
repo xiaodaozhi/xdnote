@@ -59,7 +59,10 @@ def windows_smoke(installed, build, qt, output):
             if len(values) != 1: raise ValueError('Unexpected product probe output')
             value = values[0]
             if not value.get('ok') or not value.get('editUndoSaveIntegrity') or not value.get('uniqueSessionTransfer') or value.get('nativeImages') != 1: raise ValueError('Source replacement probe failed: ' + json.dumps(value))
-            if Path(value['qtCorePath']).resolve() != (installed / 'Qt6Core.dll').resolve() or Path(value['resourceHelper']).resolve() != (installed / 'xdnote-resource-helper.exe').resolve(): raise ValueError('Runtime escaped owned installation')
+            if Path(value['qtCorePath']).resolve() != (installed / 'Qt6Core.dll').resolve(): raise ValueError('Runtime escaped owned installation')
+            # Windows reads images through native handles in-process; the
+            # resource helper is deliberately a Unix-only product target.
+            if value.get('resourceHelper'): raise ValueError('Unexpected Windows resource helper')
             records.append(value)
     finally: probe.unlink(); backend.unlink()
     return records
