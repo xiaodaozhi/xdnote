@@ -1,8 +1,51 @@
 {
   "schemaVersion": 1,
-  "Windows": {"architecture": "x86_64", "target": "Windows 10 1809", "maximumPeVersion": [10, 0]},
-  "Linux": {"architecture": "x86_64", "target": "Ubuntu 22.04", "symbolVersions": {"GLIBC": [2, 35], "GLIBCXX": [3, 4, 30], "CXXABI": [1, 3, 13]}, "specialVersions": ["CXXABI_TM_1", "CXXABI_FLOAT128"]},
-  "Darwin": {"architectures": ["x86_64", "arm64"], "maximumDeploymentTarget": [13, 0, 0]},
-  "references": ["https://learn.microsoft.com/en-us/windows/win32/debug/pe-format", "https://gcc.gnu.org/onlinedocs/libstdc++/manual/abi.html", "https://github.com/apple-oss-distributions/cctools/blob/main/include/mach-o/loader.h"],
+  "Windows": {
+    "architecture": "x86_64",
+    "target": "Windows 10 1809",
+    "maximumPeVersion": [
+      10,
+      0
+    ]
+  },
+  "Linux": {
+    "architecture": "x86_64",
+    "target": "Ubuntu 22.04",
+    "symbolVersions": {
+      "GLIBC": [
+        2,
+        35
+      ],
+      "GLIBCXX": [
+        3,
+        4,
+        30
+      ],
+      "CXXABI": [
+        1,
+        3,
+        13
+      ]
+    },
+    "specialVersions": [
+      "CXXABI_TM_1",
+      "CXXABI_FLOAT128"
+    ]
+  },
+  "Darwin": {
+    "architectures": [
+      "arm64"
+    ],
+    "maximumDeploymentTarget": [
+      14,
+      0,
+      0
+    ]
+  },
+  "references": [
+    "https://learn.microsoft.com/en-us/windows/win32/debug/pe-format",
+    "https://gcc.gnu.org/onlinedocs/libstdc++/manual/abi.html",
+    "https://github.com/apple-oss-distributions/cctools/blob/main/include/mach-o/loader.h"
+  ],
   "scope": "static declarations and imported ABI requirements only; not minimum-OS or real-desktop acceptance"
 }

@@ -213,7 +213,7 @@ fn publisher_signature_authenticates_exact_bytes_and_local_key() {
 }
 
 #[test]
-fn all_four_platform_profiles_bind_their_own_package_and_minimum() {
+fn all_supported_platform_profiles_bind_their_own_package_and_minimum() {
     let value = candidate();
     for (platform, arch, kind, suffix, minimum) in [
         (
@@ -232,31 +232,17 @@ fn all_four_platform_profiles_bind_their_own_package_and_minimum() {
         ),
         (
             "macos",
-            "x86_64",
-            "app.zip",
-            "macos-x86_64.app.zip",
-            json!({"macos":"13.0"}),
-        ),
-        (
-            "macos",
-            "x86_64",
-            "dmg",
-            "macos-x86_64.dmg",
-            json!({"macos":"13.0"}),
-        ),
-        (
-            "macos",
             "arm64",
             "app.zip",
             "macos-arm64.app.zip",
-            json!({"macos":"13.0"}),
+            json!({"macos":"14.0"}),
         ),
         (
             "macos",
             "arm64",
             "dmg",
             "macos-arm64.dmg",
-            json!({"macos":"13.0"}),
+            json!({"macos":"14.0"}),
         ),
         (
             "linux",
@@ -297,6 +283,8 @@ fn all_four_platform_profiles_bind_their_own_package_and_minimum() {
         ("windows", "x86_64", "msix"),
         ("windows", "arm64", "exe"),
         ("linux", "arm64", "deb"),
+        ("macos", "x86_64", "app.zip"),
+        ("macos", "x86_64", "dmg"),
     ] {
         assert_eq!(
             inspect_release(
@@ -315,6 +303,13 @@ fn all_four_platform_profiles_bind_their_own_package_and_minimum() {
     let mut cli = value.clone();
     cli["component"] = json!("cli");
     assert_eq!(inspect(&cli).error, "unsupported_manifest");
+    let mut old_macos = value.clone();
+    for asset in old_macos["assets"].as_array_mut().unwrap() {
+        if asset["platform"] == "macos" {
+            asset["minimum_system"]["macos"] = json!("13.0");
+        }
+    }
+    assert_eq!(inspect(&old_macos).error, "asset_identity_mismatch");
 }
 
 #[test]
@@ -326,7 +321,7 @@ fn actual_development_identity_has_no_invented_release_counter() {
             0,
             "development",
             "macos",
-            "x86_64",
+            "arm64",
             "app.zip",
         );
         assert!(result.valid && result.newer, "{result:?}");

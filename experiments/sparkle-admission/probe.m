@@ -35,38 +35,6 @@ static SPUXdnoteDownloadProxyMode mode(NSString *name) {
     if ([name isEqualToString:@"custom"]) return SPUXdnoteDownloadProxyCustom;
     return (SPUXdnoteDownloadProxyMode)999;
 }
-// Research-only macOS 13 candidate using documented CFNetwork session keys.
-// It does not change the prepared Sparkle library's product-facing API.
-static NSURLSessionConfiguration *legacyConfiguration(NSURL *proxy) {
-    NSMutableDictionary *settings = [@{
-        (__bridge NSString *)kCFNetworkProxiesHTTPEnable: @0,
-        (__bridge NSString *)kCFNetworkProxiesHTTPSEnable: @0,
-        (__bridge NSString *)kCFNetworkProxiesSOCKSEnable: @0,
-        (__bridge NSString *)kCFNetworkProxiesFTPEnable: @0,
-        (__bridge NSString *)kCFNetworkProxiesProxyAutoConfigEnable: @0,
-        (__bridge NSString *)kCFNetworkProxiesProxyAutoDiscoveryEnable: @0,
-        (__bridge NSString *)kCFNetworkProxiesExceptionsList: @[],
-        (__bridge NSString *)kCFNetworkProxiesExcludeSimpleHostnames: @0
-    } mutableCopy];
-    if ([proxy.scheme isEqualToString:@"http"]) {
-        settings[(__bridge NSString *)kCFNetworkProxiesHTTPEnable] = @1;
-        settings[(__bridge NSString *)kCFNetworkProxiesHTTPProxy] = proxy.host;
-        settings[(__bridge NSString *)kCFNetworkProxiesHTTPPort] = proxy.port;
-        settings[(__bridge NSString *)kCFNetworkProxiesHTTPSEnable] = @1;
-        settings[(__bridge NSString *)kCFNetworkProxiesHTTPSProxy] = proxy.host;
-        settings[(__bridge NSString *)kCFNetworkProxiesHTTPSPort] = proxy.port;
-    } else {
-        settings[(__bridge NSString *)kCFNetworkProxiesSOCKSEnable] = @1;
-        settings[(__bridge NSString *)kCFNetworkProxiesSOCKSProxy] = proxy.host;
-        settings[(__bridge NSString *)kCFNetworkProxiesSOCKSPort] = proxy.port;
-    }
-    NSURL *target = [NSURL URLWithString:@"https://xdnote-sparkle-fixture.invalid/fixture"];
-    NSArray *routes = CFBridgingRelease(CFNetworkCopyProxiesForURL((__bridge CFURLRef)target, (__bridge CFDictionaryRef)settings));
-    check(routes.count == 1 && ![routes[0][(__bridge NSString *)kCFProxyTypeKey] isEqual:(__bridge NSString *)kCFProxyTypeNone], @"legacy-sole-proxy-route");
-    NSURLSessionConfiguration *configuration = SPUXdnoteCreateDownloadConfiguration(SPUXdnoteDownloadProxySystem, nil, NULL);
-    configuration.connectionProxyDictionary = settings;
-    return configuration;
-}
 int main(int argc, const char **argv) {
     @autoreleasepool {
         checks = [NSMutableArray array];
@@ -114,21 +82,14 @@ int main(int argc, const char **argv) {
             check(![updater xdnote_setDownloadProxyMode:SPUXdnoteDownloadProxySystem proxyURL:nil error:nil], @"immutable-after-start");
             report(@{@"ok": @YES, @"scope": @"native configuration only; no update check or installation", @"checks": checks}, 0);
         }
-        if (argc >= 4 && argc <= 5 && (strcmp(argv[1], "request") == 0 || strcmp(argv[1], "request-legacy") == 0)) {
+        if (argc >= 4 && argc <= 5 && strcmp(argv[1], "request") == 0) {
             NSURL *url = [NSURL URLWithString:@(argv[3])];
             NSURL *proxy = argc == 5 ? [NSURL URLWithString:@(argv[4])] : nil;
             check([url.scheme isEqualToString:@"https"] && url.port.intValue > 0 &&
                   ([url.host isEqualToString:@"127.0.0.1"] || (proxy != nil && [url.host isEqualToString:@"xdnote-sparkle-fixture.invalid"])), @"fixture-target-only");
             check(proxy == nil || [proxy.host isEqualToString:@"127.0.0.1"], @"loopback-proxy-only");
             NSError *error = nil;
-            NSURLSessionConfiguration *configuration;
-            if (strcmp(argv[1], "request-legacy") == 0) {
-                check(mode(@(argv[2])) == SPUXdnoteDownloadProxyCustom && proxy != nil &&
-                      ([proxy.scheme isEqualToString:@"http"] || [proxy.scheme isEqualToString:@"socks5"]), @"legacy-research-proxy");
-                configuration = legacyConfiguration(proxy);
-            } else {
-                configuration = SPUXdnoteCreateDownloadConfiguration(mode(@(argv[2])), proxy, &error);
-            }
+            NSURLSessionConfiguration *configuration = SPUXdnoteCreateDownloadConfiguration(mode(@(argv[2])), proxy, &error);
             check(configuration != nil, @"valid-request-policy");
             configuration.timeoutIntervalForRequest = 3;
             configuration.timeoutIntervalForResource = 5;

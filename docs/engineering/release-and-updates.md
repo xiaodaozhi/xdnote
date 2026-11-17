@@ -29,22 +29,21 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 `xdnote-update` 是不依赖 Qt 的 Rust 库，保持既定 `schema_version: 1` 清单及独立签名信封，尚无网络、文件写入、解包或安装入口。清单字段为 `product`、`version`、`channel`、`build`、`tag`、40 位小写十六进制 `commit`、固定 `repository`、完整 `assets` 和可选 `macos_appcast_url`。`component` 只允许省略或空串；不接受 CLI。`assets` 每项包含 `filename`、`platform`、`architecture`、`package_type`、`minimum_system`、`bytes`、小写 `sha256` 和固定版本的 `url`；未知字段、重复结构字段、缺失或重复目标均拒绝。
 
-四套平台配置的目标包型如下。它们仅定义候选识别和后续打包契约，不表示已有对应发行包，也不改变现有开发归档入口或其命名。文件名统一为 `xdnote-{version}-{后缀}`，下载 URL 严格绑定本仓库的 `releases/download/v{version}/{filename}`。
+三套平台配置的目标包型如下。它们仅定义候选识别和后续打包契约，不表示已有对应发行包，也不改变现有开发归档入口或其命名。文件名统一为 `xdnote-{version}-{后缀}`，下载 URL 严格绑定本仓库的 `releases/download/v{version}/{filename}`。
 
 | 配置／包型 | 文件后缀 | `minimum_system` 精确字段 |
 | --- | --- | --- |
 | Windows x86_64：zip／exe | `windows-x86_64.zip`／`windows-x86_64-setup.exe` | `windows: 10.0.17763` |
-| macOS x86_64：app.zip／dmg | `macos-x86_64.app.zip`／`macos-x86_64.dmg` | `macos: 13.0` |
-| macOS arm64：app.zip／dmg | `macos-arm64.app.zip`／`macos-arm64.dmg` | `macos: 13.0` |
+| macOS arm64：app.zip／dmg | `macos-arm64.app.zip`／`macos-arm64.dmg` | `macos: 14.0` |
 | Linux x86_64：tar.gz／deb | `linux-x86_64.tar.gz`／`ubuntu22.04-x86_64.deb` | `distribution: ubuntu`、`version: 22.04`、`glibc: 2.35`、`display_server: Wayland/X11` |
 
-清单须同时包含上述八项目标，包长在 1 字节至 2 GiB 内。系统字段是[既定平台目标](platform-support.md)的匹配信息，不是宿主探测或最低系统通过记录。macOS feed 若提供，必须绑定同一 tag 下的 `appcast.xml`；后续 Sparkle 接入仍须选择同一个版本与架构。MSIX 独立交由 Store，不在自更新目标中。
+清单须同时包含上述六项目标，包长在 1 字节至 2 GiB 内。系统字段是[既定平台目标](platform-support.md)的匹配信息，不是宿主探测或最低系统通过记录。macOS feed 若提供，必须绑定同一 tag 下的 `appcast.xml`；后续 Sparkle 接入仍须选择同一个版本与架构。MSIX 独立交由 Store，不在自更新目标中。
 
 版本的三个数字允许 0–65535，预发行序号和发行 build 为 1–65535。公开候选只接受 stable 或 `alpha.N`／`beta.N`／`rc.N`，不接受 build metadata 或 dev。当前开发安装器使用的 `0.1.0-dev.<12位提交号>`可作为本地比较基线，提交号不参与大小排序；开发渠道可显式传 `current_build=0` 表示尚无发行计数，正式渠道不允许零。接入产品时须读取真实构建身份，不创建虚构发行版本或将开发包改成自动安装候选。
 
 `inspect_release` 的 `valid` 仅表示结构和目标匹配。`verify_manifest` 使用调用方提供的本地可信 keyring 对原始字节认证；不得将下载得到的 keyring 传入。产品入口 `authenticate_release` 只使用编入库的 [update-trust.json](../../tools/update-trust.json)，当前为空。它仅为签名、版本及 build 均通过的新候选返回不可改写的 `AuthenticatedRelease`。该对象的 `verify_package` 逐块校验实际长度和 SHA-256，最多读到声明长度外一字节即拒绝；安装交接时仍须复验实际文件与运行身份。空生产 keyring 始终拒绝，私有签名夹具只编入单元测试，不进入生产信任材料。
 
-无需 Qt SDK 即可验证核心；Rust 版本遵循 [developer-build.md](developer-build.md)，Cargo 缓存和输出放在本项目 `build/`。完成 `cargo fetch --locked` 的显式准备后，运行 `cargo fmt --all -- --check`、`cargo clippy --locked --offline --workspace --all-targets -- -D warnings`、`cargo test --locked --offline --workspace`。CI 使用手动的 [Update core](../../.github/workflows/update-core.yml)，只检查 Rust 工作区与记录的依赖材料，不运行桌面矩阵或发布产品。覆盖候选／渠道、单调 build、四平台包型／最低目标、损坏或不可信签名、空信任根、长度／摘要与流读取失败；网络 TLS、活动文档、原生安装／恢复和真实平台继续单独验收。
+无需 Qt SDK 即可验证核心；Rust 版本遵循 [developer-build.md](developer-build.md)，Cargo 缓存和输出放在本项目 `build/`。完成 `cargo fetch --locked` 的显式准备后，运行 `cargo fmt --all -- --check`、`cargo clippy --locked --offline --workspace --all-targets -- -D warnings`、`cargo test --locked --offline --workspace`。CI 使用手动的 [Update core](../../.github/workflows/update-core.yml)，只检查 Rust 工作区与记录的依赖材料，不运行桌面矩阵或发布产品。覆盖候选／渠道、单调 build、三平台包型／最低目标、损坏或不可信签名、空信任根、长度／摘要与流读取失败；网络 TLS、活动文档、原生安装／恢复和真实平台继续单独验收。
 
 ## 主动检查的开发实现
 
@@ -58,15 +57,15 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 网络层已保留系统／直连／无凭据 HTTP 或 SOCKS5 自定义代理及 HTTPS 镜像校验，配置只在操作开始时快照生效；失败不会自动重试或改为直连。当前产品使用系统代理，尚未提供代理／镜像设置界面或持久化，不能把后台适配视为用户配置功能已交付。Windows 通过系统包身份查询隐藏并拒绝 GitHub 更新操作，仅确定 `APPMODEL_ERROR_NO_PACKAGE` 才走普通副本，其他结果保守按 Store 处理；没有编造 Store 地址。查询依据见[微软说明](https://learn.microsoft.com/en-us/windows/win32/api/appmodel/nf-appmodel-getcurrentpackagefullname)，实际签名包仍需另验。
 
-使用同一构建目录和 Qt SDK 执行 `python scripts/desktop.py test --suite updates`：固定离屏运行网络回执夹具、Rust ABI 及设置回归，证据进入 `evidence/updates/`。夹具覆盖成功／304、取消／重开、重复点击、分页／响应边界、TLS／限流／重定向、候选和资产绑定；合成回执不等于真实 HTTPS 服务器、代理路由或 Store 安装验收。桌面 CI 的手动 `scope=updates` 只补验四套默认配置的相同范围，保留未执行的人工视觉、真实网络和原生更新边界。
+使用同一构建目录和 Qt SDK 执行 `python scripts/desktop.py test --suite updates`：固定离屏运行网络回执夹具、Rust ABI 及设置回归，证据进入 `evidence/updates/`。夹具覆盖成功／304、取消／重开、重复点击、分页／响应边界、TLS／限流／重定向、候选和资产绑定；合成回执不等于真实 HTTPS 服务器、代理路由或 Store 安装验收。桌面 CI 的手动 `scope=updates` 只补验三套默认配置的相同范围，保留未执行的人工视觉、真实网络和原生更新边界。
 
 显式真实网络诊断使用同一构建的 `python scripts/desktop.py test --suite updates-live`，只请求固定公开仓库，输出实际状态／错误，不读取文档或偏好、不下载包、不安装，也不进入普通 CI。该入口的结果须单独记录；离屏夹具通过不能替代它，真实网络通过仍不代表所有代理／镜像或最低系统验收。
 
 ## macOS 原生实现
 
-采用 Sparkle 2.10.0 和既有受限代理适配，通过薄 Objective-C++ 桥接 Qt Widgets 统一状态。源码、补丁、资源、helper、签名工具及摘要锁定在本项目，覆盖已定 macOS 13+、Intel／ARM64；框架主库与代理适配分别按架构构建和准入，新增依赖后核对实际载荷与许可。实现依据见 [Sparkle 官方文档](https://sparkle-project.org/documentation/)。
+采用 Sparkle 2.10.0 和既有受限代理适配，通过薄 Objective-C++ 桥接 Qt Widgets 统一状态。源码、补丁、资源、helper、签名工具及摘要锁定在本项目，覆盖已定 macOS 14+、Apple Silicon arm64；框架主库与代理适配分别按架构构建和准入，新增依赖后核对实际载荷与许可。实现依据见 [Sparkle 官方文档](https://sparkle-project.org/documentation/)。
 
-macOS 13 同样必须支持自定义代理自动安装，不以手动入口或提高最低系统替代。固定依赖与独立探针见[原生更新网络准入](macos-update-transport.md)；旧 CFNetwork 会话接口作为 macOS 13 候选研究，新 Network API 的可用性不能代替最低系统验证。当前产品尚未链接 Sparkle，不能将 SDK 构建或新宿主上的兼容探针写成已完成安装更新。
+原生自动安装更新的准入从 macOS 14 开始，系统代理、直连及无凭据 HTTP CONNECT／SOCKS5 均使用已确认的受限适配；低于该范围不承诺原生自动安装，不继续以旧 CFNetwork 自定义代理方案扩展支持。固定依赖与独立探针见[原生更新网络准入](macos-update-transport.md)。当前产品尚未链接 Sparkle，不能将 SDK 构建或网络探针写成已完成安装更新。
 
 feed 只暴露已选定的同一候选，由 Sparkle 原生验证 feed／归档并处理实际替换，不声称 Sparkle 执行了额外 SHA-256。只读 DMG、App Translocation、未登记 `.app` 或缺少公钥使用手动入口。DMG 与 app.zip 应来自同一个已部署、完整性签名及核验的 `.app`，解包后另做重定位验证。
 

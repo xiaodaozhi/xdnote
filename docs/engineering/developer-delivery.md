@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | Windows x86_64 | PE32+ 架构、OS／子系统版本声明、普通与延迟导入 | 头部声明不能证明每个 API 在 Windows 10 1809 都存在，仍需最低系统运行 |
 | Linux x86_64 | ELF64 架构、导入、加载路径与所需符号版本；只读取 version needs，不把库自身导出的版本当成需求 | Ubuntu 22.04 参考 ABI 上限为 GLIBC 2.35、GLIBCXX 3.4.30、CXXABI 1.3.13；真实桌面、运行时动态加载及硬件能力另验 |
-| macOS Intel／ARM64 | 检查所有 Mach-O 切片、目标架构和最低部署声明，拒绝超过 macOS 13 的随包文件 | 当前 host 的架构必须存在；双架构库与两个原生候选分别核对，最低系统运行与签名身份另验 |
+| macOS ARM64 | 检查所有 Mach-O 切片、目标架构和最低部署声明，拒绝超过 macOS 14 的随包文件 | 仅接收 arm64 产品切片；上游通用 SDK 的实际部署须先按产品架构收敛，最低系统运行与签名身份另验 |
 
 未知符号版本、损坏或截断的头部、错误架构、缺失最低声明及超出目标要求会使检查失败。原有传递依赖闭包继续由部署入口核对，不以本项代替。依据见 [PE 格式](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)、[GCC ABI 表](https://gcc.gnu.org/onlinedocs/libstdc++/manual/abi.html)与 [Apple Mach-O 定义](https://github.com/apple-oss-distributions/cctools/blob/main/include/mach-o/loader.h)。
 
@@ -30,4 +30,4 @@ Windows 使用 ZIP，含 framework／SONAME 相对链接的 Unix 产品使用 ta
 
 归档旁保存 `.manifest.json` 和 `.sha256`，记录提交、dirty 标志、实际文件摘要与开发限制。修改、遗漏或额外文件均失败；旧目标不覆盖。现有 Windows 产品安装专项及 Unix 部署专项生成并验证候选，仅上传清单、摘要和原始证据，完整许可与发行门槛满足前不上传归档本体，不自动发布。日常 main 提交仍只运行材料 CI。
 
-`deployment-unix` 覆盖三套 Unix 配置；`deployment-linux` 仅补验 Linux，`deployment-macos` 仅补验 macOS Intel／ARM。平台专属修正优先使用相应范围，不重复无影响的平台。临时目录按真实路径核对，支持系统目录别名，同时继续拒绝越界成员。
+`deployment-unix` 覆盖 Linux 与 macOS ARM64 两套 Unix 配置；`deployment-linux` 仅补验 Linux，`deployment-macos` 仅补验 macOS ARM64。平台专属修正优先使用相应范围，不重复无影响的平台。临时目录按真实路径核对，支持系统目录别名，同时继续拒绝越界成员。

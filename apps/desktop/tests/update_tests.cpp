@@ -90,12 +90,11 @@ QByteArray manifest(const QString &version="0.2.0") {
     QJsonArray assets;
     const QList<QStringList> rows{
         {"windows","x86_64","zip","windows-x86_64.zip"},{"windows","x86_64","exe","windows-x86_64-setup.exe"},
-        {"macos","x86_64","app.zip","macos-x86_64.app.zip"},{"macos","x86_64","dmg","macos-x86_64.dmg"},
         {"macos","arm64","app.zip","macos-arm64.app.zip"},{"macos","arm64","dmg","macos-arm64.dmg"},
         {"linux","x86_64","tar.gz","linux-x86_64.tar.gz"},{"linux","x86_64","deb","ubuntu22.04-x86_64.deb"}};
     for (const auto &row:rows) {
         const auto filename="xdnote-"+version+"-"+row[3];
-        const QJsonObject minimum=row[0]=="windows"?QJsonObject{{"windows","10.0.17763"}}:row[0]=="macos"?QJsonObject{{"macos","13.0"}}:QJsonObject{{"distribution","ubuntu"},{"version","22.04"},{"glibc","2.35"},{"display_server","Wayland/X11"}};
+        const QJsonObject minimum=row[0]=="windows"?QJsonObject{{"windows","10.0.17763"}}:row[0]=="macos"?QJsonObject{{"macos","14.0"}}:QJsonObject{{"distribution","ubuntu"},{"version","22.04"},{"glibc","2.35"},{"display_server","Wayland/X11"}};
         assets.append(QJsonObject{{"filename",filename},{"platform",row[0]},{"architecture",row[1]},{"package_type",row[2]},
             {"minimum_system",minimum},{"bytes",12},{"sha256",QString(64,'a')},{"url","https://github.com/xiaodaozhi/xdnote/releases/download/v"+version+"/"+filename}});
     }

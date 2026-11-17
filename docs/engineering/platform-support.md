@@ -1,22 +1,22 @@
 # 平台目标与验证基线
 
-本页记录已授权的研发目标：Windows 最低大版本为 Windows 10；桌面 PC 采用 64 位 x86_64／AMD64，macOS 同时覆盖 Intel 与 Apple Silicon。其余最低版本与 Linux 图形环境按下表确定。它约束后续选型、构建和验收，不表示当前已有产品或这些环境已全部通过测试。
+本页记录已授权的研发目标：Windows 最低大版本为 Windows 10；桌面 PC 采用 64 位 x86_64／AMD64，macOS 采用 Apple Silicon arm64。其余最低版本与 Linux 图形环境按下表确定。它约束后续选型、构建和验收，不表示当前已有产品或这些环境已全部通过测试。
 
 ## 目标矩阵
 
 | 平台 | 最低目标与参考环境 | CPU 架构 | 图形环境 |
 | --- | --- | --- | --- |
 | Windows | Windows 10 1809 及以上，覆盖 Windows 11 | x86_64／AMD64 | Windows 原生桌面 |
-| macOS | macOS 13 及以上 | x86_64、arm64；分别构建和核验 | macOS 原生桌面 |
+| macOS | macOS 14 及以上 | Apple Silicon arm64 | macOS 原生桌面 |
 | Linux | Ubuntu 22.04 LTS 为最低参考基线，Ubuntu 24.04 LTS 为后续参考环境 | x86_64／AMD64 | 优先 GNOME；Wayland 与 X11 均纳入验证 |
 
-本轮目标不包含 32 位 x86，也不包含 Windows 和 Linux 的原生 ARM64 包。macOS 的 ARM 系列指 Apple Silicon 的 arm64；Intel 与 ARM 的产物不能以同一台设备上的一次运行相互代替。是否合成通用二进制由正式打包验证确定。
+本轮目标不包含 32 位 x86，也不包含 Windows 和 Linux 的原生 ARM64 包。macOS 仅包含 Apple Silicon arm64，不提供 Intel 或 Universal 产品包；原生构建不使用 Rosetta 翻译环境。
 
 其他 Linux 发行版、桌面环境和文件系统按实际结果单独登记，不能仅凭同属 Linux 或具有相近库版本就宣称支持。系统版本高于最低目标也不自动代表已经验收。
 
 ## 基线依据与构建约束
 
-当前 Qt 6.8 的[平台支持表](https://doc.qt.io/qt-6.8/supported-platforms.html)列出了 Windows 10 1809+ 的 x86_64、macOS 12+ 的 x86_64／arm64，以及 Ubuntu 22.04／24.04 的桌面配置。上述 xdnote 目标在此范围内选取；macOS 13 是本项目的最低目标选择。Qt 桌面路线已按[实施架构](architecture.md)确认，桌面与试验构建统一锁定 Qt 6.8.2；版本锁定、上游支持表和 CI 通过均不代替实际安装包及最低系统验收。
+当前 Qt 6.8 的[平台支持表](https://doc.qt.io/qt-6.8/supported-platforms.html)列出了 Windows 10 1809+ 的 x86_64、macOS 12+ 的 x86_64／arm64，以及 Ubuntu 22.04／24.04 的桌面配置。上述 xdnote 目标在此范围内选取；macOS 14 是本项目的最低目标选择。Qt 桌面路线已按[实施架构](architecture.md)确认，桌面与试验构建统一锁定 Qt 6.8.2；版本锁定、上游支持表和 CI 通过均不代替实际安装包及最低系统验收。
 
 1. Windows 选用的 SDK、编译器运行库和依赖须保留 Windows 10 1809 的运行条件，不能只在更新的 CI 系统构建成功就提高最低版本。
 2. macOS 构建显式设置最低部署目标，并逐一核验输出架构和全部随包依赖；构建主机系统版本与部署目标分别记录。
@@ -26,7 +26,7 @@
 
 ## 自动化与实际验收
 
-正式工程的自动化矩阵应覆盖 Windows x86_64、macOS x86_64、macOS arm64 和 Linux x86_64，并记录构建主机、SDK、目标系统、输出架构及依赖身份。Linux 至少有最低参考环境的构建验证；对可自动运行的 X11／Wayland 场景分别记录真实执行入口。
+正式工程的自动化矩阵应覆盖 Windows x86_64、macOS arm64 和 Linux x86_64，并记录构建主机、SDK、目标系统、输出架构及依赖身份。Linux 至少有最低参考环境的构建验证；对可自动运行的 X11／Wayland 场景分别记录真实执行入口。
 
 产品构建和受控部署专项分别记录实际文件、宿主与工具链，[静态兼容审计](developer-delivery.md)另行核对输出架构和系统／ABI 声明。Windows Server runner 不等于 Windows 10 1809 运行验收，macOS runner 标签本身不能代替输出核验，Ubuntu 离屏测试也不等于 GNOME、Wayland 或 X11 的真实桌面验收。不能将当前 CI 描述为已认证的支持矩阵或正式发行验收。
 

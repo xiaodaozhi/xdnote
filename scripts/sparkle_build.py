@@ -30,7 +30,7 @@ def inputs(spec):
     return {'variant': variant['variant'], 'source_sha256': spec['source']['sha256'],
             'sdk_sha256': spec['sdk']['sha256'], 'patch_sha256': digest(patch),
             'builder_sha256': digest(__file__), 'architecture': platform.machine(),
-            'minimum_macos': '13.0'}
+            'minimum_macos': '14.0'}
 
 
 def source_files(project, target, root):
@@ -100,8 +100,8 @@ def definitions():
 
 
 def build(source, sdk, work, spec, log):
-    if platform.system() != 'Darwin' or platform.machine() not in ('arm64', 'x86_64'):
-        raise ValueError('Sparkle library builds require native Intel or Apple Silicon macOS')
+    if platform.system() != 'Darwin' or platform.machine() != 'arm64':
+        raise ValueError('Sparkle library builds require native Apple Silicon macOS')
     identity = inputs(spec)
     work.mkdir(parents=True, exist_ok=True)
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -132,7 +132,7 @@ def build(source, sdk, work, spec, log):
         'sdkVersion': checked(['/usr/bin/xcrun', '--show-sdk-version']).decode().strip(),
         'hostMacos': platform.mac_ver()[0],
     }
-    common = ['/usr/bin/xcrun', 'clang', '-arch', platform.machine(), '-mmacosx-version-min=13.0',
+    common = ['/usr/bin/xcrun', 'clang', '-arch', platform.machine(), '-mmacosx-version-min=14.0',
               '-Os', '-fvisibility=hidden', '-fblocks', '-fmodules',
               '-fmodules-cache-path=' + str(work / 'modules'),
               '-Wall', '-Werror=implicit-function-declaration', '-Werror=unguarded-availability-new']
@@ -155,7 +155,7 @@ def build(source, sdk, work, spec, log):
     if any(code for _, code, _ in results):
         raise ValueError('Sparkle translation unit failed; see its local build log')
     library = sdk / 'Sparkle.framework/Versions/B/Sparkle'
-    arguments = ['/usr/bin/xcrun', 'clang', '-arch', platform.machine(), '-mmacosx-version-min=13.0',
+    arguments = ['/usr/bin/xcrun', 'clang', '-arch', platform.machine(), '-mmacosx-version-min=14.0',
                  '-dynamiclib', '-install_name', '@rpath/Sparkle.framework/Versions/B/Sparkle',
                  '-compatibility_version', '1.6', '-current_version', '2.10.0',
                  '-o', library] + [target for target, _, _ in results]

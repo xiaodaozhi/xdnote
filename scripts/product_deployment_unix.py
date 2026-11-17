@@ -121,7 +121,8 @@ def material_evidence(root, qt, records, system):
                 record.update(sdkFile=name, sdkSha256=digest(origin), byteIdenticalToSdk=digest(origin) == item['sha256'])
                 if deploy.binary(path, system):
                     try:
-                        before, after = code_sections(origin.read_bytes()), code_sections(path.read_bytes())
+                        before = code_sections(origin.read_bytes(), architecture='arm64' if system == 'Darwin' else None)
+                        after = code_sections(path.read_bytes())
                     except ValueError as error:
                         raise ValueError('Native section evidence failed for ' + item['path'] + ': ' + str(error)) from error
                     if before != after: raise ValueError('Deployed Qt executable sections differ: ' + item['path'])

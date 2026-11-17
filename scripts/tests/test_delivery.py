@@ -50,8 +50,10 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(abi.macho_headers(fat)[0]['architecture'],'arm64')
         with self.assertRaises(ValueError): abi.macho_headers(fat[:-1])
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory); (root/'app').write_bytes(macho(minimum=14))
+            root=Path(directory); (root/'app').write_bytes(macho(minimum=15))
             with self.assertRaisesRegex(ValueError,'Unsupported Mach-O'): abi.audit(root,'Darwin','arm64')
+            (root/'app').write_bytes(macho(cpu=0x1000007,minimum=14))
+            with self.assertRaises(ValueError): abi.audit(root,'Darwin','x86_64')
 
     def test_runtime_notice_bytes_and_compiler_identity_are_bound(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -3,7 +3,7 @@ import hashlib
 import struct
 
 
-def code_sections(data):
+def code_sections(data, architecture=None):
     def unpack(fmt, offset):
         if offset < 0 or offset + struct.calcsize(fmt) > len(data):
             raise ValueError('Truncated native binary')
@@ -33,8 +33,11 @@ def code_sections(data):
         for index in range(count):
             cpu, subtype, start, size, _ = unpack(endian + 'IIIII', 8 + index * 20)
             if start + size > len(data): raise ValueError('Mach-O slice outside file')
+            prefix = str(cpu) + ':' + str(subtype) + ':'
             for name, digest in code_sections(data[start:start + size]).items():
-                result[str(cpu) + ':' + str(subtype) + ':' + name] = digest
+                if not name.startswith(prefix) or name in result:
+                    raise ValueError('Inconsistent or duplicate Mach-O architecture')
+                result[name] = digest
     elif data[:4] == b'\xcf\xfa\xed\xfe':
         cpu, subtype, _, count, command_bytes = unpack('<IIIII', 4)
         position = 32; end = position + command_bytes
@@ -53,5 +56,8 @@ def code_sections(data):
             position += size
     else:
         raise ValueError('Unsupported native evidence format')
+    if architecture is not None:
+        if architecture != 'arm64': raise ValueError('Unsupported code-evidence architecture')
+        result = {name: value for name, value in result.items() if name.startswith(str(0x100000c) + ':')}
     if not result: raise ValueError('No executable sections found')
     return result

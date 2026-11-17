@@ -29,6 +29,6 @@ python scripts/desktop.py test --suite background --build-dir build/desktop-admi
 
 ## 平台边界
 
-手动选择桌面工作流的 `scope=background-unix`，只验证 Linux、macOS Intel／ARM 的本范围，不运行完整桌面矩阵或 Windows 兼容配置。普通提交与合并仍只运行材料 CI。
+手动选择桌面工作流的 `scope=background-unix`，只验证 Linux、macOS ARM64 的本范围，不运行完整桌面矩阵或 Windows 兼容配置。普通提交与合并仍只运行材料 CI。
 
 真实输入法、读屏软件、原生选择器、文件管理器转交、焦点激活、拖放／剪贴板、物理跨屏、最低系统和安装升级仍需对应环境单独验证。已有通过证据不因新增入口而无条件重跑；离屏结果不能替代上述验收。

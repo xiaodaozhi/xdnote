@@ -26,21 +26,21 @@
 
 ## 按需跨平台检查
 
-[Desktop admission](../../.github/workflows/desktop-admission.yml)、[Qt 文档试验](../../.github/workflows/qt-document-spike.yml)、[Scintilla 试验](../../.github/workflows/scintilla-buffer-spike.yml)和 [Markdown 解析试验](../../.github/workflows/pulldown-markdown-spike.yml)均通过 `workflow_dispatch` 手动运行。根据改动影响和验收需要选择，记录运行地址、提交及实际结果；日常 CI 通过不代表这些检查通过。桌面工作流保留 Windows、Linux、macOS 双架构及 Windows v142 兼容配置，汇总检查要求全部矩阵成功；缺失、失败、取消或跳过不能记为成功。固定 Qt 6.8.2 与构建细节见[开发构建](developer-build.md)。
+[Desktop admission](../../.github/workflows/desktop-admission.yml)、[Qt 文档试验](../../.github/workflows/qt-document-spike.yml)、[Scintilla 试验](../../.github/workflows/scintilla-buffer-spike.yml)和 [Markdown 解析试验](../../.github/workflows/pulldown-markdown-spike.yml)均通过 `workflow_dispatch` 手动运行。根据改动影响和验收需要选择，记录运行地址、提交及实际结果；日常 CI 通过不代表这些检查通过。桌面工作流保留 Windows、Linux、macOS ARM64及 Windows v142 兼容配置，汇总检查要求全部矩阵成功；缺失、失败、取消或跳过不能记为成功。固定 Qt 6.8.2 与构建细节见[开发构建](developer-build.md)。
 
 桌面测试覆盖组件准入、真实临时文件操作、独立窗口、几何与工作区会话等路径，诊断工件保留七天。各技术试验验证的范围及限制见其 README；试验通过不等于产品准入。Linux 使用虚拟显示，自动化、合成输入、窗口截图及 CI 宿主均不能代替真实输入法、读屏、文件管理器、物理多屏或人工视觉验收。按风险和可用环境执行原生检查，记录未验证项，不要求每次执行固定人工清单。
 
-桌面工作流手动选择 `scope=workspace-linux` 时，仅运行单套 Linux 的文件、引用扫描与链接导航定向回归及 Rust 检查；运行名称和汇总检查会标明范围，不运行五平台完整矩阵。`scope=resources-unix` 仅运行 Linux、macOS Intel 与 ARM 的受影响文件、图片、引用路径维护定向测试，不执行完整桌面用例或 Windows 兼容配置；本机可用 `test --suite resources` 复现同一范围。`scope=resources-macos` 仅复验 macOS 两种架构的相同资源用例，用于 Darwin 专属修正，不重复已通过的 Linux；`scope=resources-linux` 仅补验 Linux 的同一资源范围，用于 Linux 专属修正。资源定向失败保留该范围的报告，不自动再用调试器执行全部工作区用例；既有崩溃诊断仅用于 `workspace-linux` 专项。`scope=preview-unix` 只运行 Linux 和 macOS 双架构的原生预览／实际产品定向回归，使用 `test --suite preview`。`scope=background-unix` 只运行 Linux、macOS 双架构的[固定离屏回归与性能检查](../qa/background-validation.md)，使用 `test --suite background`，不依赖解锁桌面。`scope=full` 保留完整矩阵。普通提交、合并或仅同步分支不构成重复运行完整桌面 CI 的理由；以影响路径的本机验证及必要平台补充为准，不将定向结果记为全平台通过。
+桌面工作流手动选择 `scope=workspace-linux` 时，仅运行单套 Linux 的文件、引用扫描与链接导航定向回归及 Rust 检查；运行名称和汇总检查会标明范围，不运行完整桌面矩阵。`scope=resources-unix` 仅运行 Linux、macOS ARM64 的受影响文件、图片、引用路径维护定向测试，不执行完整桌面用例或 Windows 兼容配置；本机可用 `test --suite resources` 复现同一范围。`scope=resources-macos` 仅复验 macOS ARM64的相同资源用例，用于 Darwin 专属修正，不重复已通过的 Linux；`scope=resources-linux` 仅补验 Linux 的同一资源范围，用于 Linux 专属修正。资源定向失败保留该范围的报告，不自动再用调试器执行全部工作区用例；既有崩溃诊断仅用于 `workspace-linux` 专项。`scope=preview-unix` 只运行 Linux 和 macOS ARM64的原生预览／实际产品定向回归，使用 `test --suite preview`。`scope=background-unix` 只运行 Linux、macOS ARM64的[固定离屏回归与性能检查](../qa/background-validation.md)，使用 `test --suite background`，不依赖解锁桌面。`scope=full` 保留完整矩阵。普通提交、合并或仅同步分支不构成重复运行完整桌面 CI 的理由；以影响路径的本机验证及必要平台补充为准，不将定向结果记为全平台通过。
 
 CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发安装验证只在 `build/` 的专用目录中操作自有部署副本和自建数据样本；Windows 原生安装专项在一次性 CI 账户中使用专用临时安装目录，允许创建并核对应用拥有的候选关联和快捷方式，不更改默认应用或 UserChoice。专项不得在个人账户中运行。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
 
-`scope=scroll-unix` 仅在 Linux、macOS Intel／ARM 执行[双栏段落映射](scroll-synchronization.md)与受影响的预览／接管离屏回归，使用 `test --suite scroll`；不包含完整桌面矩阵或物理滚动验收。
+`scope=scroll-unix` 仅在 Linux、macOS ARM64 执行[双栏段落映射](scroll-synchronization.md)与受影响的预览／接管离屏回归，使用 `test --suite scroll`；不包含完整桌面矩阵或物理滚动验收。
 
-`scope=ui-unix` 仅补验 Linux、macOS Intel／ARM 的原生阅读与共享界面回归，使用 `test --suite ui` 的固定离屏环境；Windows 原生系统命令与动画设置以独立本机证据记录。界面截图与几何回归不替代用户要求的视觉验收，也不因定向范围新增而重复完整桌面 CI。
+`scope=ui-unix` 仅补验 Linux、macOS ARM64 的原生阅读与共享界面回归，使用 `test --suite ui` 的固定离屏环境；Windows 原生系统命令与动画设置以独立本机证据记录。界面截图与几何回归不替代用户要求的视觉验收，也不因定向范围新增而重复完整桌面 CI。
 
-`scope=settings-unix` 仅补验 Linux、macOS Intel／ARM 的[设置、偏好及自动保存](settings-window.md)受影响路径，使用 `test --suite settings` 固定离屏运行；不执行真实文件选择器、原生辅助技术或完整桌面矩阵。新设置窗口的人工视觉验收另行记录，未验收时不宣称通过。
+`scope=settings-unix` 仅补验 Linux、macOS ARM64 的[设置、偏好及自动保存](settings-window.md)受影响路径，使用 `test --suite settings` 固定离屏运行；不执行真实文件选择器、原生辅助技术或完整桌面矩阵。新设置窗口的人工视觉验收另行记录，未验收时不宣称通过。
 
-`scope=deployment-unix` 仅在 Linux、macOS Intel／ARM 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、真实用户目录安装、系统关联或发行许可验收。
+`scope=deployment-unix` 仅在 Linux、macOS ARM64 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、真实用户目录安装、系统关联或发行许可验收。
 
 桌面工作流的 Ubuntu 22.04 依赖准备使用显式 jammy／updates／security 源与 Ubuntu 归档密钥；主站域名解析失败时改用 [Linux Kernel Archives 的 Ubuntu 镜像](https://mirrors.kernel.org/)，实际地址写入日志，签名与有效期检查保持启用。APT 配置只对该命令生效，不沿用宿主预设的镜像优先级。DNS 探测、索引更新、包下载及整个准备步骤均有时限；网络故障作为基础设施失败记录，不无限等待或计为产品测试结果。
 
@@ -48,9 +48,9 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 [Update core](../../.github/workflows/update-core.yml) 为手动触发的单套 Ubuntu 22.04 Rust 工作区检查，覆盖无 Qt 的更新候选、清单认证和包流校验及记录的依赖材料，不启动桌面、不签名或发布。日常材料 CI 的触发与范围保持不变；此专项不代替网络、文档保护、原生更新或商店安装验收，核心边界见[更新契约](release-and-updates.md#更新核心边界与验证)。
 
-桌面工作流的 `scope=updates` 仅在 Windows 默认工具链、Linux、macOS Intel／ARM 执行 `test --suite updates`：固定离屏的主动检查夹具和设置回归。不运行 v142、完整桌面用例或安装／发布，也不把合成 TLS 错误等同于真实 HTTPS／代理或原生更新验收。构建产物与报告保留实际开发身份，按本次 head 核对结果。
+桌面工作流的 `scope=updates` 仅在 Windows 默认工具链、Linux、macOS ARM64 执行 `test --suite updates`：固定离屏的主动检查夹具和设置回归。不运行 v142、完整桌面用例或安装／发布，也不把合成 TLS 错误等同于真实 HTTPS／代理或原生更新验收。构建产物与报告保留实际开发身份，按本次 head 核对结果。
 
-`scope=sparkle-macos` 只运行 macOS Intel／ARM64 的[原生更新网络准入](macos-update-transport.md)：显式准备固定 Sparkle 输入、编译主库并执行回环代理／TLS 探针，不准备 Qt 或执行桌面产品。报告与原始构建／许可回执保留七天，汇总要求两种架构均成功；该范围不执行安装、生产签名、公开更新或 macOS 13 实机验收。
+`scope=sparkle-macos` 只运行 macOS ARM64 的[原生更新网络准入](macos-update-transport.md)：显式准备固定 Sparkle 输入、编译主库并执行回环代理／TLS 探针，不准备 Qt 或执行桌面产品。报告与原始构建／许可回执保留七天，汇总要求所选架构成功；该范围不执行安装、生产签名、公开更新或 最低支持系统验收。
 
 `windows-installer.yml` 手动选择 `scope=fixtures` 时，使用不可执行的自建文件验证 Windows 原生安装引擎、升级／卸载和候选关联保护；选择 `scope=product` 时，只运行一个 Windows 产品任务，构建实际载荷、核对逐文件许可材料并执行真实安装包的安装／升级／卸载和安装目录运行。产品专项使用自建文档、应用级诊断字体及隐藏原生窗口，上传证据而不上传产品二进制；不代替可见向导、文件管理器或默认应用界面验收，也不运行完整桌面测试或跨平台矩阵。`desktop-admission.yml` 的 `scope=installer-windows` 仅转调默认夹具模式，并跳过整个桌面矩阵，供新工作流首次合并前验证；日常提交和 main 合并仍仅触发材料 CI。
 
@@ -77,6 +77,6 @@ python scripts/cleanup_cycles.py --stale-days 30 --apply --yes
 
 项目尚无发行工作流。[发行渠道与主动更新](release-and-updates.md)已确定未签名 Windows、后续 Store MSIX 及 macOS ad-hoc／无 Developer ID／无 Apple 公证的方案，不能继续把这些不采用的身份服务列为办理门槛。接入时沿用既定协议与验证方法，适配本项目身份和平台范围，不另建替代协议。将版本、源码提交、验证记录和工件绑定，同一候选在一次受控运行中尽可能复用产物，避免标签、草稿和手动触发造成重复构建；不同提交、输入或平台的结果不能混用。Qt 源码不得进入本项目 Release 附件、安装包或产品归档，源码获取与替换要求按[分发边界](distribution-audit.md)独立落实；正式发布仍需完成适用材料与运行验收并取得具体授权。
 
-`scope=tools-unix` 只在 Linux、macOS Intel／ARM 执行文档查找搜索、恢复副本、快捷键与受影响设置／文件的固定离屏验证，使用 `test --suite tools`。它不执行真实系统关联、不安装用户目录，也不扩大为完整桌面矩阵；工作流仍只允许手动触发。
+`scope=tools-unix` 只在 Linux、macOS ARM64 执行文档查找搜索、恢复副本、快捷键与受影响设置／文件的固定离屏验证，使用 `test --suite tools`。它不执行真实系统关联、不安装用户目录，也不扩大为完整桌面矩阵；工作流仍只允许手动触发。
 
-`scope=tools-macos` 仅补验相同文档工具范围的 macOS Intel／ARM，用于 Darwin 路径或平台差异修复；已有有效 Linux 产品结果不因 macOS 补验重复构建。两种 tools 范围均保留 Python 安装维护回归，不执行真实系统默认应用变更。
+`scope=tools-macos` 仅补验相同文档工具范围的 macOS ARM64，用于 Darwin 路径或平台差异修复；已有有效 Linux 产品结果不因 macOS 补验重复构建。两种 tools 范围均保留 Python 安装维护回归，不执行真实系统默认应用变更。
