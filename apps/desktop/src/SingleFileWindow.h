@@ -41,8 +41,9 @@ public:
     bool canTransfer() const;
     // 0 cancelled, 1 ready, 2 waiting. Confirmation never closes the session.
     int prepareUpdate();
-    void resetUpdatePreparation() { m_updateDiscard = false; m_updateSaving = false; }
+    void resetUpdatePreparation() { ++m_updatePreparationEpoch; m_updateDiscard = false; m_updateSaving = false; }
     bool discardPreparedForUpdate() const;
+    bool updatePreparationCurrent() const;
     bool embedIn(QWidget *parent);
     void setWorkspaceRoot(const QString &root);
     QWidget *footer() const { return m_footer; }
@@ -187,6 +188,7 @@ private:
     bool m_focusMode = false, m_exporting = false;
     bool m_updateDiscard = false, m_updateSaving = false;
     quint64 m_updateDiscardRevision = 0;
+    quint64 m_updatePreparationEpoch = 0;
     QWidget *m_toolbar = nullptr, *m_focusBar = nullptr;
     SharedButton *m_exportButton = nullptr;
     QAction *m_focusAction = nullptr, *m_outlineAction = nullptr;

@@ -891,6 +891,13 @@ bool SingleFileWindow::discardPreparedForUpdate() const {
     return m_updateDiscard && m_document && !m_document->closed() &&
         m_updateDiscardRevision == m_document->session()->revision();
 }
+bool SingleFileWindow::updatePreparationCurrent() const {
+    if (m_prompting || m_saveErrorDialog || m_imageImportPending || m_linkInsertPending || m_exporting || !m_intent.isNull()) return false;
+    if (!m_document || m_document->closed()) return true;
+    if (m_updateSaving || m_document->saving() || m_document->loading() || m_document->maintainingResources() ||
+        m_document->session()->isBusy() || m_document->session()->isComposing() || (m_editor && m_editor->dispatching())) return false;
+    return !m_document->dirty() || discardPreparedForUpdate();
+}
 int SingleFileWindow::prepareUpdate() {
     if (m_prompting || m_saveErrorDialog || m_imageImportPending || m_linkInsertPending || m_exporting || !m_intent.isNull()) return 2;
     if (!m_document || m_document->closed()) return 1;
@@ -903,10 +910,11 @@ int SingleFileWindow::prepareUpdate() {
     if (!m_document->dirty()) return 1;
     const auto revision = m_document->session()->revision();
     if (m_updateDiscard && m_updateDiscardRevision == revision) return 1;
+    const auto epoch = m_updatePreparationEpoch;
     m_prompting = true;
     const int choice = ask(this, "unsavedConfirmation", QStringLiteral("保存对文档的修改？"), QStringLiteral("未保存的修改会在关闭后丢失。"), {{QStringLiteral("保存"), 1}, {QStringLiteral("不保存"), 2}, {QStringLiteral("取消"), 0}});
     m_prompting = false;
-    if (!choice || !m_document) return 0;
+    if (epoch != m_updatePreparationEpoch || !choice || !m_document) return 0;
     if (choice == 2) { if (m_document->session()->revision() != revision) return 0; m_updateDiscard = true; m_updateDiscardRevision = revision; return 1; }
     if (m_document->untitled()) { chooseSaveAs(); if (!m_document->saving()) return 0; }
     else if (!m_document->save()) { if (m_document->conflict()) resolveConflict(); return 0; }

@@ -326,7 +326,12 @@ void FileApplication::advanceUpdateHandoff() {
             if (!result) { cancelUpdateHandoff(); return; }
             if (result == 2) return;
         }
-        // No GUI event is processed between the final revision check and freeze.
+        // A later modal prompt may have processed edits or opens in another
+        // window. Recheck every current pane without opening another dialog.
+        if (!m_manager.idle() || !m_requests.isEmpty() || QApplication::activeModalWidget()) return;
+        for (auto *maintenance : findChildren<ResourceMaintenanceController *>()) if (maintenance->busy()) return;
+        for (auto pane : m_windows) if (!pane->updatePreparationCurrent()) return;
+        // No GUI event is processed between these checks and the freeze.
         updateTaskGate() = true; m_updateFrozen = true; m_recoveryTimer.stop();
         for (auto document : m_manager.documents()) {
             auto session = document->session(); m_updateReadOnly.insert(session, session->isReadOnly()); session->setReadOnly(true);

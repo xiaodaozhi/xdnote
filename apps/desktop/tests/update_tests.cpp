@@ -223,6 +223,41 @@ private slots:
             QFile disk(path); QVERIFY(disk.open(QIODevice::ReadOnly)); QCOMPARE(disk.readAll(), QByteArray("owned"));
         }
     }
+    void laterDocumentPromptCannotCommitAnEarlierStaleDiscard() {
+        QTemporaryDir directory; FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative);
+        const QStringList paths{directory.filePath("first.md"), directory.filePath("second.md")};
+        for (const auto &path : paths) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("owned"); file.close(); app.open(path); }
+        QList<QPointer<SingleFileWindow>> panes;
+        QTRY_VERIFY(([&] { panes.clear(); for (auto widget : QApplication::topLevelWidgets()) if (auto pane = qobject_cast<SingleFileWindow *>(widget)) if (pane->document() && paths.contains(pane->document()->path()) && !pane->document()->loading()) panes.append(pane); return panes.size() == 2; })());
+        for (auto pane : panes) QCOMPARE(pane->document()->session()->replace(0, 0, "dirty ", pane->document()->session()->revision()), EditResult::Applied);
+        int prompts = 0; bool changed = false; QPointer<SingleFileWindow> first; QTimer answer; answer.setInterval(10);
+        connect(&answer, &QTimer::timeout, qApp, [&] { for (auto widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") {
+            const int index = prompts++;
+            if (!index) first = qobject_cast<SingleFileWindow *>(widget->parentWidget());
+            if (index == 1 && first) { auto session = first->document()->session(); changed = session->replace(0, 0, "late ", session->revision()) == EditResult::Applied; }
+            if (auto button = widget->findChild<SharedButton *>(index < 2 ? "choice2" : "choice0")) button->click();
+        }}); answer.start();
+        bool finished = false, ready = true; app.prepareForUpdate([&](bool value) { ready = value; finished = true; }); QTRY_VERIFY(finished); answer.stop();
+        QVERIFY(changed); QCOMPARE(prompts, 3); QVERIFY(!ready); QVERIFY(!updateTasksBlocked()); QVERIFY(first);
+        QCOMPARE(first->document()->session()->snapshot().utf8, QByteArray("late dirty owned"));
+        QCOMPARE(first->document()->session()->undo(), EditResult::Applied); QCOMPARE(first->document()->session()->snapshot().utf8, QByteArray("dirty owned"));
+    }
+    void cancelledHandoffCannotAcceptALateAnswerFromItsDialog() {
+        QTemporaryDir directory; const auto path = directory.filePath("owned.md");
+        { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("owned"); }
+        FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative); app.open(path);
+        QPointer<SingleFileWindow> pane;
+        QTRY_VERIFY(([&] { for (auto widget : QApplication::topLevelWidgets()) if (auto p = qobject_cast<SingleFileWindow *>(widget)) if (p->document() && p->document()->path() == path && !p->document()->loading()) pane = p; return bool(pane); })());
+        auto session = pane->document()->session(); QCOMPARE(session->replace(0, 0, "dirty ", session->revision()), EditResult::Applied);
+        int prompts = 0; QTimer answer; answer.setInterval(10);
+        connect(&answer, &QTimer::timeout, qApp, [&] { for (auto widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") {
+            const int index = prompts++;
+            if (!index) app.cancelUpdateHandoff();
+            if (auto button = widget->findChild<SharedButton *>(!index ? "choice2" : "choice0")) button->click();
+        }}); answer.start();
+        for (int i = 0; i < 2; ++i) { bool done = false, ready = true; app.prepareForUpdate([&](bool value) { ready = value; done = true; }); QTRY_VERIFY(done); QVERIFY(!ready); QVERIFY(!updateTasksBlocked()); }
+        answer.stop(); QCOMPARE(prompts, 2); QCOMPARE(session->snapshot().utf8, QByteArray("dirty owned")); QCOMPARE(session->undo(), EditResult::Applied);
+    }
     void documentBarrierJoinsWorkAndRestoresSameSessionOnCancellation() {
         QTemporaryDir directory; const auto path = directory.filePath("owned.md"); QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("# owned\n"); file.close();
         FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative); app.open(path);
