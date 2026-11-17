@@ -46,6 +46,7 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath, Presenta
     : QObject(parent), m_presentation(presentation), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
     qApp->installEventFilter(this);
     m_updates = new UpdateController(this); m_updates->setApplication(this);
+    m_updates->bindPreferences(m_appearance.preferences());
     connect(m_updates, &UpdateController::quitForUpdate, qApp, &QCoreApplication::quit);
     m_recovery=new RecoveryStore(settingsPath.isEmpty()?QString():settingsPath+".recovery",this);
     const auto stored=m_recovery->state();m_lastSession=stored["documents"].toArray();

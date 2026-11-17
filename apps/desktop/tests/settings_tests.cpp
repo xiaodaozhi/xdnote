@@ -50,6 +50,38 @@ bool select(SettingsWindow *window, const char *name, const QVariant &value) {
 class SettingsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void updateNetworkPersistsAtomicallyAndKeepsUnknownFields() {
+        QTemporaryDir dir; const auto path = dir.filePath("settings.json");
+        QVERIFY(fileFixtures::write(path, R"({"schemaVersion":1,"updates":{"future":7},"future":{"keep":42}})"));
+        Preferences prefs(nullptr, path); QVERIFY(prefs.updateNetworkValid());
+        QSignalSpy changed(&prefs, &Preferences::changed);
+        const QJsonObject settings{{"proxyMode", "custom"}, {"proxyAddress", "socks5://127.0.0.1:1080"}, {"mirror", "https://mirror.invalid/prefix"}};
+        QVERIFY(prefs.setValues("updates", settings)); QCOMPARE(changed.size(), 1);
+        const auto saved = bytes(path); const auto object = QJsonDocument::fromJson(saved).object();
+        QCOMPARE(object["updates"].toObject()["future"].toInt(), 7); QCOMPARE(object["future"].toObject()["keep"].toInt(), 42);
+        Preferences reopened(nullptr, path); QVERIFY(reopened.updateNetworkValid());
+        for (auto field = settings.begin(); field != settings.end(); ++field) QCOMPARE(reopened.value("updates", field.key()), field.value());
+        for (const auto &patch : {QJsonObject{{"proxyAddress", ""}}, QJsonObject{{"proxyAddress", "http://user:secret@localhost:8080"}}, QJsonObject{{"mirror", "https://user:secret@mirror.invalid"}}, QJsonObject{{"proxyMode", "bad"}}}) {
+            QVERIFY(!prefs.setValues("updates", patch)); QCOMPARE(bytes(path), saved); QCOMPARE(changed.size(), 1);
+        }
+        QVERIFY(QFile::remove(path)); QVERIFY(QDir().mkdir(path));
+        QVERIFY(!prefs.setValues("updates", {{"proxyMode", "none"}})); QCOMPARE(prefs.value("updates", "proxyMode").toString(), QString("custom"));
+        QCOMPARE(changed.size(), 1); QVERIFY(prefs.canRetryWrite()); QVERIFY(QDir().rmdir(path));
+        QVERIFY(prefs.retryWrite()); QCOMPARE(changed.size(), 2); QCOMPARE(prefs.value("updates", "proxyMode").toString(), QString("none"));
+    }
+    void invalidStoredUpdateNetworkNeverBecomesImplicitSystemFallback() {
+        QTemporaryDir dir; const auto path = dir.filePath("settings.json");
+        for (const auto &network : {QJsonValue(false), QJsonValue(QJsonObject{{"proxyMode", "custom"}}),
+             QJsonValue(QJsonObject{{"proxyMode", "custom"}, {"proxyAddress", "http://user:secret@localhost:8080"}}),
+             QJsonValue(QJsonObject{{"proxyMode", "none"}, {"mirror", 7}})}) {
+            QVERIFY(fileFixtures::write(path, QJsonDocument(QJsonObject{{"schemaVersion", 1}, {"updates", network}}).toJson()));
+            Preferences prefs(nullptr, path); QVERIFY(!prefs.updateNetworkValid());
+            QVERIFY(prefs.setValues("reader", {{"fontSize", 21}})); QVERIFY(!prefs.updateNetworkValid());
+            Preferences reopened(nullptr, path); QVERIFY(!reopened.updateNetworkValid());
+            QVERIFY(reopened.setValues("updates", {{"proxyMode", "system"}, {"proxyAddress", ""}, {"mirror", ""}}));
+            QVERIFY(reopened.updateNetworkValid()); Preferences repaired(nullptr, path); QVERIFY(repaired.updateNetworkValid());
+        }
+    }
     void missingLegacyFieldsUseDefaultsWithoutWarning_data() {
         QTest::addColumn<QByteArray>("original");
         QTest::addColumn<int>("fontSize");

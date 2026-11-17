@@ -15,6 +15,7 @@
 #endif
 #include "UpdateController.h"
 #include "UpdateNetwork.h"
+#include "Preferences.h"
 #include "UpdateBridge.h"
 #include "BuildInfo.h"
 #include <QDesktopServices>
@@ -91,12 +92,22 @@ UpdateController::~UpdateController() {
 }
 void UpdateController::setState(const QString &state, const QString &error) { m_state = state; m_error = error; emit changed(); }
 bool UpdateController::configureNetwork(const QString &mode, const QString &proxy, const QString &mirror) {
-    if ((mode != "system" && mode != "none" && mode != "custom") ||
-        (!proxy.isEmpty() && !UpdateNetwork::validProxy(proxy)) ||
-        (mode == "custom" && !UpdateNetwork::validProxy(proxy)) || !UpdateNetwork::validMirror(mirror)) return false;
+    if (!UpdateNetwork::validConfiguration(mode, proxy, mirror)) return false;
     // Staged configuration only; an active operation retains its own session.
     m_mode = mode; m_proxy = proxy; m_mirror = mirror;
     return true;
+}
+void UpdateController::bindPreferences(Preferences *preferences) {
+    if (m_preferences == preferences) return;
+    disconnect(m_preferencesChanged); m_preferences = preferences;
+    if (!preferences) { configureNetwork("system"); return; }
+    const auto stage = [this] {
+        if (!m_preferences || !m_preferences->updateNetworkValid()) return;
+        const auto values = m_preferences->section("updates");
+        configureNetwork(values["proxyMode"].toString(), values["proxyAddress"].toString(), values["mirror"].toString());
+    };
+    m_preferencesChanged = connect(preferences, &Preferences::changed, this, [stage](const QString &section) { if (section == "updates") stage(); });
+    stage();
 }
 bool UpdateController::allowedUrl(const QUrl &url) {
     if (!url.isValid() || url.scheme() != "https" || !url.userInfo().isEmpty() || url.hasFragment() ||
@@ -179,6 +190,7 @@ QString UpdateController::packageType() const { return m_platform == "windows" ?
 void UpdateController::check() {
     if (m_packaged) { setState("store"); return; }
     if (busy()) return;
+    if (m_preferences && !m_preferences->updateNetworkValid()) { setState("error", "network_configuration"); return; }
     const auto valid = updateRequest({{"operation", "compare"}, {"left", m_version}, {"right", m_version}});
     if (valid.value("comparison").toInt(2) != 0) { setState("error", "unknown_build"); return; }
     const auto generation = ++m_generation; m_download->cancel(); m_manifest.clear(); m_signature.clear(); m_candidate = {}; m_candidates.clear(); m_trusted = false;
@@ -422,6 +434,7 @@ QString UpdateController::message() const {
     if (m_state == "available" && m_trusted) return QStringLiteral("发现已认证的 %1。可下载更新包%2。").arg(candidateVersion(), canInstall() ? QStringLiteral("或安装并重启") : QStringLiteral("后手动安装"));
     if (m_state == "available") return QStringLiteral("发现 %1。此开发副本仅支持前往发布页手动更新。").arg(candidateVersion());
     if (m_state == "error") {
+        if (m_error == "network_configuration") return QStringLiteral("更新网络设置无效，请先修正代理或镜像配置。");
         if (m_error == "rate_limited") return QStringLiteral("检查受到限流，请稍后手动重试。");
         if (m_error == "tls") return QStringLiteral("无法验证安全连接，检查失败。");
         if (m_error == "timeout") return QStringLiteral("检查更新超时，请手动重试。");

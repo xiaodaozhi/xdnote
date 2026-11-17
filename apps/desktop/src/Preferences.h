@@ -14,6 +14,7 @@ public:
     QString error() const { return m_error; }
     bool canRetryWrite() const { return m_retryWrite; }
     bool retryWrite();
+    bool updateNetworkValid() const { return m_valid && m_updateNetworkValid; }
 signals:
     void changed(QString section);
     void writeFailed(QString message);
@@ -23,6 +24,7 @@ private:
     QString m_path, m_error;
     QJsonObject m_values, m_defaults;
     bool m_valid = true;
+    bool m_updateNetworkValid = true;
     bool m_retryWrite = false;
     QString m_failedSection;
     QJsonObject m_failedPatch;

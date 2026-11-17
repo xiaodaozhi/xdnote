@@ -10,6 +10,7 @@ namespace xdnote {
 class FileApplication;
 class UpdateDownload;
 class UpdateHandoff;
+class Preferences;
 class UpdateController final : public QObject {
     Q_OBJECT
 public:
@@ -32,6 +33,7 @@ public:
     void setApplication(FileApplication *application);
     void reportNativeProgress(const QString &state, qreal progress);
     bool configureNetwork(const QString &mode, const QString &proxy = {}, const QString &mirror = {});
+    void bindPreferences(Preferences *preferences);
     static bool allowedUrl(const QUrl &url);
 public slots:
     void check();
@@ -69,6 +71,8 @@ private:
     QString m_channel = "development";
     int m_build = 0;
     QPointer<FileApplication> m_application;
+    QPointer<Preferences> m_preferences;
+    QMetaObject::Connection m_preferencesChanged;
     UpdateDownload *m_download = nullptr;
     UpdateHandoff *m_handoff = nullptr;
     bool m_installRequested = false;

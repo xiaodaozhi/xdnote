@@ -12,6 +12,7 @@
 #include <QtConcurrentRun>
 #include <atomic>
 #include "UpdateController.h"
+#include "Preferences.h"
 #include "UpdateNetwork.h"
 #include "UpdateBridge.h"
 #include "BuildInfo.h"
@@ -408,6 +409,26 @@ private slots:
         QVERIFY(updates.configureNetwork("custom","http://localhost:8080","https://next.invalid"));QTRY_COMPARE(updates.state(),"available");
         for (const auto &request:network.requests) QCOMPARE(request.url().host(),"mirror.invalid");
         const auto proxies=network.proxyFactory()->queryProxy(QNetworkProxyQuery(QUrl("https://github.com")));QCOMPARE(proxies.first().type(),QNetworkProxy::NoProxy);
+    }
+    void persistentNetworkIsStagedWithoutRequestsAndInvalidConfigBlocksChecks() {
+        QTemporaryDir dir; const auto path = dir.filePath("network.json");
+        Preferences prefs(nullptr, path);
+        QVERIFY(prefs.setValues("updates", {{"proxyMode", "none"}, {"mirror", "https://first.invalid"}}));
+        Network network; Response held; held.hold = true; network.responses = {held, Response{}};
+        UpdateController updates(&network, current, "windows", "x86_64", false);
+        updates.bindPreferences(&prefs); updates.bindPreferences(&prefs); QCOMPARE(network.requests.size(), 0);
+        updates.check(); QCOMPARE(network.requests.first().url().host(), QString("first.invalid"));
+        QVERIFY(prefs.setValues("updates", {{"proxyMode", "custom"}, {"proxyAddress", "socks5://localhost:1080"}, {"mirror", "https://next.invalid"}}));
+        QCOMPARE(network.requests.size(), 1);
+        QCOMPARE(network.proxyFactory()->queryProxy(QNetworkProxyQuery()).first().type(), QNetworkProxy::NoProxy);
+        updates.cancel(); updates.check(); QTRY_COMPARE(updates.state(), "up_to_date");
+        QCOMPARE(network.requests.last().url().host(), QString("next.invalid"));
+        QCOMPARE(network.proxyFactory()->queryProxy(QNetworkProxyQuery()).first().type(), QNetworkProxy::Socks5Proxy);
+        QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write(R"({"schemaVersion":1,"updates":{"proxyMode":"custom"}})"); file.close();
+        Preferences invalid(nullptr, path); updates.bindPreferences(&invalid); const auto count = network.requests.size();
+        updates.check(); QCOMPARE(updates.errorCode(), QString("network_configuration")); QCOMPARE(network.requests.size(), count);
+        QVERIFY(updates.message().contains(QStringLiteral("网络设置")));
     }
     void aboutReopenPreservesControllerAndScreenshots() {
         QTemporaryDir dir;Appearance appearance(nullptr,dir.filePath("settings.json"));Network network;Response hold;hold.hold=true;network.responses={hold};
