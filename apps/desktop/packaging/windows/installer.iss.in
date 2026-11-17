@@ -100,10 +100,6 @@ end;
 
 var UpdateGateHandle: THandle;
 
-@ASSOCIATION_CODE@
-
-@CLEANUP_CODE@
-
 function NativeCreateMutex(Attributes: LongWord; InitialOwner: Boolean; Name: String): THandle;
 external 'CreateMutexW@kernel32.dll stdcall';
 function NativeGetLastError(): LongWord;
@@ -181,7 +177,9 @@ begin
   end;
   if RegQueryStringValue(HKCU, 'Software\xdnote\Install', 'Location', Actual) and (CompareText(Actual, ExpandConstant('{app}')) = 0) then begin
     RegDeleteValue(HKCU, 'Software\xdnote\Install', 'SchemaVersion');
+    RemoveValueIfEqual('Software\xdnote\Install', 'InstallId', '460D7C68-C989-45F0-B312-40AE18428155');
     RemoveValueIfEqual('Software\xdnote\Install', 'Location', Actual);
+    RegDeleteKeyIfEmpty(HKCU, 'Software\xdnote\Install');
     RegDeleteKeyIfEmpty(HKCU, 'Software\xdnote');
   end;
 end;
