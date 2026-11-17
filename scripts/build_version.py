@@ -15,7 +15,7 @@ def identity(root, base, configuration):
     revision, dirty = 'unknown', True
     try:
         def git(*args):
-            return subprocess.check_output(['git', '-C', str(root), *args], stderr=subprocess.DEVNULL, text=True).strip()
+            return subprocess.check_output(['git', '-C', str(root), *args], stderr=subprocess.DEVNULL, text=True, encoding='utf-8').strip()
         if Path(git('rev-parse', '--show-toplevel')).resolve() == root:
             value = git('rev-parse', 'HEAD')
             if re.fullmatch('[0-9a-f]{40}', value):

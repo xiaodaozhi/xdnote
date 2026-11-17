@@ -23,7 +23,7 @@ class BuildVersionTests(unittest.TestCase):
 
     def test_clean_commit_dirty_changes_and_nested_directory_are_distinct(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory) / '开发工作区'; root.mkdir()
             def git(*args):
                 return subprocess.check_output(['git', '-C', str(root), *args], stderr=subprocess.DEVNULL, text=True).strip()
             git('init'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid')
