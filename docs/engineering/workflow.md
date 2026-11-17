@@ -50,6 +50,8 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 桌面工作流的 `scope=updates` 仅在 Windows 默认工具链、Linux、macOS Intel／ARM 执行 `test --suite updates`：固定离屏的主动检查夹具和设置回归。不运行 v142、完整桌面用例或安装／发布，也不把合成 TLS 错误等同于真实 HTTPS／代理或原生更新验收。构建产物与报告保留实际开发身份，按本次 head 核对结果。
 
+`scope=sparkle-macos` 只运行 macOS Intel／ARM64 的[原生更新网络准入](macos-update-transport.md)：显式准备固定 Sparkle 输入、编译主库并执行回环代理／TLS 探针，不准备 Qt 或执行桌面产品。报告与原始构建／许可回执保留七天，汇总要求两种架构均成功；该范围不执行安装、生产签名、公开更新或 macOS 13 实机验收。
+
 `windows-installer.yml` 手动选择 `scope=fixtures` 时，使用不可执行的自建文件验证 Windows 原生安装引擎、升级／卸载和候选关联保护；选择 `scope=product` 时，只运行一个 Windows 产品任务，构建实际载荷、核对逐文件许可材料并执行真实安装包的安装／升级／卸载和安装目录运行。产品专项使用自建文档、应用级诊断字体及隐藏原生窗口，上传证据而不上传产品二进制；不代替可见向导、文件管理器或默认应用界面验收，也不运行完整桌面测试或跨平台矩阵。`desktop-admission.yml` 的 `scope=installer-windows` 仅转调默认夹具模式，并跳过整个桌面矩阵，供新工作流首次合并前验证；日常提交和 main 合并仍仅触发材料 CI。
 
 项目专用 SDK、虚拟环境、构建工具和缓存归本项目所有，放在 `build/`；禁止从其他项目目录执行、导入或链接工具、SDK、库及产物，也不复制其他项目的虚拟环境充作独立安装。系统安装的 Python、Rust、Node 和编译器可以使用。同项目 worktree 可共享主工作区的 `build/toolchain/` 与 Qt；共享前核对真实路径与 Git 共同目录，不能借此访问其他项目的工具。工具缺失时使用系统运行时在本项目显式准备，不跨项目回退。迁移后重新配置活动构建目录，检查 CMake、Ninja 和 Python 路径，旧缓存不能继续指向其他项目。

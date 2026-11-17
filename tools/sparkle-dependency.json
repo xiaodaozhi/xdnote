@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "name": "Sparkle",
+  "version": "2.10.0",
+  "license": "MIT AND BSD-2-Clause AND Zlib",
+  "licenseFile": "LICENSES/third-party/Sparkle.txt",
+  "license_sha256": "389a4e4e9a32f059775b13a06e25a591445ba229d2838d26dd3e7c0c45127cfe",
+  "sdk": {
+    "file": "Sparkle-2.10.0.tar.xz",
+    "url": "https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-2.10.0.tar.xz",
+    "sha256": "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c"
+  },
+  "source": {
+    "file": "Sparkle-2.10.0-source.tar.gz",
+    "url": "https://codeload.github.com/sparkle-project/Sparkle/tar.gz/refs/tags/2.10.0",
+    "sha256": "cf43af1f26a921a8dc0be80834b9c3038bea5fd645708d26375126cbc57c316b"
+  },
+  "framework_build": {
+    "variant": "2.10.0-xdnote-proxy.1",
+    "patch": "patches/sparkle/2.10.0-download-proxy.patch",
+    "patch_sha256": "6da0e6c4ad6ebec2e649c73e7b4108d194bdb7da1c945e22277a8c1845120989",
+    "method": "Native Intel or ARM64 framework library and Ed25519 from pinned source; resources, installer helpers and tools from pinned official SDK"
+  }
+}

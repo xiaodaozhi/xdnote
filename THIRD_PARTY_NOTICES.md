@@ -68,6 +68,10 @@ Markdown 服务使用以下第三方包；`pulldown-cmark` 为直接依赖，其
 
 桌面构建从项目准备目录中的 Scintilla 5.6.7 源码构建静态库，版本和原始下载摘要锁定在[桌面依赖清单](tools/desktop-dependencies.json)。其[许可及版权原文](LICENSES/third-party/scintilla.txt)来自所用源码目录，并与 [Scintilla 官方许可](https://www.scintilla.org/License.txt)的内容核对。该许可要求保留上游版权与许可声明，具体条件以原文为准。`xdnote` 没有将其改标为项目自有代码。
 
+## Sparkle 独立准入依赖
+
+原生更新准入工程显式准备 Sparkle 2.10.0；产品当前尚未链接或部署它。[固定输入清单](tools/sparkle-dependency.json)分别记录官方 SDK、源码和本项目网络补丁，[完整版权及许可原文](LICENSES/third-party/Sparkle.txt)保留 `MIT AND BSD-2-Clause AND Zlib` 的适用内容，不删减外部组件声明。主库和 Ed25519 翻译单元由固定源码编译，helper、资源和工具沿用官方 SDK 字节；不能把整个 SDK 记为源码重建或实际随产品交付。后续正式部署须按[准入方法](docs/engineering/macos-update-transport.md)和实际载荷核对；上游归属不改标为项目自有内容。
+
 ## Qt 与运行库
 
 当前 CMake 入口使用 Qt 6.8.2 的 Widgets、QML、Quick、Quick Widgets、Quick Controls 2、Concurrent、Network、SVG 及其传递模块；本机 SDK 使用共享 Qt 库。这些构建依赖不等于未来某个平台的实际交付文件清单。Qt 模块可用许可和其中的第三方组件须按[Qt 许可说明](https://doc.qt.io/qt-6.8/licensing.html)、固定版本源码、构建配置及实际包逐项核对。
