@@ -19,7 +19,7 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, installer-windows]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("inputs.scope == 'deployment-macos'", text)
@@ -71,6 +71,19 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("timeout 180s sudo apt-get", text)
         self.assertIn("timeout 360s sudo apt-get", text)
         self.assertIn("Dir::Etc::sourceparts=-", text)
+
+    def test_sparkle_admission_is_separate_from_desktop_and_release(self):
+        text = (WORKFLOWS / 'desktop-admission.yml').read_text(encoding='utf-8')
+        job = text.split('  sparkle:', 1)[1].split('  desktop:', 1)[0]
+        self.assertIn("if: inputs.scope == 'sparkle-macos'", job)
+        self.assertIn('os: [macos-15-intel, macos-15]', job)
+        self.assertIn('python scripts/sparkle.py prepare --download', job)
+        self.assertIn('python scripts/sparkle.py build', job)
+        self.assertIn('python scripts/check_sparkle.py', job)
+        self.assertIn('needs.sparkle.result', text)
+        self.assertIn("if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos'", text)
+        for forbidden in ('prepare_qt', 'desktop.py', 'pip install', 'secrets.', 'contents: write', 'gh release'):
+            self.assertNotIn(forbidden, job)
 
     def test_routine_workflow_is_single_linux_job(self):
         path = WORKFLOWS / "materials.yml"

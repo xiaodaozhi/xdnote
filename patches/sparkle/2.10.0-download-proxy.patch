@@ -1,0 +1,244 @@
+--- a/Sparkle/SPUUpdater.h
++++ b/Sparkle/SPUUpdater.h
+@@ -22,6 +22,22 @@
+ 
+ NS_ASSUME_NONNULL_BEGIN
+ 
++// xdnote downstream API. Only the framework library is rebuilt; installer IPC
++// and the pinned upstream helpers remain unchanged.
++#define SPU_XDNOTE_DOWNLOAD_PROXY_API 1
++
++typedef NS_ENUM(NSUInteger, SPUXdnoteDownloadProxyMode) {
++    SPUXdnoteDownloadProxySystem,
++    SPUXdnoteDownloadProxyDirect,
++    SPUXdnoteDownloadProxyCustom
++};
++
++
++// The same isolated configuration is used by feed and archive sessions.
++SU_EXPORT NSURLSessionConfiguration * _Nullable SPUXdnoteCreateDownloadConfiguration(
++    SPUXdnoteDownloadProxyMode mode, NSURL * _Nullable proxyURL,
++    NSError * _Nullable __autoreleasing * _Nullable error);
++
+ @class SUAppcastItem, SUAppcast;
+ 
+ @protocol SPUUpdaterDelegate;
+@@ -46,6 +62,18 @@
+  This class must be used on the main thread.
+  */
+ SU_EXPORT NS_SWIFT_UI_ACTOR @interface SPUUpdater : NSObject
++
++/**
++ Configure immutable system, direct, or HTTP CONNECT/SOCKS5 transport before
++ startUpdater on the main thread. Only custom mode accepts a proxy URL, containing
++ a host and explicit port without credentials. Direct mode disables session
++ proxies and PAC/WPAD. Unsupported configurations fail before network traffic.
++ The policy applies to feed and archive downloads. Non-system Downloader XPC is
++ unsupported. No trust or TLS configuration is accepted by this API.
++ */
++- (BOOL)xdnote_setDownloadProxyMode:(SPUXdnoteDownloadProxyMode)mode proxyURL:(nullable NSURL *)proxyURL error:(NSError * _Nullable __autoreleasing * _Nullable)error;
++
++
+ 
+ /**
+  Initializes a new `SPUUpdater` instance
+--- a/Sparkle/SUHost.h
++++ b/Sparkle/SUHost.h
+@@ -21,6 +21,8 @@
+ @interface SUHost : NSObject
+ 
+ @property (nonatomic, readonly) NSBundle *bundle;
++@property (nonatomic, copy, nullable) NSURL *xdnoteDownloadProxyURL;
++@property (nonatomic) BOOL xdnoteDownloadDirect;
+ 
+ - (instancetype)initWithBundle:(NSBundle *)aBundle;
+ 
+--- a/Sparkle/SPUUpdater.m
++++ b/Sparkle/SPUUpdater.m
+@@ -143,6 +143,24 @@
+     return nil;
+ }
+ 
++- (BOOL)xdnote_setDownloadProxyMode:(SPUXdnoteDownloadProxyMode)mode proxyURL:(NSURL * _Nullable)proxyURL error:(NSError * __autoreleasing *)error
++{
++    if (!NSThread.isMainThread || _startedUpdater ||
++        (mode != SPUXdnoteDownloadProxySystem && SPUXPCServiceIsEnabled(SUEnableDownloaderServiceKey))) {
++        if (error != NULL) {
++            *error = [NSError errorWithDomain:SUSparkleErrorDomain code:SUInvalidUpdaterError
++                userInfo:@{NSLocalizedDescriptionKey: @"The update transport is unsupported or cannot be changed after starting the updater."}];
++        }
++        return NO;
++    }
++    if (SPUXdnoteCreateDownloadConfiguration(mode, proxyURL, error) == nil) {
++        return NO;
++    }
++    _host.xdnoteDownloadProxyURL = proxyURL;
++    _host.xdnoteDownloadDirect = mode == SPUXdnoteDownloadProxyDirect;
++    return YES;
++}
++
+ - (BOOL)startUpdater:(NSError * __autoreleasing *)error
+ {
+     if (![NSThread isMainThread]) {
+--- a/Sparkle/SPUDownloadDriver.m
++++ b/Sparkle/SPUDownloadDriver.m
+@@ -108,7 +108,7 @@
+         } else
+ #endif
+         {
+-            _downloader = [[SPUDownloader alloc] initWithDelegate:self];
++            _downloader = [[SPUDownloader alloc] initWithDelegate:self proxyURL:host.xdnoteDownloadProxyURL direct:host.xdnoteDownloadDirect];
+         }
+     }
+     return self;
+--- a/Downloader/SPUDownloader.h
++++ b/Downloader/SPUDownloader.h
+@@ -16,6 +16,7 @@
+ 
+ // Due to XPC remote object reasons, this delegate is strongly referenced
+ // Invoke cleanup when done with this instance
+-- (instancetype)initWithDelegate:(id <SPUDownloaderDelegate>)delegate;
++- (nonnull instancetype)initWithDelegate:(nonnull id <SPUDownloaderDelegate>)delegate;
++- (nonnull instancetype)initWithDelegate:(nonnull id <SPUDownloaderDelegate>)delegate proxyURL:(nullable NSURL *)proxyURL direct:(BOOL)direct;
+ 
+ @end
+--- a/Downloader/SPUDownloader.m
++++ b/Downloader/SPUDownloader.m
+@@ -12,6 +12,11 @@
+ #import "SPUDownloadData.h"
+ #import "SPUDownloadDataPrivate.h"
+ #import "SUErrors.h"
++#import "SPUUpdater.h"
++#import <Security/Security.h>
++#import <Network/Network.h>
++#import <Network/NSURLSession+Network.h>
++#import <CFNetwork/CFNetwork.h>
+ 
+ 
+ #include "AppKitPrevention.h"
+@@ -26,6 +31,70 @@
+ 
+ @interface SPUDownloader () <NSURLSessionDownloadDelegate>
+ @end
++
++NSURLSessionConfiguration * _Nullable SPUXdnoteCreateDownloadConfiguration(SPUXdnoteDownloadProxyMode mode, NSURL * _Nullable proxyURL, NSError * __autoreleasing *error)
++{
++    BOOL valid = (mode == SPUXdnoteDownloadProxySystem || mode == SPUXdnoteDownloadProxyDirect || mode == SPUXdnoteDownloadProxyCustom) &&
++        ((mode == SPUXdnoteDownloadProxyCustom) == (proxyURL != nil));
++    if (proxyURL != nil) {
++        NSString *scheme = proxyURL.scheme.lowercaseString;
++        long long port = proxyURL.port.longLongValue;
++        valid = valid && ([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"socks5"]) &&
++            proxyURL.host.length > 0 && port > 0 && port <= 65535 &&
++            proxyURL.user == nil && proxyURL.password == nil && proxyURL.query == nil &&
++            proxyURL.fragment == nil && (proxyURL.path.length == 0 || [proxyURL.path isEqualToString:@"/"]);
++    }
++    if (!valid) {
++        if (error != NULL) *error = [NSError errorWithDomain:SUSparkleErrorDomain code:SUInvalidUpdaterError
++            userInfo:@{NSLocalizedDescriptionKey: @"Invalid update transport configuration."}];
++        return nil;
++    }
++    NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration ephemeralSessionConfiguration];
++    configuration.TLSMinimumSupportedProtocolVersion = tls_protocol_version_TLSv12;
++    configuration.timeoutIntervalForRequest = 30;
++    configuration.timeoutIntervalForResource = 3600;
++    configuration.HTTPCookieStorage = nil;
++    configuration.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyNever;
++    configuration.HTTPShouldSetCookies = NO;
++    configuration.URLCredentialStorage = nil;
++    configuration.URLCache = nil;
++    if (mode == SPUXdnoteDownloadProxyDirect) {
++        // A non-nil, explicit dictionary overrides system settings. An empty
++        // proxyConfigurations array would instead retain the system policy.
++        configuration.connectionProxyDictionary = @{
++            (__bridge NSString *)kCFNetworkProxiesHTTPEnable: @0,
++            (__bridge NSString *)kCFNetworkProxiesHTTPSEnable: @0,
++            (__bridge NSString *)kCFNetworkProxiesSOCKSEnable: @0,
++            (__bridge NSString *)kCFNetworkProxiesFTPEnable: @0,
++            (__bridge NSString *)kCFNetworkProxiesProxyAutoConfigEnable: @0,
++            (__bridge NSString *)kCFNetworkProxiesProxyAutoDiscoveryEnable: @0
++        };
++    } else if (proxyURL != nil) {
++        if (@available(macOS 14.0, *)) {
++            NSString *host = proxyURL.host;
++            if ([host hasPrefix:@"["] && [host hasSuffix:@"]"]) {
++                host = [host substringWithRange:NSMakeRange(1, host.length - 2)];
++            }
++            nw_endpoint_t endpoint = nw_endpoint_create_host(host.UTF8String, proxyURL.port.stringValue.UTF8String);
++            nw_proxy_config_t proxy = [proxyURL.scheme.lowercaseString isEqualToString:@"http"]
++                ? nw_proxy_config_create_http_connect(endpoint, nil)
++                : nw_proxy_config_create_socksv5(endpoint);
++            if (proxy == nil) {
++                if (error != NULL) *error = [NSError errorWithDomain:SUSparkleErrorDomain code:SUDownloadError
++                    userInfo:@{NSLocalizedDescriptionKey: @"The update proxy configuration could not be created."}];
++                return nil;
++            }
++            // A failed explicit proxy must never bypass the user's network choice.
++            nw_proxy_config_set_failover_allowed(proxy, false);
++            configuration.proxyConfigurations = @[proxy];
++        } else {
++            if (error != NULL) *error = [NSError errorWithDomain:SUSparkleErrorDomain code:SUDownloadError
++                userInfo:@{NSLocalizedDescriptionKey: @"The explicit update proxy requires macOS 14 or later."}];
++            return nil;
++        }
++    }
++    return configuration;
++}
+ 
+ @implementation SPUDownloader
+ {
+@@ -33,6 +102,8 @@
+     NSURLSession *_downloadSession;
+     NSString *_bundleIdentifier;
+     NSString *_desiredFilename;
++    NSURL *_proxyURL;
++    BOOL _direct;
+     
+     // Delegate is intentionally strongly referenced; see header
+     id <SPUDownloaderDelegate> _delegate;
+@@ -44,10 +115,17 @@
+ }
+ 
+ - (instancetype)initWithDelegate:(id <SPUDownloaderDelegate>)delegate
++{
++    return [self initWithDelegate:delegate proxyURL:nil direct:NO];
++}
++
++- (instancetype)initWithDelegate:(id <SPUDownloaderDelegate>)delegate proxyURL:(NSURL * _Nullable)proxyURL direct:(BOOL)direct
+ {
+     self = [super init];
+     if (self != nil) {
+         _delegate = delegate;
++        _proxyURL = [proxyURL copy];
++        _direct = direct;
+     }
+     return self;
+ }
+@@ -80,8 +158,15 @@
+         return;
+     }
+     
++    NSError *error = nil;
++    NSURLSessionConfiguration *configuration = SPUXdnoteCreateDownloadConfiguration(
++        _direct ? SPUXdnoteDownloadProxyDirect : _proxyURL == nil ? SPUXdnoteDownloadProxySystem : SPUXdnoteDownloadProxyCustom, _proxyURL, &error);
++    if (configuration == nil) {
++        [_delegate downloaderDidFailWithError:error];
++        return;
++    }
+     _downloadSession = [NSURLSession
+-        sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]
++        sessionWithConfiguration:configuration
+         delegate:self
+         delegateQueue:[NSOperationQueue mainQueue]];
+     
+--- a/Sparkle/SPUNoUpdateFoundInfo.m
++++ b/Sparkle/SPUNoUpdateFoundInfo.m
+@@ -10,7 +10,7 @@
+ #import "SUAppcastItem.h"
+ #import "SUHost.h"
+ #import "SULocalizations.h"
+-#import "SUlog.h"
++#import "SULog.h"
+ 
+ 
+ #include "AppKitPrevention.h"

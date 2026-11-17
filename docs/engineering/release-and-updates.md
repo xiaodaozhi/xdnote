@@ -66,6 +66,8 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 采用 Sparkle 2.10.0 和既有受限代理适配，通过薄 Objective-C++ 桥接 Qt Widgets 统一状态。源码、补丁、资源、helper、签名工具及摘要锁定在本项目，覆盖已定 macOS 13+、Intel／ARM64；框架主库与代理适配分别按架构构建和准入，新增依赖后核对实际载荷与许可。实现依据见 [Sparkle 官方文档](https://sparkle-project.org/documentation/)。
 
+macOS 13 同样必须支持自定义代理自动安装，不以手动入口或提高最低系统替代。固定依赖与独立探针见[原生更新网络准入](macos-update-transport.md)；旧 CFNetwork 会话接口作为 macOS 13 候选研究，新 Network API 的可用性不能代替最低系统验证。当前产品尚未链接 Sparkle，不能将 SDK 构建或新宿主上的兼容探针写成已完成安装更新。
+
 feed 只暴露已选定的同一候选，由 Sparkle 原生验证 feed／归档并处理实际替换，不声称 Sparkle 执行了额外 SHA-256。只读 DMG、App Translocation、未登记 `.app` 或缺少公钥使用手动入口。DMG 与 app.zip 应来自同一个已部署、完整性签名及核验的 `.app`，解包后另做重定位验证。
 
 系统／直连／无凭据 HTTP CONNECT／SOCKS5 策略在实例启动前固定，feed 与归档共享同一会话；直连显式关闭系统代理、PAC 和自动发现，不以空字典冒充关闭。自定义代理失败不回退直连。Framework、XPC 和 helper 保留各自参数及 entitlements，不套用通用递归重签规则。
