@@ -25,7 +25,7 @@ class BuildVersionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / '开发工作区'; root.mkdir()
             def git(*args):
-                return subprocess.check_output(['git', '-C', str(root), *args], stderr=subprocess.DEVNULL, text=True).strip()
+                return subprocess.check_output(['git', '-C', str(root), *args], stderr=subprocess.DEVNULL, text=True, encoding='utf-8').strip()
             git('init'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid')
             (root / 'source').write_text('own sample')
             git('add', 'source'); git('commit', '-m', 'fixture')
