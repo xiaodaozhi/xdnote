@@ -13,6 +13,7 @@ import zipfile
 
 from installer_common import ROOT, build_output, digest
 from product_deployment_unix import inventory
+from release_policy import current_policy
 
 
 def verify(root, metadata):
@@ -81,7 +82,8 @@ def build(root, metadata, compatibility, output):
             'dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()),
             'buildIdentity':metadata['buildIdentity'],'compatibilityScope':compatibility['scope'],'sourceCodeInRelease':False,
             'archiveReproducible':True,'extractedContentMatches':True,'releaseReady':False,'publicationAllowed':False,
-            'remaining':['source access and Qt replacement fulfillment review','actual Rust static component license scope','minimum-OS/real-desktop acceptance','publisher signing/notarization and explicit release authorization']}
+            'distributionPolicy':current_policy(),
+            'remaining':['source access and Qt replacement fulfillment review','actual Rust static component license scope','minimum-OS/real-desktop acceptance','explicit release authorization under the selected distribution policy']}
     output.with_name(output.name+'.sha256').write_text(result['sha256']+'  '+output.name+'\n',encoding='utf-8')
     output.with_name(output.name+'.manifest.json').write_text(json.dumps({'files':metadata['files'],**result},indent=2)+'\n',encoding='utf-8')
     return result

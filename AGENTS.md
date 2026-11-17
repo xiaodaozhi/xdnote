@@ -3,6 +3,8 @@
 - 开始前阅读 `README.md`、`docs/README.md` 和相关规格。当前推进桌面基础工程与技术准入，不将设计、候选技术或未执行验收写成已有产品能力；实际构建入口与内存样本边界见 `docs/engineering/developer-build.md`。
 - 产品名使用 xdnote。需求与交互在 `docs/product`，视觉规则及权威参数在 `docs/visual`，原稿及素材在 `design`。
 - 自有代码采用 Apache-2.0，自有文档与原创设计采用 CC BY 4.0，按 `docs/engineering/licensing.md` 区分内容范围及第三方权利。最低系统、64 位架构和 Linux 图形环境遵循 `docs/engineering/platform-support.md`，不得将目标矩阵写成已通过的产品验收。
+- 发行遵循 `tools/release-policy.json` 与 `docs/engineering/release-and-updates.md`：Windows 不自行进行发布者数字证书签名，后续使用 MSIX 上架 Microsoft Store，由 Store 管理分发签名与更新；macOS 不进行 Developer ID 签名或 Apple 公证，保留必要的 ad-hoc 完整性封印。更新清单／包的 Ed25519 验签独立保留，不因不办理发布者证书而省略。
+- 公证、许可核验、检查与安装更新沿用已确认的现成实践，适配本项目身份、平台范围和独立信任根；不另起替代协议，不引入其他项目的运行／构建依赖，不把尚未接入的更新或商店功能写成已有能力。项目文档不记录参考项目名称或“来自某项目”之类措辞。
 - 已确认提供六种强调色；石墨灰是当前展示默认值，不表示永久锁定品牌色。主题明暗与强调色分别设置。
 - 同一设计图或素材只维护最新版本，采用稳定文件名替换；不新增历史原图、修订副本或旧交付包。不同界面、状态、主题、配色与采样倍率按用途区分。
 - 品牌 logo 与软件图标先展示候选，用户验收通过后再替换设计图及导出正式素材。

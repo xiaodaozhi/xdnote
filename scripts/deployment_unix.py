@@ -303,7 +303,7 @@ def prepare(build, qt, destination):
                   ("scripts/deployment_unix.py", "scripts/deployment_inventory.py", "tools/deployment-notices.json")},
               "releaseReady": False, "licenseReviewComplete": False,
               "remaining": ["final license/source/replacement obligations", "minimum OS", "native platform and desktop acceptance",
-                            "installer/upgrade/uninstall and file association", "identity signing/notarization and release policy"],
+                            "installer/upgrade/uninstall and file association", "explicit release authorization under the selected distribution policy"],
               "references": ["https://doc.qt.io/qt-6.8/linux-deployment.html", "https://doc.qt.io/qt-6.8/macos-deployment.html"]}
     try:
         bindir, plugins, libraries = (linux_stage if system == "Linux" else mac_stage)(build, qt, destination, evidence)
