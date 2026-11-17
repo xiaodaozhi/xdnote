@@ -19,7 +19,7 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("if: startsWith(inputs.scope, 'updates')", text)
@@ -136,6 +136,19 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('retention-days: 7', text)
         for forbidden in ('contents: write', 'secrets.', 'gh release', 'pull_request:', 'push:'):
             self.assertNotIn(forbidden, text)
+
+    def test_qt_source_replacement_is_explicit_owned_and_evidence_only(self):
+        path = WORKFLOWS / 'qt-replacement.yml'; text = path.read_text()
+        self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})
+        for expected in ('ubuntu-22.04', 'windows-2022', 'macos-26', 'contents: read', 'persist-credentials: false',
+                         'scripts/build_modified_qt_core.py', 'scripts/verify_qt_replacement.py', 'scripts/linkage_audit.py'):
+            self.assertIn(expected, text)
+        self.assertIn('uses: ./.github/workflows/qt-replacement.yml', (WORKFLOWS / 'desktop-admission.yml').read_text())
+        upload = text.split('Preserve source and replacement evidence only', 1)[1]
+        for forbidden in ('contents: write', 'secrets.', 'gh release', 'signing certificate'):
+            self.assertNotIn(forbidden, text)
+        for forbidden in ('*.dll', '*.so', '*.framework', '*.tar.xz', 'core/source/'):
+            self.assertNotIn(forbidden, upload)
 
 
 if __name__ == "__main__":

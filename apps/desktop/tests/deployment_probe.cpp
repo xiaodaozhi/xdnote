@@ -17,6 +17,8 @@
 #include <stdexcept>
 #ifdef Q_OS_UNIX
 #include <dlfcn.h>
+#elif defined(Q_OS_WIN)
+#include <qt_windows.h>
 #endif
 using namespace xdnote;
 namespace {
@@ -78,6 +80,19 @@ int main(int argc, char **argv) {
         if (!expectedProof.isEmpty()) {
             using Proof = const char *(*)();
             auto proof = reinterpret_cast<Proof>(dlsym(RTLD_DEFAULT, "xdnoteQtSourceProof"));
+            require(proof && QString::fromLatin1(proof()) == expectedProof, "modified source Qt Core proof missing from actual loaded library");
+            result["qtSourceProof"] = QString::fromLatin1(proof());
+        }
+#elif defined(Q_OS_WIN)
+        const auto module = GetModuleHandleW(L"Qt6Core.dll");
+        wchar_t modulePath[32768];
+        const auto length = module ? GetModuleFileNameW(module, modulePath, 32768) : 0;
+        require(length > 0 && length < 32768, "actual Qt Core location unavailable");
+        result["qtCorePath"] = QFileInfo(QString::fromWCharArray(modulePath, int(length))).canonicalFilePath();
+        const auto expectedProof = qEnvironmentVariable("XDNOTE_EXPECT_QT_SOURCE_PROOF");
+        if (!expectedProof.isEmpty()) {
+            using Proof = const char *(*)();
+            const auto proof = reinterpret_cast<Proof>(GetProcAddress(module, "xdnoteQtSourceProof"));
             require(proof && QString::fromLatin1(proof()) == expectedProof, "modified source Qt Core proof missing from actual loaded library");
             result["qtSourceProof"] = QString::fromLatin1(proof());
         }

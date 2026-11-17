@@ -1,0 +1,149 @@
+name: Qt source replacement
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  replacement:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            host: linux
+            arch: linux_gcc_64
+            qt: gcc_64
+            library: lib/libQt6Core.so.6.8.2
+            payload: product
+            audit: product-evidence/inventory.json
+            materials: product/licenses/qt
+          - os: windows-2022
+            host: windows
+            arch: win64_msvc2022_64
+            qt: msvc2022_64
+            library: bin/Qt6Core.dll
+            payload: payload
+            audit: payload.json
+            materials: payload/licenses/qt
+          - os: macos-26
+            host: mac
+            arch: clang_64
+            qt: macos
+            library: lib/QtCore.framework/Versions/A/QtCore
+            payload: product
+            audit: product-evidence/inventory.json
+            materials: product/xdnote.app/Contents/Resources/licenses/qt
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    env:
+      PYTHONUTF8: '1'
+      XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: '1.99.0'
+      - name: Prepare fixed build tools, source inputs and local font
+        shell: bash
+        run: |
+          python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+          python scripts/desktop.py prepare --download
+          python scripts/prepare_ci_font.py --output build/test-fonts
+      - name: Prepare Linux runtime and source-build libraries
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          mkdir -p build/ci-apt
+          xdnote_apt_archive=https://archive.ubuntu.com/ubuntu
+          xdnote_apt_security=https://security.ubuntu.com/ubuntu
+          if ! timeout 10s getent ahosts archive.ubuntu.com > /dev/null || ! timeout 10s getent ahosts security.ubuntu.com > /dev/null; then
+            xdnote_apt_archive=https://mirrors.kernel.org/ubuntu
+            xdnote_apt_security=$xdnote_apt_archive
+          fi
+          cat > build/ci-apt/ubuntu.list <<EOF
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_archive jammy main universe restricted multiverse
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_archive jammy-updates main universe restricted multiverse
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_security jammy-security main universe restricted multiverse
+          EOF
+          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
+          timeout 180s sudo apt-get "${xdnote_apt_options[@]}" update
+          timeout 360s sudo apt-get "${xdnote_apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 patchelf libicu-dev libzstd-dev
+      - name: Prepare checksummed Qt SDK
+        run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.arch }}
+      - name: Prepare native macOS dependency
+        if: runner.os == 'macOS'
+        run: |
+          python scripts/sparkle.py prepare --download
+          python scripts/sparkle.py build
+      - name: Prepare original Windows payload materials
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
+          python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
+      - name: Build native product on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
+          python scripts/desktop.py build --build-dir build/qt-proof/desktop --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+      - name: Build native product on Unix
+        if: runner.os != 'Windows'
+        run: python scripts/desktop.py build --build-dir build/qt-proof/desktop --qt-prefix build/Qt/6.8.2/${{ matrix.qt }}
+      - name: Seal owned Windows product
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python scripts/deployment_inventory.py --build-dir build/qt-proof/desktop --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --destination build/qt-proof/staging --redist-dir build/toolchain/windows-runtime/runtime
+          python scripts/installer_payload.py --source build/qt-proof/staging --audit build/qt-proof/staging-evidence/inventory.json --destination build/qt-proof/payload --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --build-dir build/qt-proof/desktop --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --report build/qt-proof/payload.json
+      - name: Seal owned Unix product
+        if: runner.os != 'Windows'
+        run: python scripts/product_deployment_unix.py --build-dir build/qt-proof/desktop --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --destination build/qt-proof/product
+      - name: Fetch and verify independent original source archives
+        run: python scripts/qt_source_access.py --materials build/qt-proof/${{ matrix.materials }} --download-cache build/qt-proof/archives
+      - name: Rebuild modified Windows Qt Core
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          python scripts/build_modified_qt_core.py --archive build/qt-proof/archives/qtbase-everywhere-src-6.8.2.tar.xz --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --output build/qt-proof/core --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+      - name: Rebuild modified Unix Qt Core
+        if: runner.os != 'Windows'
+        run: python scripts/build_modified_qt_core.py --archive build/qt-proof/archives/qtbase-everywhere-src-6.8.2.tar.xz --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --output build/qt-proof/core
+      - name: Verify actual source replacement and maintenance protection
+        run: python scripts/verify_qt_replacement.py --payload build/qt-proof/${{ matrix.payload }} --audit build/qt-proof/${{ matrix.audit }} --build-dir build/qt-proof/desktop --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --replacement build/qt-proof/core/build/${{ matrix.library }} --output build/qt-proof/verification
+      - name: Attribute actual linked Rust units
+        run: python scripts/linkage_audit.py --build-dir build/qt-proof/desktop --output build/qt-proof/linkage.json
+      - name: Preserve source and replacement evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qt-source-replacement-${{ matrix.os }}
+          retention-days: 7
+          path: |
+            build/qt-proof/*.json
+            build/qt-proof/archives/receipt.json
+            build/qt-proof/desktop/*.log
+            build/qt-proof/desktop/build-identity.json
+            build/qt-proof/desktop/xdnote-link.map
+            build/qt-proof/staging-evidence/*.json
+            build/qt-proof/product-evidence/*.json
+            build/qt-proof/core/*.json
+            build/qt-proof/core/*.log
+            build/qt-proof/core/source.patch
+            build/qt-proof/verification/*.json
+            build/qt-proof/verification/*.log
+            build/qt-proof/verification/*.png
