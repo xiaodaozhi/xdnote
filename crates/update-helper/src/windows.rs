@@ -122,7 +122,7 @@ impl Job {
         }
         Ok(Self {
             path,
-            grant,
+            grant: Arc::new(grant),
             _directory: directory,
         })
     }

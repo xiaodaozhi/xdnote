@@ -9,6 +9,25 @@ from installer_common import ROOT, build_output, digest
 from product_deployment_unix import inventory
 
 
+def system_packages(path):
+    """dpkg may retain /lib names on an usr-merged host; prove aliases first."""
+    source = Path(path)
+    candidates = [source]
+    if str(source).startswith('/usr/lib/'):
+        alias = Path('/lib') / source.relative_to('/usr/lib')
+        if alias.is_file() and alias.samefile(source): candidates.append(alias)
+    for candidate in candidates:
+        query = subprocess.run(['/usr/bin/dpkg-query', '-S', str(candidate)], capture_output=True, text=True)
+        if query.returncode != 0: continue
+        names = set()
+        for row in query.stdout.splitlines():
+            name = row.split(': ')[0].removesuffix(':amd64')
+            if not re.fullmatch('[a-z0-9][a-z0-9+.-]*', name): raise ValueError('Invalid system package owner')
+            names.add(name)
+        if names: return names
+    raise ValueError('No dpkg owner for actual system library: ' + str(source))
+
+
 def package_tree(payload, audit, stage):
     if not audit.get('ok') or audit.get('host') != {'system': 'Linux', 'architecture': 'x86_64'} or audit.get('files') != inventory(payload):
         raise ValueError('A sealed, audited Linux x86_64 runtime is required')
@@ -46,11 +65,7 @@ def package_tree(payload, audit, stage):
         if item.get('resolution') != 'host Linux system library': continue
         path = item.get('resolved', '')
         if path:
-            found = subprocess.check_output(['/usr/bin/dpkg-query', '-S', path], text=True).splitlines()
-            for row in found:
-                name = row.split(': ')[0].removesuffix(':amd64')
-                if not re.fullmatch('[a-z0-9][a-z0-9+.-]*', name): raise ValueError('Invalid system package owner')
-                packages.add(name)
+            packages.update(system_packages(path))
     document = share / 'doc/xdnote'; document.mkdir(parents=True)
     shutil.copy2(ROOT / 'LICENSE', document / 'copyright')
     control = stage / 'DEBIAN'; control.mkdir()

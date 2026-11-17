@@ -6,12 +6,24 @@ import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from unittest.mock import patch
+import subprocess
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import release_candidate as release
 import msix_package as msix
+import build_linux_installer as linux
 
 
 class ReleasePackageTests(unittest.TestCase):
+    def test_usrmerge_resolves_only_the_same_actual_system_file(self):
+        with patch.object(Path, 'is_file', return_value=True), patch.object(Path, 'samefile', return_value=True), patch.object(linux.subprocess, 'run', side_effect=[
+            subprocess.CompletedProcess([],1,'',''), subprocess.CompletedProcess([],0,'libc6:amd64: /lib/x86_64-linux-gnu/libm.so.6\n','')]) as query:
+            self.assertEqual(linux.system_packages('/usr/lib/x86_64-linux-gnu/libm.so.6'), {'libc6'})
+            self.assertEqual(query.call_args.args[0][-1], '/lib/x86_64-linux-gnu/libm.so.6')
+        with patch.object(Path, 'is_file', return_value=True), patch.object(Path, 'samefile', return_value=False), patch.object(linux.subprocess, 'run', return_value=subprocess.CompletedProcess([],1,'','')) as query:
+            with self.assertRaises(ValueError): linux.system_packages('/usr/lib/x86_64-linux-gnu/libm.so.6')
+            self.assertEqual(query.call_count,1)
+
     def test_six_assets_and_stale_verification_fail_closed(self):
         identity = dict(product='xdnote', version='0.2.0', build=12, revision='a'*40, dirty=False, channel='stable', configuration='Release')
         with tempfile.TemporaryDirectory() as folder:
