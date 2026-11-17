@@ -148,7 +148,7 @@ class Product:
     def scenario(self, mode):
         self.install_old(); before = digest(self.image)
         for name in ['helper.json', 'error.json', 'status.json', 'restarted.json', 'cancelled.json', 'corrupt.json', 'recovery.json']: (self.run / name).unlink(missing_ok=True)
-        (self.run / 'owned.md').write_text('owned\n'); dump(self.run / 'settings.json', {'schemaVersion': 1, 'fixtureUnknown': 'retained'})
+        (self.run / 'owned.md').write_bytes(b'owned\n'); dump(self.run / 'settings.json', {'schemaVersion': 1, 'fixtureUnknown': 'retained'})
         dump(self.run / 'allowed.json', {'owner': 'xdnote-private-native-product-v1', 'root': str(self.root), 'executableSha256': before})
         dump(self.run / 'configuration.json', {'mode': mode, 'routes': self.routes})
         attempt = self.run / 'attempt.json'
