@@ -55,7 +55,7 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 `QNetworkAccessManager` 只用于这一个控制器，关闭 Cookie 读写及身份缓存复用，不读取 GitHub 凭据。每个请求保留 TLS 校验、15 秒无数据／30 秒总时限、5 次已核对重定向；按 64 KiB 读块执行各类响应上限，结束时仍读取末尾数据并检查。ETag 最多保留 24 条成功 HTTP 响应，304 必须有对应的成功缓存；TLS、超时、限流、损坏和缺包分别保留失败，均不显示为当前无更新。Qt 行为依据见[请求](https://doc.qt.io/qt-6.8/qnetworkrequest.html)与[回执](https://doc.qt.io/qt-6.8/qnetworkreply.html)，实际依赖仍固定 6.8.2。
 
-网络层已保留系统／直连／无凭据 HTTP 或 SOCKS5 自定义代理及 HTTPS 镜像校验，配置只在操作开始时快照生效；失败不会自动重试或改为直连。当前产品使用系统代理，尚未提供代理／镜像设置界面或持久化，不能把后台适配视为用户配置功能已交付。Windows 通过系统包身份查询隐藏并拒绝 GitHub 更新操作，仅确定 `APPMODEL_ERROR_NO_PACKAGE` 才走普通副本，其他结果保守按 Store 处理；没有编造 Store 地址。查询依据见[微软说明](https://learn.microsoft.com/en-us/windows/win32/api/appmodel/nf-appmodel-getcurrentpackagefullname)，实际签名包仍需另验。
+网络层支持系统／直连／无凭据 HTTP 或 SOCKS5 自定义代理及 HTTPS 镜像校验，配置只在操作开始时快照生效；失败不会自动重试或改为直连。应用级偏好已保留 `updates` 分组并绑定单一控制器，缺省仍用系统代理；已存非法配置阻止新检查，修正前保留原值。代理／镜像设置界面仍须按具体交互方案接入和验收，不能把后台与持久化适配视为用户入口已交付。Windows 通过系统包身份查询隐藏并拒绝 GitHub 更新操作，仅确定 `APPMODEL_ERROR_NO_PACKAGE` 才走普通副本，其他结果保守按 Store 处理；没有编造 Store 地址。查询依据见[微软说明](https://learn.microsoft.com/en-us/windows/win32/api/appmodel/nf-appmodel-getcurrentpackagefullname)，实际签名包仍需另验。
 
 使用同一构建目录和 Qt SDK 执行 `python scripts/desktop.py test --suite updates`：固定离屏运行网络回执夹具、Rust ABI 及设置回归，证据进入 `evidence/updates/`。夹具覆盖成功／304、取消／重开、重复点击、分页／响应边界、TLS／限流／重定向、候选和资产绑定；合成回执不等于真实 HTTPS 服务器、代理路由或 Store 安装验收。桌面 CI 的手动 `scope=updates` 只补验三套默认配置的相同范围，保留未执行的人工视觉、真实网络和原生更新边界。
 
