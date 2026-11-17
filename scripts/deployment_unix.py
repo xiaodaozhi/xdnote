@@ -12,6 +12,7 @@ import plistlib
 import re
 import shutil
 import subprocess
+import tempfile
 
 import desktop
 from background_validation import check_report, execute, offscreen_environment
@@ -162,7 +163,7 @@ def mac_stage(build, qt, destination, evidence, product=False):
     with (contents / "Info.plist").open("wb") as file:
         plistlib.dump({"CFBundleExecutable": "xdnote", "CFBundleIdentifier": "io.github.xiaodaozhi.xdnote" + ("" if product else ".diagnostic"),
                       "CFBundleName": "xdnote", "CFBundlePackageType": "APPL", "CFBundleVersion": "0",
-                      "LSMinimumSystemVersion": "13.0", "NSHighResolutionCapable": True,
+                      "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
                       "CFBundleDocumentTypes": [{"CFBundleTypeName": "Markdown", "CFBundleTypeRole": "Editor", "LSHandlerRank": "Alternate", "LSItemContentTypes": ["net.daringfireball.markdown"]}],
                       "UTImportedTypeDeclarations": [{"UTTypeIdentifier": "net.daringfireball.markdown", "UTTypeDescription": "Markdown", "UTTypeConformsTo": ["public.plain-text"], "UTTypeTagSpecification": {"public.filename-extension": ["md", "markdown"], "public.mime-type": "text/markdown"}}]}, file)
     env = desktop.runtime_environment(desktop.environment(None), qt)
@@ -191,8 +192,22 @@ def mac_stage(build, qt, destination, evidence, product=False):
     codesign = desktop.prepared_tool("codesign", os.environ)
     # Remove build/SDK rpaths and force every copied Mach-O to the local framework
     # directory. Patch SDK absolute imports only if the matching framework exists.
-    binaries = [path for path in staged_files(destination) if binary(path, "Darwin")]
+    binaries = [path for path in staged_files(destination) if not path.is_symlink() and binary(path, "Darwin")]
     for path in binaries:
+        architectures = inspect(["/usr/bin/lipo", "-archs", path]).split()
+        if "arm64" not in architectures:
+            raise ValueError("Deployed Mach-O lacks supported arm64 slice")
+        if architectures != ["arm64"]:
+            # Mutate only the disposable deployment copy; the pinned SDK stays
+            # byte-identical. The following source audit compares ARM64 code.
+            with tempfile.NamedTemporaryFile(prefix=".xdnote-arm64-", dir=path.parent, delete=False) as file:
+                temporary = Path(file.name)
+            try:
+                inspect(["/usr/bin/lipo", path, "-thin", "arm64", "-output", temporary])
+                temporary.chmod(path.stat().st_mode & 0o777)
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
         imports, paths, _ = macho_loads(inspect(["/usr/bin/otool", "-l", path]))
         for entry in paths:
             inspect([install_name, "-delete_rpath", entry, path])

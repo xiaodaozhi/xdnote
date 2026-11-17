@@ -60,6 +60,16 @@ class UnixProductTests(unittest.TestCase):
     def test_fat_macho_preserves_all_architecture_code_evidence(self):
         thin = macho(); fat = struct.pack('>IIIIIII', 0xcafebabe, 1, 0x1000007, 3, 28, len(thin), 0) + thin
         self.assertEqual(len(code_sections(fat)), 1)
+        self.assertEqual(code_sections(fat), code_sections(thin))
+        arm = bytearray(thin); struct.pack_into('<II', arm, 4, 0x100000c, 0)
+        both = (struct.pack('>II', 0xcafebabe, 2) +
+                struct.pack('>IIIII', 0x1000007, 3, 48, len(thin), 0) +
+                struct.pack('>IIIII', 0x100000c, 0, 48 + len(thin), len(arm), 0) + thin + arm)
+        self.assertEqual(code_sections(both, architecture='arm64'), code_sections(arm))
+        changed = bytearray(arm); changed[-1] ^= 1
+        self.assertNotEqual(code_sections(both, architecture='arm64'), code_sections(changed))
+        inconsistent = bytearray(fat); struct.pack_into('>I', inconsistent, 8, 0x100000c)
+        with self.assertRaisesRegex(ValueError, 'Inconsistent'): code_sections(inconsistent)
         with self.assertRaises(ValueError): code_sections(fat[:-1])
 
     def test_data_only_elf_compares_payload_and_detects_data_changes(self):

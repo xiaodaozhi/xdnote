@@ -18,6 +18,14 @@ SPEC.loader.exec_module(desktop)
 
 
 class DesktopToolTests(unittest.TestCase):
+    def test_macos_host_gate_rejects_old_system_and_translated_intel_process(self):
+        desktop.check_host('Darwin', 'arm64', '14.0')
+        desktop.check_host('Darwin', 'arm64', '27.2.1')
+        desktop.check_host('Linux', 'x86_64', '')
+        for arch, version in (('arm64', '13.6'), ('x86_64', '15.8')):
+            with self.subTest(arch=arch, version=version), self.assertRaisesRegex(ValueError, 'native Apple Silicon'):
+                desktop.check_host('Darwin', arch, version)
+
     def test_compiled_icon_change_invalidates_build_identity(self):
         desktop.BUILD.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="icon-identity-",dir=desktop.BUILD) as directory:

@@ -38,7 +38,7 @@
 | 协作 | [产研与 GitHub 流程](engineering/workflow.md) | Issue、分支、PR、CI、验收及清理规则 |
 | 许可 | [许可范围与依赖](engineering/licensing.md) | Apache-2.0、CC BY 4.0 的内容范围、署名与第三方依赖 |
 | 发行与更新 | [渠道、许可核验与主动更新](engineering/release-and-updates.md) | 更新核心／信任根边界、未签名 Windows、MSIX Store、macOS ad-hoc 与 Sparkle 接入契约 |
-| 原生更新网络 | [Sparkle 与 macOS 13 代理准入](engineering/macos-update-transport.md) | 固定依赖、原生构建、CFNetwork 候选和回环测试；不代表产品安装能力 |
+| 原生更新网络 | [Sparkle 与 macOS 原生代理准入](engineering/macos-update-transport.md) | 固定依赖、原生构建、受限代理和回环测试；不代表产品安装能力 |
 | 平台 | [平台目标与验证基线](engineering/platform-support.md) | 最低系统、64 位架构、Linux 图形环境及实际验收边界 |
 | 计划 | [开发路线](planning/roadmap.md) | 阶段顺序、产物和退出条件 |
 | 验收 | [验收规格](qa/acceptance.md) | 需求映射、真实文件与平台验证方法 |

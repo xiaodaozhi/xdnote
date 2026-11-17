@@ -15,7 +15,6 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = ROOT / 'build/Sparkle/2.10.0'
 RECEIPT = 'xdnote-sdk.json'
 
 
@@ -34,6 +33,10 @@ def digest(path):
         while block := source.read(1024 * 1024):
             result.update(block)
     return result.hexdigest()
+
+
+# Distinct derived builds retain independent receipts; original archive cache is shared.
+BASE = ROOT / 'build/Sparkle' / configuration()['framework_build']['variant']
 
 
 def owned(path):
@@ -201,8 +204,8 @@ def prepare(download=False):
 
 def build():
     import sparkle_build
-    if platform.system() != 'Darwin' or platform.machine() not in ('arm64', 'x86_64'):
-        raise ValueError('Sparkle admission requires native macOS Intel or ARM64')
+    if platform.system() != 'Darwin' or platform.machine() != 'arm64':
+        raise ValueError('Sparkle admission requires native macOS Apple Silicon arm64')
     upstream = owned(BASE / 'upstream')
     verify(upstream)
     output = owned(BASE / platform.machine())

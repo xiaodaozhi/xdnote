@@ -129,6 +129,11 @@ def profile_settings(profile, system=None):
     return {"qtVersion": DEPS["qt"]["version"], "compatibilityOnly": True}
 
 
+def check_host(system, architecture, version):
+    if system == "Darwin" and (architecture != "arm64" or tuple(map(int, version.split('.')[:2])) < (14, 0)):
+        raise ValueError("macOS builds and runs require macOS 14 or later on native Apple Silicon arm64")
+
+
 def find_msvc2019():
     vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio/Installer/vswhere.exe"
     for versions in ("[16.0,17.0)", "[17.0,18.0)"):
@@ -246,6 +251,7 @@ def main():
         parser.error("--file and --admission are supported by run only")
     if args.file and args.admission:
         parser.error("The admission window does not accept user files")
+    check_host(platform.system(), platform.machine(), platform.mac_ver()[0])
     settings = profile_settings(args.profile)
     build = build_path(args.build_dir or BUILD / ("desktop-admission" if args.profile == "default" else "desktop-msvc2019"))
     BUILD.mkdir(exist_ok=True)

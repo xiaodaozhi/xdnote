@@ -123,7 +123,7 @@ def native_metadata(sdk, log):
         raise ValueError('Sparkle main library architecture differs')
     commands = execute(['/usr/bin/otool', '-l', library], log).decode()
     minimum = re.findall(r'\bminos (\d+\.\d+)', commands)
-    if minimum != ['13.0']:
+    if minimum != ['14.0']:
         raise ValueError('Sparkle main library deployment target differs')
     imports = execute(['/usr/bin/otool', '-L', library], log).decode().splitlines()[1:]
     if any(not value.strip().startswith(('/System/Library/', '/usr/lib/', '@rpath/Sparkle.framework/')) for value in imports):
@@ -141,8 +141,8 @@ def native_metadata(sdk, log):
             raise ValueError('Upstream Sparkle helper does not include both targets')
         code = execute(['/usr/bin/otool', '-arch', 'all', '-l', path], log).decode()
         targets = re.findall(r'\bminos (\d+\.\d+)', code)
-        if len(targets) != 2 or any(tuple(map(int, value.split('.'))) > (13, 0) for value in targets):
-            raise ValueError('Upstream Sparkle helper target exceeds macOS 13')
+        if len(targets) != 2 or any(tuple(map(int, value.split('.'))) > (14, 0) for value in targets):
+            raise ValueError('Upstream Sparkle helper target exceeds macOS 14')
         signature = subprocess.run(['/usr/bin/codesign', '-dvv', '--entitlements', ':-', '--xml', str(path)],
                                    capture_output=True, check=True, timeout=30)
         entitlements = plistlib.loads(signature.stdout) if signature.stdout.strip() else {}
@@ -158,6 +158,8 @@ def native_metadata(sdk, log):
 
 
 def check(work, evidence):
+    if platform.system() != 'Darwin' or platform.machine() != 'arm64' or tuple(map(int, platform.mac_ver()[0].split('.')[:2])) < (14, 0):
+        raise ValueError('Native update admission requires macOS 14 or later on arm64')
     sdk = sparkle.owned(sparkle.BASE / platform.machine())
     receipt = sparkle.verify(sdk, built=True)
     work, evidence = sparkle.owned(work), sparkle.owned(evidence)
@@ -192,7 +194,7 @@ def check(work, evidence):
                     'SUFeedURL': 'https://127.0.0.1:1/never-requested'}
             (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
             execute(['/usr/bin/xcrun', 'clang', '-fobjc-arc', '-fblocks', '-Wall', '-Wextra', '-Werror',
-                     '-mmacosx-version-min=13.0', sparkle.ROOT / 'experiments/sparkle-admission/probe.m',
+                     '-mmacosx-version-min=14.0', sparkle.ROOT / 'experiments/sparkle-admission/probe.m',
                      '-F', sdk, '-framework', 'Sparkle', '-framework', 'Foundation', '-framework', 'CFNetwork',
                      '-framework', 'Network', '-framework', 'Security', '-Wl,-rpath,@executable_path/../Frameworks', '-o', executable], log)
             # No Qt/other-project SDK fallbacks are available to the probe.
@@ -216,9 +218,7 @@ def check(work, evidence):
                 # reserved .invalid fixture name for CONNECT/SOCKS instead;
                 # the rejecting local proxy never resolves or contacts it.
                 proxy_url = f'https://xdnote-sparkle-fixture.invalid:{port}/fixture'
-                commands = ['request-legacy']
-                if tuple(map(int, platform.mac_ver()[0].split('.')[:2])) >= (14, 0):
-                    commands.insert(0, 'request')
+                commands = ['request']
                 for command in commands:
                     for kind, scheme in (('http', 'http'), ('socks', 'socks5')):
                         with listener(kind) as (proxy_port, requests):

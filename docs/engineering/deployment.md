@@ -48,7 +48,7 @@ Unix 诊断目录仍保留含 Quick 准入用例的测试程序及其依赖，�
 
 产品没有 Qt SQL 数据库功能。macOS 部署工具扫描带入的 `sqldrivers` 不进入诊断候选，避免无关数据库客户端成为隐含依赖；排除原因写入报告，不以开发机器上另行安装数据库库来掩盖外部依赖。
 
-手动选择桌面工作流的 `scope=deployment-unix`，仅在 Linux x86_64、macOS Intel／ARM 执行上文纯产品部署与安装验证；`scope=deployment-linux` 只补验 Linux 专属变动。旧诊断入口保留给明确需要测试依赖的研发场景。专项不运行完整桌面测试矩阵，仅上传证据，不上传安装包或发布产品。
+手动选择桌面工作流的 `scope=deployment-unix`，仅在 Linux x86_64、macOS ARM64 执行上文纯产品部署与安装验证；`scope=deployment-linux` 只补验 Linux 专属变动。旧诊断入口保留给明确需要测试依赖的研发场景。专项不运行完整桌面测试矩阵，仅上传证据，不上传安装包或发布产品。
 
 ## 许可材料与发行边界
 
@@ -59,3 +59,5 @@ Unix 诊断目录仍保留含 Quick 准入用例的测试程序及其依赖，�
 按 [Qt 许可说明](https://doc.qt.io/qt-6.8/licensing.html)、[固定版本 LGPL 原文](../../LICENSES/third-party/Qt-LGPL-3.0-only.txt)与实际分发内容，仍须完成适用的源码提供、用户替换／重新链接及第三方声明核验；仅复制动态库和文本不表示这些要求已经完成。MSVC 运行库另按[官方再分发说明](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files)及 [VS2022 可分发清单](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)核对。本入口不捆绑字体；新增字体或素材须重新检查。
 
 报告始终保留 `releaseReady=false` 与 `licenseReviewComplete=false`。最低系统、原生安装／升级／卸载、文件关联和真实桌面验收继续独立记录，不能由当前宿主的离屏诊断替代。签名及商店渠道按[发行决策](release-and-updates.md)执行，不把不采用的发布者证书或 Apple 公证列为待办。部署方法参考 [Qt Windows](https://doc.qt.io/qt-6.8/windows-deployment.html)、[Linux](https://doc.qt.io/qt-6.8/linux-deployment.html)及 [macOS 部署说明](https://doc.qt.io/qt-6.8/macos-deployment.html)，实际版本以锁定 SDK 和文件清单为准。
+
+macOS 产品部署只保留 ARM64 切片；只在自有暂存副本中使用系统 `lipo` 收敛通用库，固定 Qt SDK 原文保持不变。逐文件归属按 SDK 中相同 CPU／subtype 的代码段摘要核对，外框／加载路径／签名元数据单独记录；缺少 ARM64 或代码变化均拒绝。平台与最低目标以[平台目标](platform-support.md)为准。

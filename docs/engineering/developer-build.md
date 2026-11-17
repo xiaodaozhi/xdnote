@@ -6,7 +6,7 @@
 
 ## 工具与依赖
 
-[依赖清单](../../tools/desktop-dependencies.json)、[Cargo.lock](../../Cargo.lock)和 [rust-toolchain.toml](../../rust-toolchain.toml)锁定本阶段输入。Qt 6.8.2、Scintilla 5.6.7、pulldown-cmark 0.13.6 与 Rust 1.99.0 构成本阶段组合；本机、按需桌面 CI、MSVC 2019 兼容配置和 Qt／Scintilla 试验 CI 都读取同一个 `qt.version`，不在配置中另设 Qt 版本。试验仍使用独立构建目录，不混用产物。Qt 采用动态库，Scintilla 从公开 Qt 端口源码构建，Rust 服务为静态库。默认编译器以 Qt 6.8 的[支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)为准：Windows CI 使用 MSVC 2022，macOS 按主机分别构建 x86_64／arm64，Linux 最低参考构建主机使用 Ubuntu 22.04 x86_64。宿主构建通过不能替代最低系统运行验收。
+[依赖清单](../../tools/desktop-dependencies.json)、[Cargo.lock](../../Cargo.lock)和 [rust-toolchain.toml](../../rust-toolchain.toml)锁定本阶段输入。Qt 6.8.2、Scintilla 5.6.7、pulldown-cmark 0.13.6 与 Rust 1.99.0 构成本阶段组合；本机、按需桌面 CI、MSVC 2019 兼容配置和 Qt／Scintilla 试验 CI 都读取同一个 `qt.version`，不在配置中另设 Qt 版本。试验仍使用独立构建目录，不混用产物。Qt 采用动态库，Scintilla 从公开 Qt 端口源码构建，Rust 服务为静态库。默认编译器以 Qt 6.8 的[支持矩阵](https://doc.qt.io/qt-6.8/supported-platforms.html)为准：Windows CI 使用 MSVC 2022，macOS 仅使用原生 Apple Silicon arm64，部署目标为 14.0，Linux 最低参考构建主机使用 Ubuntu 22.04 x86_64。宿主构建通过不能替代最低系统运行验收。
 
 需要 Python 3.12 或更新版本（CI 使用 3.12）、CMake 4.4.4、Ninja 1.13.0、Rust 1.99.0（含 rustfmt、clippy）及本机 C++ 工具链。下列准备命令允许联网；普通构建和测试不下载 Qt、源码或 Cargo 依赖。使用系统 Python 创建本项目虚拟环境，不修改全局 Rust 默认版本。Windows 在 x64 开发者终端运行，或给入口提供 `--vcvars`，指向已安装的 `vcvars64.bat`。Linux 还需 Qt 桌面运行库及图形环境，具体 CI 安装列表见[工作流](../../.github/workflows/desktop-admission.yml)。
 
@@ -115,8 +115,10 @@ Windows 可用 `python scripts/measure_preview.py --build-dir <本项目构建�
 
 ## 文档工具定向验证
 
-AppleClang 21 的 Apple ARM64 构建在 Qt 6.8.2 `qyieldcpu.h` 中需要先声明公共 `__yield` intrinsic。项目仅为 AppleClang 的 C++／Objective-C++ 翻译单元预包含 `cmake/QtCompilerCompatibility.h`，其中按实际 Apple ARM64 目标包含系统 `arm_acle.h`；Intel 与其他平台不包含 ARM 头。若所选 Apple SDK 缺少 AGL link stub，项目配置只过滤 Qt WrapOpenGL 的冗余显式 AGL 链接，保留 OpenGL 和 Qt 库原文；参照 [Qt 官方后续链接配置](https://raw.githubusercontent.com/qt/qtbase/v6.9.2/cmake/FindWrapOpenGL.cmake)。不修改固定 SDK 文件、不屏蔽编译诊断，也不将本机兼容修正扩大为上游支持或最低系统认证。
+AppleClang 21 的 Apple ARM64 构建在 Qt 6.8.2 `qyieldcpu.h` 中需要先声明公共 `__yield` intrinsic。项目仅为 AppleClang 的 C++／Objective-C++ 翻译单元预包含 `cmake/QtCompilerCompatibility.h`，其中按实际 Apple ARM64 目标包含系统 `arm_acle.h`；非 Apple ARM64 目标不包含该头。若所选 Apple SDK 缺少 AGL link stub，项目配置只过滤 Qt WrapOpenGL 的冗余显式 AGL 链接，保留 OpenGL 和 Qt 库原文；参照 [Qt 官方后续链接配置](https://raw.githubusercontent.com/qt/qtbase/v6.9.2/cmake/FindWrapOpenGL.cmake)。不修改固定 SDK 文件、不屏蔽编译诊断，也不将本机兼容修正扩大为上游支持或最低系统认证。
 
 关于页主动更新检查使用 `python scripts/desktop.py test --suite updates`，传入同一 `--build-dir`、`--qt-prefix` 和工具链参数。它固定离屏运行独立的更新网络回执夹具及设置回归，不下载／安装更新、不操作真实系统关联。`generated/build-version.json` 保存该次构建的真实开发提交和 dirty 状态；产品 C ABI 使用 `xdnote-services` 单一 Rust 静态归档承载 Markdown 与独立更新核心，不能继续将新增检查写成尚未链接的源码模块。具体边界见[主动检查](release-and-updates.md#主动检查的开发实现)。
 
 `python scripts/desktop.py test --suite tools` 在固定离屏环境中运行文档查找／搜索、恢复、快捷键、注册计划及受影响设置／文件测试，使用同一 `--build-dir`、`--qt-prefix` 和工具链参数。它不写真实系统关联，不安装到用户目录，不操作其他桌面窗口，也不代替人工视觉、真实崩溃断电、最低系统或正式安装器验收。安装维护逻辑可用 `python -m unittest scripts.tests.test_user_install` 验证隔离目录中的归属、升级回滚及数据保护。
+
+macOS 构建入口要求原生 Apple Silicon 与 macOS 14+；CMake 固定部署目标 14.0、`arm64` 与对应 Rust target。旧的 13.0／Intel 构建缓存不会继续使用，须通过既有 `build --fresh` 重新配置。检查声明和编译通过仍不等同于最低系统或正式安装验收。

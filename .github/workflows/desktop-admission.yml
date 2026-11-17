@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15-intel, macos-15]
+        os: [macos-15]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,11 +52,13 @@ jobs:
         run: |
           mkdir -p build/evidence/sparkle
           cp tools/sparkle-dependency.json LICENSES/third-party/Sparkle.txt build/evidence/sparkle/
-          if [ -f "build/Sparkle/2.10.0/$(uname -m)-build.log" ]; then
-            cp "build/Sparkle/2.10.0/$(uname -m)-build.log" build/evidence/sparkle/build.log
+          xdnote_sparkle_variant=$(python -c "import json; print(json.load(open('tools/sparkle-dependency.json'))['framework_build']['variant'])")
+          xdnote_sparkle_root="build/Sparkle/$xdnote_sparkle_variant"
+          if [ -f "$xdnote_sparkle_root/$(uname -m)-build.log" ]; then
+            cp "$xdnote_sparkle_root/$(uname -m)-build.log" build/evidence/sparkle/build.log
           fi
-          if [ -f "build/Sparkle/2.10.0/$(uname -m)/xdnote-sdk.json" ]; then
-            cp "build/Sparkle/2.10.0/$(uname -m)/xdnote-sdk.json" build/evidence/sparkle/sdk-receipt.json
+          if [ -f "$xdnote_sparkle_root/$(uname -m)/xdnote-sdk.json" ]; then
+            cp "$xdnote_sparkle_root/$(uname -m)/xdnote-sdk.json" build/evidence/sparkle/sdk-receipt.json
           fi
       - name: Preserve Sparkle admission evidence
         if: always()
@@ -76,14 +78,14 @@ jobs:
       matrix:
         include: >-
           ${{ fromJSON(inputs.scope == 'updates' &&
-          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
+          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
           (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos' || inputs.scope == 'deployment-macos') &&
-          '[{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
+          '[{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           (inputs.scope == 'resources-unix' || inputs.scope == 'preview-unix' || inputs.scope == 'background-unix' || inputs.scope == 'ui-unix' || inputs.scope == 'deployment-unix' || inputs.scope == 'scroll-unix' || inputs.scope == 'settings-unix' || inputs.scope == 'tools-unix') &&
-          '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
-          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"},{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64","profile":"msvc2019","label":"windows-2022-msvc2019"}]') }}
+          '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
+          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"},{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64","profile":"msvc2019","label":"windows-2022-msvc2019"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

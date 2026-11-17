@@ -186,11 +186,9 @@ fn lower_hex(value: &str, bytes: usize) -> bool {
 }
 
 /// Supported desktop packages. MSIX belongs to Store and is deliberately absent.
-pub const TARGETS: [(&str, &str, &str); 8] = [
+pub const TARGETS: [(&str, &str, &str); 6] = [
     ("windows", "x86_64", "zip"),
     ("windows", "x86_64", "exe"),
-    ("macos", "x86_64", "app.zip"),
-    ("macos", "x86_64", "dmg"),
     ("macos", "arm64", "app.zip"),
     ("macos", "arm64", "dmg"),
     ("linux", "x86_64", "tar.gz"),
@@ -211,9 +209,9 @@ fn target(
                 "windows-x86_64-setup.exe".into(),
                 &[("windows", "10.0.17763")],
             ),
-            ("macos", "x86_64" | "arm64", "app.zip" | "dmg") => (
+            ("macos", "arm64", "app.zip" | "dmg") => (
                 format!("macos-{architecture}.{package_type}"),
-                &[("macos", "13.0")],
+                &[("macos", "14.0")],
             ),
             ("linux", "x86_64", "tar.gz") => (
                 "linux-x86_64.tar.gz".into(),

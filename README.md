@@ -80,7 +80,7 @@ xdnote/
 
 设计原稿、素材和提示词是持久输入，保留在 `design`；不在源码目录保存设计导出 ZIP。构建、运行截图、测量与检查报告进入忽略的 `build/`、`target/` 或 `dist/`。任务进度使用 GitHub Issues，文档维护可复用规则，不累积执行流水账。
 
-平台目标为 Windows 10 1809+ x86_64、macOS 13+ x86_64／arm64，以及以 Ubuntu 22.04 LTS 为最低参考的 Linux x86_64（GNOME，Wayland／X11）。这些是后续开发和验证基线，尚非产品兼容性通过记录；详见[平台目标](docs/engineering/platform-support.md)。签名与发行策略仍在对应阶段确定。
+平台目标为 Windows 10 1809+ x86_64、macOS 14+ arm64，以及以 Ubuntu 22.04 LTS 为最低参考的 Linux x86_64（GNOME，Wayland／X11）。这些是后续开发和验证基线，尚非产品兼容性通过记录；详见[平台目标](docs/engineering/platform-support.md)。签名与发行策略仍在对应阶段确定。
 
 ## 许可范围
 
