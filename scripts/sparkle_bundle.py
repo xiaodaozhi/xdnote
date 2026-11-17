@@ -25,6 +25,12 @@ def embed(app, checked, evidence, identity):
         raise ValueError('Unbounded Sparkle deployment')
     if framework.exists(): shutil.rmtree(framework)
     shutil.copytree(source / 'Sparkle.framework', framework, symlinks=True)
+    # Build headers/module maps are SDK inputs, not runtime product files.
+    for name in ('Headers', 'PrivateHeaders', 'Modules'):
+        directory = framework / 'Versions/B' / name
+        if directory.exists(): shutil.rmtree(directory)
+        alias = framework / name
+        if alias.is_symlink(): alias.unlink()
     # The non-sandboxed product uses the in-process downloader and launcher.
     # These optional XPC services are neither enabled nor shipped.
     shutil.rmtree(framework / 'Versions/B/XPCServices')

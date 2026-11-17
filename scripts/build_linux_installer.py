@@ -1,7 +1,7 @@
 """Prepare a native Ubuntu 22.04 amd64 development package from a sealed runtime."""
 import argparse
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -11,11 +11,11 @@ from product_deployment_unix import inventory
 
 def system_packages(path):
     """dpkg may retain /lib names on an usr-merged host; prove aliases first."""
-    source = Path(path)
+    source = PurePosixPath(path)
     candidates = [source]
     if str(source).startswith('/usr/lib/'):
-        alias = Path('/lib') / source.relative_to('/usr/lib')
-        if alias.is_file() and alias.samefile(source): candidates.append(alias)
+        alias = PurePosixPath('/lib') / source.relative_to('/usr/lib')
+        if Path(alias).is_file() and Path(alias).samefile(Path(source)): candidates.append(alias)
     for candidate in candidates:
         query = subprocess.run(['/usr/bin/dpkg-query', '-S', str(candidate)], capture_output=True, text=True)
         if query.returncode != 0: continue
