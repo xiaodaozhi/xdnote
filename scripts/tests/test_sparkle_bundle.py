@@ -25,6 +25,10 @@ class SparkleRuntimeTests(unittest.TestCase):
             with patch.object(sparkle_bundle,'sdk',return_value=sdk):
                 result=sparkle_bundle.embed(app,lambda args:'',evidence,{'version':'0.1.0-dev.fixture','channel':'development','build':0,'dirty':False})
             self.assertTrue((result/'Versions/B/Autoupdate').is_file())
+            info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
+            self.assertTrue(info['SURequireSignedFeed'])
+            self.assertTrue(info['SUVerifyUpdateBeforeExtraction'])
+            self.assertEqual(info['SUSignedFeedFailureExpirationInterval'],0)
             self.assertTrue((version/'Headers/API.h').is_file())
             self.assertFalse((result/'Versions/B/Headers').exists()); self.assertFalse((result/'Headers').is_symlink())
             developer_archive.verify(product,{'ok':True,'files':inventory(product)})

@@ -65,6 +65,7 @@ def embed(app, checked, evidence, identity):
     info_path = app / 'Contents/Info.plist'; info = plistlib.loads(info_path.read_bytes())
     info.update(CFBundleVersion=str(identity['build']), CFBundleShortVersionString=identity['version'],
                 SUEnableAutomaticChecks=False, SUAutomaticallyUpdate=False, SUEnableSystemProfiling=False,
+                SURequireSignedFeed=True, SUVerifyUpdateBeforeExtraction=True, SUSignedFeedFailureExpirationInterval=0,
                 SUEnableInstallerLauncherService=False, SUEnableDownloaderService=False,
                 XdnoteUpdateInstallable=False, XdnoteUpdateInstallId=INSTALL_ID)
     key = json.loads((sparkle.ROOT / 'tools/sparkle-update-key.json').read_text(encoding='utf-8'))
