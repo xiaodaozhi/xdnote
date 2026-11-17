@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "AutoSaveController.h"
 #include "Preferences.h"
 #include "FileManager.h"
@@ -21,7 +22,7 @@ void AutoSaveController::watch(FileDocument *document) {
     connect(document, &FileDocument::operationFinished, this, [this, document](bool success) { if (success) schedule(document); });
     connect(document->session(), &DocumentSession::stateChanged, this, [this, document] { schedule(document); });
     connect(timer, &QTimer::timeout, this, [this, document] {
-        if (m_stopped || !m_preferences->value("editor", "autoSaveEnabled").toBool()) return;
+        if (updateTasksBlocked() || m_stopped || !m_preferences->value("editor", "autoSaveEnabled").toBool()) return;
         if (document->untitled() || !document->session() || document->closed() || !document->dirty() || document->conflict() || document->hasError() || document->readOnly()) return;
         if (document->saving() || document->loading() || document->maintainingResources() || document->session()->isBusy()
             || document->session()->isComposing() || QApplication::activeModalWidget()) { schedule(document); return; }
@@ -31,7 +32,7 @@ void AutoSaveController::watch(FileDocument *document) {
 void AutoSaveController::schedule(FileDocument *document) {
     auto *timer = m_timers.value(document); if (!timer) return;
     timer->stop();
-    if (!m_stopped && m_preferences->value("editor", "autoSaveEnabled").toBool() && !document->closed()
+    if (!updateTasksBlocked() && !m_stopped && m_preferences->value("editor", "autoSaveEnabled").toBool() && !document->closed()
         && document->dirty() && !document->conflict() && !document->hasError() && !document->readOnly())
         timer->start(m_preferences->value("editor", "autoSaveDelayMs").toInt());
 }

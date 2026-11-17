@@ -1,3 +1,14 @@
+#include <QScopeGuard>
+#include "UpdateDownload.h"
+#include "FileApplication.h"
+#include "SingleFileWindow.h"
+#include "SourceEditor.h"
+#include "UpdateTaskGate.h"
+#include <QCryptographicHash>
+#include <QFile>
+#include <QThreadPool>
+#include <QtConcurrentRun>
+#include <atomic>
 #include "UpdateController.h"
 #include "UpdateNetwork.h"
 #include "UpdateBridge.h"
@@ -107,6 +118,72 @@ const QString current="0.1.0-dev.123456abcdef";
 class UpdateTests final : public QObject {
     Q_OBJECT
 private slots:
+    void authenticatedDownloadMetersFinalBytesAndRemovesFailures() {
+        const QByteArray bytes(160 * 1024, 'd');
+        const QJsonObject candidate{{"asset_url", "https://github.com/xiaodaozhi/xdnote/releases/download/v0.2.0/fixture.zip"}, {"filename", "fixture.zip"}, {"bytes", bytes.size()}, {"sha256", QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())}};
+        QTemporaryDir cache;
+        for (const auto &mode : {QString("valid"), QString("truncated"), QString("extra"), QString("hash"), QString("tls"), QString("redirect"), QString("http")}) {
+            Network network; Response response; response.bytes = bytes; response.finalOnly = true;
+            if (mode == "truncated") response.bytes.chop(1);
+            if (mode == "extra") response.bytes += 'x';
+            if (mode == "hash") response.bytes[0] = 'x';
+            if (mode == "tls") response.tls = true;
+            if (mode == "redirect") response.redirect = QUrl("https://example.invalid/package");
+            if (mode == "http") response.status = 403;
+            network.responses = {response}; UpdateDownload download(&network); QSignalSpy done(&download, &UpdateDownload::finished);
+            download.start(candidate, {}, cache.path()); QTRY_COMPARE(done.size(), 1);
+            const auto error = done.first().first().toString();
+            if (mode == "valid") { QVERIFY2(error.isEmpty(), qPrintable(error)); QFile file(download.packagePath()); QVERIFY(file.open(QIODevice::ReadOnly)); QCOMPARE(file.readAll(), bytes); }
+            else { QVERIFY2(!error.isEmpty(), qPrintable(mode)); QVERIFY(download.packagePath().isEmpty()); }
+        }
+        QCOMPARE(QDir(cache.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size(), 0);
+    }
+    void cancellationRemovesPartialPackageAndDoesNotAcceptStaleReply() {
+        Network network; Response held; held.hold = true; held.bytes = "partial"; network.responses = {held};
+        QTemporaryDir cache; UpdateDownload download(&network); QSignalSpy done(&download, &UpdateDownload::finished);
+        download.start({{"asset_url", "https://github.com/xiaodaozhi/xdnote/releases/download/v0.2.0/fixture.zip"}, {"filename", "fixture.zip"}, {"bytes", 7}, {"sha256", QString(64, 'a')}}, {}, cache.path());
+        QVERIFY(download.active()); download.cancel(); QTest::qWait(10); QVERIFY(!download.active()); QVERIFY(download.packagePath().isEmpty()); QCOMPARE(done.size(), 0);
+        QCOMPARE(QDir(cache.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size(), 0);
+    }
+    void cancellingSecondDocumentKeepsEveryWindowAndUndoBuffer() {
+        QTemporaryDir directory;
+        FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative);
+        QStringList paths{directory.filePath("first.md"), directory.filePath("second.md")};
+        for (const auto &path : paths) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("owned"); file.close(); app.open(path); }
+        QList<QPointer<SingleFileWindow>> panes;
+        QTRY_VERIFY(([&] { panes.clear(); for (auto widget : QApplication::topLevelWidgets()) if (auto pane = qobject_cast<SingleFileWindow *>(widget)) if (pane->document() && paths.contains(pane->document()->path())) panes.append(pane); return panes.size() == 2; })());
+        for (auto pane : panes) QCOMPARE(pane->document()->session()->replace(0, 0, "dirty ", pane->document()->session()->revision()), EditResult::Applied);
+        int choices = 0; QTimer answer; answer.setInterval(10);
+        connect(&answer, &QTimer::timeout, qApp, [&] { for (auto widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") if (auto button = widget->findChild<SharedButton *>(choices++ == 0 ? "choice2" : "choice0")) button->click(); }); answer.start();
+        bool finished = false, ready = true;
+        app.prepareForUpdate([&](bool value) { finished = true; ready = value; }); QTRY_VERIFY(finished); answer.stop();
+        QVERIFY(!ready); QVERIFY(!updateTasksBlocked()); QVERIFY(!app.updateHandoffActive());
+        for (auto pane : panes) { QVERIFY(pane); QVERIFY(pane->isEnabled()); auto session = pane->document()->session(); QCOMPARE(session->snapshot().utf8, QByteArray("dirty owned")); QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, QByteArray("owned")); }
+    }
+    void emptyProductionRootCannotDownloadOrInstall() {
+        Network network; network.responses = {Response{listing({release()})}, Response{manifest()}, Response{QByteArray("{\"schema_version\":1,\"algorithm\":\"ed25519\",\"key_id\":\"test\",\"signature\":\"") + QByteArray(128, '0') + "\"}"}};
+        UpdateController updates(&network, current, "windows", "x86_64", false);
+        updates.check(); QTRY_VERIFY(!updates.busy()); QVERIFY(!updates.canDownload()); QVERIFY(!updates.canInstall());
+        const auto count = network.requests.size(); updates.download(); updates.install(); QCOMPARE(network.requests.size(), count);
+    }
+    void documentBarrierJoinsWorkAndRestoresSameSessionOnCancellation() {
+        QTemporaryDir directory; const auto path = directory.filePath("owned.md"); QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("# owned\n"); file.close();
+        FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative); app.open(path);
+        SingleFileWindow *pane = nullptr;
+        QTRY_VERIFY(([&] { for (auto widget : QApplication::topLevelWidgets()) if (auto value = qobject_cast<SingleFileWindow *>(widget)) if (value->document() && value->document()->path() == path) { pane = value; return true; } return false; })());
+        auto *session = pane->document()->session(); const auto identity = session->documentId();
+        QCOMPARE(session->replace(0, 0, "edited ", session->revision()), EditResult::Applied); const auto edited = session->snapshot().utf8;
+        QTimer choose; choose.setInterval(10); connect(&choose, &QTimer::timeout, qApp, [] { for (auto widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") if (auto button = widget->findChild<SharedButton *>("choice2")) button->click(); }); choose.start();
+        auto release = std::make_shared<std::atomic_bool>(false);
+        const auto unblock = qScopeGuard([release] { release->store(true); });
+        auto future = QtConcurrent::run([release] { while (!release->load()) QThread::msleep(5); });
+        bool ready = false; app.prepareForUpdate([&](bool value) { ready = value; });
+        QTRY_VERIFY(updateTasksBlocked()); QVERIFY(!ready); QVERIFY(!pane->isEnabled()); QCOMPARE(session->documentId(), identity); QCOMPARE(session->snapshot().utf8, edited);
+        release->store(true); future.waitForFinished(); QTRY_VERIFY(ready);
+        app.cancelUpdateHandoff(); QVERIFY(!updateTasksBlocked()); QVERIFY(pane->isEnabled()); QVERIFY(!session->isReadOnly());
+        QCOMPARE(session->documentId(), identity); QCOMPARE(session->snapshot().utf8, edited); QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, QByteArray("# owned\n")); QCOMPARE(session->redo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, edited);
+        choose.stop();
+    }
     void checkingAndCancelPreserveLiveTextUndoAndSaveBaseline() {
         DocumentSession session("# owned sample\n");const auto original=session.snapshot();
         Network network;Response held;held.hold=true;network.responses={held};

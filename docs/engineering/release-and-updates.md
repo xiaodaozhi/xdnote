@@ -1,6 +1,6 @@
 # 发行渠道、许可核验与更新
 
-发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)通过桌面 C ABI 接入关于页的主动检查与受限网络请求。当前开发副本仅检查公开候选并提供手动发布页入口，未接入包下载或原生安装。MSIX 商店交付和实际安装更新继续按后续接入范围跟踪，不能写成已有产品能力。
+发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)通过桌面 C ABI 接入关于页的主动检查与受限网络请求。当前开发副本因生产信任根为空，仍只提供手动发布页入口。工程已接入认证包下载、文档任务交接、Sparkle 原生提供方及 Windows／Linux 独立助手；生产密钥、真实安装与恢复和商店交付仍须按实际证据验收，不能将入口代码视为正式更新能力。
 
 ## 渠道与签名
 
@@ -47,11 +47,11 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 ## 主动检查的开发实现
 
-构建通过 `scripts/build_version.py` 在配置和构建时生成实际 Git 提交、工作区 dirty、CMake 配置与 `0.1.0-dev.<12位提交号>`，写入所选构建目录的 `generated/build-version.json` 并编入 `BuildInfo`。当前没有发行 build，明确记录 0；源码归档或无法确认当前仓库时记录 unknown 并拒绝发起候选检查，不套用父仓库身份或创造发行计数。后续正式版本和单调 build 的生成／交付仍须独立接入。
+构建通过 `scripts/build_version.py` 在配置和构建时生成实际 Git 提交、工作区 dirty、CMake 配置与 `0.1.0-dev.<12位提交号>`，写入所选构建目录的 `generated/build-version.json` 并编入 `BuildInfo`。默认仍为开发渠道、build 0；源码归档或无法确认当前仓库时记录 unknown。显式 `desktop.py build --release-identity <文件>` 才启用发行身份输入，文件包含 `schemaVersion: 1`、`product: xdnote`、`version`、`build`、完整 `revision`、`previousVersion`、`previousBuild`；必须是当前 clean Release 提交，公开语义版本和 1–65535 的 build 均严格递增。上次发行记录由受控发行过程提供，不从 Git 时间或提交数量推断，不因启用该入口创建发行记录。
 
 `FileApplication` 持有唯一 `UpdateController`；启动、打开文档或关于页不会发出请求。用户点击后按语义版本排序公开候选，核对同一 tag 的 `release.json`、目标包的名称／URL／长度及可选 `release.json.sig`，不因最高候选损坏或缺包而回退为“已是最新”。检查中重复点击不创建并行请求；取消和销毁递增代次，旧回执不能覆盖后续结果。设置窗口重开连接同一个控制器，文档原文、撤销和保存任务不参与检查流程。
 
-桌面通过 `xdnote-services` 将 Markdown 与更新核心合为一个 Rust 运行库归档，源模块及测试继续独立。薄 C ABI 使用有界 JSON 请求／自有输出分配，清单与签名以十六进制传递原始字节，避免 Qt 字符串解码改变签名字节或 BOM。ABI 不接收运行时信任根；当前空生产 keyring、未签名或未知密钥候选只提供手动发布页，不宣称已认证，也没有安装入口。
+桌面通过 `xdnote-services` 将 Markdown 与更新核心合为一个 Rust 运行库归档，源模块及测试继续独立。薄 C ABI 使用有界 JSON 请求／自有输出分配，清单与签名以十六进制传递原始字节，避免 Qt 字符串解码改变签名字节或 BOM。ABI 不接收运行时信任根；`authenticate` ABI 将签名、新版本／build 和平台包型一起认证；当前空生产 keyring、未签名或未知密钥候选只提供手动发布页，下载与安装按钮保持不可用。
 
 `QNetworkAccessManager` 只用于这一个控制器，关闭 Cookie 读写及身份缓存复用，不读取 GitHub 凭据。每个请求保留 TLS 校验、15 秒无数据／30 秒总时限、5 次已核对重定向；按 64 KiB 读块执行各类响应上限，结束时仍读取末尾数据并检查。ETag 最多保留 24 条成功 HTTP 响应，304 必须有对应的成功缓存；TLS、超时、限流、损坏和缺包分别保留失败，均不显示为当前无更新。Qt 行为依据见[请求](https://doc.qt.io/qt-6.8/qnetworkrequest.html)与[回执](https://doc.qt.io/qt-6.8/qnetworkreply.html)，实际依赖仍固定 6.8.2。
 
@@ -59,13 +59,13 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 使用同一构建目录和 Qt SDK 执行 `python scripts/desktop.py test --suite updates`：固定离屏运行网络回执夹具、Rust ABI 及设置回归，证据进入 `evidence/updates/`。夹具覆盖成功／304、取消／重开、重复点击、分页／响应边界、TLS／限流／重定向、候选和资产绑定；合成回执不等于真实 HTTPS 服务器、代理路由或 Store 安装验收。桌面 CI 的手动 `scope=updates` 只补验三套默认配置的相同范围，保留未执行的人工视觉、真实网络和原生更新边界。
 
-显式真实网络诊断使用同一构建的 `python scripts/desktop.py test --suite updates-live`，只请求固定公开仓库，输出实际状态／错误，不读取文档或偏好、不下载包、不安装，也不进入普通 CI。该入口的结果须单独记录；离屏夹具通过不能替代它，真实网络通过仍不代表所有代理／镜像或最低系统验收。
+显式真实网络诊断使用同一构建的 `python scripts/desktop.py test --suite updates-live`，只请求固定公开仓库，输出实际状态／错误，不读取文档或偏好、不下载包、不安装，也不进入普通 CI。该入口的结果须单独记录。`scripts/check_update_network.py --build-dir <构建> --qt-prefix <Qt> --output <build 下的新目录>` 另以固定公开发布页和检查 API 记录系统、直连及本项目临时 HTTP CONNECT／SOCKS5 隧道；只记录状态、长度和固定目标去向，不记录响应正文、凭据或个人数据。发布页 HTTPS 200 与候选 API 检查成功分别判定，API 限流不计为更新检查通过。离屏夹具不能替代真实网络，当前宿主的网络结果也不代表最低系统或全部实际代理配置。
 
 ## macOS 原生实现
 
 采用 Sparkle 2.10.0 和既有受限代理适配，通过薄 Objective-C++ 桥接 Qt Widgets 统一状态。源码、补丁、资源、helper、签名工具及摘要锁定在本项目，覆盖已定 macOS 14+、Apple Silicon arm64；框架主库与代理适配分别按架构构建和准入，新增依赖后核对实际载荷与许可。实现依据见 [Sparkle 官方文档](https://sparkle-project.org/documentation/)。
 
-原生自动安装更新的准入从 macOS 14 开始，系统代理、直连及无凭据 HTTP CONNECT／SOCKS5 均使用已确认的受限适配；低于该范围不承诺原生自动安装，不继续以旧 CFNetwork 自定义代理方案扩展支持。固定依赖与独立探针见[原生更新网络准入](macos-update-transport.md)。当前产品尚未链接 Sparkle，不能将 SDK 构建或网络探针写成已完成安装更新。
+原生自动安装更新的准入从 macOS 14 开始，系统代理、直连及无凭据 HTTP CONNECT／SOCKS5 均使用已确认的受限适配；低于该范围不承诺原生自动安装，不继续以旧 CFNetwork 自定义代理方案扩展支持。固定依赖与独立探针见[原生更新网络准入](macos-update-transport.md)。macOS 桌面现在链接本项目显式准备、核对的 Sparkle；配置阶段只验证已准备的 SDK，不隐式下载。部署补齐实际 framework、原始许可／来源和 arm64 指令节证据，未使用的 downloader／installer-launcher XPC 不启用或交付；Autoupdate、Updater 和 framework 按各自 entitlements／runtime 参数由内至外重新封印。链接或生命周期夹具不等于已完成真实安装更新。
 
 feed 只暴露已选定的同一候选，由 Sparkle 原生验证 feed／归档并处理实际替换，不声称 Sparkle 执行了额外 SHA-256。只读 DMG、App Translocation、未登记 `.app` 或缺少公钥使用手动入口。DMG 与 app.zip 应来自同一个已部署、完整性签名及核验的 `.app`，解包后另做重定位验证。
 
@@ -80,6 +80,21 @@ Windows 独立助手复验清单、长度和摘要，持有安装门并等待原
 macOS 全部 join 后才释放 Sparkle 安装回调，只有实际 committed 后才放开安装退出；取消不留下“下次退出安装”计划。取消或准备失败须等待原生周期结束，并精确观察本应用 helper 已退出后才允许普通退出或重试，不杀 helper、不读取无关进程信息。
 
 尝试记录与更新回执独立于用户偏好，绑定事务、目标版本／build、运行路径和安装身份。重启按实际运行身份核对成功；失败、缺回执或身份冲突进入恢复，不自动重试。设置、未知键、默认关联、用户数据和无关文件都要保留；下载或提交 accepted 不代表安装成功。
+
+
+## 下载、原生交接与工程包型
+
+认证候选可显式下载；检查与下载复用开始时固定的网络会话和配置，不会在失败后回退直连。包按 64 KiB 写入独立的 `job-*` 私有目录和 `QSaveFile`，精确长度、2 GiB 上限及 SHA-256 全部匹配后才提交缓存文件。下载保留 TLS 1.2+／证书验证、Cookie／身份复用关闭、五次已核对重定向、30 秒无数据和一小时总时限；HTTP 错误、尾部额外数据、截断、摘要不符、磁盘失败和取消均不能进入已下载状态。开发或身份不明副本可下载已认证包，不能自动安装；当前缺生产信任根，实际仍使用手动入口。
+
+安装提供方只在本地身份匹配时开放：Windows 必须匹配自有 InstallId、登记路径和安装清单，Linux 必须位于 root 拥有的版本目录并经 dpkg 包归属复验，macOS 必须匹配已登记 bundle、公钥、非只读卷及受支持的 Applications 目录。`tools/sparkle-update-key.json` 的 `publicKey` 当前为空；仅后续显式提供的 32 字节 base64 公钥可写入部署 bundle，开发副本不标为可安装。MSIX 身份下拒绝独立自更新。
+
+文档准备逐份复用保存／不保存／取消确认，不提前关闭窗口或清空撤销；不保存选择绑定当时 revision。取消后仍保留同一会话和撤销，已经明确完成的保存保持有效。全部确认后冻结修改、拒绝新打开和后台任务，已有保存／资源操作正常完成，再非阻塞等待全局工作池 join 并刷出恢复记录。此后才写交接记录并释放 native commit；交接失败会恢复原只读及启用状态。Sparkle 取消用 Skip，不能留下退出时安装计划；普通退出和重试继续等待原生周期及本应用准确 helper 退出。
+
+独立 `xdnote-update-helper` 不依赖 Qt。它重新认证原始清单／签名、核对当前安装身份和单调版本，持有包文件并复核长度／SHA-256；只接受固定请求格式、事务和目录内文件。Windows 运行已认证的固定安装器并保留更新事务互斥；Linux 经固定 polkit 权限入口复制到 root 私有缓存后复验，仅调用受限 apt 包安装。包助手、安装器与应用共用运行／维护门，不终止持有未保存文档的进程。尝试记录独立于偏好，重启还须核对完整提交、版本／build、运行路径及助手回执；accepted 不显示为安装成功。记录缺失或冲突进入恢复，不自动重试。
+
+工程打包入口 `scripts/build_linux_installer.py` 生成有实际归属、固定权限策略和保守维护门的 Ubuntu 22.04 amd64 开发包；`scripts/msix_package.py` 只在调用方显式提供 Identity／Publisher／PublisherDisplayName 及正确素材时调用 Windows SDK MakeAppx，生成未签名 MSIX，不签名、不安装或提交 Store。`scripts/check_msix.py` 仅在一次性 Windows CI 使用明确标记的工程身份检验 XML／资产与 MakeAppx，不能将它当作真实 Partner Center 身份。Store 偏好按实际 package family 分隔，包身份失败也与普通安装版分隔；真实并存／激活与默认应用保留仍需安装验收。
+
+`scripts/release_candidate.py` 只为六个实际资产生成既定 schema-1 未签名清单，要求同一 clean 发行身份及逐包摘要／长度验证记录，不创建 tag、Release 或签名。Windows 数字版本、macOS CFBundleVersion 和 Debian 包版本分别绑定生成身份；当前默认仍没有正式发行 build。所有包型继续需要各自最低系统、真实升级／恢复和最终许可核验。
 
 ## 许可核验与准入
 

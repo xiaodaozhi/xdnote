@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "MarkdownPreview.h"
 #include "Appearance.h"
 #include "DocumentSession.h"
@@ -185,6 +186,7 @@ void MarkdownPreview::navigateToHeading(const QString &fragment, quint64 revisio
     m_view->navigateToHeading(fragment, m_view->displayedStamp());
 }
 void MarkdownPreview::refresh() {
+    if (updateTasksBlocked()) return;
     if (m_closed || !m_session) return;
     if (m_cancel) m_cancel->store(true);
     m_requestedAt.start(); m_queuedAt.start(); m_awaitingLayout = false;
@@ -232,6 +234,7 @@ void MarkdownPreview::setResourceContext(std::shared_ptr<WorkspaceResourceReader
     refresh(); if (cancelled) emit fragmentNavigationMessage(QStringLiteral("文档位置已变化，请重新定位标题。"));
 }
 void MarkdownPreview::startPending() {
+    if (updateTasksBlocked()) return;
     if (m_closed || m_running || !m_hasPending) return;
     m_running = true; m_hasPending = false;
     DocumentSnapshot snapshot{EditResult::Applied, std::move(m_pending), m_pendingRevision, m_pendingDocumentId};

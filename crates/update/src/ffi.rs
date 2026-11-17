@@ -28,6 +28,16 @@ enum Request {
         manifest_hex: String,
         signature_hex: String,
     },
+    Authenticate {
+        manifest_hex: String,
+        signature_hex: String,
+        current: String,
+        current_build: u32,
+        current_channel: String,
+        platform: String,
+        architecture: String,
+        package_type: String,
+    },
 }
 
 fn raw_bytes(value: &str, limit: usize) -> Result<Vec<u8>, ()> {
@@ -81,6 +91,33 @@ fn dispatch(bytes: &[u8]) -> Result<Vec<u8>, ()> {
             let signature = raw_bytes(&signature_hex, SIGNATURE_LIMIT)?;
             let signature = std::str::from_utf8(&signature).map_err(|_| ())?;
             json!({"error": verify_manifest(&manifest, signature, PRODUCTION_KEYRING)})
+        }
+        Request::Authenticate {
+            manifest_hex,
+            signature_hex,
+            current,
+            current_build,
+            current_channel,
+            platform,
+            architecture,
+            package_type,
+        } => {
+            let manifest = raw_bytes(&manifest_hex, MANIFEST_LIMIT)?;
+            let signature = raw_bytes(&signature_hex, SIGNATURE_LIMIT)?;
+            let signature = std::str::from_utf8(&signature).map_err(|_| ())?;
+            match authenticate_release(
+                &manifest,
+                signature,
+                &current,
+                current_build,
+                &current_channel,
+                &platform,
+                &architecture,
+                &package_type,
+            ) {
+                Ok(release) => json!({"error": "", "candidate": release.inspection()}),
+                Err(error) => json!({"error": error}),
+            }
         }
     };
     serde_json::to_vec(&response).map_err(|_| ())

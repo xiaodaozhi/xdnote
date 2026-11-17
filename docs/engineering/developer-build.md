@@ -122,3 +122,7 @@ AppleClang 21 的 Apple ARM64 构建在 Qt 6.8.2 `qyieldcpu.h` 中需要先声�
 `python scripts/desktop.py test --suite tools` 在固定离屏环境中运行文档查找／搜索、恢复、快捷键、注册计划及受影响设置／文件测试，使用同一 `--build-dir`、`--qt-prefix` 和工具链参数。它不写真实系统关联，不安装到用户目录，不操作其他桌面窗口，也不代替人工视觉、真实崩溃断电、最低系统或正式安装器验收。安装维护逻辑可用 `python -m unittest scripts.tests.test_user_install` 验证隔离目录中的归属、升级回滚及数据保护。
 
 macOS 构建入口要求原生 Apple Silicon 与 macOS 14+；CMake 固定部署目标 14.0、`arm64` 与对应 Rust target。旧的 13.0／Intel 构建缓存不会继续使用，须通过既有 `build --fresh` 重新配置。检查声明和编译通过仍不等同于最低系统或正式安装验收。
+
+macOS 桌面更新提供方需要先在本项目显式准备并构建固定 Sparkle：`python scripts/sparkle.py prepare --download`、`python scripts/sparkle.py build`；之后仍通过 `scripts/desktop.py build`／`run` 使用对应 Qt 和构建目录。CMake 只核对本项目 SDK 回执，不自动下载。生产公钥为空时不会开放自动安装。
+
+默认构建生成真实开发身份。只有受控发行输入才使用 `build --release-identity <JSON>`，字段和严格递增条件见[发行与更新](release-and-updates.md)；不给默认开发构建分配正式版本／build。主程序的 `--version-json` 只输出编入的身份，不启动 GUI、文档或单实例服务，供独立安装助手复验。

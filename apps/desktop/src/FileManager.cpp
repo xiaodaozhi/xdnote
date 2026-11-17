@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "FileManager.h"
 #include "Utf8Text.h"
 #include <QTemporaryDir>
@@ -56,6 +57,7 @@ void FileManager::createDraft(const QByteArray &utf8,const QUuid &intent,bool bo
 }
 void FileManager::createUntitled(const QUuid &intent) { prepareDraft({}, intent, false, false); }
 void FileManager::prepareDraft(const QByteArray &utf8, const QUuid &intent, bool bom, bool recovered) {
+    if (updateTasksBlocked()) return;
     bool valid=false;decodeUtf8Literal(utf8,&valid);
     if(!valid||utf8.size()>DocumentSession::AdmissionSourceLimit||m_draftDirectories.size()>=128){emit openFailed(intent,{},QStringLiteral("临时文档内容无效或达到本次会话上限"));return;}
     auto directory=std::make_shared<QTemporaryDir>(QDir::tempPath()+"/xdnote-draft-XXXXXX");
@@ -72,6 +74,7 @@ void FileManager::pump() {
 }
 void FileManager::finish() { m_running = false; QTimer::singleShot(0, this, &FileManager::pump); }
 QUuid FileManager::beginWorkspaceOperation() {
+    if (updateTasksBlocked()) return {};
     if (!idle()) return {};
     m_workspaceOperation = QUuid::createUuid(); m_running = true; return m_workspaceOperation;
 }
@@ -114,6 +117,7 @@ QList<FileDocument *> FileManager::documents() const {
     return result;
 }
 void FileManager::openRequest(const QString &path, const QUuid &intent, std::shared_ptr<WorkspaceResourceReader> root, QString relativePath, QString sourcePath, QString sourceIdentity) {
+    if (updateTasksBlocked()) return;
     enqueue([this, path, intent, root, relativePath, sourcePath, sourceIdentity] {
         if (m_cancelled.remove(intent)) { finish(); return; }
         worker<ProbeResult>([path, root, relativePath, sourcePath, sourceIdentity] {
@@ -157,6 +161,7 @@ void FileManager::openRequest(const QString &path, const QUuid &intent, std::sha
 }
 
 bool FileManager::save(FileDocument *document, const QString &path, bool saveAs) {
+    if (updateTasksBlocked()) return false;
     if (!document || document->closed() || document->saving() || document->loading() || !document->session()) return false;
     if(document->untitled()&&!saveAs)return false;
     const bool original = !saveAs && path == document->path();
@@ -247,6 +252,7 @@ void FileManager::performSave(QPointer<FileDocument> document, DocumentSnapshot 
 }
 
 bool FileManager::reload(FileDocument *document) {
+    if (updateTasksBlocked()) return false;
     if (!document || document->closed() || document->saving() || document->loading() || !document->session()) return false;
     if (document->session()->isComposing() || document->session()->isBusy()) {
         document->m_message = QStringLiteral("请先完成当前输入或编辑操作"); document->m_error = true;
@@ -282,6 +288,7 @@ bool FileManager::reload(FileDocument *document) {
 }
 
 void FileManager::check(FileDocument *document) {
+    if (updateTasksBlocked()) return;
     if (!document || document->closed() || document->saving() || document->loading() || document->m_maintenance || document->m_checkPending) return;
     document->m_checkPending = true;
     const QPointer<FileDocument> guard(document);

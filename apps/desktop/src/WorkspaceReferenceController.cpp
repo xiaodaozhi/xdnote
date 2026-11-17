@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "WorkspaceReferenceController.h"
 #include "FileManager.h"
 #include <QDir>
@@ -95,6 +96,7 @@ QString WorkspaceReferenceController::statusText() const {
         : QStringLiteral("检查不完整：仅显示已确认的引用");
 }
 void WorkspaceReferenceController::start() {
+    if (updateTasksBlocked()) return;
     if (!m_pending || m_paused || !m_root || !m_root->active() || m_worker.isRunning()) return;
     ReferenceIndexInput input{m_rootId, m_rootGeneration, m_generation, false, {}, {}};
     qsizetype capturedBytes = 0;

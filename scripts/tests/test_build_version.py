@@ -7,10 +7,21 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from build_version import identity, write_changed
+from build_version import identity, release_identity, write_changed
 
 
 class BuildVersionTests(unittest.TestCase):
+    def test_release_requires_clean_commit_and_increasing_version_and_build(self):
+        record = {'schemaVersion': 1, 'product': 'xdnote', 'version': '0.2.0-rc.1', 'build': 12,
+                  'revision': 'a' * 40, 'previousVersion': '0.2.0-beta.9', 'previousBuild': 11}
+        result = release_identity(record, 'a' * 40, False, 'Release')
+        self.assertEqual((result['channel'], result['build']), ('rc', 12))
+        for change in ({'build': 11}, {'build': True}, {'version': '0.2.0-beta.8'}, {'version': '0.2.0+build'}, {'revision': 'b' * 40}, {'extra': 1}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                release_identity(record | change, 'a' * 40, False, 'Release')
+        for dirty, configuration in ((True, 'Release'), (False, 'Debug')):
+            with self.assertRaises(ValueError): release_identity(record, 'a' * 40, dirty, configuration)
+
     def test_source_archive_does_not_invent_a_revision_or_release_counter(self):
         with tempfile.TemporaryDirectory() as directory:
             value = identity(directory, '0.1.0', 'Release')

@@ -48,7 +48,7 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 [Update core](../../.github/workflows/update-core.yml) 为手动触发的单套 Ubuntu 22.04 Rust 工作区检查，覆盖无 Qt 的更新候选、清单认证和包流校验及记录的依赖材料，不启动桌面、不签名或发布。日常材料 CI 的触发与范围保持不变；此专项不代替网络、文档保护、原生更新或商店安装验收，核心边界见[更新契约](release-and-updates.md#更新核心边界与验证)。
 
-桌面工作流的 `scope=updates` 仅在 Windows 默认工具链、Linux、macOS ARM64 执行 `test --suite updates`：固定离屏的主动检查夹具和设置回归。不运行 v142、完整桌面用例或安装／发布，也不把合成 TLS 错误等同于真实 HTTPS／代理或原生更新验收。构建产物与报告保留实际开发身份，按本次 head 核对结果。
+桌面工作流的 `scope=updates` 仅在 Windows 默认工具链、Linux、macOS ARM64 执行 `test --suite updates`：固定离屏的主动检查、受控下载、文档交接及设置回归；macOS 另执行原生生命周期夹具。不运行 v142、完整桌面用例或安装／发布，也不把合成 TLS 错误或生命周期回调夹具等同于真实 HTTPS／代理或原生更新验收。构建产物与报告保留实际开发身份，按本次 head 核对结果。
 
 `scope=sparkle-macos` 只运行 macOS ARM64 的[原生更新网络准入](macos-update-transport.md)：显式准备固定 Sparkle 输入、编译主库并执行回环代理／TLS 探针，不准备 Qt 或执行桌面产品。报告与原始构建／许可回执保留七天，汇总要求所选架构成功；该范围不执行安装、生产签名、公开更新或 最低支持系统验收。
 

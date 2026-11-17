@@ -1,8 +1,21 @@
 #pragma once
 #include <QString>
 #include <QUrl>
+#include <QNetworkProxyFactory>
 
 namespace xdnote::UpdateNetwork {
+class ProxyFactory final : public QNetworkProxyFactory {
+public:
+    ProxyFactory(QString mode, QString address) : mode(std::move(mode)), address(std::move(address)) {}
+    QList<QNetworkProxy> queryProxy(const QNetworkProxyQuery &query) override {
+        if (mode == "system") return QNetworkProxyFactory::systemProxyForQuery(query);
+        if (mode == "none") return {QNetworkProxy(QNetworkProxy::NoProxy)};
+        const QUrl url(address, QUrl::StrictMode);
+        return {QNetworkProxy(url.scheme() == "socks5" ? QNetworkProxy::Socks5Proxy : QNetworkProxy::HttpProxy, url.host(), quint16(url.port()))};
+    }
+private:
+    QString mode, address;
+};
 inline bool validProxy(const QString &text) {
     if (text.isEmpty() || text.size() > 2048)
         return false;

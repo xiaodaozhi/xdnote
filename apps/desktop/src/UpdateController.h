@@ -7,6 +7,9 @@
 #include <functional>
 class QNetworkReply;
 namespace xdnote {
+class FileApplication;
+class UpdateDownload;
+class UpdateHandoff;
 class UpdateController final : public QObject {
     Q_OBJECT
 public:
@@ -20,17 +23,26 @@ public:
     QString errorCode() const { return m_error; }
     QString message() const;
     QString candidateVersion() const { return m_candidate.value("version").toString(); }
-    bool busy() const { return m_state == "checking"; }
+    bool busy() const;
     bool packaged() const { return m_packaged; }
     bool trusted() const { return m_trusted; }
+    bool canDownload() const;
+    bool canInstall() const;
+    QString downloadedPath() const;
+    void setApplication(FileApplication *application);
+    void reportNativeProgress(const QString &state, qreal progress);
     bool configureNetwork(const QString &mode, const QString &proxy = {}, const QString &mirror = {});
     static bool allowedUrl(const QUrl &url);
 public slots:
     void check();
     void cancel();
     void openReleasePage();
+    void download();
+    void install();
+    void openDownloadFolder();
 signals:
     void changed();
+    void quitForUpdate();
 private:
     using Callback = std::function<void(QByteArray, QString)>;
     void setState(const QString &state, const QString &error = {});
@@ -39,6 +51,11 @@ private:
     void inspectNext();
     void acceptManifest(const QJsonObject &release, const QByteArray &manifest);
     QString packageType() const;
+    QString installedRoot() const;
+    void prepareInstallation();
+    void releasePreparation();
+    bool rememberAttempt(const QString &phase);
+    void recoverAttempt();
     QNetworkAccessManager *m_network;
     QString m_version, m_platform, m_architecture;
     bool m_packaged = false, m_trusted = false;
@@ -48,6 +65,14 @@ private:
     QPointer<QNetworkReply> m_reply;
     QList<QJsonObject> m_candidates;
     QJsonObject m_candidate;
+    QByteArray m_manifest, m_signature;
+    QString m_channel = "development";
+    int m_build = 0;
+    QPointer<FileApplication> m_application;
+    UpdateDownload *m_download = nullptr;
+    UpdateHandoff *m_handoff = nullptr;
+    bool m_installRequested = false;
+    QString m_activeMode, m_activeProxy, m_transaction, m_attemptPath;
     QString m_mode = "system", m_proxy, m_mirror, m_activeMirror;
     quint64 m_generation = 0;
 };

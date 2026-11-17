@@ -39,6 +39,9 @@ public:
     QString displayPath() const;
     bool embedded() const { return m_embedded; }
     bool canTransfer() const;
+    // 0 cancelled, 1 ready, 2 waiting. Confirmation never closes the session.
+    int prepareUpdate();
+    void resetUpdatePreparation() { m_updateDiscard = false; m_updateSaving = false; }
     bool embedIn(QWidget *parent);
     void setWorkspaceRoot(const QString &root);
     QWidget *footer() const { return m_footer; }
@@ -181,6 +184,8 @@ private:
     bool m_linkInsertPending = false;
     bool m_embedded = false;
     bool m_focusMode = false, m_exporting = false;
+    bool m_updateDiscard = false, m_updateSaving = false;
+    quint64 m_updateDiscardRevision = 0;
     QWidget *m_toolbar = nullptr, *m_focusBar = nullptr;
     SharedButton *m_exportButton = nullptr;
     QAction *m_focusAction = nullptr, *m_outlineAction = nullptr;

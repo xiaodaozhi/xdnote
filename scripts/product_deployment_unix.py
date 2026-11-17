@@ -74,19 +74,32 @@ def material_evidence(root, qt, records, system):
         path = root / item['path']; origin = None
         if 'link' in item:
             record = {'kind': 'contained relative link', 'resolved': path.resolve().relative_to(root).as_posix()}
+        elif system == 'Darwin' and 'Sparkle.framework' in path.parts:
+            import sparkle_bundle
+            relative = path.relative_to(libraries / 'Sparkle.framework')
+            result.append(dict(item, evidence=sparkle_bundle.evidence(path, sparkle_bundle.sdk() / 'Sparkle.framework' / relative)))
+            continue
         elif path.is_relative_to(libraries):
             origin = qt / 'lib' / path.relative_to(libraries)
             record = {'kind': 'Qt framework or runtime material'}
         elif path.is_relative_to(plugins):
             origin = qt / 'plugins' / path.relative_to(plugins)
             record = {'kind': 'Qt plugin'}
-        elif path.is_relative_to(bindir) and path.name in ('xdnote', 'xdnote-resource-helper'):
+        elif path.is_relative_to(bindir) and path.name in ('xdnote', 'xdnote-resource-helper', 'xdnote-update-helper'):
             record = {'kind': 'project application or resource helper', 'staticDependencies': 'locked Rust/Scintilla and pinned toolchain materials collected; exact static component scope pending'}
         elif path.is_relative_to(notices / 'licenses'):
             relative = path.relative_to(notices / 'licenses').as_posix()
             source = None
             if relative.startswith('project-and-source-dependencies/'):
                 source = desktop.ROOT / 'LICENSES' / relative.removeprefix('project-and-source-dependencies/')
+            elif relative.startswith('Sparkle/'):
+                import sparkle_bundle
+                src = sparkle_bundle.sdk()
+                if relative == 'Sparkle/LICENSE': source = src / 'LICENSE'
+                elif relative == 'Sparkle/sdk-receipt.json': source = src / 'xdnote-sdk.json'
+                elif relative == 'Sparkle/provenance.json':
+                    if json.loads(path.read_bytes()) != sparkle_bundle.sparkle.configuration(): raise ValueError('Sparkle provenance changed')
+                else: raise ValueError('Unexpected Sparkle notice')
             elif relative.startswith('rust-runtime/'):
                 pass # The complete pinned directory was verified above.
             elif relative in ('qt/source-access.json', 'qt/REPLACEMENT.md'):
@@ -221,7 +234,7 @@ def prepare(build, qt, root):
             shutil.copy2(desktop.ROOT / 'tools/unix-runtime-notices.json', target / 'manifest.json')
             for record in relevant: shutil.copy2(desktop.ROOT / record['licenseFile'], target / Path(record['licenseFile']).name)
         if system == 'Darwin':
-            deploy.inspect(['/usr/bin/codesign', '--force', '--deep', '--sign', '-', root / 'xdnote.app'])
+            deploy.inspect(['/usr/bin/codesign', '--force', '--sign', '-', root / 'xdnote.app'])
             deploy.inspect(['/usr/bin/codesign', '--verify', '--deep', '--strict', root / 'xdnote.app'])
         materials = material_evidence(root, qt, records, system)
         materials['buildIdentity'] = identity

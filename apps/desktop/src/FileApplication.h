@@ -29,6 +29,9 @@ public:
     bool transferToWorkspace(SingleFileWindow *pane, WorkspaceWindow *target = nullptr);
     void activate();
     void requestQuit();
+    void prepareForUpdate(std::function<void(bool)> ready);
+    void cancelUpdateHandoff();
+    bool updateHandoffActive() const { return bool(m_updateReady); }
 protected:
     bool eventFilter(QObject *target, QEvent *event) override;
 private:
@@ -42,6 +45,13 @@ private:
     void newDocument();
     void retryTransfers();
     void advanceQuit();
+    void requestExit();
+    void advanceUpdateHandoff();
+    std::function<void(bool)> m_updateReady;
+    QTimer m_updatePoll;
+    bool m_updateFrozen = false;
+    QHash<DocumentSession *, bool> m_updateReadOnly;
+    QHash<QWidget *, bool> m_updateEnabled;
     void captureRecovery();
     void restoreSession();
     void refreshRecoveryActions();

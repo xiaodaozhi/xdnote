@@ -123,6 +123,11 @@ jobs:
         run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }} --profile ${{ matrix.profile || 'default' }}
       - name: Prepare pinned source dependencies
         run: python scripts/desktop.py prepare --download --profile ${{ matrix.profile || 'default' }}
+      - name: Prepare native macOS updater explicitly
+        if: runner.os == 'macOS'
+        run: |
+          python scripts/sparkle.py prepare --download
+          python scripts/sparkle.py build
       - name: Check build entry point guards
         run: python -m unittest discover -s scripts/tests -v
       - name: Build desktop admission (Windows)
@@ -158,6 +163,12 @@ jobs:
           export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
           python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
           python scripts/compatibility_audit.py --root build/cycle-112-deployment/staging --report build/cycle-112-deployment/staging-evidence/compatibility.json
+      - name: Inspect native Linux package without installing system paths
+        if: startsWith(inputs.scope, 'deployment-') && runner.os == 'Linux'
+        run: |
+          python scripts/build_linux_installer.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/xdnote-dev.deb --report build/cycle-112-deployment/staging-evidence/debian-package.json
+          dpkg-deb --info build/cycle-112-deployment/xdnote-dev.deb
+          dpkg-deb --contents build/cycle-112-deployment/xdnote-dev.deb
       - name: Validate installed developer payload without registration
         if: startsWith(inputs.scope, 'deployment-')
         shell: bash

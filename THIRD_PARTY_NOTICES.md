@@ -64,6 +64,8 @@ Markdown 服务使用以下第三方包；`pulldown-cmark` 为直接依赖，其
 
 所有新增文本取自本项目 Cargo 缓存中摘要与 `Cargo.lock` 匹配的归档，保持原始字节。`unicode-ident` 同时保留 MIT 与 Unicode-3.0，不将 AND 条件当作二选一；使用的版权／作者补充文本单独记录摘要。机器清单的 `additionalTexts` 同样参与源材料检查和 Windows 分发必需材料检查。清单完整性不等于已完成最终包的许可验收。
 
+原生更新助手的 Windows 条件依赖另包含 `windows-sys` 0.61.2 和 `windows-link` 0.2.1（上游 MIT OR Apache-2.0，本项目保留 [MIT](LICENSES/third-party/windows-sys.txt)／[MIT](LICENSES/third-party/windows-link.txt) 原文）；Linux 使用同一锁文件中的 `libc`。助手独立链接，不将平台条件依赖误记为所有桌面配置均静态编入。
+
 ## Scintilla
 
 桌面构建从项目准备目录中的 Scintilla 5.6.7 源码构建静态库，版本和原始下载摘要锁定在[桌面依赖清单](tools/desktop-dependencies.json)。其[许可及版权原文](LICENSES/third-party/scintilla.txt)来自所用源码目录，并与 [Scintilla 官方许可](https://www.scintilla.org/License.txt)的内容核对。该许可要求保留上游版权与许可声明，具体条件以原文为准。`xdnote` 没有将其改标为项目自有代码。

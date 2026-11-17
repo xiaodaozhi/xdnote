@@ -100,7 +100,7 @@ def copy_programs(build, target, programs=PROGRAMS):
 
 def linux_stage(build, qt, destination, evidence, product=False):
     bindir, libdir, plugins = destination / "bin", destination / "lib", destination / "plugins"
-    copy_programs(build, bindir, ("xdnote", "xdnote-resource-helper") if product else PROGRAMS)
+    copy_programs(build, bindir, ("xdnote", "xdnote-resource-helper", "xdnote-update-helper") if product else PROGRAMS)
     # Keep the native platform candidates and the diagnostic plugin. Other
     # device backends are outside this prototype's delivery scope.
     wanted = ("platforms/libqoffscreen.so", "platforms/libqxcb.so", "platforms/libqwayland-generic.so", "platforms/libqwayland-egl.so",
@@ -192,8 +192,12 @@ def mac_stage(build, qt, destination, evidence, product=False):
     codesign = desktop.prepared_tool("codesign", os.environ)
     # Remove build/SDK rpaths and force every copied Mach-O to the local framework
     # directory. Patch SDK absolute imports only if the matching framework exists.
+    import sparkle_bundle
+    identity = json.loads((build / 'generated/build-version.json').read_text(encoding='utf-8'))
+    sparkle_bundle.embed(bundle, inspect, evidence, identity)
     binaries = [path for path in staged_files(destination) if not path.is_symlink() and binary(path, "Darwin")]
     for path in binaries:
+        if "Sparkle.framework" in path.parts: continue
         architectures = inspect(["/usr/bin/lipo", "-archs", path]).split()
         if "arm64" not in architectures:
             raise ValueError("Deployed Mach-O lacks supported arm64 slice")
@@ -220,7 +224,9 @@ def mac_stage(build, qt, destination, evidence, product=False):
                     raise RuntimeError("Missing framework for relocated import: " + name)
                 inspect([install_name, "-change", name, "@rpath/" + relative, path])
         inspect([codesign, "--force", "--sign", "-", path])
-    inspect([codesign, "--force", "--deep", "--sign", "-", bundle])
+    for framework in sorted(frameworks.glob('*.framework')):
+        if framework.name != 'Sparkle.framework': inspect([codesign, '--force', '--sign', '-', framework])
+    inspect([codesign, "--force", "--sign", "-", bundle])
     return bindir, plugins, frameworks
 
 

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/markdown", "crates/update", "crates/services"]
+members = ["crates/markdown", "crates/update", "crates/services", "crates/update-helper"]
 exclude = ["experiments/pulldown-markdown-spike"]
 resolver = "2"
 

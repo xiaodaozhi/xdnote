@@ -115,7 +115,7 @@ def audit(root, metadata, qt):
                       'agreement': 'share/notices/Microsoft-VC-runtime/license.rtf'}
         elif name == 'D3Dcompiler_47.dll':
             raise ValueError('Host system graphics DLL must not be bundled')
-        elif name == 'xdnote.exe':
+        elif name in ('xdnote.exe', 'xdnote-update-helper.exe'):
             record = {'kind': 'project application with static dependencies', 'projectCodeLicense': 'Apache-2.0',
                       'lockedSourcePackages': [{'name': item['name'], 'version': item['version'], 'license': item['selectedLicense']}
                                                for item in manifest['rust']], 'scintillaVersion': manifest['scintilla']['version'],
