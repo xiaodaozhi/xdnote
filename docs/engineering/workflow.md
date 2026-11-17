@@ -56,6 +56,8 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 `scope=update-products` 另调用其 product 范围，在相同的一次性环境编译两个私有产品版本，验证真实文档保存／取消、原生包升级、回执与重启。临时信任根、文件回复及静默安装／授权限定于私有 worktree；正常产品构建和信任文件不修改。该范围仍不包含最低系统、公开发行、真实授权对话框或人工桌面验收。
 
+`scope=qt-replacement` 只调用手动 `qt-replacement.yml`：Windows、Ubuntu 22.04、macOS arm64 各构建一份实际产品和源码修改的 Qt Core，在自有安装副本中完成加载、文档行为及维护保护验证。原 SDK／产品不覆盖，不执行系统注册或发布，不上传 Qt 源码和二进制。许可声明与全部对应源码义务仍由最终交付核验决定，见[替换说明](qt-library-replacement.md)。
+
 `scope=sparkle-macos` 只运行 macOS ARM64 的[原生更新网络准入](macos-update-transport.md)：显式准备固定 Sparkle 输入、编译主库并执行回环代理／TLS 探针，不准备 Qt 或执行桌面产品。报告与原始构建／许可回执保留七天，汇总要求所选架构成功；该范围不执行安装、生产签名、公开更新或 最低支持系统验收。
 
 `windows-installer.yml` 手动选择 `scope=fixtures` 时，使用不可执行的自建文件验证 Windows 原生安装引擎、升级／卸载和候选关联保护；选择 `scope=product` 时，只运行一个 Windows 产品任务，构建实际载荷、核对逐文件许可材料并执行真实安装包的安装／升级／卸载和安装目录运行。产品专项使用自建文档、应用级诊断字体及隐藏原生窗口，上传证据而不上传产品二进制；不代替可见向导、文件管理器或默认应用界面验收，也不运行完整桌面测试或跨平台矩阵。`desktop-admission.yml` 的 `scope=installer-windows` 仅转调默认夹具模式，并跳过整个桌面矩阵，供新工作流首次合并前验证；日常提交和 main 合并仍仅触发材料 CI。
