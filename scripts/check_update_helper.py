@@ -50,6 +50,7 @@ class Fixture:
         for name in ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml']: shutil.copy2(ROOT / name, self.source / name)
         shutil.copytree(ROOT / 'crates', self.source / 'crates')
         (self.source / 'tools').mkdir()
+        shutil.copy2(ROOT / 'tools/update-trust.json', self.source / 'tools/update-trust.json')
         examples = self.source / 'crates/update/examples'; examples.mkdir(exist_ok=True)
         shutil.copy2(ROOT / 'experiments/native-update-fixture/fixture_sign.rs.in', examples / 'fixture_sign.rs')
         self.seed = work / 'private-seed'; self.seed.write_bytes(secrets.token_bytes(32)); self.seed.chmod(0o600)
@@ -236,4 +237,6 @@ if __name__ == '__main__':
             result['scenarios'][mode] = fixture.scenario(mode); dump(work / 'report.json', result); print(mode + ' passed', flush=True)
         if digest(ROOT / 'tools/update-trust.json') != trust: raise ValueError('Production trust changed')
         result.update(ok=True, productionTrustUnchanged=True, privateSeedRemoved=not fixture.seed.exists(), sourceRevision=fixture.revision)
-    finally: dump(work / 'report.json', result)
+    finally:
+        (work / 'private-seed').unlink(missing_ok=True)
+        dump(work / 'report.json', result)
