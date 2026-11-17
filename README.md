@@ -48,6 +48,7 @@ xdnote/
 ├── AGENTS.md                  # 协作与材料维护约定
 ├── apps/desktop/              # 单文件功能原型与独立的组件准入窗口
 ├── crates/markdown/           # Rust 只读解析服务
+├── crates/update/             # 无 Qt 的更新候选、清单认证与包校验核心
 ├── cmake/                    # 桌面构建定义
 ├── scripts/                  # 准备、构建与检查入口
 ├── tools/                    # 固定依赖清单

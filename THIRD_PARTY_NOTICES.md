@@ -1,10 +1,10 @@
 # 第三方许可与来源记录
 
-本记录覆盖当前源码和桌面构建中已确认的直接及传递依赖，用于保留上游声明和后续核对依据。此仓库尚无安装包或发行包；本文件不是完整部署清单，也不表示任何发行方式已完成许可审核。项目自有内容的许可见[许可范围与依赖](docs/engineering/licensing.md)。
+本记录覆盖当前源码和桌面构建中已确认的直接及传递依赖，用于保留上游声明和后续核对依据。当前已有开发安装和归档入口，尚无正式发行；本文件不是完整部署清单，也不表示任何发行方式已完成许可审核。项目自有内容的许可见[许可范围与依赖](docs/engineering/licensing.md)。
 
 ## Rust Markdown 服务
 
-`Cargo.lock` 当前锁定以下第三方包；`pulldown-cmark` 为直接依赖，其余为锁定的传递依赖。本项目在下表所列的上游许可选项中记录 MIT 方案，保留各包自己的原始版权与许可文本；这不改变上游同时提供的其他许可选项。
+Markdown 服务使用以下第三方包；`pulldown-cmark` 为直接依赖，其余为其锁定的传递依赖。本项目在下表所列的上游许可选项中记录 MIT 方案，保留各包自己的原始版权与许可文本；这不改变上游同时提供的其他许可选项。
 
 | 包 | 版本 | 上游声明 | 保留的许可文本 |
 | --- | --- | --- | --- |
@@ -15,6 +15,54 @@
 | `unicase` | 2.10.0 | MIT 或 Apache-2.0 | [MIT 原文](LICENSES/third-party/unicase.txt) |
 
 记录建立时，五个缓存归档的 SHA-256 与 `Cargo.lock` 一致，所保留的文本与各归档中的许可文件逐字节一致。[机器可读清单](LICENSES/third-party/manifest.json)记录版本、归档摘要和许可文本摘要。日常仓库检查核对清单、锁文件与文本的对应关系；这不能替代升级依赖时重新核对上游声明。
+
+## Rust 更新核心及工作区构建依赖
+
+无 Qt 的 `xdnote-update` 直接依赖 `ed25519-dalek`、`semver`、`serde`、`serde_json` 和 `sha2`；当前尚未链接到桌面产品。以下新增记录覆盖完整 Cargo 锁文件，包括传递、构建、目标条件及锁定的可选依赖；不能将锁文件中所有包都当作实际编入桌面产品。最终静态组件仍按真实构建核对。
+
+| 包 | 版本 | 上游声明／本项目保留方案 | 原始文本 |
+| --- | --- | --- | --- |
+| `base64ct` | 1.8.3 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/base64ct.txt) |
+| `block-buffer` | 0.10.4 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/block-buffer.txt) |
+| `cfg-if` | 1.0.5 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/cfg-if.txt) |
+| `const-oid` | 0.9.6 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/const-oid.txt) |
+| `cpufeatures` | 0.2.17 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/cpufeatures.txt) |
+| `crypto-common` | 0.1.7 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/crypto-common.txt) |
+| `curve25519-dalek` | 4.1.3 | `BSD-3-Clause`；保留 `BSD-3-Clause` | [许可](LICENSES/third-party/curve25519-dalek.txt) |
+| `curve25519-dalek-derive` | 0.1.1 | `MIT/Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/curve25519-dalek-derive.txt) |
+| `der` | 0.7.10 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/der.txt) |
+| `digest` | 0.10.7 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/digest.txt) |
+| `ed25519` | 2.2.3 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/ed25519.txt) |
+| `ed25519-dalek` | 2.2.0 | `BSD-3-Clause`；保留 `BSD-3-Clause` | [许可](LICENSES/third-party/ed25519-dalek.txt) |
+| `fiat-crypto` | 0.2.9 | `MIT OR Apache-2.0 OR BSD-1-Clause`；保留 `MIT` | [许可](LICENSES/third-party/fiat-crypto.txt)、[原始署名](LICENSES/third-party/fiat-crypto-COPYRIGHT.txt)、[原始署名](LICENSES/third-party/fiat-crypto-AUTHORS.txt) |
+| `generic-array` | 0.14.7 | `MIT`；保留 `MIT` | [许可](LICENSES/third-party/generic-array.txt) |
+| `getrandom` | 0.2.17 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/getrandom.txt) |
+| `itoa` | 1.0.19 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/itoa.txt) |
+| `libc` | 0.2.191 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/libc.txt) |
+| `pkcs8` | 0.10.2 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/pkcs8.txt) |
+| `proc-macro2` | 1.0.107 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/proc-macro2.txt) |
+| `quote` | 1.0.47 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/quote.txt) |
+| `rand_core` | 0.6.4 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/rand_core.txt)、[原始署名](LICENSES/third-party/rand_core-COPYRIGHT.txt) |
+| `rustc_version` | 0.4.1 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/rustc_version.txt) |
+| `semver` | 1.0.28 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/semver.txt) |
+| `serde` | 1.0.229 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/serde.txt) |
+| `serde_core` | 1.0.229 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/serde_core.txt) |
+| `serde_derive` | 1.0.229 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/serde_derive.txt) |
+| `serde_json` | 1.0.154 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/serde_json.txt) |
+| `sha2` | 0.10.9 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/sha2.txt) |
+| `signature` | 2.2.0 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/signature.txt) |
+| `spki` | 0.7.3 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/spki.txt) |
+| `subtle` | 2.6.1 | `BSD-3-Clause`；保留 `BSD-3-Clause` | [许可](LICENSES/third-party/subtle.txt) |
+| `syn` | 2.0.119 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/syn.txt) |
+| `syn` | 3.0.10 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/syn.txt) |
+| `typenum` | 1.20.1 | `MIT OR Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/typenum.txt) |
+| `unicode-ident` | 1.0.27 | `(MIT OR Apache-2.0) AND Unicode-3.0`；保留 `MIT AND Unicode-3.0` | [许可](LICENSES/third-party/unicode-ident.txt)、[Unicode 条款](LICENSES/third-party/unicode-ident-Unicode-3.0.txt) |
+| `version_check` | 0.9.5 | `MIT/Apache-2.0`；保留 `MIT` | [许可](LICENSES/third-party/version_check.txt) |
+| `wasi` | 0.11.1+wasi-snapshot-preview1 | `Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/wasi.txt) |
+| `zeroize` | 1.9.1 | `Apache-2.0 OR MIT`；保留 `MIT` | [许可](LICENSES/third-party/zeroize.txt) |
+| `zmij` | 1.0.23 | `MIT`；保留 `MIT` | [许可](LICENSES/third-party/zmij.txt) |
+
+所有新增文本取自本项目 Cargo 缓存中摘要与 `Cargo.lock` 匹配的归档，保持原始字节。`unicode-ident` 同时保留 MIT 与 Unicode-3.0，不将 AND 条件当作二选一；使用的版权／作者补充文本单独记录摘要。机器清单的 `additionalTexts` 同样参与源材料检查和 Windows 分发必需材料检查。清单完整性不等于已完成最终包的许可验收。
 
 ## Scintilla
 
