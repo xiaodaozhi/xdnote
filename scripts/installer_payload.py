@@ -83,6 +83,9 @@ def prepare(source, source_audit, destination, toolchain, runtime, build, qt):
     runtime_materials.collect(destination / 'licenses/rust-runtime')
     records = product_qt_records(source_audit['qtSbom'], inventory(destination))
     qt_source_access.collect(destination / 'licenses/qt', records)
+    helper = build / 'xdnote-update-helper.exe'
+    if not helper.is_file(): raise ValueError('Independent update helper missing')
+    shutil.copy2(helper, destination / helper.name)
     imports, missing = dependency_closure(destination, Path(os.environ['SystemRoot']) / 'System32')
     if missing:
         raise ValueError('Product-only payload has unresolved imports: ' + ', '.join(missing))

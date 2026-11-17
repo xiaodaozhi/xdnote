@@ -1,3 +1,7 @@
+#include "UpdateTaskGate.h"
+#include <utility>
+#include <QThreadPool>
+#include "ResourceMaintenanceController.h"
 #include "FileApplication.h"
 #include "RecoveryStore.h"
 #include "SharedWidgets.h"
@@ -25,6 +29,9 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QKeyEvent>
+#ifdef Q_OS_MACOS
+#include "MacUpdateProvider.h"
+#endif
 
 namespace xdnote {
 namespace {
@@ -38,7 +45,8 @@ QString rootKey(const QString &path) { const QFileInfo info(path); auto key = in
 FileApplication::FileApplication(QObject *parent, QString settingsPath, Presentation presentation)
     : QObject(parent), m_presentation(presentation), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
     qApp->installEventFilter(this);
-    m_updates = new UpdateController(this);
+    m_updates = new UpdateController(this); m_updates->setApplication(this);
+    connect(m_updates, &UpdateController::quitForUpdate, qApp, &QCoreApplication::quit);
     m_recovery=new RecoveryStore(settingsPath.isEmpty()?QString():settingsPath+".recovery",this);
     const auto stored=m_recovery->state();m_lastSession=stored["documents"].toArray();
     for(const auto &value:m_lastSession){const auto item=value.toObject();m_unrestored[item["id"].toString()]=item;if(!m_recoveryOrder.contains(item["id"].toString()))m_recoveryOrder.append(item["id"].toString());}
@@ -94,13 +102,15 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath, Presenta
     });
 }
 FileApplication::~FileApplication() {
-    m_recoveryTimer.stop();captureRecovery();m_recovery->flush();
-    m_destroying = true; qApp->removeEventFilter(this);
+    m_recoveryTimer.stop(); captureRecovery(); m_recovery->flush();
+    m_destroying = true; m_updatePoll.stop(); m_updateReady = {};
+    m_updateReadOnly.clear(); m_updateEnabled.clear(); qApp->removeEventFilter(this);
     m_autoSave->stop(); delete m_autoSave; m_autoSave = nullptr; if (m_settings) delete m_settings;
     QList<QPointer<WorkspaceWindow>> workspaces; for (auto *workspace : m_workspaces) workspaces.append(workspace);
     QList<QPointer<SingleFileWindow>> panes; for (auto *pane : m_windows) panes.append(pane);
     for (auto workspace : workspaces) if (workspace) delete workspace;
     for (auto pane : panes) if (pane) delete pane;
+    if (m_updateFrozen) updateTaskGate() = false;
 }
 SingleFileWindow *FileApplication::createWindow() {
     auto *pane = new SingleFileWindow(&m_manager, &m_appearance, &m_geometryStore); pane->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative); m_windows.insert(pane);if(!m_recovery->error().isEmpty())pane->reportHostMessage(m_recovery->error());
@@ -115,7 +125,7 @@ SingleFileWindow *FileApplication::createWindow() {
     connect(pane, &SingleFileWindow::cancelOpenRequested, this, [this](QUuid intent) { m_requests.remove(intent); m_linkNavigations.remove(intent); m_workspaceRequests.remove(intent);m_restoreRequests.remove(intent);refreshRecoveryActions(); m_manager.cancelOpen(intent); });
     connect(pane, &SingleFileWindow::documentLinkRequested, this, [this, pane](const QString &target, quint64 revision) { openDocumentLink(pane, target, revision); });
     connect(pane, &SingleFileWindow::quitRequested, this, &FileApplication::requestQuit); connect(pane, &SingleFileWindow::closeCancelled, this, [this] { m_quitting = false; });
-    connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
+    connect(pane, &QObject::destroyed, this, [this, pane, id = pane->paneId()] { m_windows.remove(pane); m_transfers.remove(id); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) requestExit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return pane;
 }
 WorkspaceWindow *FileApplication::createWorkspace() {
     auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_navigation, &m_manager); workspace->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative); m_workspaces.insert(workspace);
@@ -135,7 +145,7 @@ WorkspaceWindow *FileApplication::createWorkspace() {
     connect(workspace, &WorkspaceWindow::chooseDirectoryRequested, this, [this, workspace] { chooseDirectory(workspace); });
     connect(workspace, &WorkspaceWindow::closeCancelled, this, [this] { m_quitting = false; });
     connect(workspace, &WorkspaceWindow::quitRequested, this, &FileApplication::requestQuit);
-    connect(workspace, &QObject::destroyed, this, [this, workspace] { m_workspaces.remove(workspace); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) QCoreApplication::quit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return workspace;
+    connect(workspace, &QObject::destroyed, this, [this, workspace] { m_workspaces.remove(workspace); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) requestExit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return workspace;
 }
 WorkspaceWindow *FileApplication::workspaceWindow(const QString &root) {
     for (auto *workspace : m_workspaces) if (!workspace->closingWorkspace() && ((root.isEmpty() && workspace->rootPath().isEmpty()) || (!root.isEmpty() && !workspace->rootPath().isEmpty() && rootKey(root) == rootKey(workspace->rootPath())))) { workspace->show(); workspace->raise(); workspace->activateWindow(); return workspace; }
@@ -155,7 +165,7 @@ void FileApplication::chooseFile(WorkspaceWindow *owner, bool workspaceTab) {
     if (workspaceTab && workspace) openInWorkspace(path, workspace); else open(path);
 }
 SingleFileWindow *FileApplication::emptyWindow() { auto *pane = createWindow(); pane->show(); return pane; }
-void FileApplication::newDocument() {
+void FileApplication::newDocument() { if (m_updateReady) return;
     m_quitting = false; auto *pane = createWindow(); const auto intent = QUuid::createUuid();
     m_requests.insert(intent, pane); pane->setLoading(QStringLiteral("未命名.md"), intent); m_manager.createUntitled(intent);
 }
@@ -163,24 +173,24 @@ SettingsWindow *FileApplication::settingsWindow() {
     if (!m_settings) {
         m_settings = new SettingsWindow(&m_appearance, &m_geometryStore, m_updates);
         m_settings->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative);
-        connect(m_settings, &QObject::destroyed, this, [this] { if (!m_destroying && m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); });
+        connect(m_settings, &QObject::destroyed, this, [this] { if (!m_destroying && m_windows.isEmpty() && m_workspaces.isEmpty()) requestExit(); });
     }
     if (m_settings->isMinimized()) m_settings->showNormal(); m_settings->show(); m_settings->raise(); m_settings->activateWindow(); return m_settings;
 }
-void FileApplication::openExternal(const QString &path) {
+void FileApplication::openExternal(const QString &path) { if (m_updateReady) return;
     if (m_appearance.preferences()->value("desktop", "externalOpenTarget").toString() != "workspace-tab") { open(path); return; }
     auto *target = qobject_cast<WorkspaceWindow *>(QApplication::activeWindow());
     if (!m_workspaces.contains(target) || target->closingWorkspace() || !target->tree()->containsPath(path)) target = nullptr;
     if (!target) for (auto *workspace : m_workspaces) if (!workspace->closingWorkspace() && workspace->tree()->containsPath(path)) { target = workspace; break; }
     if (target) openInWorkspace(path, target); else open(path);
 }
-void FileApplication::open(const QString &path, SingleFileWindow *empty) {
+void FileApplication::open(const QString &path, SingleFileWindow *empty) { if (m_updateReady) return;
     m_quitting = false; if (empty && empty->embedded()) { openInWorkspace(path, qobject_cast<WorkspaceWindow *>(empty->window())); return; }
     auto *pane = empty && !empty->document() ? empty : createWindow();
     for (auto it = m_requests.begin(); it != m_requests.end();) { if (it.value() == pane) { m_restoreRequests.remove(it.key());refreshRecoveryActions();m_manager.cancelOpen(it.key()); it = m_requests.erase(it); } else ++it; }
     const auto intent = QUuid::createUuid(); m_requests.insert(intent, pane); pane->setLoading(path, intent); pane->show(); m_manager.open(path, intent);
 }
-void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *workspace) {
+void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *workspace) { if (m_updateReady) return;
     if (!workspace || workspace->closingWorkspace()) return;
     if (!workspace->tree()->containsPath(path)) { open(path); return; }
     m_quitting = false;
@@ -237,7 +247,7 @@ void FileApplication::openDocumentLink(SingleFileWindow *source, const QString &
     m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation);
     m_manager.openWithin(navigation.root, resolved.path, intent, navigation.sourcePath, navigation.sourceIdentity);
 }
-bool FileApplication::transferToWorkspace(SingleFileWindow *pane, WorkspaceWindow *target) {
+bool FileApplication::transferToWorkspace(SingleFileWindow *pane, WorkspaceWindow *target) { if (m_updateReady) return false;
     if (!pane || !pane->document() || pane->document()->closed()) return false;
     if (pane->embedded()) { activatePane(pane); return true; }
     if (target && target->closingWorkspace()) { m_transfers.remove(pane->paneId()); pane->reportHostMessage(QStringLiteral("工作区正在关闭，文档仍保留在独立窗口。")); return false; }
@@ -267,11 +277,106 @@ void FileApplication::retryTransfers() {
     for (auto it = transfers.begin(); it != transfers.end(); ++it) { const auto pending = it.value(); if (!pending.pane) { m_transfers.remove(it.key()); continue; } if (pending.explicitTarget && !pending.target) { m_transfers.remove(it.key()); pending.pane->reportHostMessage(QStringLiteral("目标工作区已关闭，文档仍保留在独立窗口。")); } else if (pending.pane->canTransfer()) transferToWorkspace(pending.pane, pending.target); }
 }
 void FileApplication::activate() { for (auto *workspace : m_workspaces) { if (workspace->isMinimized()) workspace->showNormal(); workspace->raise(); workspace->activateWindow(); return; } if (!m_windows.isEmpty()) activatePane(*m_windows.begin()); else workspaceWindow(); }
-void FileApplication::requestQuit() { if (!m_quitting) { captureRecovery(); m_quitting = true; advanceQuit(); } }
-void FileApplication::advanceQuit() { if (!m_quitting) return; for (auto *workspace : m_workspaces) if (workspace->isVisible()) { workspace->close(); return; } for (auto *pane : m_windows) if (pane->isWindow() && pane->isVisible()) { pane->close(); return; } if (m_windows.isEmpty() && m_workspaces.isEmpty()) { if (m_settings) m_settings->close(); else QCoreApplication::quit(); } }
+void FileApplication::prepareForUpdate(std::function<void(bool)> ready) {
+    if (m_updateReady || m_quitting || m_destroying) { ready(false); return; }
+    m_updateReady = std::move(ready);
+    m_updatePoll.setInterval(100);
+    disconnect(&m_updatePoll, nullptr, this, nullptr);
+    connect(&m_updatePoll, &QTimer::timeout, this, &FileApplication::advanceUpdateHandoff);
+    m_updatePoll.start();
+    QTimer::singleShot(0, this, &FileApplication::advanceUpdateHandoff);
+}
+void FileApplication::cancelUpdateHandoff() {
+    m_updatePoll.stop();
+    const bool restoreDrafts = std::exchange(m_updateRecoverySealed, false);
+    auto callback = std::exchange(m_updateReady, {});
+    if (m_updateFrozen) {
+        updateTaskGate() = false;
+        const auto sessions = std::exchange(m_updateReadOnly, {});
+        const auto windows = std::exchange(m_updateEnabled, {});
+        for (const auto &entry : sessions) if (entry.first) entry.first->setReadOnly(entry.second);
+        for (const auto &entry : windows) if (entry.first) entry.first->setEnabled(entry.second);
+        m_updateFrozen = false;
+        for (auto pane : m_windows) if (pane->preview()) pane->preview()->refresh();
+        for (auto workspace : m_workspaces) { workspace->tree()->refresh(); for (auto references : workspace->findChildren<WorkspaceReferenceController *>()) references->refresh(); }
+        if (!m_destroying) m_recoveryTimer.start();
+    }
+    for (auto pane : m_windows) pane->resetUpdatePreparation();
+    if (restoreDrafts) { captureRecovery(); m_recovery->flush(); }
+    if (callback) callback(false);
+}
+bool FileApplication::sealUpdateRecovery() {
+    if (!m_updateFrozen || !m_updateReady) return false;
+    // Apply explicit discard only to the durable recovery snapshot. Keep the
+    // same editable buffers until handoff succeeds, so a failed commit can undo
+    // this preparation without losing the user's changes or undo history.
+    m_updateRecoverySealed = true;
+    captureRecovery();
+    return m_recovery->flush();
+}
+void FileApplication::advanceUpdateHandoff() {
+    if (!m_updateReady) return;
+    if (!m_updateFrozen) {
+        if (!m_manager.idle() || !m_requests.isEmpty() || QApplication::activeModalWidget()) return;
+        for (auto *maintenance : findChildren<ResourceMaintenanceController *>()) if (maintenance->busy()) return;
+        QList<QPointer<SingleFileWindow>> panes;
+        for (auto pane : m_windows) panes.append(pane);
+        for (auto pane : panes) {
+            if (!pane) continue;
+            const int result = pane->prepareUpdate();
+            if (!m_updateReady) return;
+            if (!result) { cancelUpdateHandoff(); return; }
+            if (result == 2) return;
+        }
+        // A later modal prompt may have processed edits or opens in another
+        // window. Recheck every current pane without opening another dialog.
+        if (!m_manager.idle() || !m_requests.isEmpty() || QApplication::activeModalWidget()) return;
+        for (auto *maintenance : findChildren<ResourceMaintenanceController *>()) if (maintenance->busy()) return;
+        for (auto pane : m_windows) if (!pane->updatePreparationCurrent()) return;
+        // No GUI event is processed between these checks and the freeze.
+        updateTaskGate() = true; m_updateFrozen = true; m_recoveryTimer.stop();
+        for (auto document : m_manager.documents()) {
+            auto session = document->session(); m_updateReadOnly.append(qMakePair(QPointer<DocumentSession>(session), session->isReadOnly())); session->setReadOnly(true);
+        }
+        for (auto pane : m_windows) { m_updateEnabled.append(qMakePair(QPointer<QWidget>(pane), pane->isEnabled())); pane->setEnabled(false); }
+        for (auto workspace : m_workspaces) { m_updateEnabled.append(qMakePair(QPointer<QWidget>(workspace), workspace->isEnabled())); workspace->setEnabled(false); }
+        captureRecovery();
+    }
+    // Nonblocking join: queued completion callbacks may still run, but their
+    // admission paths are gated and cannot start another background task.
+    if (!m_manager.idle() || !QThreadPool::globalInstance()->waitForDone(0)) return;
+    if (!m_recovery->flush()) { cancelUpdateHandoff(); return; }
+    m_updatePoll.stop();
+    auto ready = std::exchange(m_updateReady, {});
+    // Keep the freeze until native commit or explicit cancellation.
+    m_updateReady = [](bool) {};
+    ready(true);
+}
+void FileApplication::requestExit() {
+#ifdef Q_OS_MACOS
+    QPointer<FileApplication> self(this);
+    if (deferMacUpdateQuit([self] { if (self) self->requestExit(); })) return;
+#endif
+    QCoreApplication::quit();
+}
+void FileApplication::requestQuit() {
+#ifdef Q_OS_MACOS
+    QPointer<FileApplication> self(this);
+    if (deferMacUpdateQuit([self] { if (self) self->requestQuit(); })) return;
+#endif
+    if (m_updateReady) { cancelUpdateHandoff(); return; } if (!m_quitting) { captureRecovery(); m_quitting = true; advanceQuit(); } }
+void FileApplication::advanceQuit() { if (!m_quitting) return; for (auto *workspace : m_workspaces) if (workspace->isVisible()) { workspace->close(); return; } for (auto *pane : m_windows) if (pane->isWindow() && pane->isVisible()) { pane->close(); return; } if (m_windows.isEmpty() && m_workspaces.isEmpty()) { if (m_settings) m_settings->close(); else requestExit(); } }
 bool FileApplication::eventFilter(QObject *target, QEvent *event) {
+    if (event->type() == QEvent::Close && m_updateFrozen && (m_windows.contains(qobject_cast<SingleFileWindow *>(target)) || m_workspaces.contains(qobject_cast<WorkspaceWindow *>(target)))) { event->ignore(); return true; }
     if(event->type()==QEvent::Close && !m_destroying && (m_windows.contains(qobject_cast<SingleFileWindow*>(target))||m_workspaces.contains(qobject_cast<WorkspaceWindow*>(target))))captureRecovery();
     if (target == qApp && event->type() == QEvent::FileOpen) { const auto *file = static_cast<QFileOpenEvent *>(event); if (!file->file().isEmpty()) openExternal(file->file()); else if (file->url().isLocalFile()) openExternal(file->url().toLocalFile()); return true; }
+    if (target == qApp && event->type() == QEvent::Quit && m_updates->state() == "installing") return false;
+#ifdef Q_OS_MACOS
+    if (target == qApp && event->type() == QEvent::Quit) {
+        QPointer<FileApplication> self(this);
+        if (deferMacUpdateQuit([self] { if (self) self->requestQuit(); })) return true;
+    }
+#endif
     if (target == qApp && event->type() == QEvent::Quit && (!m_windows.isEmpty() || !m_workspaces.isEmpty())) { requestQuit(); return true; }
     return QObject::eventFilter(target, event);
 }
@@ -284,7 +389,7 @@ void FileApplication::captureRecovery(){
         auto *workspace=qobject_cast<WorkspaceWindow*>(pane->window());QJsonObject item{{"id",id},{"path",doc->untitled()?QString():doc->path()},{"root",workspace?workspace->rootPath():QString()},{"mode",int(pane->viewMode())},{"zoom",pane->contentZoom()},{"bom",doc->bom()}};
         if(auto *editor=pane->editor()){item["cursor"]=int(editor->send(SCI_GETCURRENTPOS));item["anchor"]=int(editor->send(SCI_GETANCHOR));item["line"]=int(editor->send(SCI_GETFIRSTVISIBLELINE));}
         if(pane->preview())item["readerY"]=pane->preview()->readingPosition().y();
-        if(doc->dirty()||doc->untitled())item["content"]=QString::fromLatin1(snap.utf8.toBase64());m_liveRecovery[id]=item;current.append(item);if(item.contains("content"))drafts.append(item);
+        if((doc->dirty()||doc->untitled())&&!(m_updateRecoverySealed&&pane->discardPreparedForUpdate()))item["content"]=QString::fromLatin1(snap.utf8.toBase64());m_liveRecovery[id]=item;current.append(item);if(item.contains("content"))drafts.append(item);
     }
     for(auto it=m_liveRecovery.begin();it!=m_liveRecovery.end();)if(!live.contains(it.key()))it=m_liveRecovery.erase(it);else ++it;
     for(const auto &item:m_unrestored){if(item.contains("content"))drafts.append(item);current.append(item);}

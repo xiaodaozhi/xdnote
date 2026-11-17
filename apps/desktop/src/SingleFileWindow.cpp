@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "SingleFileWindow.h"
 #include "DocumentSearch.h"
 #include "Shortcuts.h"
@@ -886,7 +887,42 @@ void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage 
     }));
 }
 
+bool SingleFileWindow::discardPreparedForUpdate() const {
+    return m_updateDiscard && m_document && !m_document->closed() &&
+        m_updateDiscardRevision == m_document->session()->revision();
+}
+bool SingleFileWindow::updatePreparationCurrent() const {
+    if (m_prompting || m_saveErrorDialog || m_imageImportPending || m_linkInsertPending || m_exporting || !m_intent.isNull()) return false;
+    if (!m_document || m_document->closed()) return true;
+    if (m_updateSaving || m_document->saving() || m_document->loading() || m_document->maintainingResources() ||
+        m_document->session()->isBusy() || m_document->session()->isComposing() || (m_editor && m_editor->dispatching())) return false;
+    return !m_document->dirty() || discardPreparedForUpdate();
+}
+int SingleFileWindow::prepareUpdate() {
+    if (m_prompting || m_saveErrorDialog || m_imageImportPending || m_linkInsertPending || m_exporting || !m_intent.isNull()) return 2;
+    if (!m_document || m_document->closed()) return 1;
+    if (m_updateSaving) {
+        if (m_document->saving() || m_document->loading()) return 2;
+        m_updateSaving = false;
+        if (m_document->dirty() || m_document->hasError() || m_document->conflict()) return 0;
+    }
+    if (m_document->saving() || m_document->loading() || m_document->maintainingResources() || m_document->session()->isBusy() || m_document->session()->isComposing() || (m_editor && m_editor->dispatching())) return 2;
+    if (!m_document->dirty()) return 1;
+    const auto revision = m_document->session()->revision();
+    if (m_updateDiscard && m_updateDiscardRevision == revision) return 1;
+    const auto epoch = m_updatePreparationEpoch;
+    m_prompting = true;
+    const int choice = ask(this, "unsavedConfirmation", QStringLiteral("保存对文档的修改？"), QStringLiteral("未保存的修改会在关闭后丢失。"), {{QStringLiteral("保存"), 1}, {QStringLiteral("不保存"), 2}, {QStringLiteral("取消"), 0}});
+    m_prompting = false;
+    if (epoch != m_updatePreparationEpoch || !choice || !m_document) return 0;
+    if (choice == 2) { if (m_document->session()->revision() != revision) return 0; m_updateDiscard = true; m_updateDiscardRevision = revision; return 1; }
+    if (m_document->untitled()) { chooseSaveAs(); if (!m_document->saving()) return 0; }
+    else if (!m_document->save()) { if (m_document->conflict()) resolveConflict(); return 0; }
+    m_updateSaving = true;
+    return 2;
+}
 void SingleFileWindow::closeEvent(QCloseEvent *event) {
+    if (updateTasksBlocked()) { event->ignore(); return; }
     if (m_document && m_document->maintainingResources()) { reportHostMessage(QStringLiteral("正在维护工作区资源，请等待完成后关闭。")); event->ignore(); emit closeCancelled(); return; }
     if (m_imageImportPending) { reportHostMessage(QStringLiteral("图片正在导入，请等待完成后再关闭文档。")); event->ignore(); emit closeCancelled(); return; }
     if (m_prompting) { event->ignore(); return; }

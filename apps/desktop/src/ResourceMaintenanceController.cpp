@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "ResourceMaintenanceController.h"
 #include "FileManager.h"
 #include "WorkspaceWindow.h"
@@ -58,6 +59,7 @@ QString ResourceMaintenanceController::relativePath(const QString &path) const {
     return relative == ".." || relative.startsWith("../") || QDir::isAbsolutePath(relative) ? QString{} : relative;
 }
 void ResourceMaintenanceController::prepare(const QString &from, const QString &to, bool retargetOnly) {
+    if (updateTasksBlocked()) return;
     if (m_busy || !m_window || !m_manager) return;
     m_root = m_window->resourceRoot(); m_open.clear(); m_preview = {};
     if (!m_root || !m_root->active()) { m_preview.plan.problem = QStringLiteral("请先打开有效工作区。"); emit previewReady(); return; }

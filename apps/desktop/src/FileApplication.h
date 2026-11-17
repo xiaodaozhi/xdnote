@@ -5,6 +5,7 @@
 #include "NavigationStore.h"
 #include <QSet>
 #include <QJsonArray>
+#include <QPointer>
 namespace xdnote {
 class SingleFileWindow;
 class WorkspaceWindow;
@@ -29,6 +30,10 @@ public:
     bool transferToWorkspace(SingleFileWindow *pane, WorkspaceWindow *target = nullptr);
     void activate();
     void requestQuit();
+    void prepareForUpdate(std::function<void(bool)> ready);
+    bool sealUpdateRecovery();
+    void cancelUpdateHandoff();
+    bool updateHandoffActive() const { return bool(m_updateReady); }
 protected:
     bool eventFilter(QObject *target, QEvent *event) override;
 private:
@@ -42,6 +47,14 @@ private:
     void newDocument();
     void retryTransfers();
     void advanceQuit();
+    void requestExit();
+    void advanceUpdateHandoff();
+    std::function<void(bool)> m_updateReady;
+    QTimer m_updatePoll;
+    bool m_updateFrozen = false;
+    bool m_updateRecoverySealed = false;
+    QList<QPair<QPointer<DocumentSession>, bool>> m_updateReadOnly;
+    QList<QPair<QPointer<QWidget>, bool>> m_updateEnabled;
     void captureRecovery();
     void restoreSession();
     void refreshRecoveryActions();

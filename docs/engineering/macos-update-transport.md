@@ -1,6 +1,6 @@
 # macOS 更新网络准入
 
-原生自动安装更新的准入为 macOS 14+、Apple Silicon arm64，覆盖系统代理、直连及无凭据 HTTP CONNECT／SOCKS5 自定义代理。低于该范围不承诺原生自动安装，不采用旧会话接口扩展支持。应用的最低系统与 CPU 范围以[平台目标](platform-support.md)为准。当前产品仍未链接 Sparkle，以下是依赖和网络准入工程，不是已交付的安装能力。正式安装还须满足[更新契约](release-and-updates.md)的独立信任根、文档保护、任务交接和恢复要求。
+原生自动安装更新的准入为 macOS 14+、Apple Silicon arm64，覆盖系统代理、直连及无凭据 HTTP CONNECT／SOCKS5 自定义代理。低于该范围不承诺原生自动安装，不采用旧会话接口扩展支持。应用的最低系统与 CPU 范围以[平台目标](platform-support.md)为准。产品已链接本项目准备的固定 Sparkle，以下依赖和网络准入仍不能代表已交付完整安装能力。正式安装还须满足[更新契约](release-and-updates.md)的独立信任根、文档保护、任务交接和恢复要求。
 
 ## 固定依赖与构建
 
@@ -31,7 +31,7 @@ Apple 的 Network `proxyConfigurations`、HTTP CONNECT／SOCKS5 构造器及显�
 
 ## 会话与探针边界
 
-共享工厂使用临时 session，关闭 Cookie、凭据和 URL 缓存，保留系统 TLS 验证及 TLS 1.2 下限；不接收信任根、TLS 绕过或代理凭据。`SPUUpdater` 的策略仅能在主线程、启动前设置，供 feed 与归档的同一 downloader 使用。当前没有产品调用或生产公钥。
+共享工厂使用临时 session，关闭 Cookie、凭据和 URL 缓存，保留系统 TLS 验证及 TLS 1.2 下限；不接收信任根、TLS 绕过或代理凭据。`SPUUpdater` 的策略仅能在主线程、启动前设置，供 feed 与归档的同一 downloader 使用。产品提供方沿用同一工厂，当前生产公钥为空；缺钥时不会开放自动安装。
 
 [原生探针](../../experiments/sparkle-admission/probe.m)验证配置、非法输入、线程与启动状态；只在自有临时 bundle 中同步启动已禁用自动检查的实例，立即退出，不执行排队的更新周期。公开测试向量密钥只存在于该临时探针 plist，不能成为产品信任根。
 

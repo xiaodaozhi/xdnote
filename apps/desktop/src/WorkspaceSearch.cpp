@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "WorkspaceSearch.h"
 #include "DocumentSearch.h"
 #include "FileManager.h"
@@ -63,6 +64,7 @@ void WorkspaceSearch::cancel(){++m_generation;if(m_cancel)m_cancel->store(true);
 void WorkspaceSearch::setRoot(std::shared_ptr<WorkspaceResourceReader> root){cancel();m_root=std::move(root);m_hits.clear();m_list->clear();m_status->setText(m_root?QStringLiteral("按 Enter 搜索工作区原文"):QStringLiteral("请先打开工作区目录"));}
 void WorkspaceSearch::focusQuery(){m_query->setFocus(Qt::ShortcutFocusReason);m_query->selectAll();}
 void WorkspaceSearch::start(){
+    if (updateTasksBlocked()) return;
     cancel();m_hits.clear();m_list->clear();const auto query=m_query->text();if(query.isEmpty()||!m_root){m_status->setText(QStringLiteral("请打开工作区并输入搜索词"));return;}
     QHash<QString,SearchBuffer> buffers;if(m_manager)for(auto *document:m_manager->documents()){const auto path=QDir(m_root->rootPath()).relativeFilePath(document->path());if(path==".."||path.startsWith("../")||QDir::isAbsolutePath(path))continue;const auto snapshot=document->session()->snapshot();buffers[path]={snapshot.utf8,document->identity(),snapshot.result==EditResult::Applied};}
     const auto generation=m_generation;const auto root=m_root;const auto token=m_cancel=std::make_shared<std::atomic_bool>(false);m_status->setText(QStringLiteral("正在搜索…"));auto *watcher=new QFutureWatcher<WorkspaceMatches>(this);

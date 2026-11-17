@@ -16,6 +16,16 @@ spec.loader.exec_module(installer)
 
 
 class WindowsInstallerTests(unittest.TestCase):
+    def test_full_template_renders_once_with_update_gate(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); (root / 'xdnote.exe').write_bytes(b'owned fixture')
+            audit = {'ok': True, 'files': inventory(root)}
+            text = installer.render(root, audit, root / 'setup.exe', root / 'Chinese.isl', '0.1.0-dev.' + 'a' * 12)
+            self.assertNotIn('@CLEANUP_CODE@', text)
+            self.assertNotIn('@ASSOCIATION_CODE@', text)
+            self.assertEqual(text.count('function ReadManifest('), 1)
+            self.assertIn('AcquireUpdateGate()', text)
+
     def test_manifest_rejects_unsafe_and_case_colliding_windows_names(self):
         for name in ('../escape', '/root', 'C:/root', 'a\\..\\b', 'a//b', 'nul.txt', 'COM1/test',
                      'x. /file', 'file:stream', 'install-manifest.txt', 'unins000.exe', 'versions/a', 'a\tfile'):

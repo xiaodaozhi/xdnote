@@ -1,5 +1,5 @@
 name: Desktop admission
-run-name: ${{ inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'installer-windows' && 'Windows installer verification' || inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
+run-name: ${{ inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'installer-windows' && 'Windows installer verification' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
@@ -8,7 +8,12 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products]
+      macos_runner:
+        description: 'Native arm64 macOS host; product minimum remains macOS 14'
+        type: choice
+        options: [macos-15, macos-26]
+        default: macos-15
 
 permissions:
   contents: read
@@ -18,6 +23,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  update-products:
+    if: inputs.scope == 'update-products'
+    uses: ./.github/workflows/update-helper.yml
+    with:
+      scope: product
+  update-helpers:
+    if: inputs.scope == 'update-helpers'
+    uses: ./.github/workflows/update-helper.yml
   installer:
     if: inputs.scope == 'installer-windows'
     uses: ./.github/workflows/windows-installer.yml
@@ -69,9 +82,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   desktop:
-    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos'
-    name: ${{ inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
-    runs-on: ${{ matrix.os }}
+    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'update-helpers' && inputs.scope != 'update-products'
+    name: ${{ startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }})
+    runs-on: ${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.os }}
     timeout-minutes: 50
     strategy:
       fail-fast: false
@@ -81,7 +94,7 @@ jobs:
           '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
-          (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos' || inputs.scope == 'deployment-macos') &&
+          (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos' || inputs.scope == 'deployment-macos' || inputs.scope == 'updates-macos') &&
           '[{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           (inputs.scope == 'resources-unix' || inputs.scope == 'preview-unix' || inputs.scope == 'background-unix' || inputs.scope == 'ui-unix' || inputs.scope == 'deployment-unix' || inputs.scope == 'scroll-unix' || inputs.scope == 'settings-unix' || inputs.scope == 'tools-unix') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
@@ -123,6 +136,11 @@ jobs:
         run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }} --profile ${{ matrix.profile || 'default' }}
       - name: Prepare pinned source dependencies
         run: python scripts/desktop.py prepare --download --profile ${{ matrix.profile || 'default' }}
+      - name: Prepare native macOS updater explicitly
+        if: runner.os == 'macOS'
+        run: |
+          python scripts/sparkle.py prepare --download
+          python scripts/sparkle.py build
       - name: Check build entry point guards
         run: python -m unittest discover -s scripts/tests -v
       - name: Build desktop admission (Windows)
@@ -136,8 +154,17 @@ jobs:
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
       - name: Test explicit update checks and settings
-        if: inputs.scope == 'updates'
+        if: startsWith(inputs.scope, 'updates')
         run: python scripts/desktop.py test --suite updates
+      - name: Check Windows helper handles and independent revalidation
+        if: inputs.scope == 'updates' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:CARGO_HOME = "$PWD/build/cargo-home"
+          $env:CARGO_TARGET_DIR = "$PWD/build/update-helper-unit"
+          rustup run 1.99.0 cargo clippy --locked --offline --package xdnote-update-helper --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup run 1.99.0 cargo test --locked --offline --package xdnote-update-helper
       - name: Test admission on Linux virtual display
         if: runner.os == 'Linux' && inputs.scope == 'full'
         run: xvfb-run -a python scripts/desktop.py test
@@ -158,6 +185,12 @@ jobs:
           export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
           python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
           python scripts/compatibility_audit.py --root build/cycle-112-deployment/staging --report build/cycle-112-deployment/staging-evidence/compatibility.json
+      - name: Inspect native Linux package without installing system paths
+        if: startsWith(inputs.scope, 'deployment-') && runner.os == 'Linux'
+        run: |
+          python scripts/build_linux_installer.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/xdnote-dev.deb --report build/cycle-112-deployment/staging-evidence/debian-package.json
+          dpkg-deb --info build/cycle-112-deployment/xdnote-dev.deb
+          dpkg-deb --contents build/cycle-112-deployment/xdnote-dev.deb
       - name: Validate installed developer payload without registration
         if: startsWith(inputs.scope, 'deployment-')
         shell: bash
@@ -234,7 +267,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: desktop-admission-${{ matrix.label || matrix.os }}
+          name: desktop-admission-${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }}
           path: |
             build/desktop-*/*.log
             build/desktop-*/*-qtest.txt
@@ -252,12 +285,12 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: ${{ inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
-    needs: [desktop, installer, sparkle]
+    name: ${{ inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
+    needs: [desktop, installer, sparkle, update-helpers, update-products]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Require every selected matrix result
         env:
-          XDNOTE_DESKTOP_RESULT: ${{ inputs.scope == 'sparkle-macos' && needs.sparkle.result || inputs.scope == 'installer-windows' && needs.installer.result || needs.desktop.result }}
+          XDNOTE_DESKTOP_RESULT: ${{ inputs.scope == 'update-products' && needs.update-products.result || inputs.scope == 'update-helpers' && needs.update-helpers.result || inputs.scope == 'sparkle-macos' && needs.sparkle.result || inputs.scope == 'installer-windows' && needs.installer.result || needs.desktop.result }}
         run: test "$XDNOTE_DESKTOP_RESULT" = success

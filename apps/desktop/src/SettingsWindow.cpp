@@ -222,14 +222,22 @@ SettingsWindow::SettingsWindow(Appearance *appearance, WindowGeometryStore *stor
     auto *checkUpdate = new SharedButton(QStringLiteral("检查更新"), "settingsCheckUpdate", appearance, updateActions); checkUpdate->setOutlined(true);
     auto *cancelUpdate = new SharedButton(QStringLiteral("取消"), "settingsCancelUpdate", appearance, updateActions); cancelUpdate->setOutlined(true);
     auto *releasePage = new SharedButton(QStringLiteral("查看发布页"), "settingsUpdateRelease", appearance, updateActions); releasePage->setOutlined(true);
+    auto *downloadUpdate = new SharedButton(QStringLiteral("下载更新"), "settingsDownloadUpdate", appearance, updateActions); downloadUpdate->setOutlined(true);
+    auto *installUpdate = new SharedButton(QStringLiteral("安装并重启"), "settingsInstallUpdate", appearance, updateActions); installUpdate->setOutlined(true);
+    auto *downloadFolder = new SharedButton(QStringLiteral("下载目录"), "settingsUpdateFolder", appearance, updateActions); downloadFolder->setOutlined(true);
+    updateLayout->addWidget(downloadUpdate); updateLayout->addWidget(installUpdate); updateLayout->addWidget(downloadFolder);
+    connect(downloadUpdate, &QPushButton::clicked, updates, &UpdateController::download);
+    connect(installUpdate, &QPushButton::clicked, updates, &UpdateController::install);
+    connect(downloadFolder, &QPushButton::clicked, updates, &UpdateController::openDownloadFolder);
     updateLayout->addWidget(checkUpdate); updateLayout->addWidget(cancelUpdate); updateLayout->addWidget(releasePage);
     row(about, QStringLiteral("应用更新"), updateActions);
     m_rows.last()->setProperty("settingText", QStringLiteral("应用更新 检查更新 取消 发布页"));
     auto *updateMessage = new QLabel(about); updateMessage->setObjectName("settingsUpdateMessage"); updateMessage->setProperty("secondary",true); updateMessage->setWordWrap(true); updateMessage->setFont(uiFont(12)); updateMessage->setTextFormat(Qt::PlainText); bodyLayout(about)->addWidget(updateMessage);
-    const auto refreshUpdate = [updates, appearance, checkUpdate, cancelUpdate, releasePage, updateMessage] {
+    const auto refreshUpdate = [updates, appearance, checkUpdate, cancelUpdate, releasePage, updateMessage, downloadUpdate, installUpdate, downloadFolder] {
         const bool store = updates->packaged();
-        checkUpdate->setVisible(!store); checkUpdate->setEnabled(!updates->busy());
-        cancelUpdate->setVisible(!store && updates->busy()); releasePage->setVisible(!store);
+        downloadUpdate->setVisible(!store && updates->canDownload()); installUpdate->setVisible(!store && updates->canInstall()); downloadFolder->setVisible(!store && updates->state() == "downloaded");
+        checkUpdate->setVisible(!store && !(updates->trusted() && (updates->state() == "available" || updates->state() == "downloaded"))); checkUpdate->setEnabled(!updates->busy());
+        cancelUpdate->setVisible(!store && updates->busy() && updates->state() != "installing"); releasePage->setVisible(!store && !updates->busy());
         updateMessage->setText(updates->message()); updateMessage->setAccessibleDescription(updates->message());
         updateMessage->setStyleSheet(QStringLiteral("color:%1").arg((updates->state() == "error" ? appearance->semantic("error") : appearance->color("textSecondary")).name()));
     };

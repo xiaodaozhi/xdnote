@@ -239,6 +239,7 @@ def main():
     parser.add_argument("--suite", choices=("full", "resources", "preview", "background", "ui", "scroll", "settings", "tools", "updates", "updates-live"), default="full", help="test scope; updates-live explicitly contacts the public update service")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
+    parser.add_argument("--release-identity", type=Path, help="explicit clean release version/build/commit input")
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
     args = parser.parse_args()
     if args.suite != "full" and args.command != "test":
@@ -298,7 +299,7 @@ def main():
     if args.command == "build":
         run([args.cmake, *(["--fresh"] if args.fresh else []), "-S", ROOT, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
              f"-DCMAKE_MAKE_PROGRAM={args.ninja}", f"-DCMAKE_PREFIX_PATH={qt}",
-             f"-DXDNOTE_BUILD_PROFILE={args.profile}",
+             f"-DXDNOTE_BUILD_PROFILE={args.profile}", f"-DXDNOTE_RELEASE_IDENTITY={args.release_identity.resolve() if args.release_identity else ''}",
              f"-DPython3_EXECUTABLE={sys.executable}"], env, build / "configure.log")
         run([args.cmake, "--build", build, "--parallel", str(args.parallel)], env, build / "build.log")
         (build / "build-identity.json").write_text(json.dumps({
@@ -326,7 +327,7 @@ def main():
             suffix = ".exe" if platform.system() == "Windows" else ""
             result = {"ok": False, "scope": "offscreen explicit update checks and settings regression; no package installation", "buildIdentity": verify_build_identity(build, args.profile, qt), "tests": {}}
             try:
-                for group in ("update", "settings"):
+                for group in (("update", "settings", "mac_update") if platform.system() == "Darwin" else ("update", "settings")):
                     report = evidence / f"{group}-qtest.txt"; report.unlink(missing_ok=True)
                     execute([build / f"xdnote_{group}_tests{suffix}", "-o", "-,txt", "-o", f"{report},txt"], env, evidence / f"{group}.log", 240)
                     result["tests"][group] = check_report(report.read_text(encoding="utf-8"))

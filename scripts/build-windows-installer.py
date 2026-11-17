@@ -32,9 +32,13 @@ def payload_manifest(audit):
     return text
 
 
-def render(payload, audit, output, chinese, version):
+def render(payload, audit, output, chinese, version, release=None):
     verify_payload(payload, audit)
-    if not re.fullmatch(r'0\.1\.0-dev\.[0-9a-f]{12}(?:-qa[12])?', version):
+    if release is not None:
+        from release_candidate import validate_identity
+        validate_identity(release)
+        if version != release['version']: raise ValueError('Installer version differs from compiled identity')
+    if release is None and not re.fullmatch(r'0\.1\.0-dev\.[0-9a-f]{12}(?:-qa[12])?', version):
         raise ValueError('Use an explicit development version, not an invented release')
     values = {'VERSION': version, 'OUTPUT': str(output.parent.resolve()), 'FILENAME': output.stem,
               'APPICON': str(ROOT / 'design/assets/ui-v2/brand/app-icon.ico'),
@@ -45,6 +49,8 @@ def render(payload, audit, output, chinese, version):
         if any(c in value for c in ('"', '\r', '\n', ';', '{', '}')):
             raise ValueError('Unsafe installer substitution')
         text = text.replace('@' + key + '@', value)
+    if release is not None:
+        text = text.replace('VersionInfoVersion=0.1.0.0', 'VersionInfoVersion=' + version.split('-')[0] + '.' + str(release['build']))
     text = text.replace('@CLEANUP_CODE@', (ROOT / 'apps/desktop/packaging/windows/installed-files.iss').read_text(encoding='utf-8'))
     if re.search(r'@[A-Z_]+@', text):
         raise ValueError('Unresolved installer substitution')
@@ -91,7 +97,10 @@ def main():
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
     version = '0.1.0-dev.' + revision[:12] + ('-qa' + a.qa_variant if a.qa_variant else '')
-    text = render(a.root, audit, output, a.toolchain / 'ChineseSimplified.isl', version)
+    identity = audit.get('buildIdentity', {}).get('buildVersion', {})
+    release = identity if identity.get('channel') != 'development' and identity.get('build', 0) > 0 else None
+    if release is not None: version = release['version']
+    text = render(a.root, audit, output, a.toolchain / 'ChineseSimplified.isl', version, release)
     output.parent.mkdir(parents=True, exist_ok=True)
     manifest = payload_manifest(audit)
     output.with_suffix('.files').write_bytes(manifest.encode('utf-8'))

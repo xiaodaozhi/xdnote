@@ -27,6 +27,10 @@ find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 set(XDNOTE_VERSION_COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build_version.py"
     --source-root "${PROJECT_SOURCE_DIR}" --output-dir "${CMAKE_BINARY_DIR}/generated"
     --base-version "${PROJECT_VERSION}" --configuration "${CMAKE_BUILD_TYPE}")
+set(XDNOTE_RELEASE_IDENTITY "" CACHE FILEPATH "Explicit clean release version/build/commit record")
+if(XDNOTE_RELEASE_IDENTITY)
+    list(APPEND XDNOTE_VERSION_COMMAND --release-identity "${XDNOTE_RELEASE_IDENTITY}")
+endif()
 execute_process(COMMAND ${XDNOTE_VERSION_COMMAND} COMMAND_ERROR_IS_FATAL ANY)
 add_custom_target(xdnote_build_version COMMAND ${XDNOTE_VERSION_COMMAND}
     BYPRODUCTS "${CMAKE_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_BINARY_DIR}/generated/build-version.json"
@@ -139,6 +143,8 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/BuildInfo.cpp apps/desktop/src/BuildInfo.h
     apps/desktop/src/UpdateBridge.cpp apps/desktop/src/UpdateBridge.h
     apps/desktop/src/UpdateController.cpp apps/desktop/src/UpdateController.h apps/desktop/src/UpdateNetwork.h
+    apps/desktop/src/UpdateDownload.cpp apps/desktop/src/UpdateDownload.h
+    apps/desktop/src/UpdateHandoff.cpp apps/desktop/src/UpdateHandoff.h apps/desktop/src/UpdateTaskGate.h
     apps/desktop/src/SystemIntegration.cpp apps/desktop/src/SystemIntegration.h
     apps/desktop/src/Shortcuts.cpp apps/desktop/src/Shortcuts.h
     apps/desktop/src/RecoveryStore.cpp apps/desktop/src/RecoveryStore.h
@@ -196,6 +202,23 @@ if(UNIX)
 endif()
 target_link_libraries(xdnote_desktop PUBLIC xdnote_scintilla xdnote_markdown
     Qt6::Widgets xdnote_native_preview Qt6::Concurrent Qt6::Network Qt6::Svg)
+if(APPLE)
+    include(cmake/Sparkle.cmake)
+    target_sources(xdnote_desktop PRIVATE apps/desktop/src/MacUpdateProvider.mm)
+    set_source_files_properties(apps/desktop/src/MacUpdateProvider.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(xdnote_desktop PUBLIC "${XDNOTE_SPARKLE_FRAMEWORK}" "-framework AppKit")
+endif()
+if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(XDNOTE_HELPER_NAME "xdnote-update-helper${CMAKE_EXECUTABLE_SUFFIX}")
+    add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/${XDNOTE_HELPER_NAME}"
+        COMMAND "${CMAKE_COMMAND}" -E env "CARGO_HOME=${XDNOTE_CARGO_HOME}" "RUSTUP_AUTO_INSTALL=0"
+            "${XDNOTE_RUSTUP}" run "${XDNOTE_RUST_VERSION}" cargo build --locked --offline --release
+            --package xdnote-update-helper --target "${XDNOTE_RUST_TARGET}" --target-dir "${CMAKE_BINARY_DIR}/cargo"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_BINARY_DIR}/cargo/${XDNOTE_RUST_TARGET}/release/${XDNOTE_HELPER_NAME}" "${CMAKE_BINARY_DIR}/${XDNOTE_HELPER_NAME}"
+        DEPENDS ${XDNOTE_RUST_SOURCES} Cargo.lock crates/update-helper/Cargo.toml tools/update-trust.json
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
+    add_custom_target(xdnote_update_helper ALL DEPENDS "${CMAKE_BINARY_DIR}/${XDNOTE_HELPER_NAME}")
+endif()
 if(WIN32)
     target_link_libraries(xdnote_desktop PUBLIC ws2_32 userenv bcrypt ntdll advapi32 dwmapi)
 else()
@@ -218,6 +241,13 @@ qt_add_resources(xdnote_admission_ui xdnote_admission_assets PREFIX /xdnote BASE
 
 qt_add_executable(xdnote WIN32 apps/desktop/main.cpp)
 target_link_libraries(xdnote PRIVATE xdnote_desktop)
+if(MSVC)
+    target_link_options(xdnote PRIVATE "/MAP:${CMAKE_BINARY_DIR}/xdnote-link.map")
+elseif(APPLE)
+    target_link_options(xdnote PRIVATE "LINKER:-map,${CMAKE_BINARY_DIR}/xdnote-link.map")
+else()
+    target_link_options(xdnote PRIVATE "LINKER:-Map,${CMAKE_BINARY_DIR}/xdnote-link.map")
+endif()
 if(WIN32)
     enable_language(RC)
     configure_file(apps/desktop/packaging/windows/app.rc.in "${CMAKE_BINARY_DIR}/xdnote.rc" @ONLY)
@@ -235,8 +265,15 @@ endif()
 
 if(BUILD_TESTING)
     find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS Test)
+    add_executable(xdnote_msix_assets apps/desktop/tests/msix_assets.cpp)
+    target_link_libraries(xdnote_msix_assets PRIVATE Qt6::Core Qt6::Gui Qt6::Svg)
     add_executable(xdnote_update_probe apps/desktop/tests/update_probe.cpp)
     target_link_libraries(xdnote_update_probe PRIVATE xdnote_desktop)
+    if(APPLE)
+        add_executable(xdnote_mac_update_tests apps/desktop/tests/mac_update_tests.cpp apps/desktop/src/MacUpdateProvider.mm)
+        target_compile_definitions(xdnote_mac_update_tests PRIVATE XDNOTE_UPDATE_TESTS)
+        target_link_libraries(xdnote_mac_update_tests PRIVATE xdnote_desktop Qt6::Test)
+    endif()
     add_executable(xdnote_update_tests apps/desktop/tests/update_tests.cpp)
     target_link_libraries(xdnote_update_tests PRIVATE xdnote_desktop Qt6::Test)
     if(MSVC)

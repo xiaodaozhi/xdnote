@@ -49,6 +49,9 @@ chinesesimplified.RegisterMarkdown=将 xdnote 加入“打开方式”候选（�
 english.IncompatibleSettings=This installation uses a newer installer schema. Downgrade was refused to protect your data.
 chinesesimplified.IncompatibleSettings=现有安装使用了更新的安装格式。为保护数据，已拒绝回退。
 
+english.UpdateAlreadyRunning=Another xdnote update is in progress. Wait for it to finish.
+chinesesimplified.UpdateAlreadyRunning=另一个 xdnote 更新正在进行，请等待完成。
+
 [Tasks]
 Name: "markdown"; Description: "{cm:RegisterMarkdown}"; Flags: unchecked
 
@@ -62,6 +65,7 @@ Name: "{userprograms}\xdnote"; Filename: "{app}\xdnote.exe"
 
 [Registry]
 Root: HKCU; Subkey: "Software\xdnote\Install"; ValueType: dword; ValueName: "SchemaVersion"; ValueData: "1"
+Root: HKCU; Subkey: "Software\xdnote\Install"; ValueType: string; ValueName: "InstallId"; ValueData: "460D7C68-C989-45F0-B312-40AE18428155"
 Root: HKCU; Subkey: "Software\xdnote\Install"; ValueType: string; ValueName: "Location"; ValueData: "{app}"
 Root: HKCU; Subkey: "Software\Classes\xdnote.Markdown"; ValueType: string; ValueData: "xdnote Markdown"; Tasks: markdown; AfterInstall: PreventSilentDefault
 Root: HKCU; Subkey: "Software\Classes\xdnote.Markdown\DefaultIcon"; ValueType: string; ValueData: """{app}\xdnote.exe"",0"; Tasks: markdown
@@ -94,11 +98,40 @@ begin
   end;
 end;
 
+var UpdateGateHandle: THandle;
+
+function NativeCreateMutex(Attributes: LongWord; InitialOwner: Boolean; Name: String): THandle;
+external 'CreateMutexW@kernel32.dll stdcall';
+function NativeGetLastError(): LongWord;
+external 'GetLastError@kernel32.dll stdcall';
+
+function AcquireUpdateGate(): Boolean;
+var Transaction: String; I: Integer;
+begin
+  Result := False;
+  Transaction := ExpandConstant('{param:XDNOTEUPDATE|}');
+  if Transaction <> '' then begin
+    if Length(Transaction) <> 32 then exit;
+    for I := 1 to Length(Transaction) do
+      if Pos(Transaction[I], '0123456789abcdef') = 0 then exit;
+    { The already-running updater owns both handles through Setup completion. }
+    Result := CheckForMutexes('Local\xdnote.desktop.updating') and
+      CheckForMutexes('Local\xdnote.desktop.update.' + Transaction);
+    exit;
+  end;
+  UpdateGateHandle := NativeCreateMutex(0, False, 'Local\xdnote.desktop.updating');
+  Result := (UpdateGateHandle <> 0) and (NativeGetLastError() <> 183);
+end;
+
 function InitializeSetup(): Boolean;
 var Schema: Cardinal;
 begin
   Result := not (RegQueryDWordValue(HKCU, 'Software\xdnote\Install', 'SchemaVersion', Schema) and (Schema > 1));
   if not Result then SuppressibleMsgBox(CustomMessage('IncompatibleSettings'), mbError, MB_OK, IDOK);
+  if Result then begin
+    Result := AcquireUpdateGate();
+    if not Result then SuppressibleMsgBox(CustomMessage('UpdateAlreadyRunning'), mbError, MB_OK, IDOK);
+  end;
 end;
 
 @CLEANUP_CODE@
@@ -144,7 +177,9 @@ begin
   end;
   if RegQueryStringValue(HKCU, 'Software\xdnote\Install', 'Location', Actual) and (CompareText(Actual, ExpandConstant('{app}')) = 0) then begin
     RegDeleteValue(HKCU, 'Software\xdnote\Install', 'SchemaVersion');
+    RemoveValueIfEqual('Software\xdnote\Install', 'InstallId', '460D7C68-C989-45F0-B312-40AE18428155');
     RemoveValueIfEqual('Software\xdnote\Install', 'Location', Actual);
+    RegDeleteKeyIfEmpty(HKCU, 'Software\xdnote\Install');
     RegDeleteKeyIfEmpty(HKCU, 'Software\xdnote');
   end;
 end;
@@ -152,6 +187,8 @@ end;
 function InitializeUninstall(): Boolean;
 var Entries: TArrayOfString; I: Integer; Name: String;
 begin
+  Result := AcquireUpdateGate();
+  if not Result then begin SuppressibleMsgBox(CustomMessage('UpdateAlreadyRunning'), mbError, MB_OK, IDOK); exit; end;
   Result := ReadManifest(ExpandConstant('{app}\install-manifest.txt'), Entries);
   if Result then for I := 1 to GetArrayLength(Entries) - 1 do begin
     Name := ExpandConstant('{app}\') + EntryPath(Entries[I]);

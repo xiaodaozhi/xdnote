@@ -1,3 +1,4 @@
+#include "UpdateTaskGate.h"
 #include "WorkspaceTree.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
@@ -94,6 +95,7 @@ void WorkspaceTree::restoreSelection() {
 }
 void WorkspaceTree::cancelSearch() { if (m_searchCancel) m_searchCancel->store(true); m_searchCancel.reset(); }
 void WorkspaceTree::searchFiles(const QString &query) {
+    if (updateTasksBlocked()) return;
     cancelSearch(); auto cancelled = m_searchCancel = std::make_shared<std::atomic_bool>(false);
     struct Search { QStringList paths; QString warning; };
     auto *watcher = new QFutureWatcher<Search>(this); const auto root = m_root;
@@ -120,6 +122,7 @@ void WorkspaceTree::searchFiles(const QString &query) {
     }));
 }
 void WorkspaceTree::refresh() {
+    if (updateTasksBlocked()) return;
     m_refreshDelay.stop(); ++m_generation; m_pendingDirectories.clear(); m_selectionRetries.clear(); m_model.clear();
     // Keep subscriptions across an asynchronous reread: atomic replacement can
     // otherwise finish while this tree has temporarily stopped watching.
@@ -143,6 +146,7 @@ bool WorkspaceTree::acceptsFile(const QString &path) const {
     const QFileInfo file(path); const auto suffix = file.suffix().toLower(); return file.isFile() && (suffix == "md" || suffix == "markdown");
 }
 void WorkspaceTree::fetchDirectory(const QString &path, QStandardItem *parent, quint64 generation) {
+    if (updateTasksBlocked()) return;
     m_pendingDirectories.insert(path);
     const QPersistentModelIndex parentIndex = parent ? parent->index() : QModelIndex();
     if (parent) { parent->removeRows(0, parent->rowCount()); auto *loading = new QStandardItem(QStringLiteral("正在读取…")); loading->setEnabled(false); parent->appendRow(loading); }

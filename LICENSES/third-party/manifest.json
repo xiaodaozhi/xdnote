@@ -402,6 +402,24 @@
       "licenseSha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
     },
     {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "archiveSha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
+      "upstreamLicense": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "licenseFile": "LICENSES/third-party/windows-link.txt",
+      "licenseSha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "archiveSha256": "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc",
+      "upstreamLicense": "MIT OR Apache-2.0",
+      "selectedLicense": "MIT",
+      "licenseFile": "LICENSES/third-party/windows-sys.txt",
+      "licenseSha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
       "name": "zeroize",
       "version": "1.9.1",
       "archiveSha256": "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879",

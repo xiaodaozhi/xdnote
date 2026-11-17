@@ -1,0 +1,103 @@
+// Compiled only in a private CI worktree, never in ordinary xdnote builds.
+#include "Fixture.h"
+#include "FileApplication.h"
+#include "UpdateController.h"
+#include "BuildInfo.h"
+#include "SingleFileWindow.h"
+#include "DocumentSession.h"
+#include "SharedWidgets.h"
+#include "Appearance.h"
+#include <QApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QSaveFile>
+#include <QTimer>
+#include <memory>
+namespace {
+int requests = 0;
+QJsonObject config() { QFile f(fixtureDirectory()+"/configuration.json"); return f.open(QIODevice::ReadOnly)&&f.size()<65536?QJsonDocument::fromJson(f.readAll()).object():QJsonObject{}; }
+void write(const QString &name,const QJsonObject &value) { QSaveFile f(fixtureDirectory()+'/'+name); const auto b=QJsonDocument(value).toJson(); if(!f.open(QIODevice::WriteOnly)||f.write(b)!=b.size()||!f.commit())QCoreApplication::exit(59); }
+void fail(const QString &error) { write("error.json",{{"error",error},{"build",xdnote::BuildInfo::buildNumber()}}); QTimer::singleShot(0,qApp,[]{QCoreApplication::exit(50);}); }
+class Reply final:public QNetworkReply {
+    QFile file;
+public:
+    Reply(const QNetworkRequest &request,const QString &path,QObject *parent):QNetworkReply(parent),file(path) {
+        setRequest(request);setUrl(request.url());setOperation(QNetworkAccessManager::GetOperation);
+        const bool ok=!QFileInfo(path).isSymLink()&&file.open(QIODevice::ReadOnly)&&file.size()<=qint64(2)*1024*1024*1024;
+        if(!ok)setError(ContentNotFoundError,"Missing owned fixture route");
+        setAttribute(QNetworkRequest::HttpStatusCodeAttribute,ok?200:404);open(QIODevice::ReadOnly|QIODevice::Unbuffered);
+        QTimer::singleShot(0,this,[this]{emit readyRead();if(!isFinished()){setFinished(true);emit finished();}});
+    }
+    qint64 bytesAvailable()const override{return file.isOpen()?file.bytesAvailable()+QIODevice::bytesAvailable():0;}
+    void abort()override{if(!isFinished()){setError(OperationCanceledError,"Owned fixture abort");setFinished(true);emit finished();}}
+protected:qint64 readData(char *data,qint64 size)override{return file.isOpen()?file.read(data,size):-1;}
+};
+class Network final:public QNetworkAccessManager {
+public:using QNetworkAccessManager::QNetworkAccessManager;
+protected:QNetworkReply *createRequest(Operation operation,const QNetworkRequest &request,QIODevice *data)override {
+    Q_UNUSED(data);++requests;auto name=config()["routes"].toObject().value(request.url().toString()).toString();
+    if(operation!=GetOperation||name.isEmpty()||QFileInfo(name).fileName()!=name||name.contains('\\')||name=="..")name="missing-route";
+    return new Reply(request,fixtureDirectory()+'/'+name,this);
+}
+};
+}
+QString fixtureDirectory(){return QString::fromUtf8(@DIRECTORY@);}
+QNetworkAccessManager *fixtureNetwork(QObject *parent){return new Network(parent);}
+void fixtureHelper(qint64 pid,const QString &directory,const QString &transaction){write("helper.json",{{"pid",double(pid)},{"directory",directory},{"transaction",transaction}});}
+void fixtureBoot(QApplication *application){
+    application->setQuitOnLastWindowClosed(false); const auto mode=config()["mode"].toString();
+    auto *desktop=new xdnote::FileApplication(application,fixtureDirectory()+"/settings.json",xdnote::FileApplication::Presentation::HiddenNative);
+    QObject::connect(application,&QCoreApplication::aboutToQuit,desktop,[desktop]{delete desktop;});
+    auto *updates=desktop->findChild<xdnote::UpdateController *>();if(!updates){fail("missing_controller");return;}
+    if(mode=="recovery"){
+        const bool ok=updates->state()=="recovery_required"&&requests==0;
+        write("recovery.json",{{"ok",ok},{"state",updates->state()},{"automaticRequests",requests},{"build",xdnote::BuildInfo::buildNumber()}});
+        QTimer::singleShot(0,application,[ok]{QCoreApplication::exit(ok?0:53);});return;
+    }
+    if(xdnote::BuildInfo::buildNumber()==201){
+        QFile document(fixtureDirectory()+"/owned.md"),settings(fixtureDirectory()+"/settings.json"),recovery(fixtureDirectory()+"/settings.json.recovery");
+        const bool documentOk=document.open(QIODevice::ReadOnly)&&document.readAll()==QByteArray(mode=="discard"?"owned\n":"edited owned\n");
+        const bool discardOk=mode!="discard"||(recovery.open(QIODevice::ReadOnly)&&([&]{const auto drafts=QJsonDocument::fromJson(recovery.readAll()).object()["drafts"].toArray();return drafts.size()==1&&drafts[0].toObject()["id"]=="11111111-1111-4111-8111-111111111111"&&QByteArray::fromBase64(drafts[0].toObject()["content"].toString().toLatin1())==QByteArray("owned unrelated recovery\n");})());
+        const bool settingsOk=settings.open(QIODevice::ReadOnly)&&QJsonDocument::fromJson(settings.readAll()).object().value("fixtureUnknown").toString()=="retained";
+        const bool updated=updates->state()=="updated";
+        write("restarted.json",{{"ok",documentOk&&settingsOk&&updated&&discardOk},{"documentPreserved",documentOk},{"unknownSettingPreserved",settingsOk},{"discardedDraftAbsent",discardOk},
+              {"version",xdnote::BuildInfo::version()},{"build",xdnote::BuildInfo::buildNumber()},{"revision",xdnote::BuildInfo::revision()},{"updateState",updates->state()},{"executable",QCoreApplication::applicationFilePath()}});
+        QTimer::singleShot(0,application,[updated]{QCoreApplication::exit(updated?0:51);});return;
+    }
+    if(mode!="cancel"&&mode!="corrupt"&&mode!="install"&&mode!="discard"){fail("invalid_mode");return;}
+    desktop->open(fixtureDirectory()+"/owned.md");auto *timer=new QTimer(desktop);timer->setInterval(20);
+    auto pane=std::make_shared<QPointer<xdnote::SingleFileWindow>>();auto started=std::make_shared<bool>(false);auto finished=std::make_shared<bool>(false);
+    QObject::connect(timer,&QTimer::timeout,desktop,[=]{
+        for(auto widget:QApplication::topLevelWidgets()){
+            if(widget->objectName()=="unsavedConfirmation")if(auto button=widget->findChild<xdnote::SharedButton *>(mode=="cancel"?"choice0":mode=="discard"?"choice2":"choice1"))button->click();
+            if(auto p=qobject_cast<xdnote::SingleFileWindow *>(widget))if(p->document()&&p->document()->path()==fixtureDirectory()+"/owned.md"&&!p->document()->loading())*pane=p;
+        }
+        if(*started||!*pane)return;auto session=(*pane)->document()->session();
+        if(session->replace(0,0,"edited ",session->revision())!=xdnote::EditResult::Applied){fail("edit_failed");return;}
+        if(!(*pane)->appearance()->setPreferences("dark","graphite")){fail("settings_failed");return;}
+        *started=true;updates->configureNetwork("none");updates->check();
+    });timer->start();
+    QObject::connect(updates,&xdnote::UpdateController::changed,desktop,[=]{
+        write("status.json",{{"state",updates->state()},{"error",updates->errorCode()},{"trusted",updates->trusted()}});if(*finished)return;
+        if(updates->state()=="error"||updates->state()=="recovery_required"){
+            *finished=true;if(mode!="corrupt"){fail("controller_"+updates->errorCode());return;}
+            const bool buffer=bool(*pane)&&(*pane)->document()->session()->snapshot().utf8==QByteArray("edited owned\n");
+            QFile f(fixtureDirectory()+"/owned.md");const bool disk=f.open(QIODevice::ReadOnly)&&f.readAll()==QByteArray("owned\n");
+            write("corrupt.json",{{"ok",buffer&&disk},{"bufferPreserved",buffer},{"diskPreserved",disk},{"error",updates->errorCode()}});QCoreApplication::exit(buffer&&disk?0:54);return;
+        }
+        if(updates->state()=="available"&&updates->trusted()&&updates->errorCode().isEmpty())QTimer::singleShot(0,updates,&xdnote::UpdateController::install);
+        else if(mode=="cancel"&&updates->state()=="available"&&updates->errorCode()=="cancelled"){
+            *finished=true;bool preserved=bool(*pane),undo=false;
+            if(*pane){auto s=(*pane)->document()->session();preserved=s->snapshot().utf8==QByteArray("edited owned\n");undo=s->undo()==xdnote::EditResult::Applied&&s->snapshot().utf8==QByteArray("owned\n");}
+            QFile f(fixtureDirectory()+"/owned.md");const bool disk=f.open(QIODevice::ReadOnly)&&f.readAll()==QByteArray("owned\n");
+            write("cancelled.json",{{"ok",preserved&&undo&&disk},{"bufferPreserved",preserved},{"undoPreserved",undo},{"diskPreserved",disk}});QCoreApplication::exit(preserved&&undo&&disk?0:52);
+        }
+    });
+    QTimer::singleShot(180000,application,[]{fail("fixture_timeout");});
+}
