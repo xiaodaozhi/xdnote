@@ -1,5 +1,6 @@
 #include <QScopeGuard>
 #include "UpdateDownload.h"
+#include "UpdateReceipt.h"
 #include "FileApplication.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
@@ -118,6 +119,16 @@ const QString current="0.1.0-dev.123456abcdef";
 class UpdateTests final : public QObject {
     Q_OBJECT
 private slots:
+    void receiptsFollowVersionedDebianImagesWithoutAcceptingOtherInstallations() {
+        const QString oldRoot = "/opt/xdnote/versions/old", newRoot = "/opt/xdnote/versions/new";
+        QVERIFY(updateReceiptPaths("linux", oldRoot, oldRoot + "/bin/xdnote", newRoot, newRoot + "/bin/xdnote"));
+        for (const QString &root : {QString("/tmp/xdnote/versions/old"), QString("/opt/xdnote/versions/../old"), QString("/opt/xdnote/versions/old/nested")})
+            QVERIFY(!updateReceiptPaths("linux", root, root + "/bin/xdnote", newRoot, newRoot + "/bin/xdnote"));
+        QVERIFY(!updateReceiptPaths("linux", oldRoot, "/usr/bin/xdnote", newRoot, newRoot + "/bin/xdnote"));
+        QVERIFY(!updateReceiptPaths("macos", oldRoot, oldRoot + "/xdnote", newRoot, newRoot + "/xdnote"));
+        QVERIFY(updateReceiptPaths("windows", "C:/owned", "C:/owned/xdnote.exe", "C:/owned", "C:/owned/xdnote.exe"));
+        QVERIFY(!updateReceiptPaths("windows", "C:/owned", "C:/owned/xdnote.exe", "C:/other", "C:/other/xdnote.exe"));
+    }
     void authenticatedDownloadMetersFinalBytesAndRemovesFailures() {
         const QByteArray bytes(160 * 1024, 'd');
         const QJsonObject candidate{{"asset_url", "https://github.com/xiaodaozhi/xdnote/releases/download/v0.2.0/fixture.zip"}, {"filename", "fixture.zip"}, {"bytes", bytes.size()}, {"sha256", QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())}};

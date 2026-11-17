@@ -1,0 +1,50 @@
+name: Native update helper transactions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helper:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CARGO_HOME: ${{ github.workspace }}/build/cargo-home
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Prepare locked Rust inputs
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup run 1.99.0 cargo fetch --locked
+      - name: Prepare pinned Windows installer compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
+      - name: Exercise Windows native transactions in the disposable account
+        if: runner.os == 'Windows'
+        run: python scripts/check_update_helper.py --work-dir build/native-helper-fixture --toolchain build/toolchain/installer
+      - name: Exercise Linux native transactions on the disposable runner
+        if: runner.os == 'Linux'
+        run: python scripts/check_update_helper.py --work-dir build/native-helper-fixture
+      - name: Preserve bounded transaction evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-helper-${{ runner.os }}
+          retention-days: 7
+          path: |
+            build/native-helper-fixture/*.json
+            build/native-helper-fixture/*.log
+            build/native-helper-fixture/job-*/*.json
+            build/native-helper-fixture/job-*/*.log

@@ -1,4 +1,5 @@
 #include "UpdateDownload.h"
+#include "UpdateReceipt.h"
 #include "UpdateHandoff.h"
 #include "FileApplication.h"
 #include <QCoreApplication>
@@ -365,7 +366,8 @@ void UpdateController::recoverAttempt() {
     if (record.value("phase") == "completed") return;
     const bool identity = record.value("schema_version").toInt() == 1 && record.value("phase") == "committed" &&
         record.value("transaction").toString().size() == 32 && record.value("version") == BuildInfo::version() && record.value("build").toInt() == BuildInfo::buildNumber() &&
-        record.value("commit") == BuildInfo::revision() && !installedRoot().isEmpty() && record.value("executable") == QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath();
+        record.value("commit") == BuildInfo::revision() && !installedRoot().isEmpty() &&
+        updateReceiptPaths(m_platform, record.value("root").toString(), record.value("executable").toString(), installedRoot(), QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath());
     bool receipt = false;
 #ifdef Q_OS_MACOS
     receipt = record.value("root") == installedRoot();

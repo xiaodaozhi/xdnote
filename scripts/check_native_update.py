@@ -188,6 +188,9 @@ def main():
     desktop.check_host(platform.system(),platform.machine(),platform.mac_ver()[0]);qt=desktop.checked_tool_path(a.qt_prefix,'Qt SDK',sdk=True);work=build_output(a.work_dir)
     if work.exists():p.error('Preserve an existing private fixture')
     work.mkdir(parents=True);env=desktop.environment(None);env['CARGO_NET_OFFLINE']='true'
+    rustc=Path(checked(['rustup','which','--toolchain','1.99.0','rustc'],env=env).stdout.decode().strip())
+    rustc=desktop.checked_tool_path(rustc,'Pinned Rust compiler')
+    env['PATH']=str(rustc.parent)+os.pathsep+env.get('PATH','')
     trust={name:digest(ROOT/'tools'/name) for name in ['update-trust.json','sparkle-update-key.json']}
     result={'ok':False,'scenarios':{},'productionTrustUnchanged':False,'privateSeedRemoved':False,'releaseReady':False}
     try:

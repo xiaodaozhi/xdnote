@@ -99,7 +99,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_full_checks_are_manual_only(self):
         ordinary = {p.name for p in WORKFLOWS.glob("*.yml") if "pull_request" in events(p) or "push" in events(p)}
         self.assertEqual(ordinary, {"materials.yml"})
-        for name in ("desktop-admission.yml", "qt-document-spike.yml", "scintilla-buffer-spike.yml", "pulldown-markdown-spike.yml", "update-core.yml"):
+        for name in ("desktop-admission.yml", "qt-document-spike.yml", "scintilla-buffer-spike.yml", "pulldown-markdown-spike.yml", "update-core.yml", "update-helper.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(events(WORKFLOWS / name), {"workflow_dispatch"})
 
@@ -113,6 +113,16 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('cargo clippy --locked --offline --workspace --all-targets -- -D warnings', text)
         self.assertIn('python scripts/check_third_party_licenses.py', text)
         for forbidden in ('desktop.py', 'prepare_qt', 'matrix:', 'contents: write', 'secrets.', 'gh release'):
+            self.assertNotIn(forbidden, text)
+
+    def test_native_helper_uses_disposable_explicit_platforms_without_publishing(self):
+        text = (WORKFLOWS / 'update-helper.yml').read_text(encoding='utf-8')
+        self.assertIn('os: [ubuntu-22.04, windows-2022]', text)
+        self.assertIn('contents: read', text)
+        self.assertIn('persist-credentials: false', text)
+        self.assertIn('scripts/check_update_helper.py', text)
+        self.assertIn('retention-days: 7', text)
+        for forbidden in ('contents: write', 'secrets.', 'gh release', 'pull_request:', 'push:'):
             self.assertNotIn(forbidden, text)
 
 
