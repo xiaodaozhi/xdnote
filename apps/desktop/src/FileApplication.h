@@ -5,6 +5,7 @@
 #include "NavigationStore.h"
 #include <QSet>
 #include <QJsonArray>
+#include <QPointer>
 namespace xdnote {
 class SingleFileWindow;
 class WorkspaceWindow;
@@ -52,8 +53,8 @@ private:
     QTimer m_updatePoll;
     bool m_updateFrozen = false;
     bool m_updateRecoverySealed = false;
-    QHash<DocumentSession *, bool> m_updateReadOnly;
-    QHash<QWidget *, bool> m_updateEnabled;
+    QList<QPair<QPointer<DocumentSession>, bool>> m_updateReadOnly;
+    QList<QPair<QPointer<QWidget>, bool>> m_updateEnabled;
     void captureRecovery();
     void restoreSession();
     void refreshRecoveryActions();

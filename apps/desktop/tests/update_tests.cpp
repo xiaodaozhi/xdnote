@@ -258,6 +258,17 @@ private slots:
         for (int i = 0; i < 2; ++i) { bool done = false, ready = true; app.prepareForUpdate([&](bool value) { ready = value; done = true; }); QTRY_VERIFY(done); QVERIFY(!ready); QVERIFY(!updateTasksBlocked()); }
         answer.stop(); QCOMPARE(prompts, 2); QCOMPARE(session->snapshot().utf8, QByteArray("dirty owned")); QCOMPARE(session->undo(), EditResult::Applied);
     }
+    void cancellingFrozenHandoffIgnoresWindowsDestroyedDuringTheWait() {
+        QTemporaryDir directory; FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative);
+        const QStringList paths{directory.filePath("first.md"), directory.filePath("second.md")};
+        for (const auto &path : paths) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("owned"); file.close(); app.open(path); }
+        QList<QPointer<SingleFileWindow>> panes;
+        QTRY_VERIFY(([&] { panes.clear(); for (auto widget : QApplication::topLevelWidgets()) if (auto pane = qobject_cast<SingleFileWindow *>(widget)) if (pane->document() && paths.contains(pane->document()->path()) && !pane->document()->loading()) panes.append(pane); return panes.size() == 2; })());
+        bool done = false, ready = false; app.prepareForUpdate([&](bool value) { ready = value; done = true; }); QTRY_VERIFY(done); QVERIFY(ready); QVERIFY(updateTasksBlocked());
+        delete panes[0].data(); QVERIFY(!panes[0]); app.cancelUpdateHandoff();
+        QVERIFY(!updateTasksBlocked()); QVERIFY(panes[1]); QVERIFY(panes[1]->isEnabled()); QVERIFY(!panes[1]->document()->session()->isReadOnly());
+        QCOMPARE(panes[1]->document()->session()->snapshot().utf8, QByteArray("owned"));
+    }
     void documentBarrierJoinsWorkAndRestoresSameSessionOnCancellation() {
         QTemporaryDir directory; const auto path = directory.filePath("owned.md"); QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("# owned\n"); file.close();
         FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative); app.open(path);

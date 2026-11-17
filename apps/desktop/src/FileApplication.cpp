@@ -292,9 +292,11 @@ void FileApplication::cancelUpdateHandoff() {
     auto callback = std::exchange(m_updateReady, {});
     if (m_updateFrozen) {
         updateTaskGate() = false;
-        for (auto it = m_updateReadOnly.cbegin(); it != m_updateReadOnly.cend(); ++it) it.key()->setReadOnly(it.value());
-        for (auto it = m_updateEnabled.cbegin(); it != m_updateEnabled.cend(); ++it) it.key()->setEnabled(it.value());
-        m_updateReadOnly.clear(); m_updateEnabled.clear(); m_updateFrozen = false;
+        const auto sessions = std::exchange(m_updateReadOnly, {});
+        const auto windows = std::exchange(m_updateEnabled, {});
+        for (const auto &entry : sessions) if (entry.first) entry.first->setReadOnly(entry.second);
+        for (const auto &entry : windows) if (entry.first) entry.first->setEnabled(entry.second);
+        m_updateFrozen = false;
         for (auto pane : m_windows) if (pane->preview()) pane->preview()->refresh();
         for (auto workspace : m_workspaces) { workspace->tree()->refresh(); for (auto references : workspace->findChildren<WorkspaceReferenceController *>()) references->refresh(); }
         if (!m_destroying) m_recoveryTimer.start();
@@ -334,10 +336,10 @@ void FileApplication::advanceUpdateHandoff() {
         // No GUI event is processed between these checks and the freeze.
         updateTaskGate() = true; m_updateFrozen = true; m_recoveryTimer.stop();
         for (auto document : m_manager.documents()) {
-            auto session = document->session(); m_updateReadOnly.insert(session, session->isReadOnly()); session->setReadOnly(true);
+            auto session = document->session(); m_updateReadOnly.append(qMakePair(QPointer<DocumentSession>(session), session->isReadOnly())); session->setReadOnly(true);
         }
-        for (auto pane : m_windows) { m_updateEnabled.insert(pane, pane->isEnabled()); pane->setEnabled(false); }
-        for (auto workspace : m_workspaces) { m_updateEnabled.insert(workspace, workspace->isEnabled()); workspace->setEnabled(false); }
+        for (auto pane : m_windows) { m_updateEnabled.append(qMakePair(QPointer<QWidget>(pane), pane->isEnabled())); pane->setEnabled(false); }
+        for (auto workspace : m_workspaces) { m_updateEnabled.append(qMakePair(QPointer<QWidget>(workspace), workspace->isEnabled())); workspace->setEnabled(false); }
         captureRecovery();
     }
     // Nonblocking join: queued completion callbacks may still run, but their
