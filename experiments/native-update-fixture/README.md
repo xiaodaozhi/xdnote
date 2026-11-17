@@ -23,3 +23,11 @@ python scripts/check_native_update.py --work-dir build/cycle-155-native-update/n
 这不是产品桌面程序验收。Windows 私有 helper 源副本为自动化增加静默 Setup 参数，产品仍使用可见向导；Linux 仅在 CI 用 `sudo` 运行相同 root helper，替代人工 polkit 授权，并使用仅包含夹具实际需要依赖的包。标准包布局、维护钩子、root 路径／包归属、签名复验、进程身份、安装门和安装后身份核对仍执行。工具拒绝已有 xdnote 安装，不在个人机器安装或修改系统目录，不测试真实授权对话框和正式更新身份。
 
 托管 Linux runner 的 `/opt` 可能是全局可写目录，实际 helper 会拒绝该安装边界。夹具记录该目录的 root 归属及原权限，在一次性 runner 内临时收敛为 0755，结束后恢复；不为此放宽产品 helper 的所有权／权限核对。
+
+## Windows／Linux 真实产品闭环
+
+`desktop-admission.yml` 的手动 `scope=update-products` 调用同一专项的 product 范围；`scripts/check_native_product_update.py` 在私有 detached worktree 中编译两个带实际测试提交身份的产品版本，部署、封存并构建现有原生安装包。它验证恢复时无启动请求、损坏包拒绝、文档取消后原文／撤销保留，以及保存后 join、原进程退出、原生升级、完整新身份回执和未知设置键保留。
+
+测试元数据及包回复来自自有文件，其他平台资产记录是合成值；不会访问正式候选或上传发行。产品仍执行 Rust 编译信任根认证、包流校验、独立 helper 复验、真实安装登记／root 包归属与安装后身份核对。仅私有副本增加静默 Setup 或 sudo 授权、固定尝试记录位置、离屏窗口与有摘要标记的 `desktop.py run` 夹具安装入口。普通启动器、系统默认应用、用户文档、生产信任根及原始 SDK 不变。该范围不代表生产网络、真实授权 UI、最低系统或人工视觉通过。
+
+Linux 私有 helper 另保留固定离屏后端的两项 Qt 环境供重启使用；正常产品只保留现有真实桌面环境白名单。测试仍从实际安装目录加载产品 Qt 库，离屏插件和诊断字体不进入产品包。

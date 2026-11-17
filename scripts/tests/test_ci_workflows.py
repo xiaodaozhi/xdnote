@@ -19,7 +19,7 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows, update-helpers]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows, update-helpers, update-products]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("inputs.scope == 'deployment-macos'", text)
@@ -122,10 +122,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: inputs.scope == 'update-helpers'", dispatcher)
         self.assertIn('uses: ./.github/workflows/update-helper.yml', dispatcher)
         self.assertIn('needs.update-helpers.result', dispatcher)
+        self.assertIn("if: inputs.scope == 'update-products'", dispatcher)
+        self.assertIn('needs.update-products.result', dispatcher)
         self.assertIn('os: [ubuntu-22.04, windows-2022]', text)
         self.assertIn('contents: read', text)
         self.assertIn('persist-credentials: false', text)
         self.assertIn('scripts/check_update_helper.py', text)
+        self.assertIn('scripts/check_native_product_update.py', text)
         self.assertIn('retention-days: 7', text)
         for forbidden in ('contents: write', 'secrets.', 'gh release', 'pull_request:', 'push:'):
             self.assertNotIn(forbidden, text)
