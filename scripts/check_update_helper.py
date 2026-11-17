@@ -24,7 +24,7 @@ from release_candidate import TARGETS
 def command(args, *, log=None, env=None, check=True):
     result = subprocess.run(list(map(str, args)), capture_output=True, env=env, timeout=300)
     if log: log.write_bytes(result.stdout + result.stderr)
-    if check and result.returncode: raise RuntimeError('Helper fixture command failed: ' + str(args[0]))
+    if check and result.returncode: raise RuntimeError('Helper fixture command failed: ' + str(args[0]) + '; exit=' + str(result.returncode) + '; log=' + str(log))
     return result
 
 
@@ -127,7 +127,7 @@ class Fixture:
     def install_old(self):
         if self.windows:
             self.root = self.work / 'installed'
-            command([self.packages['old'], '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/DIR=' + str(self.root)], log=self.work / 'install-old.log')
+            command([self.packages['old'], '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=' + str(self.work / 'install-native.log'), '/DIR=' + str(self.root)], log=self.work / 'install-old.log')
             self.image = self.root / 'xdnote.exe'
         else:
             # A previous successful scenario is removed first, never downgrade an installed package.
@@ -139,7 +139,11 @@ class Fixture:
     def uninstall(self):
         if self.windows:
             uninstaller = self.root / 'unins000.exe'
-            if uninstaller.is_file(): command([uninstaller, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'], log=self.work / 'uninstall.log')
+            if uninstaller.is_file():
+                command([uninstaller, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=' + str(self.work / 'uninstall-native.log')], log=self.work / 'uninstall.log')
+                deadline = time.monotonic() + 20
+                while uninstaller.exists() and time.monotonic() < deadline: time.sleep(.1)
+                if uninstaller.exists(): raise RuntimeError('Owned uninstaller cleanup did not finish')
         else:
             command(['sudo', '-n', 'apt-get', '-y', 'remove', 'xdnote'], log=self.work / 'uninstall.log')
 
@@ -165,6 +169,9 @@ class Fixture:
 
     def scenario(self, mode):
         self.install_old()
+        if not self.windows:
+            paths = [*reversed(self.root.parents), self.root, self.root / 'bin', self.image, self.root / 'share', self.root / 'share/xdnote-install.json']
+            dump(self.work / 'installed-paths.json', [{'path': str(p), 'uid': p.stat().st_uid, 'mode': oct(p.stat().st_mode), 'links': p.stat().st_nlink} for p in paths])
         parent_directory = self.work / ('parent-' + mode); parent_directory.mkdir()
         parent = subprocess.Popen([str(self.image), '--wait', str(parent_directory)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         wait_file(parent_directory / 'parent-ready', parent)
