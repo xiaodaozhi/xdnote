@@ -181,7 +181,7 @@ def source_fingerprint():
     paths.extend((ROOT / "design/assets/ui-v2/brand").glob("*.ico"))
     vendor = BUILD / f"scintilla-{DEPS['scintilla']['version']}" / "scintilla"
     paths.extend(path for path in vendor.rglob("*") if path.suffix in (".h", ".cxx", ".cpp"))
-    paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py"))
+    paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py", "build_version.py"))
     digest = hashlib.sha256()
     for path in sorted(paths):
         digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
@@ -231,7 +231,7 @@ def main():
     parser.add_argument("--profile", choices=("default", "msvc2019"), default="default")
     parser.add_argument("--file", type=Path, action="append", default=[], help="local Markdown file to open with run; repeat for multiple files")
     parser.add_argument("--admission", action="store_true", help="run the memory-only component window instead of xdnote")
-    parser.add_argument("--suite", choices=("full", "resources", "preview", "background", "ui", "scroll", "settings", "tools"), default="full", help="test scope; resources/preview target affected paths; background is fixed offscreen")
+    parser.add_argument("--suite", choices=("full", "resources", "preview", "background", "ui", "scroll", "settings", "tools", "updates", "updates-live"), default="full", help="test scope; updates-live explicitly contacts the public update service")
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--fresh", action="store_true", help="recreate CMake configuration in the validated build directory")
@@ -300,9 +300,37 @@ def main():
             "platform": platform.system(), "architecture": platform.machine(),
             "profile": args.profile, "qtPrefix": str(qt), "compatibilityOnly": settings["compatibilityOnly"],
             "nativeToolchain": json.loads((build / "native-toolchain.json").read_text(encoding="utf-8")),
+            "buildVersion": json.loads((build / "generated/build-version.json").read_text(encoding="utf-8")),
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
         verify_build_identity(build, args.profile, qt)
+        if args.suite == "updates-live":
+            from background_validation import offscreen_environment, execute
+            env = offscreen_environment(env, build)
+            evidence = build / "evidence/updates"; evidence.mkdir(parents=True, exist_ok=True)
+            suffix = ".exe" if platform.system() == "Windows" else ""
+            execute([build / f"xdnote_update_probe{suffix}"], env, evidence / "live-network.log", 370)
+            print((evidence / "live-network.log").read_text(encoding="utf-8"), end="")
+            return
+        if args.suite == "updates":
+            from background_validation import offscreen_environment, execute, check_report
+            env = offscreen_environment(env, build)
+            evidence = build / "evidence/updates"; evidence.mkdir(parents=True, exist_ok=True)
+            env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
+            suffix = ".exe" if platform.system() == "Windows" else ""
+            result = {"ok": False, "scope": "offscreen explicit update checks and settings regression; no package installation", "buildIdentity": verify_build_identity(build, args.profile, qt), "tests": {}}
+            try:
+                for group in ("update", "settings"):
+                    report = evidence / f"{group}-qtest.txt"; report.unlink(missing_ok=True)
+                    execute([build / f"xdnote_{group}_tests{suffix}", "-o", "-,txt", "-o", f"{report},txt"], env, evidence / f"{group}.log", 240)
+                    result["tests"][group] = check_report(report.read_text(encoding="utf-8"))
+                result["ok"] = True
+            except Exception as error:
+                result["error"] = str(error)
+                raise
+            finally:
+                (evidence / "report.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            return
         if args.suite == "tools":
             from background_validation import offscreen_environment, execute, check_report
             env = offscreen_environment(env, build)
@@ -451,7 +479,7 @@ def main():
         env["XDNOTE_TEST_EVIDENCE"] = str(evidence)
         ctest = str(Path(args.cmake).with_name("ctest" + (".exe" if platform.system() == "Windows" else ""))) if Path(args.cmake).is_absolute() else "ctest"
         # Verbose output retains Qt diagnostics even when QtTest itself passes.
-        native_reports = [build / name for name in ("desktop-qtest.txt", "file-qtest.txt", "visual-qtest.txt", "geometry-qtest.txt", "workspace-qtest.txt", "native-model-qtest.txt", "native-preview-qtest.txt", "scroll-qtest.txt", "pipeline-qtest.txt", "settings-qtest.txt", "control-qtest.txt")]
+        native_reports = [build / name for name in ("desktop-qtest.txt", "file-qtest.txt", "visual-qtest.txt", "geometry-qtest.txt", "workspace-qtest.txt", "native-model-qtest.txt", "native-preview-qtest.txt", "scroll-qtest.txt", "pipeline-qtest.txt", "settings-qtest.txt", "control-qtest.txt", "update-qtest.txt")]
         for report in native_reports:
             report.unlink(missing_ok=True)
         try:

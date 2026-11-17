@@ -17,10 +17,11 @@ class WindowGeometry;
 class WindowGeometryStore;
 class SourceEditor;
 class NativePreviewView;
+class UpdateController;
 class SettingsWindow final : public ApplicationWindow {
     Q_OBJECT
 public:
-    SettingsWindow(Appearance *appearance, WindowGeometryStore *store);
+    SettingsWindow(Appearance *appearance, WindowGeometryStore *store, UpdateController *updates = nullptr);
     ~SettingsWindow() override;
     void selectPage(int index);
 protected:

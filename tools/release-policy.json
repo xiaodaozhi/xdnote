@@ -23,7 +23,8 @@
     "pollAtStartup": false,
     "installWithoutConfirmation": false,
     "manifestAuthentication": "ed25519",
-    "reuseOtherProductTrustRoots": false
+    "reuseOtherProductTrustRoots": false,
+    "checkImplementationState": "development-only"
   },
   "qtSourceCodeInRelease": false
 }

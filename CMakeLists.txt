@@ -13,8 +13,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-include>"
+        "$<$<COMPILE_LANGUAGE:CXX,OBJCXX>:${PROJECT_SOURCE_DIR}/cmake/QtCompilerCompatibility.h>")
+endif()
 include(CTest)
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+set(XDNOTE_VERSION_COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build_version.py"
+    --source-root "${PROJECT_SOURCE_DIR}" --output-dir "${CMAKE_BINARY_DIR}/generated"
+    --base-version "${PROJECT_VERSION}" --configuration "${CMAKE_BUILD_TYPE}")
+execute_process(COMMAND ${XDNOTE_VERSION_COMMAND} COMMAND_ERROR_IS_FATAL ANY)
+add_custom_target(xdnote_build_version COMMAND ${XDNOTE_VERSION_COMMAND}
+    BYPRODUCTS "${CMAKE_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_BINARY_DIR}/generated/build-version.json"
+    VERBATIM)
 file(READ "${PROJECT_SOURCE_DIR}/tools/desktop-dependencies.json" XDNOTE_DEPENDENCIES)
 string(JSON XDNOTE_QT_VERSION GET "${XDNOTE_DEPENDENCIES}" qt version)
 set(XDNOTE_BUILD_PROFILE "default" CACHE STRING "Explicit toolchain profile")
@@ -40,6 +51,23 @@ file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/native-toolchain.json" CONTENT
 string(JSON XDNOTE_RUST_VERSION GET "${XDNOTE_DEPENDENCIES}" rust toolchain)
 find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS
     Core Gui Widgets Core5Compat Qml Quick QuickWidgets QuickControls2 Concurrent Network Svg)
+if(APPLE AND TARGET WrapOpenGL::WrapOpenGL)
+    set(XDNOTE_APPLE_SDK_NAME "${CMAKE_OSX_SYSROOT}")
+    if(NOT XDNOTE_APPLE_SDK_NAME)
+        set(XDNOTE_APPLE_SDK_NAME macosx)
+    endif()
+    execute_process(COMMAND /usr/bin/xcrun --sdk "${XDNOTE_APPLE_SDK_NAME}" --show-sdk-path
+        OUTPUT_VARIABLE XDNOTE_APPLE_SDK OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    if(NOT EXISTS "${XDNOTE_APPLE_SDK}/System/Library/Frameworks/AGL.framework")
+        # The fixed Qt SDK still lists AGL as an explicit public dependency.
+        # Some newer SDKs omit the link stub. Match Qt's later OpenGL link
+        # interface; the actual Qt runtime closure is validated separately.
+        get_target_property(XDNOTE_OPENGL_LINKS WrapOpenGL::WrapOpenGL INTERFACE_LINK_LIBRARIES)
+        list(FILTER XDNOTE_OPENGL_LINKS EXCLUDE REGEX "(^-framework AGL$|/AGL\\.framework(/.*)?$)")
+        set_property(TARGET WrapOpenGL::WrapOpenGL PROPERTY INTERFACE_LINK_LIBRARIES "${XDNOTE_OPENGL_LINKS}")
+        message(STATUS "Fixed Qt SDK: omit explicit AGL link absent from selected Apple SDK")
+    endif()
+endif()
 find_program(XDNOTE_RUSTUP rustup REQUIRED)
 execute_process(COMMAND "${XDNOTE_RUSTUP}" run "${XDNOTE_RUST_VERSION}" rustc -vV
     OUTPUT_VARIABLE XDNOTE_RUST_INFO RESULT_VARIABLE XDNOTE_RUST_STATUS OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -68,17 +96,18 @@ include(cmake/Scintilla.cmake)
 
 set(XDNOTE_CARGO_HOME "${PROJECT_SOURCE_DIR}/build/cargo-home" CACHE PATH "Explicitly prepared Cargo cache")
 if(WIN32)
-    set(XDNOTE_RUST_LIBRARY "${CMAKE_BINARY_DIR}/cargo/${XDNOTE_RUST_TARGET}/release/xdnote_markdown.lib")
+    set(XDNOTE_RUST_LIBRARY "${CMAKE_BINARY_DIR}/cargo/${XDNOTE_RUST_TARGET}/release/xdnote_services.lib")
 else()
-    set(XDNOTE_RUST_LIBRARY "${CMAKE_BINARY_DIR}/cargo/${XDNOTE_RUST_TARGET}/release/libxdnote_markdown.a")
+    set(XDNOTE_RUST_LIBRARY "${CMAKE_BINARY_DIR}/cargo/${XDNOTE_RUST_TARGET}/release/libxdnote_services.a")
 endif()
 file(GLOB_RECURSE XDNOTE_RUST_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/crates/*.rs")
 add_custom_command(OUTPUT "${XDNOTE_RUST_LIBRARY}"
     COMMAND "${CMAKE_COMMAND}" -E env "CARGO_HOME=${XDNOTE_CARGO_HOME}" "CARGO_NET_OFFLINE=true"
         "RUSTUP_AUTO_INSTALL=0" "${XDNOTE_RUSTUP}" run "${XDNOTE_RUST_VERSION}" cargo build
         --manifest-path "${PROJECT_SOURCE_DIR}/Cargo.toml" --locked --offline --release
+        --package xdnote-services
         --target "${XDNOTE_RUST_TARGET}" --target-dir "${CMAKE_BINARY_DIR}/cargo"
-    DEPENDS Cargo.toml Cargo.lock rust-toolchain.toml crates/markdown/Cargo.toml ${XDNOTE_RUST_SOURCES}
+    DEPENDS Cargo.toml Cargo.lock rust-toolchain.toml crates/markdown/Cargo.toml crates/update/Cargo.toml crates/services/Cargo.toml tools/update-trust.json ${XDNOTE_RUST_SOURCES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
 add_custom_target(xdnote_rust_build DEPENDS "${XDNOTE_RUST_LIBRARY}")
 add_library(xdnote_markdown STATIC IMPORTED GLOBAL)
@@ -99,6 +128,9 @@ if(UNIX)
 endif()
 
 add_library(xdnote_desktop STATIC
+    apps/desktop/src/BuildInfo.cpp apps/desktop/src/BuildInfo.h
+    apps/desktop/src/UpdateBridge.cpp apps/desktop/src/UpdateBridge.h
+    apps/desktop/src/UpdateController.cpp apps/desktop/src/UpdateController.h apps/desktop/src/UpdateNetwork.h
     apps/desktop/src/SystemIntegration.cpp apps/desktop/src/SystemIntegration.h
     apps/desktop/src/Shortcuts.cpp apps/desktop/src/Shortcuts.h
     apps/desktop/src/RecoveryStore.cpp apps/desktop/src/RecoveryStore.h
@@ -149,6 +181,8 @@ add_library(xdnote_desktop STATIC
     apps/desktop/src/InputModality.cpp apps/desktop/src/InputModality.h
     apps/desktop/src/GuiRuntime.cpp apps/desktop/src/GuiRuntime.h)
 target_include_directories(xdnote_desktop PUBLIC apps/desktop/src)
+target_include_directories(xdnote_desktop PRIVATE "${CMAKE_BINARY_DIR}/generated")
+add_dependencies(xdnote_desktop xdnote_build_version)
 if(UNIX)
     add_dependencies(xdnote_desktop xdnote_resource_helper)
 endif()
@@ -193,6 +227,15 @@ endif()
 
 if(BUILD_TESTING)
     find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS Test)
+    add_executable(xdnote_update_probe apps/desktop/tests/update_probe.cpp)
+    target_link_libraries(xdnote_update_probe PRIVATE xdnote_desktop)
+    add_executable(xdnote_update_tests apps/desktop/tests/update_tests.cpp)
+    target_link_libraries(xdnote_update_tests PRIVATE xdnote_desktop Qt6::Test)
+    if(MSVC)
+        target_compile_options(xdnote_update_tests PRIVATE /utf-8 /EHsc)
+    endif()
+    add_test(NAME update_workflow COMMAND xdnote_update_tests -o -,txt -o "${CMAKE_BINARY_DIR}/update-qtest.txt,txt")
+    set_tests_properties(update_workflow PROPERTIES TIMEOUT 180)
     if(WIN32)
         add_executable(xdnote_installation_guard_tests apps/desktop/tests/installation_guard_tests.cpp)
         target_include_directories(xdnote_installation_guard_tests PRIVATE apps/desktop/src)

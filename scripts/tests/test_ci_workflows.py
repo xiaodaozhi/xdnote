@@ -19,7 +19,9 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, installer-windows]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, installer-windows]", text)
+        self.assertIn("inputs.scope == 'updates'", text)
+        self.assertIn("test --suite updates", text)
         self.assertIn("inputs.scope == 'deployment-macos'", text)
         self.assertIn("if: inputs.scope != 'installer-windows'", text)
         self.assertIn("if: inputs.scope == 'installer-windows'", text)
@@ -29,7 +31,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("failure() && runner.os == 'Linux' && inputs.scope == 'workspace-linux'", text)
         self.assertIn("default: full", text)
         matrices = [json.loads(value) for value in re.findall(r"'(\[\{[^\n]+?\}\])'", text)]
-        self.assertEqual(len(matrices), 4)
+        self.assertEqual(len(matrices), 5)
+        self.assertEqual(len(matrices.pop(0)), 4)
         self.assertEqual([entry['os'] for entry in matrices[0]], ['ubuntu-22.04'])
         self.assertEqual([entry['os'] for entry in matrices[1]], ['macos-15-intel', 'macos-15'])
         self.assertEqual([entry['os'] for entry in matrices[2]], ['ubuntu-22.04', 'macos-15-intel', 'macos-15'])

@@ -379,6 +379,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "xdnote-services"
+version = "0.1.0"
+dependencies = [
+ "xdnote-markdown",
+ "xdnote-update",
+]
+
+[[package]]
 name = "xdnote-update"
 version = "0.1.0"
 dependencies = [

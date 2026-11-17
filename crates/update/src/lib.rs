@@ -4,7 +4,7 @@
 //! successful signature verification using a locally trusted public-key set.
 
 use ed25519_dalek::{Signature, VerifyingKey};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{cmp::Ordering, collections::BTreeMap, io::Read};
 
@@ -19,7 +19,7 @@ pub const PACKAGE_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 pub const PRODUCTION_KEYRING: &str = include_str!("../../../tools/update-trust.json");
 
 /// A complete, structurally validated candidate for one installation target.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Inspection {
     /// Structural validation succeeded; this does not authenticate the publisher.
     pub valid: bool,
@@ -562,3 +562,5 @@ fn authenticate_with_keyring(
 
 #[cfg(test)]
 mod tests;
+
+mod ffi;
