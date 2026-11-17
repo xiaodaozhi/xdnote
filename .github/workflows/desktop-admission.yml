@@ -1,5 +1,5 @@
 name: Desktop admission
-run-name: ${{ inputs.scope == 'installer-windows' && 'Windows installer verification' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
+run-name: ${{ inputs.scope == 'installer-windows' && 'Windows installer verification' || inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, installer-windows]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, installer-windows]
 
 permissions:
   contents: read
@@ -23,14 +23,16 @@ jobs:
     uses: ./.github/workflows/windows-installer.yml
   desktop:
     if: inputs.scope != 'installer-windows'
-    name: ${{ inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
+    name: ${{ inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
         include: >-
-          ${{ fromJSON((inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux') &&
+          ${{ fromJSON(inputs.scope == 'updates' &&
+          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
+          (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
           (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos' || inputs.scope == 'deployment-macos') &&
           '[{"os":"macos-15-intel","host":"mac","qt-arch":"clang_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
@@ -86,6 +88,9 @@ jobs:
       - name: Build desktop admission (Unix)
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
+      - name: Test explicit update checks and settings
+        if: inputs.scope == 'updates'
+        run: python scripts/desktop.py test --suite updates
       - name: Test admission on Linux virtual display
         if: runner.os == 'Linux' && inputs.scope == 'full'
         run: xvfb-run -a python scripts/desktop.py test
@@ -200,7 +205,7 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: ${{ inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
+    name: ${{ inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop, installer]
     if: always()
     runs-on: ubuntu-24.04

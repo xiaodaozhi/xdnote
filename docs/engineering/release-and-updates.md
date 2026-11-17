@@ -1,6 +1,6 @@
 # 发行渠道、许可核验与更新
 
-发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)已接入候选结构检查、清单认证和包流校验，尚未接入产品窗口、网络或原生安装。MSIX 商店交付和用户主动检查／安装更新继续按后续接入范围跟踪，不能写成已有产品能力。
+发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)通过桌面 C ABI 接入关于页的主动检查与受限网络请求。当前开发副本仅检查公开候选并提供手动发布页入口，未接入包下载或原生安装。MSIX 商店交付和实际安装更新继续按后续接入范围跟踪，不能写成已有产品能力。
 
 ## 渠道与签名
 
@@ -45,6 +45,22 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 `inspect_release` 的 `valid` 仅表示结构和目标匹配。`verify_manifest` 使用调用方提供的本地可信 keyring 对原始字节认证；不得将下载得到的 keyring 传入。产品入口 `authenticate_release` 只使用编入库的 [update-trust.json](../../tools/update-trust.json)，当前为空。它仅为签名、版本及 build 均通过的新候选返回不可改写的 `AuthenticatedRelease`。该对象的 `verify_package` 逐块校验实际长度和 SHA-256，最多读到声明长度外一字节即拒绝；安装交接时仍须复验实际文件与运行身份。空生产 keyring 始终拒绝，私有签名夹具只编入单元测试，不进入生产信任材料。
 
 无需 Qt SDK 即可验证核心；Rust 版本遵循 [developer-build.md](developer-build.md)，Cargo 缓存和输出放在本项目 `build/`。完成 `cargo fetch --locked` 的显式准备后，运行 `cargo fmt --all -- --check`、`cargo clippy --locked --offline --workspace --all-targets -- -D warnings`、`cargo test --locked --offline --workspace`。CI 使用手动的 [Update core](../../.github/workflows/update-core.yml)，只检查 Rust 工作区与记录的依赖材料，不运行桌面矩阵或发布产品。覆盖候选／渠道、单调 build、四平台包型／最低目标、损坏或不可信签名、空信任根、长度／摘要与流读取失败；网络 TLS、活动文档、原生安装／恢复和真实平台继续单独验收。
+
+## 主动检查的开发实现
+
+构建通过 `scripts/build_version.py` 在配置和构建时生成实际 Git 提交、工作区 dirty、CMake 配置与 `0.1.0-dev.<12位提交号>`，写入所选构建目录的 `generated/build-version.json` 并编入 `BuildInfo`。当前没有发行 build，明确记录 0；源码归档或无法确认当前仓库时记录 unknown 并拒绝发起候选检查，不套用父仓库身份或创造发行计数。后续正式版本和单调 build 的生成／交付仍须独立接入。
+
+`FileApplication` 持有唯一 `UpdateController`；启动、打开文档或关于页不会发出请求。用户点击后按语义版本排序公开候选，核对同一 tag 的 `release.json`、目标包的名称／URL／长度及可选 `release.json.sig`，不因最高候选损坏或缺包而回退为“已是最新”。检查中重复点击不创建并行请求；取消和销毁递增代次，旧回执不能覆盖后续结果。设置窗口重开连接同一个控制器，文档原文、撤销和保存任务不参与检查流程。
+
+桌面通过 `xdnote-services` 将 Markdown 与更新核心合为一个 Rust 运行库归档，源模块及测试继续独立。薄 C ABI 使用有界 JSON 请求／自有输出分配，清单与签名以十六进制传递原始字节，避免 Qt 字符串解码改变签名字节或 BOM。ABI 不接收运行时信任根；当前空生产 keyring、未签名或未知密钥候选只提供手动发布页，不宣称已认证，也没有安装入口。
+
+`QNetworkAccessManager` 只用于这一个控制器，关闭 Cookie 读写及身份缓存复用，不读取 GitHub 凭据。每个请求保留 TLS 校验、15 秒无数据／30 秒总时限、5 次已核对重定向；按 64 KiB 读块执行各类响应上限，结束时仍读取末尾数据并检查。ETag 最多保留 24 条成功 HTTP 响应，304 必须有对应的成功缓存；TLS、超时、限流、损坏和缺包分别保留失败，均不显示为当前无更新。Qt 行为依据见[请求](https://doc.qt.io/qt-6.8/qnetworkrequest.html)与[回执](https://doc.qt.io/qt-6.8/qnetworkreply.html)，实际依赖仍固定 6.8.2。
+
+网络层已保留系统／直连／无凭据 HTTP 或 SOCKS5 自定义代理及 HTTPS 镜像校验，配置只在操作开始时快照生效；失败不会自动重试或改为直连。当前产品使用系统代理，尚未提供代理／镜像设置界面或持久化，不能把后台适配视为用户配置功能已交付。Windows 通过系统包身份查询隐藏并拒绝 GitHub 更新操作，仅确定 `APPMODEL_ERROR_NO_PACKAGE` 才走普通副本，其他结果保守按 Store 处理；没有编造 Store 地址。查询依据见[微软说明](https://learn.microsoft.com/en-us/windows/win32/api/appmodel/nf-appmodel-getcurrentpackagefullname)，实际签名包仍需另验。
+
+使用同一构建目录和 Qt SDK 执行 `python scripts/desktop.py test --suite updates`：固定离屏运行网络回执夹具、Rust ABI 及设置回归，证据进入 `evidence/updates/`。夹具覆盖成功／304、取消／重开、重复点击、分页／响应边界、TLS／限流／重定向、候选和资产绑定；合成回执不等于真实 HTTPS 服务器、代理路由或 Store 安装验收。桌面 CI 的手动 `scope=updates` 只补验四套默认配置的相同范围，保留未执行的人工视觉、真实网络和原生更新边界。
+
+显式真实网络诊断使用同一构建的 `python scripts/desktop.py test --suite updates-live`，只请求固定公开仓库，输出实际状态／错误，不读取文档或偏好、不下载包、不安装，也不进入普通 CI。该入口的结果须单独记录；离屏夹具通过不能替代它，真实网络通过仍不代表所有代理／镜像或最低系统验收。
 
 ## macOS 原生实现
 

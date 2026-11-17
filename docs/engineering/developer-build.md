@@ -101,7 +101,7 @@ python scripts/desktop.py run --admission
 
 首轮真实文件只接受 2 MiB 以内的严格 UTF-8 正文，编码 BOM 另计三字节，含 NUL 或无效 UTF-8 的文件明确拒绝。保留混合换行与字符，不猜测编码。预览使用只读语义模型与原生局部文档；派生内容、图片和缓存保护见[原生控件](native-preview-view.md)。控件原生输入可能暂时超过快照额度，此时保存／预览明确拒绝，当前内容和撤销仍保留，须缩小后重试。这是当前原型的明确容量边界，不是任意长文承诺。
 
-`desktop_admission` 检查原有会话、辅助功能、混合承载和原生预览失效；`file_workflow` 使用自身创建的真实临时文件，覆盖替换竞争、失败恢复、保存期间编辑、原生窗口按钮与关闭确认、IPC 和子进程应用路由；`standalone_visual` 检查独立窗口的十二种主题／配色组合、字形对齐、控件密度、焦点、菜单／确认框、只读反馈、阅读位置和多倍率几何；`window_geometry` 检查 DPI 算术、待处理缩放量、跟踪约束、可用区、正常偏好与临时收敛、持久化及自身窗口的 Windows 消息。`workspace_workflow` 另覆盖目录、标签、接管、组合输入延后、双栏与批量关闭；`native_preview_model` 验证 Rust 全局语义与 Qt Core 契约，不创建界面。native_preview_view 另验证独立原生控件的布局、交互与失效代次；split_scroll_sync 验证实际双栏的语义映射、版本门控和重排锚点；preview_pipeline 验证共享分析、资源缓存、取消与关闭；settings_workflow 验证统一偏好与受保护的自动保存；完整测试入口要求十份 QtTest 报告齐全，专项范围见[独立窗口](standalone-window.md)、[窗口几何](window-geometry.md)和[原生模型](native-preview-model.md)。当前窗口截图和测量只进入构建目录中的 `evidence/`。自动化窗口操作不等于人工原生文件选择器、文件管理器关联或真实输入法验收。屏幕阅读器、混合 DPI 物理拖动与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。
+`desktop_admission` 检查原有会话、辅助功能、混合承载和原生预览失效；`file_workflow` 使用自身创建的真实临时文件，覆盖替换竞争、失败恢复、保存期间编辑、原生窗口按钮与关闭确认、IPC 和子进程应用路由；`standalone_visual` 检查独立窗口的十二种主题／配色组合、字形对齐、控件密度、焦点、菜单／确认框、只读反馈、阅读位置和多倍率几何；`window_geometry` 检查 DPI 算术、待处理缩放量、跟踪约束、可用区、正常偏好与临时收敛、持久化及自身窗口的 Windows 消息。`workspace_workflow` 另覆盖目录、标签、接管、组合输入延后、双栏与批量关闭；`native_preview_model` 验证 Rust 全局语义与 Qt Core 契约，不创建界面。native_preview_view 另验证独立原生控件的布局、交互与失效代次；split_scroll_sync 验证实际双栏的语义映射、版本门控和重排锚点；preview_pipeline 验证共享分析、资源缓存、取消与关闭；settings_workflow 验证统一偏好与受保护的自动保存；完整测试入口要求已登记的 QtTest 报告齐全，专项范围见[独立窗口](standalone-window.md)、[窗口几何](window-geometry.md)和[原生模型](native-preview-model.md)。当前窗口截图和测量只进入构建目录中的 `evidence/`。自动化窗口操作不等于人工原生文件选择器、文件管理器关联或真实输入法验收。屏幕阅读器、混合 DPI 物理拖动与安装后运行继续按[架构准入](architecture.md)、[平台目标](platform-support.md)和[窗口几何](window-geometry.md)验证。
 
 定向预览回归使用 `python scripts/desktop.py test --suite preview`；只执行受影响的五组测试，不运行文件／几何等完整套件。离屏运行须显式设置 `QT_QPA_PLATFORM=offscreen`，Windows 使用系统字体目录。
 
@@ -114,5 +114,9 @@ Windows 可用 `python scripts/measure_preview.py --build-dir <本项目构建�
 锁屏或没有交互桌面时使用 `test --suite background`，见[后台验证](../qa/background-validation.md)。入口固定离屏环境，不执行 UIA、真实输入或原生选择器，生成确定性回归与自有样本性能报告。Windows 独立诊断目录的准备、隔离运行及实际依赖清单见[部署诊断](deployment.md)；诊断不创建安装器或发行包，不代表最低系统及最终许可验收。
 
 ## 文档工具定向验证
+
+AppleClang 21 的 Apple ARM64 构建在 Qt 6.8.2 `qyieldcpu.h` 中需要先声明公共 `__yield` intrinsic。项目仅为 AppleClang 的 C++／Objective-C++ 翻译单元预包含 `cmake/QtCompilerCompatibility.h`，其中按实际 Apple ARM64 目标包含系统 `arm_acle.h`；Intel 与其他平台不包含 ARM 头。若所选 Apple SDK 缺少 AGL link stub，项目配置只过滤 Qt WrapOpenGL 的冗余显式 AGL 链接，保留 OpenGL 和 Qt 库原文；参照 [Qt 官方后续链接配置](https://raw.githubusercontent.com/qt/qtbase/v6.9.2/cmake/FindWrapOpenGL.cmake)。不修改固定 SDK 文件、不屏蔽编译诊断，也不将本机兼容修正扩大为上游支持或最低系统认证。
+
+关于页主动更新检查使用 `python scripts/desktop.py test --suite updates`，传入同一 `--build-dir`、`--qt-prefix` 和工具链参数。它固定离屏运行独立的更新网络回执夹具及设置回归，不下载／安装更新、不操作真实系统关联。`generated/build-version.json` 保存该次构建的真实开发提交和 dirty 状态；产品 C ABI 使用 `xdnote-services` 单一 Rust 静态归档承载 Markdown 与独立更新核心，不能继续将新增检查写成尚未链接的源码模块。具体边界见[主动检查](release-and-updates.md#主动检查的开发实现)。
 
 `python scripts/desktop.py test --suite tools` 在固定离屏环境中运行文档查找／搜索、恢复、快捷键、注册计划及受影响设置／文件测试，使用同一 `--build-dir`、`--qt-prefix` 和工具链参数。它不写真实系统关联，不安装到用户目录，不操作其他桌面窗口，也不代替人工视觉、真实崩溃断电、最低系统或正式安装器验收。安装维护逻辑可用 `python -m unittest scripts.tests.test_user_install` 验证隔离目录中的归属、升级回滚及数据保护。

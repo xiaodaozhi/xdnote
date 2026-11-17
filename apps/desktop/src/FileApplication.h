@@ -11,6 +11,7 @@ class WorkspaceWindow;
 class SettingsWindow;
 class AutoSaveController;
 class RecoveryStore;
+class UpdateController;
 class FileApplication final : public QObject {
     Q_OBJECT
 public:
@@ -73,6 +74,7 @@ private:
     FileManager m_manager;
     QPointer<SettingsWindow> m_settings;
     AutoSaveController *m_autoSave = nullptr;
+    UpdateController *m_updates = nullptr;
     QSet<SingleFileWindow *> m_windows;
     QSet<WorkspaceWindow *> m_workspaces;
     struct Transfer { QPointer<SingleFileWindow> pane; QPointer<WorkspaceWindow> target; bool explicitTarget; };

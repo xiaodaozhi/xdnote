@@ -144,11 +144,17 @@
         "custom-shortcut-mapping",
         "explicit-open-with-registration",
         "idle-shortcut-keycaps",
-        "scrollable-compact-navigation"
+        "scrollable-compact-navigation",
+        "development-build-identity",
+        "user-triggered-update-check",
+        "update-check-cancel-and-errors",
+        "store-update-provider-boundary"
       ],
       "deferredStates": [
         "remote-images",
-        "native-association-acceptance"
+        "native-association-acceptance",
+        "native-update-installation",
+        "update-network-preferences-ui"
       ],
       "sizeRationale": "常规 1080×820、最小 860×640；可用区不足时显式支持 480×320 紧凑布局，侧栏和正文滚动，不覆盖正常尺寸偏好。"
     },

@@ -1,8 +1,5 @@
 [workspace]
-members = ["crates/markdown", "crates/update"]
-# Desktop builds still produce only the linked Markdown service. The update
-# core is checked explicitly or with --workspace until product integration.
-default-members = ["crates/markdown"]
+members = ["crates/markdown", "crates/update", "crates/services"]
 exclude = ["experiments/pulldown-markdown-spike"]
 resolver = "2"
 

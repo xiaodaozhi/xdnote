@@ -16,6 +16,7 @@
 #include "WorkspaceReferenceController.h"
 #include "SettingsWindow.h"
 #include "AutoSaveController.h"
+#include "UpdateController.h"
 #include <QApplication>
 #include <QFileOpenEvent>
 #include <QFileDialog>
@@ -37,6 +38,7 @@ QString rootKey(const QString &path) { const QFileInfo info(path); auto key = in
 FileApplication::FileApplication(QObject *parent, QString settingsPath, Presentation presentation)
     : QObject(parent), m_presentation(presentation), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
     qApp->installEventFilter(this);
+    m_updates = new UpdateController(this);
     m_recovery=new RecoveryStore(settingsPath.isEmpty()?QString():settingsPath+".recovery",this);
     const auto stored=m_recovery->state();m_lastSession=stored["documents"].toArray();
     for(const auto &value:m_lastSession){const auto item=value.toObject();m_unrestored[item["id"].toString()]=item;if(!m_recoveryOrder.contains(item["id"].toString()))m_recoveryOrder.append(item["id"].toString());}
@@ -159,7 +161,7 @@ void FileApplication::newDocument() {
 }
 SettingsWindow *FileApplication::settingsWindow() {
     if (!m_settings) {
-        m_settings = new SettingsWindow(&m_appearance, &m_geometryStore);
+        m_settings = new SettingsWindow(&m_appearance, &m_geometryStore, m_updates);
         m_settings->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative);
         connect(m_settings, &QObject::destroyed, this, [this] { if (!m_destroying && m_windows.isEmpty() && m_workspaces.isEmpty()) QCoreApplication::quit(); });
     }
