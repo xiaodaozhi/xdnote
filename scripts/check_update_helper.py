@@ -147,7 +147,7 @@ class Fixture:
                 while uninstaller.exists() and time.monotonic() < deadline: time.sleep(.1)
                 if uninstaller.exists(): raise RuntimeError('Owned uninstaller cleanup did not finish')
         else:
-            command(['sudo', '-n', 'apt-get', '-y', 'remove', 'xdnote'], log=self.work / 'uninstall.log')
+            command(['sudo', '-n', 'apt-get', '-y', 'purge', 'xdnote'], log=self.work / 'uninstall.log')
 
     def request(self, label, parent, package_label='new'):
         job = self.work / ('job-' + label); job.mkdir(mode=0o700)

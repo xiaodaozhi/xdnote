@@ -38,7 +38,7 @@ class Product:
             self.toolchain = self.source / 'build/toolchain/installer'; self.runtime = self.source / 'build/toolchain/windows-runtime'
             shutil.copytree(toolchain, self.toolchain); shutil.copytree(runtime, self.runtime)
         replace(self.source / 'scripts/desktop.py', 'str(BUILD / "cargo-home")', repr(str(ROOT / 'build/cargo-home')))
-        replace(self.source / 'CMakeLists.txt', '${PROJECT_SOURCE_DIR}/build/cargo-home', str(ROOT / 'build/cargo-home'))
+        replace(self.source / 'CMakeLists.txt', '${PROJECT_SOURCE_DIR}/build/cargo-home', (ROOT / 'build/cargo-home').as_posix())
         fixture = self.source / 'experiments/native-update-fixture'
         (fixture / 'ProductFixture.cpp').write_text((TEMPLATES / 'ProductFixture.cpp.in').read_text().replace('@DIRECTORY@', json.dumps(str(self.run))), encoding='utf-8')
         (fixture / 'Fixture.h').write_text('#pragma once\n#include <QString>\nclass QApplication;class QNetworkAccessManager;class QObject;\nQString fixtureDirectory();QNetworkAccessManager *fixtureNetwork(QObject *);void fixtureBoot(QApplication *);void fixtureHelper(qint64,const QString &,const QString &);\n')
@@ -143,7 +143,7 @@ class Product:
             deadline = time.monotonic() + 30
             while uninstaller.exists() and time.monotonic() < deadline: time.sleep(.1)
             if uninstaller.exists(): raise RuntimeError('Owned uninstaller cleanup incomplete')
-        else: command(['sudo', '-n', 'apt-get', '-y', 'remove', 'xdnote'], log=self.work / 'uninstall.log')
+        else: command(['sudo', '-n', 'apt-get', '-y', 'purge', 'xdnote'], log=self.work / 'uninstall.log')
 
     def scenario(self, mode):
         self.install_old(); before = digest(self.image)
