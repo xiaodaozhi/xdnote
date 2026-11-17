@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "windows": {
+    "publisherCertificateSigning": false,
+    "store": {
+      "implementationState": "planned",
+      "packageFormat": "msix",
+      "packageSigner": "microsoft-store",
+      "updateProvider": "microsoft-store"
+    }
+  },
+  "macos": {
+    "developerIdSigning": false,
+    "appleNotarization": false,
+    "integritySigning": "ad-hoc",
+    "updateProvider": "sparkle",
+    "updateImplementationState": "planned"
+  },
+  "updates": {
+    "implementationState": "planned",
+    "repository": "xiaodaozhi/xdnote",
+    "checkTrigger": "user",
+    "pollAtStartup": false,
+    "installWithoutConfirmation": false,
+    "manifestAuthentication": "ed25519",
+    "reuseOtherProductTrustRoots": false
+  },
+  "qtSourceCodeInRelease": false
+}

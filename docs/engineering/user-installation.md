@@ -17,7 +17,7 @@ Windows 的 `--register` 只写当前用户的 ProgID、`OpenWithProgids`、Capa
 
 Linux 生成当前用户的 `.desktop` 入口，`Exec` 保留文件参数；不改写 `mimeapps.list` 或调用设置默认值的命令，已存在的不同副本入口予以保留。依据 [Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry/latest-single/)。macOS 部署包在 `Info.plist` 声明 Markdown 编辑角色与 `Alternate` 等级，用户通过 Finder 选择默认打开方式，依据 [CFBundleDocumentTypes](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundledocumenttypes)。
 
-上述入口是依赖 Python 的开发者安装工具。Windows 另提供下述图形开发安装器；发布者签名、公证、商店安装和自动更新尚未实现。最终包逐项许可、最低系统和真实系统关联核验仍由独立任务跟踪，不能把隔离目录测试或声明文件生成计为三平台安装验收。
+上述入口是依赖 Python 的开发者安装工具。Windows 另提供下述图形开发安装器；不自行办理发布者证书签名，后续商店安装使用 MSIX。macOS 不采用 Developer ID 或 Apple 公证，保留 ad-hoc 完整性封印。商店与用户主动更新尚未接入，契约见[发行与更新](release-and-updates.md)。最终包逐项许可、最低系统和真实系统关联核验仍由独立任务跟踪，不能把隔离目录测试或声明文件生成计为三平台安装验收。
 
 ## 独立运行目录的安装闭环
 
@@ -45,6 +45,6 @@ python scripts/build-windows-installer.py --root <产品载荷目录> --audit <�
 
 卸载先核验清单和文件，再在确认后的卸载阶段逐项复核并删除；不会递归清理目录。未知文件和已退役路径上后来新建的用户文件保留，无法核验或被占用的文件保留并提示。用户配置、恢复记录、Markdown 和工作区不在安装清理范围内。不要将工作文档存进安装目录；清单保护不构成防恶意并发篡改的句柄级边界。
 
-手动工作流 `windows-installer.yml` 仅在一次性 Windows CI 账户中运行真实安装引擎，使用不执行的文件夹具验证升级、卸载、Unicode 路径、快捷方式、运行占用和注册保护。它不运行完整桌面矩阵，也不把夹具安装算作产品窗口或真实默认应用验收。实际载荷可通过[整应用探针](application-performance.md)验证隔离运行依赖。安装器的可见交互、发布者签名、最低系统和真实系统双击打开继续独立验收。
+手动工作流 `windows-installer.yml` 仅在一次性 Windows CI 账户中运行真实安装引擎，使用不执行的文件夹具验证升级、卸载、Unicode 路径、快捷方式、运行占用和注册保护。它不运行完整桌面矩阵，也不把夹具安装算作产品窗口或真实默认应用验收。实际载荷可通过[整应用探针](application-performance.md)验证隔离运行依赖。安装器的可见交互、最低系统和真实系统双击打开继续独立验收；发布者证书签名不在本项目实施范围。
 
 该工作流默认 `scope=fixtures` 保持上述夹具范围；`scope=product` 只在 Windows 构建实际产品，生成并核验真实载荷、安装器与逐文件许可证据，再通过实际安装→安装目录运行→升级→再次运行→卸载。运行使用外置的隐藏原生应用服务探针，检查安装目录的 Qt DLL 加载位置、编辑／撤销／保存和模式切换；另验证实际 Qt DLL 被修改时拒绝维护、保留自建数据和默认应用不变。报告明确记录当前用户候选注册确实发生于一次性 CI 账户；不在用户账户执行此项。工件只上传证据，不公开上传产品二进制。此范围仍不包含可见向导、Explorer／默认应用交互、最低系统或正式发行验收。

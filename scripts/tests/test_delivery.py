@@ -75,6 +75,13 @@ class DeliveryTests(unittest.TestCase):
             root=Path(directory); payload,metadata,compatibility=self.fixture(root)
             result=archive.build(payload,metadata,compatibility,root/'developer.zip')
             self.assertTrue(result['archiveReproducible']); self.assertFalse(result['publicationAllowed']); self.assertFalse(result['releaseReady'])
+            policy=result['distributionPolicy']
+            self.assertFalse(policy['windows']['publisherCertificateSigning'])
+            self.assertEqual(policy['windows']['store']['packageSigner'],'microsoft-store')
+            self.assertFalse(policy['macos']['developerIdSigning']); self.assertFalse(policy['macos']['appleNotarization'])
+            self.assertEqual(policy['macos']['integritySigning'],'ad-hoc')
+            self.assertFalse(policy['qtSourceCodeInRelease'])
+            self.assertFalse(any('signing/notarization' in item for item in result['remaining']))
             archive.build(payload,metadata,compatibility,root/'developer.tar.xz')
 
     def test_extraction_directory_alias_is_compared_by_real_path(self):

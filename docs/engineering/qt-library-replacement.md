@@ -4,7 +4,7 @@ xdnote 使用动态链接的 Qt 6.8.2。实际模块、供应方构建配置、�
 
 需要修改 Qt 的技术用户可以从所列官方独立归档取得对应源码，参考原始模块 SPDX 中的配置及 Qt 的[源码构建说明](https://doc.qt.io/qt-6.8/build-sources.html)构建匹配的库，再在自有应用副本中替换相应模块。项目自身的可恢复源码和构建入口见[开发构建](https://github.com/xiaodaozhi/xdnote/blob/main/docs/engineering/developer-build.md)。不要混用不同架构、不兼容版本、编译器 ABI 或调试配置的模块。
 
-Windows 使用相匹配的 DLL 和插件目录；Linux 保留 SONAME 相对链接及目录内加载路径，同时满足目标系统 ABI；macOS 保留 `.app` 的 framework 布局和加载路径，修改后按本机策略重新签名自有副本。现有开发候选的 ad-hoc 封印没有发布者身份，后续 Developer ID／公证后的操作还须单独验证。Qt 库的部署重定位和代码节核对不等于已经重编并验证了用户修改的 Qt。
+Windows 使用相匹配的 DLL 和插件目录；Linux 保留 SONAME 相对链接及目录内加载路径，同时满足目标系统 ABI；macOS 保留 `.app` 的 framework 布局和加载路径，修改后按本机策略对自有副本恢复必要的 ad-hoc 完整性封印。本项目不采用 Developer ID 或 Apple 公证，新增更新 framework／XPC／helper 时仍须保留各自签名参数。Store 安装目录的维护边界与可构建的自有副本分别核对。Qt 库的部署重定位和代码节核对不等于已经重编并验证了用户修改的 Qt。
 
 用户自行修改后的文件应得到保留。当前升级／卸载维护会因文件摘要变化拒绝覆盖或删除；应按提示另选安装目录或在备份后由用户处理自己的副本。该维护保护与运行时库加载分别核对，不将维护拒绝解释为禁止用户修改 Qt。
 

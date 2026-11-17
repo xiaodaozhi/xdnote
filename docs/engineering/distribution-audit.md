@@ -16,7 +16,7 @@ Qt DLL 和插件按照 SDK SPDX 中的相对路径对应到实际分发文件，
 
 Windows 最低目标为 Windows 10 1809+。`D3Dcompiler_47.dll` 使用目标系统提供的版本，依据[微软组件说明](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/packaging/packaging-framework-packages?view=gdk-2604)；部署工具使用 `--no-system-d3d-compiler`、`--no-system-dxc-compiler`，不将宿主 Windows 的图形 DLL 复制进载荷。图形 API 继续由目标系统提供，静态导入与实际运行仍分别核对；最低系统真机验收单独记录。
 
-报告绑定实际文件摘要和构建身份，单次结果记录在 Issue／PR 或构建工件中。完整许可、源码／替换材料与最终交付核验仍由 [Issue #4](https://github.com/xiaodaozhi/xdnote/issues/4) 跟踪。
+报告绑定实际文件摘要和构建身份，单次结果记录在 Issue／PR 或构建工件中。完整许可、源码／替换材料与最终交付核验仍由 [Issue #4](https://github.com/xiaodaozhi/xdnote/issues/4) 跟踪，采用[既定材料归属与隔离替换方法](release-and-updates.md)。已识别且适用的义务或必需材料未解决时阻断候选；上游 `NOASSERTION` 或机器报告不完整本身不直接推导为许可冲突，也不自动作为豁免。签名／公证采用与否按发行决策记录，不与许可核验混为同一门槛。
 
 ## Qt 源码与发行附件边界
 

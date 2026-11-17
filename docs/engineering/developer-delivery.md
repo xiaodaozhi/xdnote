@@ -1,6 +1,6 @@
 # 开发交付与兼容审计
 
-开发候选将实际产品清单、构建身份、源码提交、第三方材料和归档摘要绑定。生成归档不等于正式发行；当前报告保留 `releaseReady=false` 与 `publicationAllowed=false`，不创建 GitHub Release，也不上传产品二进制。独立源码渠道、实际静态依赖范围、最低系统／真实桌面与签名等剩余项继续由对应 Issue 跟踪。
+开发候选将实际产品清单、构建身份、源码提交、第三方材料和归档摘要绑定。生成归档不等于正式发行；当前报告保留 `releaseReady=false` 与 `publicationAllowed=false`，不创建 GitHub Release，也不上传产品二进制。[发行决策](release-and-updates.md)已确定 Windows 不自行签名、后续 MSIX 使用 Store；macOS 保留 ad-hoc、不做 Developer ID 或 Apple 公证。归档报告记录所选策略，不把这些不采用的身份服务列为未完成门槛；独立源码渠道、实际静态依赖范围、最低系统／真实桌面和具体发布授权仍分别跟踪。
 
 ## 静态兼容范围
 
