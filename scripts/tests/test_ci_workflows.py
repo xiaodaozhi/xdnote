@@ -19,9 +19,13 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows, update-helpers, update-products]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
+        self.assertIn("if: startsWith(inputs.scope, 'updates')", text)
+        self.assertIn("inputs.scope == 'updates-macos'", text)
+        self.assertIn('options: [macos-15, macos-26]', text)
+        self.assertIn("matrix.os == 'macos-15' && inputs.macos_runner || matrix.os", text)
         self.assertIn("inputs.scope == 'deployment-macos'", text)
         self.assertIn("if: inputs.scope != 'installer-windows'", text)
         self.assertIn("if: inputs.scope == 'installer-windows'", text)

@@ -50,6 +50,8 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 桌面工作流的 `scope=updates` 仅在 Windows 默认工具链、Linux、macOS ARM64 执行 `test --suite updates`：固定离屏的主动检查、受控下载、文档交接及设置回归；macOS 另执行原生生命周期夹具。不运行 v142、完整桌面用例或安装／发布，也不把合成 TLS 错误或生命周期回调夹具等同于真实 HTTPS／代理或原生更新验收。构建产物与报告保留实际开发身份，按本次 head 核对结果。
 
+`scope=updates-macos` 只补验同一更新范围的 macOS arm64，不重复已通过的 Windows／Linux。桌面工作流可显式选择 `macos_runner=macos-15`（默认）或 `macos-26`；两者均为 GitHub 提供的原生 arm64 标准宿主，实际宿主名进入作业和工件名。宿主版本选择不改变 macOS 14+ 产品目标，也不能作为最低系统验收。标签以 [GitHub runner 清单](https://github.com/actions/runner-images/blob/main/README.md)为准，不使用付费 large／xlarge 或 Intel 宿主替代原生 arm64 检查。
+
 独立 `update-helper.yml` 仅手动触发，在一次性 Windows／Ubuntu 22.04 账户运行[原生事务夹具](../../experiments/native-update-fixture/README.md)。它使用临时信任根和独立进程映像实际执行 helper 与安装器，覆盖取消、并行门、验签／摘要拒绝、父进程等待、安装后身份和重启；不编译 Qt 桌面、不发布，也不替代可见向导、polkit 对话框或产品完整更新验收。Linux 系统包操作只允许在该一次性 CI 环境执行。
 
 `scope=update-products` 另调用其 product 范围，在相同的一次性环境编译两个私有产品版本，验证真实文档保存／取消、原生包升级、回执与重启。临时信任根、文件回复及静默安装／授权限定于私有 worktree；正常产品构建和信任文件不修改。该范围仍不包含最低系统、公开发行、真实授权对话框或人工桌面验收。
