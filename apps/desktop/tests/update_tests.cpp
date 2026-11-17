@@ -1,6 +1,7 @@
 #include <QScopeGuard>
 #include "UpdateDownload.h"
 #include "UpdateReceipt.h"
+#include "RecoveryStore.h"
 #include "FileApplication.h"
 #include "SingleFileWindow.h"
 #include "SourceEditor.h"
@@ -193,6 +194,34 @@ private slots:
         UpdateController updates(&network, current, "windows", "x86_64", false);
         updates.check(); QTRY_VERIFY(!updates.busy()); QVERIFY(!updates.canDownload()); QVERIFY(!updates.canInstall());
         const auto count = network.requests.size(); updates.download(); updates.install(); QCOMPARE(network.requests.size(), count);
+    }
+    void explicitUpdateDiscardRetiresRecoveryOnlyForTheSealedHandoff() {
+        for (const bool cancel : {false, true}) {
+            QTemporaryDir directory; const auto path = directory.filePath("owned.md"), settings = directory.filePath("settings.json");
+            { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("owned"); }
+            const QJsonObject unrelated{{"id", "11111111-1111-4111-8111-111111111111"}, {"path", directory.filePath("other.md")}, {"root", ""}, {"content", QString::fromLatin1(QByteArray("owned unrelated recovery\n").toBase64())}};
+            { RecoveryStore seed(settings + ".recovery"); seed.save({{"schemaVersion", 1}, {"documents", QJsonArray{}}, {"drafts", QJsonArray{unrelated}}}); QVERIFY(seed.flush()); }
+            {
+                FileApplication app(nullptr, settings, FileApplication::Presentation::HiddenNative); app.open(path);
+                QPointer<SingleFileWindow> pane;
+                QTRY_VERIFY(([&] { for (auto widget : QApplication::topLevelWidgets()) if (auto p = qobject_cast<SingleFileWindow *>(widget)) if (p->document() && p->document()->path() == path && !p->document()->loading()) pane = p; return bool(pane); })());
+                auto session = pane->document()->session(); QCOMPARE(session->replace(0, 0, "edited ", session->revision()), EditResult::Applied);
+                QTimer answer; answer.setInterval(10); connect(&answer, &QTimer::timeout, qApp, [] { for (auto widget : QApplication::topLevelWidgets()) if (widget->objectName() == "unsavedConfirmation") if (auto button = widget->findChild<SharedButton *>("choice2")) button->click(); }); answer.start();
+                bool done = false, ready = false; app.prepareForUpdate([&](bool value) { ready = value; done = true; }); QTRY_VERIFY(done); answer.stop(); QVERIFY(ready);
+                { RecoveryStore before(settings + ".recovery"); QCOMPARE(before.state()["drafts"].toArray().size(), 2); }
+                QVERIFY(app.sealUpdateRecovery());
+                { RecoveryStore sealed(settings + ".recovery"); QCOMPARE(sealed.state()["drafts"].toArray(), QJsonArray{unrelated}); }
+                QCOMPARE(session->snapshot().utf8, QByteArray("edited owned"));
+                if (cancel) {
+                    app.cancelUpdateHandoff(); QVERIFY(!updateTasksBlocked()); QVERIFY(pane->isEnabled());
+                    { RecoveryStore restored(settings + ".recovery"); QCOMPARE(restored.state()["drafts"].toArray().size(), 2); }
+                    QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->redo(), EditResult::Applied);
+                    QCOMPARE(session->snapshot().utf8, QByteArray("edited owned"));
+                }
+            }
+            RecoveryStore final(settings + ".recovery"); QCOMPARE(final.state()["drafts"].toArray().size(), cancel ? 2 : 1);
+            QFile disk(path); QVERIFY(disk.open(QIODevice::ReadOnly)); QCOMPARE(disk.readAll(), QByteArray("owned"));
+        }
     }
     void documentBarrierJoinsWorkAndRestoresSameSessionOnCancellation() {
         QTemporaryDir directory; const auto path = directory.filePath("owned.md"); QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("# owned\n"); file.close();

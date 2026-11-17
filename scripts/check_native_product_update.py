@@ -5,6 +5,7 @@ ephemeral compiled trust root, silent Windows Setup and headless Linux sudo.
 Ordinary product sources, trust files, SDKs and personal installations stay intact.
 """
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -149,6 +150,8 @@ class Product:
         self.install_old(); before = digest(self.image)
         for name in ['helper.json', 'error.json', 'status.json', 'restarted.json', 'cancelled.json', 'corrupt.json', 'recovery.json']: (self.run / name).unlink(missing_ok=True)
         (self.run / 'owned.md').write_bytes(b'owned\n'); dump(self.run / 'settings.json', {'schemaVersion': 1, 'fixtureUnknown': 'retained'})
+        unrelated = {'id': '11111111-1111-4111-8111-111111111111', 'path': str(self.run / 'unrelated.md'), 'root': '', 'content': base64.b64encode(b'owned unrelated recovery\n').decode()}
+        dump(self.run / 'settings.json.recovery', {'schemaVersion': 1, 'documents': [], 'drafts': [unrelated] if mode == 'discard' else []})
         dump(self.run / 'allowed.json', {'owner': 'xdnote-private-native-product-v1', 'root': str(self.root), 'executableSha256': before})
         dump(self.run / 'configuration.json', {'mode': mode, 'routes': self.routes})
         attempt = self.run / 'attempt.json'
@@ -162,10 +165,10 @@ class Product:
         if self.windows: env.update(APPDATA=str(self.run / 'appdata'), LOCALAPPDATA=str(self.run / 'localappdata'))
         args = [sys.executable, self.source / 'scripts/desktop.py', 'run', '--profile', 'default', '--build-dir', self.source / 'build/desktop', '--qt-prefix', self.qt, '--fixture-installation', self.root]
         checked(args, env=env, log=self.work / (mode + '.log'))
-        report = self.run / ({'cancel': 'cancelled', 'install': 'restarted'}.get(mode, mode) + '.json')
+        report = self.run / ({'cancel': 'cancelled', 'install': 'restarted', 'discard': 'restarted'}.get(mode, mode) + '.json')
         result = json.loads(wait_file(report, timeout=180).read_bytes())
         if not result.get('ok'): raise RuntimeError('Product fixture failed: ' + mode)
-        if mode != 'install' and digest(self.image) != before: raise RuntimeError('Old product unexpectedly changed')
+        if mode not in ('install', 'discard') and digest(self.image) != before: raise RuntimeError('Old product unexpectedly changed')
         helper_file = self.run / 'helper.json'
         if helper_file.exists():
             helper = json.loads(helper_file.read_bytes()); receipt = Path(helper['directory']) / 'result.json'
@@ -211,7 +214,7 @@ if __name__ == '__main__':
             opt_mode = stat.S_IMODE(metadata.st_mode); command(['sudo', '-n', 'chmod', '0755', '/opt'])
         fixture = Product(work, qt, build_output(a.toolchain) if a.toolchain else None, build_output(a.runtime) if a.runtime else None, a.vcvars)
         result.update(sourceRevision=fixture.revision, fixtureIdentities=fixture.identities, privateSeedRemoved=not fixture.seed.exists())
-        for mode in ['recovery', 'corrupt', 'cancel', 'install']:
+        for mode in ['recovery', 'corrupt', 'cancel', 'install', 'discard']:
             result['scenarios'][mode] = fixture.scenario(mode); dump(work / 'report.json', result); print(mode + ' passed', flush=True)
         if digest(ROOT / 'tools/update-trust.json') != trust: raise ValueError('Production trust changed')
         result.update(ok=True, productionTrustUnchanged=True)

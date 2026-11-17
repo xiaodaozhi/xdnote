@@ -158,7 +158,9 @@ def launch(source,run,qt,env,mode,server):
     version='0.1.0-alpha.2';base=f'https://github.com/xiaodaozhi/xdnote/releases/download/v{version}/'
     dump(run/'configuration.json',{'mode':mode,'server':f'http://127.0.0.1:{server.server_address[1]}/','routes':{'https://api.github.com/repos/xiaodaozhi/xdnote/releases?per_page=100&page=1':'listing.json',base+'release.json':'release.json',base+'release.json.sig':'release.json.sig'}})
     (run/'owned.md').write_text('owned\n')
-    for name in ['error.json','status.json','native-error.json',mode+'.json']:(run/name).unlink(missing_ok=True)
+    unrelated={'id':'11111111-1111-4111-8111-111111111111','path':str(run/'unrelated.md'),'root':'','content':base64.b64encode(b'owned unrelated recovery\n').decode()}
+    dump(run/'settings.json.recovery',{'schemaVersion':1,'documents':[],'drafts':[unrelated] if mode=='discard' else []})
+    for name in ['error.json','status.json','native-error.json','cancelled.json','restarted.json','corrupt.json','recovery.json']:(run/name).unlink(missing_ok=True)
     pending=install.parent.parent/'attempt.json'
     if mode=='recovery':dump(pending,{'schema_version':1,'transaction':'a'*32,'phase':'committed','version':version,'build':201,'commit':'b'*40,'root':str(install),'executable':str(install/'Contents/MacOS/xdnote')})
     else:pending.unlink(missing_ok=True)
@@ -170,7 +172,7 @@ def launch(source,run,qt,env,mode,server):
     child_env=env.copy();child_env.update(CFFIXED_USER_HOME=str(run/'home'),XDG_CONFIG_HOME=str(run/'config'),XDG_CACHE_HOME=str(run/'cache'))
     command=[os.sys.executable,source/'scripts/desktop.py','run','--profile','default','--build-dir',source/'build/desktop','--qt-prefix',qt,'--fixture-bundle',install]
     checked(command,env=child_env,log=run/(mode+'.log'))
-    report=run/({'cancel':'cancelled','install':'restarted'}.get(mode,mode)+'.json');deadline=time.monotonic()+120
+    report=run/({'cancel':'cancelled','install':'restarted','discard':'restarted'}.get(mode,mode)+'.json');deadline=time.monotonic()+120
     while not report.exists() and time.monotonic()<deadline:time.sleep(.2)
     value=json.loads(report.read_bytes())
     if not value.get('ok'):raise RuntimeError('Native fixture assertion failed: '+mode)
@@ -198,7 +200,7 @@ def main():
         result.update(sourceRevision=revision,fixtureIdentities=identities,privateSeedRemoved=not (run/'private-test-seed').exists(),templates={path.name:digest(path) for path in TEMPLATES.iterdir() if path.is_file()})
         server=Server(('127.0.0.1',0),Handler);server.directory=run;threading.Thread(target=server.serve_forever,daemon=True).start()
         try:
-            for mode in ['recovery','corrupt','cancel','install']:
+            for mode in ['recovery','corrupt','cancel','install','discard']:
                 result['scenarios'][mode]=launch(source,run,qt,env,mode,server);dump(work/'report.json',result);print(mode+' passed',flush=True)
         finally:server.shutdown();server.server_close()
         if any(digest(ROOT/'tools'/name)!=sha for name,sha in trust.items()):raise ValueError('Production trust files changed')

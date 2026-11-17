@@ -30,6 +30,7 @@ public:
     void activate();
     void requestQuit();
     void prepareForUpdate(std::function<void(bool)> ready);
+    bool sealUpdateRecovery();
     void cancelUpdateHandoff();
     bool updateHandoffActive() const { return bool(m_updateReady); }
 protected:
@@ -50,6 +51,7 @@ private:
     std::function<void(bool)> m_updateReady;
     QTimer m_updatePoll;
     bool m_updateFrozen = false;
+    bool m_updateRecoverySealed = false;
     QHash<DocumentSession *, bool> m_updateReadOnly;
     QHash<QWidget *, bool> m_updateEnabled;
     void captureRecovery();

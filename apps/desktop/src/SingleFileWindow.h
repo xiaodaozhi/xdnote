@@ -42,6 +42,7 @@ public:
     // 0 cancelled, 1 ready, 2 waiting. Confirmation never closes the session.
     int prepareUpdate();
     void resetUpdatePreparation() { m_updateDiscard = false; m_updateSaving = false; }
+    bool discardPreparedForUpdate() const;
     bool embedIn(QWidget *parent);
     void setWorkspaceRoot(const QString &root);
     QWidget *footer() const { return m_footer; }

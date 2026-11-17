@@ -334,6 +334,7 @@ void UpdateController::prepareInstallation() {
             if (generation != m_generation || !m_installRequested) return;
             if (!ready) { m_installRequested = false; releasePreparation(); setState("available", "cancelled"); return; }
             if (!rememberAttempt("prepared")) { m_installRequested = false; releasePreparation(); setState("error", "handoff_receipt"); return; }
+            if (!m_application->sealUpdateRecovery()) { m_installRequested = false; releasePreparation(); setState("error", "handoff_recovery"); return; }
 #ifdef Q_OS_MACOS
             setMacUpdateCommitCallback(this, [this] { setState("installing"); });
             const bool committed = rememberAttempt("committed") && commitMacUpdate();

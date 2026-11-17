@@ -288,6 +288,7 @@ void FileApplication::prepareForUpdate(std::function<void(bool)> ready) {
 }
 void FileApplication::cancelUpdateHandoff() {
     m_updatePoll.stop();
+    const bool restoreDrafts = std::exchange(m_updateRecoverySealed, false);
     auto callback = std::exchange(m_updateReady, {});
     if (m_updateFrozen) {
         updateTaskGate() = false;
@@ -299,7 +300,17 @@ void FileApplication::cancelUpdateHandoff() {
         if (!m_destroying) m_recoveryTimer.start();
     }
     for (auto pane : m_windows) pane->resetUpdatePreparation();
+    if (restoreDrafts) { captureRecovery(); m_recovery->flush(); }
     if (callback) callback(false);
+}
+bool FileApplication::sealUpdateRecovery() {
+    if (!m_updateFrozen || !m_updateReady) return false;
+    // Apply explicit discard only to the durable recovery snapshot. Keep the
+    // same editable buffers until handoff succeeds, so a failed commit can undo
+    // this preparation without losing the user's changes or undo history.
+    m_updateRecoverySealed = true;
+    captureRecovery();
+    return m_recovery->flush();
 }
 void FileApplication::advanceUpdateHandoff() {
     if (!m_updateReady) return;
@@ -371,7 +382,7 @@ void FileApplication::captureRecovery(){
         auto *workspace=qobject_cast<WorkspaceWindow*>(pane->window());QJsonObject item{{"id",id},{"path",doc->untitled()?QString():doc->path()},{"root",workspace?workspace->rootPath():QString()},{"mode",int(pane->viewMode())},{"zoom",pane->contentZoom()},{"bom",doc->bom()}};
         if(auto *editor=pane->editor()){item["cursor"]=int(editor->send(SCI_GETCURRENTPOS));item["anchor"]=int(editor->send(SCI_GETANCHOR));item["line"]=int(editor->send(SCI_GETFIRSTVISIBLELINE));}
         if(pane->preview())item["readerY"]=pane->preview()->readingPosition().y();
-        if(doc->dirty()||doc->untitled())item["content"]=QString::fromLatin1(snap.utf8.toBase64());m_liveRecovery[id]=item;current.append(item);if(item.contains("content"))drafts.append(item);
+        if((doc->dirty()||doc->untitled())&&!(m_updateRecoverySealed&&pane->discardPreparedForUpdate()))item["content"]=QString::fromLatin1(snap.utf8.toBase64());m_liveRecovery[id]=item;current.append(item);if(item.contains("content"))drafts.append(item);
     }
     for(auto it=m_liveRecovery.begin();it!=m_liveRecovery.end();)if(!live.contains(it.key()))it=m_liveRecovery.erase(it);else ++it;
     for(const auto &item:m_unrestored){if(item.contains("content"))drafts.append(item);current.append(item);}

@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -60,20 +61,21 @@ void fixtureBoot(QApplication *application){
         QTimer::singleShot(0,application,[ok]{QCoreApplication::exit(ok?0:53);});return;
     }
     if(xdnote::BuildInfo::buildNumber()==201){
-        QFile document(fixtureDirectory()+"/owned.md"),settings(fixtureDirectory()+"/settings.json");
-        const bool documentOk=document.open(QIODevice::ReadOnly)&&document.readAll()==QByteArray("edited owned\n");
+        QFile document(fixtureDirectory()+"/owned.md"),settings(fixtureDirectory()+"/settings.json"),recovery(fixtureDirectory()+"/settings.json.recovery");
+        const bool documentOk=document.open(QIODevice::ReadOnly)&&document.readAll()==QByteArray(mode=="discard"?"owned\n":"edited owned\n");
+        const bool discardOk=mode!="discard"||(recovery.open(QIODevice::ReadOnly)&&([&]{const auto drafts=QJsonDocument::fromJson(recovery.readAll()).object()["drafts"].toArray();return drafts.size()==1&&drafts[0].toObject()["id"]=="11111111-1111-4111-8111-111111111111"&&QByteArray::fromBase64(drafts[0].toObject()["content"].toString().toLatin1())==QByteArray("owned unrelated recovery\n");})());
         const bool settingsOk=settings.open(QIODevice::ReadOnly)&&QJsonDocument::fromJson(settings.readAll()).object().value("fixtureUnknown").toString()=="retained";
         const bool updated=updates->state()=="updated";
-        write("restarted.json",{{"ok",documentOk&&settingsOk&&updated},{"documentPreserved",documentOk},{"unknownSettingPreserved",settingsOk},
+        write("restarted.json",{{"ok",documentOk&&settingsOk&&updated&&discardOk},{"documentPreserved",documentOk},{"unknownSettingPreserved",settingsOk},{"discardedDraftAbsent",discardOk},
               {"version",xdnote::BuildInfo::version()},{"build",xdnote::BuildInfo::buildNumber()},{"revision",xdnote::BuildInfo::revision()},{"updateState",updates->state()},{"executable",QCoreApplication::applicationFilePath()}});
         QTimer::singleShot(0,application,[updated]{QCoreApplication::exit(updated?0:51);});return;
     }
-    if(mode!="cancel"&&mode!="corrupt"&&mode!="install"){fail("invalid_mode");return;}
+    if(mode!="cancel"&&mode!="corrupt"&&mode!="install"&&mode!="discard"){fail("invalid_mode");return;}
     desktop->open(fixtureDirectory()+"/owned.md");auto *timer=new QTimer(desktop);timer->setInterval(20);
     auto pane=std::make_shared<QPointer<xdnote::SingleFileWindow>>();auto started=std::make_shared<bool>(false);auto finished=std::make_shared<bool>(false);
     QObject::connect(timer,&QTimer::timeout,desktop,[=]{
         for(auto widget:QApplication::topLevelWidgets()){
-            if(widget->objectName()=="unsavedConfirmation")if(auto button=widget->findChild<xdnote::SharedButton *>(mode=="cancel"?"choice0":"choice1"))button->click();
+            if(widget->objectName()=="unsavedConfirmation")if(auto button=widget->findChild<xdnote::SharedButton *>(mode=="cancel"?"choice0":mode=="discard"?"choice2":"choice1"))button->click();
             if(auto p=qobject_cast<xdnote::SingleFileWindow *>(widget))if(p->document()&&p->document()->path()==fixtureDirectory()+"/owned.md"&&!p->document()->loading())*pane=p;
         }
         if(*started||!*pane)return;auto session=(*pane)->document()->session();

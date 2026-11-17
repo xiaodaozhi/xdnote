@@ -887,6 +887,10 @@ void SingleFileWindow::beginImageImport(const QString &sourcePath, const QImage 
     }));
 }
 
+bool SingleFileWindow::discardPreparedForUpdate() const {
+    return m_updateDiscard && m_document && !m_document->closed() &&
+        m_updateDiscardRevision == m_document->session()->revision();
+}
 int SingleFileWindow::prepareUpdate() {
     if (m_prompting || m_saveErrorDialog || m_imageImportPending || m_linkInsertPending || m_exporting || !m_intent.isNull()) return 2;
     if (!m_document || m_document->closed()) return 1;
