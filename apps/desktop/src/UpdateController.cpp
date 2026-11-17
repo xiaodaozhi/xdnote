@@ -83,7 +83,12 @@ UpdateController::UpdateController(QNetworkAccessManager *transport, QString ver
         if (m_installRequested) prepareInstallation();
     });
 }
-UpdateController::~UpdateController() { ++m_generation; if (m_reply) m_reply->abort(); if (m_download) m_download->cancel(); }
+UpdateController::~UpdateController() {
+    ++m_generation;
+    if (m_reply) m_reply->abort();
+    if (m_handoff && m_state != "installing") m_handoff->cancel();
+    if (m_download) m_download->cancel();
+}
 void UpdateController::setState(const QString &state, const QString &error) { m_state = state; m_error = error; emit changed(); }
 bool UpdateController::configureNetwork(const QString &mode, const QString &proxy, const QString &mirror) {
     if ((mode != "system" && mode != "none" && mode != "custom") ||
@@ -302,7 +307,12 @@ void UpdateController::install() {
 #endif
 }
 void UpdateController::releasePreparation() {
-    if (m_handoff) { m_handoff->cancel(); m_handoff->deleteLater(); m_handoff = nullptr; }
+    if (m_handoff) {
+        m_handoff->cancel(); m_handoff->deleteLater(); m_handoff = nullptr;
+        // Its independently running helper still needs the cancellation marker.
+        // The leased transaction survives; a retry gets a new download/job.
+        m_download->cancel();
+    }
 #ifdef Q_OS_MACOS
     cancelMacUpdate();
 #endif
@@ -347,6 +357,7 @@ void UpdateController::prepareInstallation() {
     m_handoff = new UpdateHandoff(this);
     connect(m_handoff, &UpdateHandoff::ready, this, [this, prepared] { m_transaction = m_handoff->transaction(); prepared({}); });
     connect(m_handoff, &UpdateHandoff::failed, this, prepared);
+    m_download->retainForHelper();
     m_handoff->prepare(m_download->directory(), installedRoot(), m_manifest, m_signature, downloadedPath());
 #endif
 }

@@ -156,6 +156,23 @@ private slots:
         QVERIFY(download.active()); download.cancel(); QTest::qWait(10); QVERIFY(!download.active()); QVERIFY(download.packagePath().isEmpty()); QCOMPARE(done.size(), 0);
         QCOMPARE(QDir(cache.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size(), 0);
     }
+    void helperLeasePreservesVerifiedTransactionAcrossUiCancellationAndRetry() {
+        Network network; Response response; response.bytes = "owned final package"; response.finalOnly = true;
+        network.responses = {response, response}; QTemporaryDir cache;
+        UpdateDownload download(&network); QSignalSpy done(&download, &UpdateDownload::finished);
+        const QJsonObject candidate{{"asset_url", "https://github.com/xiaodaozhi/xdnote/releases/download/v0.2.0/fixture.zip"},
+            {"filename", "fixture.zip"}, {"bytes", response.bytes.size()},
+            {"sha256", QString::fromLatin1(QCryptographicHash::hash(response.bytes, QCryptographicHash::Sha256).toHex())}};
+        download.start(candidate, {}, cache.path()); QTRY_COMPARE(done.size(), 1);
+        QVERIFY(done.first().first().toString().isEmpty()); const auto leased = download.directory();
+        download.retainForHelper(); download.cancel();
+        QVERIFY(download.packagePath().isEmpty()); QVERIFY(QFileInfo::exists(leased + "/fixture.zip"));
+        QFile marker(leased + "/cancel.json"); QVERIFY(marker.open(QIODevice::WriteOnly)); marker.write("owned cancellation"); marker.close();
+        download.start(candidate, {}, cache.path()); QTRY_COMPARE(done.size(), 2);
+        QVERIFY(download.directory() != leased); QVERIFY(marker.open(QIODevice::ReadOnly)); QCOMPARE(marker.readAll(), QByteArray("owned cancellation")); marker.close();
+        download.cancel(); QVERIFY(QFileInfo::exists(leased));
+        QVERIFY(QDir(leased).removeRecursively());
+    }
     void cancellingSecondDocumentKeepsEveryWindowAndUndoBuffer() {
         QTemporaryDir directory;
         FileApplication app(nullptr, directory.filePath("settings.json"), FileApplication::Presentation::HiddenNative);
