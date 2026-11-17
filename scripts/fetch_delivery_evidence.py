@@ -23,7 +23,9 @@ def fetch(run_id, platform, output):
     if not re.fullmatch('[1-9][0-9]{0,19}', run_id): raise ValueError('Numeric Actions run ID required')
     if output.exists(): raise ValueError('Preserve prior evidence')
     run = api('actions/runs/' + run_id)
-    if run.get('conclusion') != 'success' or run.get('status') != 'completed' or run['repository']['full_name'] != REPO:
+    if (run.get('conclusion') != 'success' or run.get('status') != 'completed' or run['repository']['full_name'] != REPO
+            or run.get('head_repository', {}).get('full_name') != REPO or run.get('event') != 'workflow_dispatch'
+            or run.get('path') not in {'.github/workflows/desktop-admission.yml', '.github/workflows/qt-replacement.yml'}):
         raise ValueError('Successful same-repository source run required')
     name = 'qt-source-replacement-' + HOSTS[platform]
     artifacts = api('actions/runs/' + run_id + '/artifacts?per_page=100')['artifacts']
@@ -45,7 +47,8 @@ def fetch(run_id, platform, output):
             if info.file_size > 32 * 1024**2 or source.namelist().count(name) != 1: raise ValueError('Ambiguous or oversized evidence JSON')
             target = output / PurePosixPath(name); target.parent.mkdir(exist_ok=True, parents=True); target.write_bytes(source.read(info))
     evidence = json.loads((output / wanted[1]).read_bytes()); linkage = json.loads((output / wanted[0]).read_bytes())
-    if evidence['buildIdentity'] != linkage['buildIdentity'] or evidence['buildIdentity']['buildVersion']['revision'] != run['head_sha']:
+    if (evidence['buildIdentity'] != linkage['buildIdentity'] or evidence['buildIdentity']['buildVersion']['revision'] != run['head_sha']
+            or evidence['buildIdentity']['buildVersion'].get('dirty') is not False):
         raise ValueError('Downloaded report identity differs from source run')
     receipt = {'runId': run_id, 'sourceRevision': run['head_sha'], 'artifactId': artifact['id'], 'artifactSha256': sha,
                'artifactName': artifact['name'], 'platform': platform, 'releaseReady': False}

@@ -3,6 +3,8 @@ import copy
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
+import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from component_review import dependency_review
 from component_review import review
@@ -13,6 +15,11 @@ class ComponentReviewTests(unittest.TestCase):
     def test_mixed_builds_and_non_numeric_source_runs_are_rejected_before_io(self):
         with self.assertRaises(ValueError): review({'ok': True, 'buildIdentity': {'revision': 'one'}}, {'ok': True, 'buildIdentity': {'revision': 'two'}}, Path('unused'))
         with self.assertRaises(ValueError): fetch('$(untrusted)', 'windows', Path('unused'))
+        run = {'conclusion': 'success', 'status': 'completed', 'repository': {'full_name': 'xiaodaozhi/xdnote'},
+               'head_repository': {'full_name': 'untrusted/fork'}, 'event': 'workflow_dispatch', 'path': '.github/workflows/qt-replacement.yml'}
+        with tempfile.TemporaryDirectory() as folder, patch('fetch_delivery_evidence.api', return_value=run) as calls:
+            with self.assertRaises(ValueError): fetch('123', 'windows', Path(folder) / 'output')
+            self.assertEqual(calls.call_count, 1)
     def fixture(self):
         package = lambda name: {'SPDXID': name, 'name': name, 'licenseConcluded': 'MIT OR Apache-2.0', 'licenseDeclared': 'NOASSERTION', 'copyrightText': 'upstream'}
         edge = lambda left, kind, right: {'spdxElementId': left, 'relationshipType': kind, 'relatedSpdxElement': right}
