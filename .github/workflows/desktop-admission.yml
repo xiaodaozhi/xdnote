@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows, update-helpers]
 
 permissions:
   contents: read
@@ -18,6 +18,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  update-helpers:
+    if: inputs.scope == 'update-helpers'
+    uses: ./.github/workflows/update-helper.yml
   installer:
     if: inputs.scope == 'installer-windows'
     uses: ./.github/workflows/windows-installer.yml
@@ -69,7 +72,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   desktop:
-    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos'
+    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'update-helpers'
     name: ${{ inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.label || matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
@@ -273,11 +276,11 @@ jobs:
 
   aggregate:
     name: ${{ inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'updates' && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
-    needs: [desktop, installer, sparkle]
+    needs: [desktop, installer, sparkle, update-helpers]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Require every selected matrix result
         env:
-          XDNOTE_DESKTOP_RESULT: ${{ inputs.scope == 'sparkle-macos' && needs.sparkle.result || inputs.scope == 'installer-windows' && needs.installer.result || needs.desktop.result }}
+          XDNOTE_DESKTOP_RESULT: ${{ inputs.scope == 'update-helpers' && needs.update-helpers.result || inputs.scope == 'sparkle-macos' && needs.sparkle.result || inputs.scope == 'installer-windows' && needs.installer.result || needs.desktop.result }}
         run: test "$XDNOTE_DESKTOP_RESULT" = success

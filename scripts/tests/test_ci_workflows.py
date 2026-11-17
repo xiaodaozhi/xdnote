@@ -19,7 +19,7 @@ def events(path):
 class WorkflowContractTests(unittest.TestCase):
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, sparkle-macos, installer-windows, update-helpers]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("inputs.scope == 'deployment-macos'", text)
@@ -99,7 +99,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_full_checks_are_manual_only(self):
         ordinary = {p.name for p in WORKFLOWS.glob("*.yml") if "pull_request" in events(p) or "push" in events(p)}
         self.assertEqual(ordinary, {"materials.yml"})
-        for name in ("desktop-admission.yml", "qt-document-spike.yml", "scintilla-buffer-spike.yml", "pulldown-markdown-spike.yml", "update-core.yml", "update-helper.yml"):
+        for name in ("desktop-admission.yml", "qt-document-spike.yml", "scintilla-buffer-spike.yml", "pulldown-markdown-spike.yml", "update-core.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(events(WORKFLOWS / name), {"workflow_dispatch"})
 
@@ -117,6 +117,11 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_native_helper_uses_disposable_explicit_platforms_without_publishing(self):
         text = (WORKFLOWS / 'update-helper.yml').read_text(encoding='utf-8')
+        self.assertEqual(events(WORKFLOWS / 'update-helper.yml'), {'workflow_dispatch', 'workflow_call'})
+        dispatcher = (WORKFLOWS / 'desktop-admission.yml').read_text(encoding='utf-8')
+        self.assertIn("if: inputs.scope == 'update-helpers'", dispatcher)
+        self.assertIn('uses: ./.github/workflows/update-helper.yml', dispatcher)
+        self.assertIn('needs.update-helpers.result', dispatcher)
         self.assertIn('os: [ubuntu-22.04, windows-2022]', text)
         self.assertIn('contents: read', text)
         self.assertIn('persist-credentials: false', text)
