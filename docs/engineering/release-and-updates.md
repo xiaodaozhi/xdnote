@@ -67,7 +67,7 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 原生自动安装更新的准入从 macOS 14 开始，系统代理、直连及无凭据 HTTP CONNECT／SOCKS5 均使用已确认的受限适配；低于该范围不承诺原生自动安装，不继续以旧 CFNetwork 自定义代理方案扩展支持。固定依赖与独立探针见[原生更新网络准入](macos-update-transport.md)。macOS 桌面现在链接本项目显式准备、核对的 Sparkle；配置阶段只验证已准备的 SDK，不隐式下载。部署补齐实际 framework、原始许可／来源和 arm64 指令节证据，未使用的 downloader／installer-launcher XPC 不启用或交付；Autoupdate、Updater 和 framework 按各自 entitlements／runtime 参数由内至外重新封印。链接或生命周期夹具不等于已完成真实安装更新。
 
-feed 只暴露已选定的同一候选，由 Sparkle 原生验证 feed／归档并处理实际替换，不声称 Sparkle 执行了额外 SHA-256。只读 DMG、App Translocation、未登记 `.app` 或缺少公钥使用手动入口。DMG 与 app.zip 应来自同一个已部署、完整性签名及核验的 `.app`，解包后另做重定位验证。
+feed 只暴露已选定的同一候选。部署显式启用 `SURequireSignedFeed`、`SUVerifyUpdateBeforeExtraction` 并将 `SUSignedFeedFailureExpirationInterval` 设为 0；不接受 feed 验签被跳过、失败或超时降级。由 Sparkle 原生验证 feed／归档并处理实际替换，不声称 Sparkle 执行了额外 SHA-256。只读 DMG、App Translocation、未登记 `.app` 或缺少公钥使用手动入口。DMG 与 app.zip 应来自同一个已部署、完整性签名及核验的 `.app`，解包后另做重定位验证。
 
 系统／直连／无凭据 HTTP CONNECT／SOCKS5 策略在实例启动前固定，feed 与归档共享同一会话；直连显式关闭系统代理、PAC 和自动发现，不以空字典冒充关闭。自定义代理失败不回退直连。Framework、XPC 和 helper 保留各自参数及 entitlements，不套用通用递归重签规则。
 
@@ -103,3 +103,5 @@ macOS 全部 join 后才释放 Sparkle 安装回调，只有实际 committed 后
 已识别且适用的义务或必需材料未解决时阻断对应候选；上游 `NOASSERTION` 或机器报告不完整本身不能直接推导为许可冲突。材料检查、运行验证与最终许可判断分别记录，不因复用流程而自动清除未完成项。Qt 源码不进入 Release、安装包或应用归档，适用源码获取与替换安排独立落实，见[分发核验](distribution-audit.md)与[替换说明](qt-library-replacement.md)。
 
 准入沿用候选／签名／TLS／损坏包夹具及真实更新、取消、失败恢复、重启身份／设置保留的定向验证；私有测试密钥不污染生产材料。macOS 的原生替换、取消 helper 退出、代理去向和无 SDK HTTPS 分别留证。普通提交只运行日常检查，按影响补验，不重复完整桌面矩阵，不以 CI 编译替代实际更新或商店安装。
+
+macOS 的[私有原生演练](../../experiments/native-update-fixture/README.md)以临时编译信任根构建两个本地测试版本，自动核对恢复、损坏包、取消与准确 helper 退出、真实替换及重启后完整身份／文档／未知设置键保留。签名种子在执行前删除，生产信任材料摘要必须不变；本地回环 native feed、合成的其他平台资产和安装根例外只存在于隔离 worktree，不把它们当作生产或最低系统通过记录。

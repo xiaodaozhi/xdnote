@@ -126,3 +126,5 @@ macOS 构建入口要求原生 Apple Silicon 与 macOS 14+；CMake 固定部署�
 macOS 桌面更新提供方需要先在本项目显式准备并构建固定 Sparkle：`python scripts/sparkle.py prepare --download`、`python scripts/sparkle.py build`；之后仍通过 `scripts/desktop.py build`／`run` 使用对应 Qt 和构建目录。CMake 只核对本项目 SDK 回执，不自动下载。生产公钥为空时不会开放自动安装。
 
 默认构建生成真实开发身份。只有受控发行输入才使用 `build --release-identity <JSON>`，字段和严格递增条件见[发行与更新](release-and-updates.md)；不给默认开发构建分配正式版本／build。主程序的 `--version-json` 只输出编入的身份，不启动 GUI、文档或单实例服务，供独立安装助手复验。
+
+锁屏下的完整 macOS 私有更新演练使用 `python scripts/check_native_update.py --work-dir <build 下的新目录> --qt-prefix <本项目 Qt SDK>`，会建立独立 worktree、本地测试提交、临时公钥和两个实际应用版本。普通产品不编入夹具，生产信任根不变；范围和清理边界见[夹具说明](../../experiments/native-update-fixture/README.md)。

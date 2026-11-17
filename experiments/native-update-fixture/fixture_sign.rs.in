@@ -1,0 +1,13 @@
+use ed25519_dalek::{Signer, SigningKey};
+fn main() {
+ let args: Vec<_> = std::env::args().collect();
+ let seed: [u8;32] = std::fs::read(&args[2]).unwrap().try_into().unwrap();
+ let key = SigningKey::from_bytes(&seed);
+ let hex = |bytes: &[u8]| bytes.iter().map(|b|format!("{b:02x}")).collect::<String>();
+ if args[1] == "public" { println!("{}",hex(key.verifying_key().as_bytes())); }
+ else {
+  let bytes=std::fs::read(&args[3]).unwrap();
+  let value=serde_json::json!({"schema_version":1,"algorithm":"ed25519","key_id":"isolated-native-fixture","signature":hex(&key.sign(&bytes).to_bytes())});
+  std::fs::write(&args[4],serde_json::to_vec(&value).unwrap()).unwrap();
+ }
+}
