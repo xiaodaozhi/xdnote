@@ -33,6 +33,7 @@
 #include <QVBoxLayout>
 #include <QUrl>
 #include <QPainterPath>
+#include <memory>
 #include <QTextBrowser>
 #include <QFile>
 #include <QCoreApplication>
@@ -216,6 +217,7 @@ SettingsWindow::SettingsWindow(Appearance *appearance, WindowGeometryStore *stor
     auto *about = page(titles[5], QStringLiteral("面向本地 Markdown 文档的阅读与编辑。"));auto*hero=new QWidget(about);auto*heroLayout=new QVBoxLayout(hero);heroLayout->setContentsMargins(24,24,24,24);heroLayout->setSpacing(12);auto*mark=new QLabel(hero);mark->setFixedSize(80,80);auto updateMark=[mark]{QSvgRenderer svg(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/app-icon.svg"));QPixmap image(QSize(80,80)*mark->devicePixelRatioF());image.setDevicePixelRatio(mark->devicePixelRatioF());image.fill(Qt::transparent);QPainter p(&image);svg.render(&p);mark->setPixmap(image);};connect(appearance,&Appearance::changed,mark,updateMark);updateMark();heroLayout->addWidget(mark,0,Qt::AlignHCenter);auto*brand=new QLabel("xdnote",hero);auto brandFont=uiFont(32);brandFont.setWeight(QFont::DemiBold);brand->setFont(brandFont);brand->setAlignment(Qt::AlignCenter);heroLayout->addWidget(brand);auto*tagline=new QLabel(QStringLiteral("本地文档，专注阅读与写作。"),hero);tagline->setAlignment(Qt::AlignCenter);tagline->setProperty("secondary",true);heroLayout->addWidget(tagline);bodyLayout(about)->addWidget(hero);group(about,QStringLiteral("版本与许可"));auto *versionLabel = new QLabel(BuildInfo::version() + (BuildInfo::dirty() ? QStringLiteral(" · 有本地修改") : QString()), about); versionLabel->setObjectName("settingsBuildVersion"); versionLabel->setWordWrap(true); versionLabel->setTextFormat(Qt::PlainText); row(about, QStringLiteral("版本"), versionLabel); row(about, QStringLiteral("Qt"), new QLabel(QString::fromLatin1(qVersion()), about)); row(about, QStringLiteral("自有代码"), new QLabel(QStringLiteral("Apache-2.0"), about)); row(about, QStringLiteral("文档与原创设计"), new QLabel(QStringLiteral("CC BY 4.0"), about));auto*licenses=new SharedButton(QStringLiteral("查看第三方许可"),"settingsThirdPartyLicenses",appearance,about);licenses->setSymbol("document");licenses->setOutlined(true);row(about,QStringLiteral("第三方组件"),licenses);connect(licenses,&QPushButton::clicked,this,[this]{showLicenses(m_appearance,this);});
     auto *repository = new SharedButton(QStringLiteral("查看源码仓库"), "settingsRepository", appearance, about); repository->setOutlined(true); connect(repository, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl("https://github.com/xiaodaozhi/xdnote")); }); row(about, QStringLiteral("项目来源"), repository);
     if (!updates) updates = new UpdateController(this);
+    updates->bindPreferences(m_preferences);
     group(about, QStringLiteral("更新"));
     auto *updateActions = new QWidget(about); updateActions->setObjectName("settingsUpdateActions");
     auto *updateLayout = new QHBoxLayout(updateActions); updateLayout->setContentsMargins(0,0,0,0); updateLayout->setSpacing(8);
@@ -246,6 +248,55 @@ SettingsWindow::SettingsWindow(Appearance *appearance, WindowGeometryStore *stor
     connect(checkUpdate, &QPushButton::clicked, updates, &UpdateController::check);
     connect(cancelUpdate, &QPushButton::clicked, updates, &UpdateController::cancel);
     connect(releasePage, &QPushButton::clicked, updates, &UpdateController::openReleasePage);
+    if (!updates->packaged()) {
+        group(about, QStringLiteral("更新网络"));
+        struct Draft { QJsonObject values; bool dirty = false; };
+        auto draft = std::make_shared<Draft>();
+        auto *mode = new SharedButton({}, "settingsUpdateProxyMode", appearance, about);
+        mode->setOutlined(true); mode->setProperty("fieldDropdown", true); mode->setProperty("showMenuIndicator", true);
+        mode->setMinimumWidth(160); mode->setMaximumWidth(240);
+        auto *menu = new SharedMenu(appearance, mode); mode->setMenu(menu);
+        row(about, QStringLiteral("更新代理"), mode);
+        auto *proxy = new SharedLineEdit(appearance, about); proxy->setObjectName("settingsUpdateProxyAddress"); proxy->setMaxLength(2048);
+        proxy->setProperty("wideSettingsInput", true);
+        proxy->setMinimumWidth(160); proxy->setMaximumWidth(setting("longFieldWidth")); proxy->setPlaceholderText(QStringLiteral("http://主机:端口 或 socks5://主机:端口"));
+        row(about, QStringLiteral("代理地址"), proxy, QStringLiteral("仅支持不含用户名和密码的 HTTP CONNECT 或 SOCKS5 代理。"));
+        auto *mirror = new SharedLineEdit(appearance, about); mirror->setObjectName("settingsUpdateMirror"); mirror->setMaxLength(2048);
+        mirror->setProperty("wideSettingsInput", true);
+        mirror->setMinimumWidth(160); mirror->setMaximumWidth(setting("longFieldWidth")); mirror->setPlaceholderText(QStringLiteral("留空使用官方地址"));
+        row(about, QStringLiteral("更新镜像"), mirror, QStringLiteral("可选 HTTPS 前缀；连接失败时不会切换代理或直连。"));
+        auto *actions = new QWidget(about); actions->setObjectName("settingsNetworkActions");
+        auto *line = new QHBoxLayout(actions); line->setContentsMargins(0, 0, 0, 0); line->setSpacing(8);
+        auto *save = new SharedButton(QStringLiteral("保存网络设置"), "settingsSaveUpdateNetwork", appearance, actions); save->setOutlined(true); line->addWidget(save);
+        auto *restore = new SharedButton(QStringLiteral("恢复已保存"), "settingsRestoreUpdateNetwork", appearance, actions); restore->setOutlined(true); line->addWidget(restore);
+        row(about, QStringLiteral("网络配置"), actions);
+        auto *notice = new QLabel(about); notice->setObjectName("settingsUpdateNetworkNotice"); notice->setWordWrap(true); notice->setTextFormat(Qt::PlainText);
+        notice->setProperty("secondary", true); notice->setFont(uiFont(12)); bodyLayout(about)->addWidget(notice);
+        const auto refreshNetwork = [this, draft, mode, menu, proxy, mirror, save, restore, notice] {
+            if (draft->dirty && m_preferences->updateNetworkValid()) {
+                bool same = true;
+                for (const auto &key : {QString("proxyMode"), QString("proxyAddress"), QString("mirror")}) same &= draft->values.value(key) == m_preferences->value("updates", key);
+                if (same) draft->dirty = false;
+            }
+            if (!draft->dirty) for (const auto &key : {QString("proxyMode"), QString("proxyAddress"), QString("mirror")}) draft->values[key] = m_preferences->value("updates", key);
+            const auto current = draft->values["proxyMode"].toString();
+            for (auto *action : menu->actions()) { action->setChecked(action->data().toString() == current); if (action->isChecked()) mode->setText(action->text()); }
+            { QSignalBlocker blocker(proxy); const auto text = draft->values["proxyAddress"].toString(); if (proxy->text() != text) proxy->setText(text); }
+            { QSignalBlocker blocker(mirror); const auto text = draft->values["mirror"].toString(); if (mirror->text() != text) mirror->setText(text); }
+            proxy->setEnabled(current == "custom"); save->setEnabled(draft->dirty || !m_preferences->updateNetworkValid()); restore->setEnabled(draft->dirty);
+            m_networkDraftDirty = draft->dirty;
+            notice->setText(draft->dirty ? QStringLiteral("网络设置尚未保存；当前更新继续使用已保存的配置。") : QStringLiteral("保存后用于下一次检查；正在进行的检查、下载和安装保持原配置。"));
+        };
+        for (const auto &option : QList<QPair<QString, QString>>{{QStringLiteral("系统代理"), "system"}, {QStringLiteral("不使用代理"), "none"}, {QStringLiteral("自定义代理"), "custom"}}) {
+            auto *action = menu->addAction(option.first); action->setCheckable(true); action->setData(option.second);
+            connect(action, &QAction::triggered, this, [this, draft, value = option.second] { draft->values["proxyMode"] = value; draft->dirty = true; refresh(); });
+        }
+        connect(proxy, &QLineEdit::textEdited, this, [this, draft](const QString &text) { draft->values["proxyAddress"] = text; draft->dirty = true; refresh(); });
+        connect(mirror, &QLineEdit::textEdited, this, [this, draft](const QString &text) { draft->values["mirror"] = text; draft->dirty = true; refresh(); });
+        connect(save, &QPushButton::clicked, this, [this, draft] { if (m_preferences->setValues("updates", draft->values)) draft->dirty = false; refresh(); });
+        connect(restore, &QPushButton::clicked, this, [this, draft] { draft->dirty = false; refresh(); });
+        m_bindings.append(refreshNetwork); refreshNetwork();
+    }
     for (auto *body : m_bodies) bodyLayout(body)->addStretch();
     root->addWidget(new SharedSeparator(Qt::Horizontal, appearance, this)); auto *footer = new QWidget(this); footer->setObjectName("settingsFooter"); footer->setFixedHeight(size["footerHeight"].toInt()); auto *foot = new QHBoxLayout(footer); foot->setContentsMargins(24, 0, 24, 0); foot->setSpacing(8);m_statusIcon=new QLabel(footer);m_statusIcon->setFixedSize(16,16);m_statusIcon->setObjectName("settingsStatusIcon");foot->addWidget(m_statusIcon);m_status = new ElidedLabel(footer); m_status->setObjectName("settingsStatus"); m_status->setFont(uiFont(12)); foot->addWidget(m_status, 1); auto *done = new SharedButton(QStringLiteral("完成"), "settingsDone", appearance, footer); done->setProperty("primary", true); done->setFixedWidth(96); foot->addWidget(done); root->addWidget(footer); connect(done, &QPushButton::clicked, this, &QWidget::close);
     connect(m_preferences, &Preferences::changed, this, [this] { refresh(); }); connect(m_preferences, &Preferences::writeFailed, this, [this] { m_hiddenError.clear();refresh(); }); connect(appearance, &Appearance::changed, this, &SettingsWindow::applyAppearance); connect(m_search, &QLineEdit::textChanged, this, &SettingsWindow::filter);
@@ -292,7 +343,7 @@ void SettingsWindow::filter(const QString &query) {
 }
 void SettingsWindow::refresh() {
     if (m_refreshing) return; QScopedValueRollback<bool> guard(m_refreshing, true); for (const auto &binding : m_bindings) binding();
-    const auto error = m_preferences->error(); m_status->setFullText(error.isEmpty() ? QStringLiteral("设置更改即时生效") : error); m_status->setToolTip(m_status->fullText()); m_status->setStyleSheet(QStringLiteral("color:%1").arg((error.isEmpty() ? m_appearance->color("textSecondary") : m_appearance->semantic("error")).name()));
+    const auto error = m_preferences->error(); m_status->setFullText(error.isEmpty() ? (m_networkDraftDirty ? QStringLiteral("网络设置尚未保存") : QStringLiteral("设置更改即时生效")) : error); m_status->setToolTip(m_status->fullText()); m_status->setStyleSheet(QStringLiteral("color:%1").arg((error.isEmpty() ? m_appearance->color("textSecondary") : m_appearance->semantic("error")).name()));
     m_statusIcon->setPixmap(themedIcon(error.isEmpty()?"check-circle":"error-message",error.isEmpty()?m_appearance->semantic("success"):m_appearance->semantic("error")).pixmap(QSize(16,16),devicePixelRatioF()));m_feedback->setVisible(!error.isEmpty()&&error!=m_hiddenError);m_feedbackText->setText(error.section(QChar(0xff1a),0,0));m_feedbackText->setToolTip(error);m_retrySettings->setVisible(m_preferences->canRetryWrite());if(auto*icon=m_feedback->findChild<QLabel*>("settingsErrorIcon"))icon->setPixmap(themedIcon("error-message",m_appearance->semantic("error")).pixmap(QSize(16,16),devicePixelRatioF()));
 }
 void SettingsWindow::applyAppearance() {
@@ -308,8 +359,10 @@ void SettingsWindow::reflow() {
     m_sidebarScroll->setFixedWidth(window[compact?"compactSidebarWidth":"sidebarWidth"].toInt());
     for(auto*body:m_bodies)bodyLayout(body)->setContentsMargins(padding,24,padding,24);
     const int available=qMax(0,m_pages->width()-2*padding-16);
+    for (auto *field : findChildren<QLineEdit *>()) if (field->property("wideSettingsInput").toBool()) field->setMinimumWidth(qMin(setting("longFieldWidth"), available));
     if(auto *version=findChild<QLabel*>("settingsBuildVersion"))version->setWordWrap(available<window["stackRowsBelowWidth"].toInt());
-    if(auto *actions=findChild<QWidget*>("settingsUpdateActions"))if(auto *layout=qobject_cast<QBoxLayout*>(actions->layout()))layout->setDirection(available<360?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
+    for (const auto &name : {"settingsUpdateActions", "settingsNetworkActions"})
+        if(auto *actions=findChild<QWidget*>(name))if(auto *layout=qobject_cast<QBoxLayout*>(actions->layout()))layout->setDirection(available<360?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
     const int fitting=qMax(1,(available+setting("cardGap"))/(setting("cardMinWidth")+setting("cardGap")));
     const int columns=fitting>=6?6:qMin(window["swatchColumnsCompact"].toInt(),fitting);
     for (int i = 0; i < m_swatchCards.size(); ++i) m_swatches->addWidget(m_swatchCards[i], i / columns, i % columns);

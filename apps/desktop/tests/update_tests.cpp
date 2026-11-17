@@ -25,6 +25,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
+#include <QLineEdit>
+#include <QScrollArea>
+#include <QStackedWidget>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QNetworkProxyFactory>
@@ -429,6 +432,55 @@ private slots:
         Preferences invalid(nullptr, path); updates.bindPreferences(&invalid); const auto count = network.requests.size();
         updates.check(); QCOMPARE(updates.errorCode(), QString("network_configuration")); QCOMPARE(network.requests.size(), count);
         QVERIFY(updates.message().contains(QStringLiteral("网络设置")));
+    }
+    void networkControlsCommitOneGroupAndKeepDraftsOutOfRequests() {
+        QTemporaryDir dir; const auto path = dir.filePath("settings.json"); Appearance appearance(nullptr, path);
+        Network network; Response held; held.hold = true; network.responses = {held, Response{}};
+        UpdateController updates(&network, current, "windows", "x86_64", false);
+        SettingsWindow window(&appearance, nullptr, &updates); window.show(); window.selectPage(5);
+        auto *mode = window.findChild<SharedButton *>("settingsUpdateProxyMode");
+        auto *proxy = window.findChild<QLineEdit *>("settingsUpdateProxyAddress");
+        auto *mirror = window.findChild<QLineEdit *>("settingsUpdateMirror");
+        auto *save = window.findChild<SharedButton *>("settingsSaveUpdateNetwork");
+        auto *restore = window.findChild<SharedButton *>("settingsRestoreUpdateNetwork");
+        QVERIFY(mode && proxy && mirror && save && restore); QCOMPARE(network.requests.size(), 0); QVERIFY(!proxy->isEnabled());
+        for (auto *action : mode->menu()->actions()) if (action->data().toString() == "custom") action->trigger();
+        QVERIFY(proxy->isEnabled()); QCOMPARE(appearance.preferences()->value("updates", "proxyMode").toString(), QString("system"));
+        proxy->setFocus(); QTest::keyClicks(proxy, "socks5://127.0.0.1:1080");
+        mirror->setFocus(); QTest::keyClicks(mirror, "https://mirror.invalid/prefix");
+        QVERIFY(save->isEnabled()); QCOMPARE(network.requests.size(), 0); QTest::mouseClick(save, Qt::LeftButton);
+        QCOMPARE(appearance.preferences()->value("updates", "proxyMode").toString(), QString("custom")); QVERIFY(!save->isEnabled());
+        updates.check(); QCOMPARE(network.requests.first().url().host(), QString("mirror.invalid"));
+        mirror->setFocus(); mirror->selectAll(); QTest::keyClicks(mirror, "https://unsaved.invalid");
+        QCOMPARE(appearance.preferences()->value("updates", "mirror").toString(), QString("https://mirror.invalid/prefix"));
+        updates.cancel(); updates.check(); QTRY_COMPARE(updates.state(), "up_to_date");
+        QCOMPARE(network.requests.last().url().host(), QString("mirror.invalid"));
+        QTest::mouseClick(restore, Qt::LeftButton); QCOMPARE(mirror->text(), QString("https://mirror.invalid/prefix"));
+        const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
+        if (!evidence.isEmpty()) {
+            QVERIFY(QDir().mkpath(evidence + "/update-network"));
+            for (const auto &theme : {QString("light"), QString("dark")}) {
+                QVERIFY(appearance.setPreferences(theme, "graphite")); window.resize(1080, 820);
+                auto *pages = window.findChild<QStackedWidget *>("settingsPages"); auto *scroll = qobject_cast<QScrollArea *>(pages->widget(5)); QVERIFY(scroll);
+                scroll->ensureWidgetVisible(mode, 0, 24); QTest::qWait(80);
+                QVERIFY(window.grab().save(evidence + "/update-network/" + theme + "-wide.png"));
+                window.setMinimumSize(480, 320);
+                for (const auto &size : {QSize(640, 640), QSize(480, 360)}) {
+                    window.resize(size); QTest::qWait(80);
+                    for (auto *control : {static_cast<QWidget *>(mode), static_cast<QWidget *>(proxy), static_cast<QWidget *>(mirror), static_cast<QWidget *>(save)}) {
+                        scroll->ensureWidgetVisible(control, 0, 8); QTest::qWait(10);
+                        QVERIFY(scroll->viewport()->rect().contains(control->mapTo(scroll->viewport(), control->rect().center())));
+                    }
+                    QVERIFY(window.grab().save(evidence + "/update-network/" + theme + "-" + QString::number(size.width()) + ".png"));
+                }
+            }
+        }
+        proxy->setFocus(); proxy->selectAll(); QTest::keyClicks(proxy, "http://user:secret@localhost:8080");
+        const auto before = appearance.preferences()->section("updates"); const auto requests = network.requests.size();
+        QTest::mouseClick(save, Qt::LeftButton); QCOMPARE(appearance.preferences()->section("updates"), before); QCOMPARE(network.requests.size(), requests);
+        QTest::mouseClick(restore, Qt::LeftButton); QCOMPARE(proxy->text(), QString("socks5://127.0.0.1:1080"));
+        window.setAttribute(Qt::WA_DeleteOnClose, false); window.close(); SettingsWindow reopened(&appearance, nullptr, &updates);
+        QCOMPARE(reopened.findChild<QLineEdit *>("settingsUpdateProxyAddress")->text(), QString("socks5://127.0.0.1:1080"));
     }
     void aboutReopenPreservesControllerAndScreenshots() {
         QTemporaryDir dir;Appearance appearance(nullptr,dir.filePath("settings.json"));Network network;Response hold;hold.hold=true;network.responses={hold};
