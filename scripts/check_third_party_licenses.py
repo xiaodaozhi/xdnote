@@ -8,6 +8,74 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import tomllib
+import re
+
+
+def license_choices(expression):
+    """Expand the recorded SPDX AND/OR choices; reject unsupported syntax.
+
+    The legacy MIT/Apache-2.0 spelling occurs in locked crate metadata. WITH
+    stays attached to its license and cannot be dropped from a selected option.
+    This is a record consistency check, not a legal interpretation.
+    """
+    if not isinstance(expression, str):
+        raise ValueError("Missing license expression")
+    expression = expression.replace("MIT/Apache-2.0", "(MIT OR Apache-2.0)")
+    tokens = re.findall(r"[A-Za-z0-9.+-]+|[()]", expression)
+    if "".join(tokens) != re.sub(r"\s", "", expression):
+        raise ValueError("Unsupported license syntax")
+    index = 0
+
+    def atom():
+        nonlocal index
+        if index >= len(tokens):
+            raise ValueError("Missing license")
+        value = tokens[index]; index += 1
+        if value == '(':
+            result = choices()
+            if index >= len(tokens) or tokens[index] != ')':
+                raise ValueError("Unclosed license expression")
+            index += 1
+            return result
+        if value in {'AND', 'OR', 'WITH', ')'}:
+            raise ValueError("Invalid license")
+        if index < len(tokens) and tokens[index] == 'WITH':
+            index += 1
+            if index >= len(tokens) or tokens[index] in {'AND', 'OR', 'WITH', '(', ')'}:
+                raise ValueError("Missing license exception")
+            value += ' WITH ' + tokens[index]; index += 1
+        return {frozenset({value})}
+
+    def conjunction():
+        nonlocal index
+        result = atom()
+        while index < len(tokens) and tokens[index] == 'AND':
+            index += 1
+            right = atom()
+            result = {left | other for left in result for other in right}
+        return result
+
+    def choices():
+        nonlocal index
+        result = conjunction()
+        while index < len(tokens) and tokens[index] == 'OR':
+            index += 1
+            result |= conjunction()
+        return result
+
+    result = choices()
+    if index != len(tokens):
+        raise ValueError("Trailing license syntax")
+    return result
+
+
+def source_license_texts(manifest):
+    """All recorded primary and additional source notices required in a payload."""
+    result = []
+    for record in [*manifest['rust'], manifest['scintilla']]:
+        result.append(record)
+        result.extend(record.get('additionalTexts', []))
+    return result
 
 
 def validate_inventory(lock, manifest, dependencies, read_license):
@@ -60,9 +128,23 @@ def validate_inventory(lock, manifest, dependencies, read_license):
         recorded[key] = record.get("archiveSha256")
         upstream = record.get("upstreamLicense")
         selected = record.get("selectedLicense")
-        if not isinstance(upstream, str) or not isinstance(selected, str) or selected not in upstream.split(" OR "):
+        try:
+            selection = license_choices(selected)
+            valid_choice = len(selection) == 1 and selection <= license_choices(upstream)
+        except (ValueError, RecursionError):
+            valid_choice = False
+        if not valid_choice:
             errors.append(f"Selected license requires review: {key}")
         check_text(record, f"{key[0]} {key[1]}")
+        additional = record.get("additionalTexts", [])
+        if not isinstance(additional, list):
+            errors.append(f"Invalid additional license texts: {key}")
+        else:
+            for text in additional:
+                if not isinstance(text, dict):
+                    errors.append(f"Invalid additional license text: {key}")
+                else:
+                    check_text(text, f"{key[0]} {key[1]} additional text")
     for key in sorted(set(locked) | set(recorded)):
         if key not in recorded:
             errors.append(f"Locked dependency has no license record: {key}")

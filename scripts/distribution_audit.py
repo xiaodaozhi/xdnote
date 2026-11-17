@@ -5,7 +5,7 @@ import json
 import struct
 from pathlib import Path, PurePosixPath
 
-from check_third_party_licenses import audit as source_audit
+from check_third_party_licenses import audit as source_audit, source_license_texts
 from installer_common import ROOT, build_output, digest
 from installer_payload import verify_payload, product_qt_records
 import runtime_materials
@@ -95,7 +95,7 @@ def audit(root, metadata, qt):
                 'share/notices/InnoSetup-license.txt', 'share/notices/InnoSetup-PascalScript-license.md',
                 'share/notices/Installer-CREDITS.txt'}
     required.update('licenses/project-and-source-dependencies/' + item['licenseFile'].removeprefix('LICENSES/')
-                    for item in [*source_manifest['rust'], source_manifest['scintilla']])
+                    for item in source_license_texts(source_manifest))
     if required - set(shipped):
         raise ValueError('Required distribution material missing: ' + ', '.join(sorted(required - set(shipped))))
     records = product_qt_records(metadata['qtSbom'], metadata['files'])
@@ -117,8 +117,9 @@ def audit(root, metadata, qt):
             raise ValueError('Host system graphics DLL must not be bundled')
         elif name == 'xdnote.exe':
             record = {'kind': 'project application with static dependencies', 'projectCodeLicense': 'Apache-2.0',
-                      'rustPackages': [{'name': item['name'], 'version': item['version'], 'license': item['selectedLicense']}
-                                       for item in manifest['rust']], 'scintillaVersion': manifest['scintilla']['version'],
+                      'lockedSourcePackages': [{'name': item['name'], 'version': item['version'], 'license': item['selectedLicense']}
+                                               for item in manifest['rust']], 'scintillaVersion': manifest['scintilla']['version'],
+                      'lockedSourcePackageScope': 'workspace lock inventory; not proof of linkage into this executable',
                       'compilerRuntimeAndStandardLibraryReview': 'pinned upstream material collected; exact static component scope pending'}
         elif name.startswith('licenses/rust-runtime/'):
             record = {'kind': 'pinned Rust standard-library/runtime material', 'toolchain': rust_runtime['version'], 'actualStaticComponentReviewComplete': False}

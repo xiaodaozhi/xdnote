@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_third_party_licenses import validate_inventory, validate_deployment_notices
+from check_third_party_licenses import validate_inventory, validate_deployment_notices, license_choices, source_license_texts
 
 
 class ThirdPartyLicenseInventoryTests(unittest.TestCase):
@@ -33,6 +33,33 @@ class ThirdPartyLicenseInventoryTests(unittest.TestCase):
 
     def test_complete_matching_inventory(self):
         self.assertEqual(self.check(), [])
+
+    def test_combined_license_keeps_required_unicode_terms(self):
+        record = self.manifest['rust'][0]
+        record['upstreamLicense'] = '(MIT OR Apache-2.0) AND Unicode-3.0'
+        record['selectedLicense'] = 'MIT AND Unicode-3.0'
+        record['additionalTexts'] = [{'licenseFile': 'LICENSES/third-party/unicode.txt',
+            'licenseSha256': hashlib.sha256(self.text).hexdigest()}]
+        self.assertEqual(self.check(), [])
+        record['selectedLicense'] = 'MIT'
+        self.assertTrue(any('Selected license' in p for p in self.check()))
+        record['selectedLicense'] = 'MIT AND Unicode-3.0'
+        record['additionalTexts'][0]['licenseSha256'] = 'changed'
+        self.assertTrue(any('digest mismatch' in p for p in self.check()))
+        record['additionalTexts'][0]['licenseFile'] = '../outside'
+        self.assertTrue(any('Invalid license path' in p for p in self.check()))
+
+    def test_payload_materials_include_additional_texts(self):
+        self.manifest['rust'][0]['additionalTexts'] = [{'licenseFile': 'LICENSES/third-party/unicode.txt'}]
+        self.assertEqual([r['licenseFile'] for r in source_license_texts(self.manifest)], [
+            'LICENSES/third-party/example.txt', 'LICENSES/third-party/unicode.txt', 'LICENSES/third-party/scintilla.txt'])
+
+    def test_spdx_choice_syntax_and_legacy_spelling(self):
+        self.assertEqual(license_choices('MIT/Apache-2.0'), license_choices('MIT OR Apache-2.0'))
+        self.assertNotEqual(license_choices('Apache-2.0 WITH LLVM-exception'), license_choices('Apache-2.0'))
+        for expression in ('MIT AND', '(MIT OR Apache-2.0', 'MIT; GPL', 'MIT WITH', 'MIT OR OR BSD', ''):
+            with self.subTest(expression=expression), self.assertRaises(ValueError):
+                license_choices(expression)
 
     def test_new_or_changed_locked_package_is_reported(self):
         lock = deepcopy(self.lock)

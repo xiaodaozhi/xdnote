@@ -4,5 +4,5 @@
 *.jpeg binary
 *.ico binary
 *.icns binary
-# Preserve the upstream unicase license byte-for-byte, including its final blank line.
-LICENSES/third-party/unicase.txt whitespace=-blank-at-eof
+# Preserve upstream licenses byte-for-byte, including line endings and spaces.
+LICENSES/third-party/*.txt -text whitespace=-blank-at-eol,-blank-at-eof

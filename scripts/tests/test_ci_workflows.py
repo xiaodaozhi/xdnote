@@ -83,9 +83,21 @@ class WorkflowContractTests(unittest.TestCase):
     def test_full_checks_are_manual_only(self):
         ordinary = {p.name for p in WORKFLOWS.glob("*.yml") if "pull_request" in events(p) or "push" in events(p)}
         self.assertEqual(ordinary, {"materials.yml"})
-        for name in ("desktop-admission.yml", "qt-document-spike.yml", "scintilla-buffer-spike.yml", "pulldown-markdown-spike.yml"):
+        for name in ("desktop-admission.yml", "qt-document-spike.yml", "scintilla-buffer-spike.yml", "pulldown-markdown-spike.yml", "update-core.yml"):
             with self.subTest(workflow=name):
                 self.assertEqual(events(WORKFLOWS / name), {"workflow_dispatch"})
+
+    def test_update_core_is_independent_of_desktop_and_release(self):
+        text = (WORKFLOWS / 'update-core.yml').read_text(encoding='utf-8')
+        self.assertIn('runs-on: ubuntu-22.04', text)
+        self.assertIn('contents: read', text)
+        self.assertIn('build/cargo-home', text)
+        self.assertIn('cargo fetch --locked', text)
+        self.assertIn('cargo test --locked --offline --workspace', text)
+        self.assertIn('cargo clippy --locked --offline --workspace --all-targets -- -D warnings', text)
+        self.assertIn('python scripts/check_third_party_licenses.py', text)
+        for forbidden in ('desktop.py', 'prepare_qt', 'matrix:', 'contents: write', 'secrets.', 'gh release'):
+            self.assertNotIn(forbidden, text)
 
 
 if __name__ == "__main__":

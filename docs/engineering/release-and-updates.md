@@ -1,6 +1,6 @@
 # 发行渠道、许可核验与更新
 
-发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；MSIX 商店交付和用户主动检查／安装更新属于已确定的后续接入范围，不能写成已有产品能力。
+发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)已接入候选结构检查、清单认证和包流校验，尚未接入产品窗口、网络或原生安装。MSIX 商店交付和用户主动检查／安装更新继续按后续接入范围跟踪，不能写成已有产品能力。
 
 ## 渠道与签名
 
@@ -24,6 +24,27 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 - 沿用系统、直连及无凭据 HTTP／SOCKS5 自定义代理和 HTTPS 镜像策略。操作开始时固定配置，失败不回退直连；TLS 验证保持启用。403 仅在有效限流证据存在时归为限流，429 为限流；其他离线、超时、TLS、损坏或缺包均为失败，不显示“已是最新”，不自动重试。
 - 清单按原始 UTF-8 字节做 Ed25519 验证，信任根编入本项目客户端及独立助手；不能从下载内容增添信任根，不复用其他产品的生产公钥、私钥或身份。密钥交付与生产验收单独进行，不在源码或普通 CI 放私钥。缺少生产信任根时只提供手动入口，不自动覆盖。
 - Windows／Linux 包流式写入私有缓存，长度及 SHA-256 都匹配后才交给助手，包上限为 2 GiB。开发、dirty、源码、便携或身份不明构建只检查／下载。MSIX 包身份单独处理；身份查询异常按包身份处理，避免误走普通安装器。
+
+## 更新核心边界与验证
+
+`xdnote-update` 是不依赖 Qt 的 Rust 库，保持既定 `schema_version: 1` 清单及独立签名信封，尚无网络、文件写入、解包或安装入口。清单字段为 `product`、`version`、`channel`、`build`、`tag`、40 位小写十六进制 `commit`、固定 `repository`、完整 `assets` 和可选 `macos_appcast_url`。`component` 只允许省略或空串；不接受 CLI。`assets` 每项包含 `filename`、`platform`、`architecture`、`package_type`、`minimum_system`、`bytes`、小写 `sha256` 和固定版本的 `url`；未知字段、重复结构字段、缺失或重复目标均拒绝。
+
+四套平台配置的目标包型如下。它们仅定义候选识别和后续打包契约，不表示已有对应发行包，也不改变现有开发归档入口或其命名。文件名统一为 `xdnote-{version}-{后缀}`，下载 URL 严格绑定本仓库的 `releases/download/v{version}/{filename}`。
+
+| 配置／包型 | 文件后缀 | `minimum_system` 精确字段 |
+| --- | --- | --- |
+| Windows x86_64：zip／exe | `windows-x86_64.zip`／`windows-x86_64-setup.exe` | `windows: 10.0.17763` |
+| macOS x86_64：app.zip／dmg | `macos-x86_64.app.zip`／`macos-x86_64.dmg` | `macos: 13.0` |
+| macOS arm64：app.zip／dmg | `macos-arm64.app.zip`／`macos-arm64.dmg` | `macos: 13.0` |
+| Linux x86_64：tar.gz／deb | `linux-x86_64.tar.gz`／`ubuntu22.04-x86_64.deb` | `distribution: ubuntu`、`version: 22.04`、`glibc: 2.35`、`display_server: Wayland/X11` |
+
+清单须同时包含上述八项目标，包长在 1 字节至 2 GiB 内。系统字段是[既定平台目标](platform-support.md)的匹配信息，不是宿主探测或最低系统通过记录。macOS feed 若提供，必须绑定同一 tag 下的 `appcast.xml`；后续 Sparkle 接入仍须选择同一个版本与架构。MSIX 独立交由 Store，不在自更新目标中。
+
+版本的三个数字允许 0–65535，预发行序号和发行 build 为 1–65535。公开候选只接受 stable 或 `alpha.N`／`beta.N`／`rc.N`，不接受 build metadata 或 dev。当前开发安装器使用的 `0.1.0-dev.<12位提交号>`可作为本地比较基线，提交号不参与大小排序；开发渠道可显式传 `current_build=0` 表示尚无发行计数，正式渠道不允许零。接入产品时须读取真实构建身份，不创建虚构发行版本或将开发包改成自动安装候选。
+
+`inspect_release` 的 `valid` 仅表示结构和目标匹配。`verify_manifest` 使用调用方提供的本地可信 keyring 对原始字节认证；不得将下载得到的 keyring 传入。产品入口 `authenticate_release` 只使用编入库的 [update-trust.json](../../tools/update-trust.json)，当前为空。它仅为签名、版本及 build 均通过的新候选返回不可改写的 `AuthenticatedRelease`。该对象的 `verify_package` 逐块校验实际长度和 SHA-256，最多读到声明长度外一字节即拒绝；安装交接时仍须复验实际文件与运行身份。空生产 keyring 始终拒绝，私有签名夹具只编入单元测试，不进入生产信任材料。
+
+无需 Qt SDK 即可验证核心；Rust 版本遵循 [developer-build.md](developer-build.md)，Cargo 缓存和输出放在本项目 `build/`。完成 `cargo fetch --locked` 的显式准备后，运行 `cargo fmt --all -- --check`、`cargo clippy --locked --offline --workspace --all-targets -- -D warnings`、`cargo test --locked --offline --workspace`。CI 使用手动的 [Update core](../../.github/workflows/update-core.yml)，只检查 Rust 工作区与记录的依赖材料，不运行桌面矩阵或发布产品。覆盖候选／渠道、单调 build、四平台包型／最低目标、损坏或不可信签名、空信任根、长度／摘要与流读取失败；网络 TLS、活动文档、原生安装／恢复和真实平台继续单独验收。
 
 ## macOS 原生实现
 
