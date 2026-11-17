@@ -13,6 +13,7 @@ from pathlib import Path
 import platform
 import secrets
 import shutil
+import stat
 import subprocess
 import time
 from installer_common import ROOT, build_output, digest
@@ -64,6 +65,7 @@ class Fixture:
         self.cargo(['-p', 'xdnote-update-helper'], 'helper-build.log')
         self.helper = self.target / ('debug/xdnote-update-helper' + self.suffix)
         self.restarted = work / 'restarted.json'
+        self.images = work / 'images'; self.images.mkdir()
         self.identities = {}
         for label, version, build in [('old', '0.1.0-alpha.1', 200), ('new', '0.1.0-alpha.2', 201)]:
             identity = {'product': 'xdnote', 'version': version, 'build': build, 'revision': self.revision, 'dirty': False}
@@ -71,7 +73,7 @@ class Fixture:
             text = (ROOT / 'experiments/native-update-fixture/helper_image.rs.in').read_text()
             text = text.replace('@IDENTITY@', json.dumps(json.dumps(identity))).replace('@RESTARTED@', json.dumps(str(self.restarted)))
             image_source = work / (label + '.rs'); image_source.write_text(text)
-            command(['rustup', 'run', '1.99.0', 'rustc', '--edition=2021', image_source, '-o', work / (label + self.suffix)], log=work / (label + '-image.log'))
+            command(['rustup', 'run', '1.99.0', 'rustc', '--edition=2021', image_source, '-o', self.images / (label + self.suffix)], log=work / (label + '-image.log'))
         self.packages = {label: self.package(label) for label in ['old', 'new', 'wrong']}
         self.manifests = {}
         for label in ['new', 'wrong']:
@@ -99,7 +101,7 @@ class Fixture:
         payload = self.work / (label + '-payload'); payload.mkdir()
         if not self.windows:
             from build_linux_installer import package_tree
-            (payload / 'bin').mkdir(); shutil.copy2(self.work / image, payload / 'bin/xdnote'); shutil.copy2(self.helper, payload / 'bin/xdnote-update-helper')
+            (payload / 'bin').mkdir(); shutil.copy2(self.images / image, payload / 'bin/xdnote'); shutil.copy2(self.helper, payload / 'bin/xdnote-update-helper')
             audit = {'ok': True, 'host': {'system': 'Linux', 'architecture': 'x86_64'}, 'files': inventory(payload), 'imports': [], 'buildIdentity': {'buildVersion': identity}}
             # The standard package builder supplies hooks, marker, version directory and launcher.
             stage = self.work / (label + '-stage'); package_tree(payload, audit, stage)
@@ -112,7 +114,7 @@ class Fixture:
         else:
             spec = importlib.util.spec_from_file_location('native_fixture_installer', ROOT / 'scripts/build-windows-installer.py')
             engine = importlib.util.module_from_spec(spec); spec.loader.exec_module(engine)
-            shutil.copy2(self.work / (image + '.exe'), payload / 'xdnote.exe')
+            shutil.copy2(self.images / (image + '.exe'), payload / 'xdnote.exe')
             notices = payload / 'share/notices/Microsoft-VC-runtime'; notices.mkdir(parents=True)
             (notices / 'license.rtf').write_text(r'{\rtf1 Standalone CI fixture. No Qt or VC runtime is shipped.}')
             (notices.parent / 'Windows-runtime-NOTICE.txt').write_text('Owned standalone helper transaction fixture.')
@@ -236,14 +238,24 @@ if __name__ == '__main__':
     if work.exists(): p.error('Choose a fresh fixture directory')
     if platform.system() == 'Windows' and not a.toolchain: p.error('Explicit prepared Inno Setup toolchain required')
     toolchain = build_output(a.toolchain) if a.toolchain else None
-    work.mkdir(); trust = digest(ROOT / 'tools/update-trust.json')
+    work.mkdir(); trust = digest(ROOT / 'tools/update-trust.json'); opt_mode = None
     result = {'ok': False, 'scenarios': {}, 'releaseReady': False, 'scope': 'real native helper, installer and restart with synthetic standalone process images; no Qt desktop, polkit prompt, visible wizard or production trust acceptance'}
     try:
+        if platform.system() == 'Linux':
+            # Hosted runners deliberately make /opt world writable. The actual
+            # helper must reject it. Establish the supported root-owned boundary
+            # only for this disposable test, record it, and restore it afterwards.
+            opt = Path('/opt'); metadata = opt.stat()
+            if opt.is_symlink() or metadata.st_uid != 0: raise ValueError('Unexpected CI /opt owner')
+            opt_mode = stat.S_IMODE(metadata.st_mode)
+            command(['sudo', '-n', 'chmod', '0755', '/opt'])
+            result['disposableOptMode'] = {'before': oct(opt_mode), 'during': '0o755'}
         fixture = Fixture(work, toolchain)
         for mode in ['untrusted', 'corrupt', 'cancel', 'concurrent', 'identity_mismatch', 'install']:
             result['scenarios'][mode] = fixture.scenario(mode); dump(work / 'report.json', result); print(mode + ' passed', flush=True)
         if digest(ROOT / 'tools/update-trust.json') != trust: raise ValueError('Production trust changed')
         result.update(ok=True, productionTrustUnchanged=True, privateSeedRemoved=not fixture.seed.exists(), sourceRevision=fixture.revision)
     finally:
+        if opt_mode is not None: command(['sudo', '-n', 'chmod', format(opt_mode, 'o'), '/opt'])
         (work / 'private-seed').unlink(missing_ok=True)
         dump(work / 'report.json', result)

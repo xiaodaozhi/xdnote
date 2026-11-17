@@ -21,3 +21,5 @@ python scripts/check_native_update.py --work-dir build/cycle-155-native-update/n
 `scripts/check_update_helper.py` 仅允许在一次性 GitHub Actions 账户执行，入口为手动工作流 `update-helper.yml`。它使用独立源副本、临时公钥和两个自有 Rust 进程映像，实际调用现有安装引擎／Debian 包与 helper，验证未知密钥、损坏包、准备后取消、并行更新门、安装后身份不符，以及等待父进程退出后的安装和重启。执行前删除私有种子，生产信任根不变。
 
 这不是产品桌面程序验收。Windows 私有 helper 源副本为自动化增加静默 Setup 参数，产品仍使用可见向导；Linux 仅在 CI 用 `sudo` 运行相同 root helper，替代人工 polkit 授权，并使用仅包含夹具实际需要依赖的包。标准包布局、维护钩子、root 路径／包归属、签名复验、进程身份、安装门和安装后身份核对仍执行。工具拒绝已有 xdnote 安装，不在个人机器安装或修改系统目录，不测试真实授权对话框和正式更新身份。
+
+托管 Linux runner 的 `/opt` 可能是全局可写目录，实际 helper 会拒绝该安装边界。夹具记录该目录的 root 归属及原权限，在一次性 runner 内临时收敛为 0755，结束后恢复；不为此放宽产品 helper 的所有权／权限核对。
