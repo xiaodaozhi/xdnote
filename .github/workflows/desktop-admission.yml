@@ -143,6 +143,15 @@ jobs:
       - name: Test explicit update checks and settings
         if: inputs.scope == 'updates'
         run: python scripts/desktop.py test --suite updates
+      - name: Check Windows helper handles and independent revalidation
+        if: inputs.scope == 'updates' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:CARGO_HOME = "$PWD/build/cargo-home"
+          $env:CARGO_TARGET_DIR = "$PWD/build/update-helper-unit"
+          rustup run 1.99.0 cargo clippy --locked --offline --package xdnote-update-helper --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup run 1.99.0 cargo test --locked --offline --package xdnote-update-helper
       - name: Test admission on Linux virtual display
         if: runner.os == 'Linux' && inputs.scope == 'full'
         run: xvfb-run -a python scripts/desktop.py test
