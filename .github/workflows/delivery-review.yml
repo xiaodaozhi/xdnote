@@ -1,0 +1,79 @@
+name: Delivery material review
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_run:
+        description: 'Successful Qt source replacement run with unexpired actual product evidence'
+        type: string
+        required: true
+
+  workflow_call:
+    inputs:
+      evidence_run:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  review:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows
+            host: windows
+            arch: win64_msvc2022_64
+            qt: msvc2022_64
+            evidence: payload.json
+          - os: ubuntu-22.04
+            platform: linux
+            host: linux
+            arch: linux_gcc_64
+            qt: gcc_64
+            evidence: product-evidence/license-evidence.json
+          - os: macos-26
+            platform: macos
+            host: mac
+            arch: clang_64
+            qt: macos
+            evidence: product-evidence/license-evidence.json
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Prepare pinned supplier SDK
+        run: |
+          python -m pip install aqtinstall==3.3.0 py7zr==1.0.0
+          python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.arch }}
+      - name: Fetch verified source evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XDNOTE_SOURCE_RUN: ${{ inputs.evidence_run }}
+        shell: bash
+        run: python scripts/fetch_delivery_evidence.py --run-id "$XDNOTE_SOURCE_RUN" --platform ${{ matrix.platform }} --output build/delivery-review/source
+      - name: Trace supplier declarations and selected Rust units
+        run: python scripts/component_review.py --evidence build/delivery-review/source/${{ matrix.evidence }} --linkage build/delivery-review/source/linkage.json --qt-prefix build/Qt/6.8.2/${{ matrix.qt }} --output build/delivery-review/review.json
+      - name: Preserve review evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: delivery-review-${{ matrix.os }}
+          retention-days: 7
+          path: |
+            build/delivery-review/review.json
+            build/delivery-review/source/receipt.json
+            build/delivery-review/source/linkage.json
+            build/delivery-review/source/payload.json
+            build/delivery-review/source/product-evidence/license-evidence.json

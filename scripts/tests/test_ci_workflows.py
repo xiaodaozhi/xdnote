@@ -17,9 +17,19 @@ def events(path):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_delivery_review_is_read_only_and_keeps_source_run_explicit(self):
+        text = (WORKFLOWS / 'delivery-review.yml').read_text()
+        self.assertEqual(events(WORKFLOWS / 'delivery-review.yml'), {'workflow_dispatch', 'workflow_call'})
+        for required in ['actions: read', 'contents: read', 'evidence_run:', 'scripts/component_review.py', 'scripts/fetch_delivery_evidence.py']:
+            self.assertIn(required, text)
+        dispatcher = (WORKFLOWS / 'desktop-admission.yml').read_text()
+        self.assertIn("inputs.scope == 'delivery-review' && needs.delivery-review.result", dispatcher)
+        self.assertIn('evidence_run: ${{ inputs.evidence_run }}', dispatcher)
+        for forbidden in ['contents: write', 'gh release', 'desktop.py build', 'cargo build', '*.dll', '*.tar.xz']:
+            self.assertNotIn(forbidden, text)
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement, delivery-review]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("if: startsWith(inputs.scope, 'updates')", text)
