@@ -88,3 +88,5 @@ python scripts/cleanup_cycles.py --stale-days 30 --apply --yes
 `scope=tools-unix` 只在 Linux、macOS ARM64 执行文档查找搜索、恢复副本、快捷键与受影响设置／文件的固定离屏验证，使用 `test --suite tools`。它不执行真实系统关联、不安装用户目录，也不扩大为完整桌面矩阵；工作流仍只允许手动触发。
 
 `scope=tools-macos` 仅补验相同文档工具范围的 macOS ARM64，用于 Darwin 路径或平台差异修复；已有有效 Linux 产品结果不因 macOS 补验重复构建。两种 tools 范围均保留 Python 安装维护回归，不执行真实系统默认应用变更。
+
+`scope=delivery-review` 仅执行[实际分发材料追溯](distribution-audit.md)：显式 `evidence_run` 指定同仓库成功的 Qt 替换源运行，核对其原始工件与固定 SDK。它记录来源产品和审阅工具各自的提交，不重复产品构建或 Core 源码重建，不把材料审阅清单计作新提交的产品运行验收。仓库权限限于 contents／actions 只读。
