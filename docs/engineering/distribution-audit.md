@@ -44,4 +44,6 @@ macOS Sparkle 实际 framework／helper 的供应方文件、arm64 指令节及�
 
 手动 `delivery-review.yml`（或桌面入口 `scope=delivery-review`）要求显式提供有未过期实际产品工件的 Qt 替换运行 ID。工具只读获取同仓库成功运行、核对 ZIP 摘要和报告身份，在三平台固定 SDK 上生成审阅清单；运行中的工具提交与来源产品提交分别记录。不构建、签名、安装、注册或发布软件，不读取生产私钥；原始材料审阅和源码／替换义务继续保持 `licenseReviewComplete=false`、`releaseReady=false`。已过期工件需重新生成源证据，不能拼接其他提交冒充同一候选。
 
+审阅 Qt Network 派生模块时，工具将原始 SDK 摘要与独立取得的原厂文件核对，将修改后摘要与同一候选的构建身份、来源清单及逐文件证据核对。Unix 还要求部署前后的代码节核对结果。Windows 精简载荷报告用原 `source-access.json` 的封存摘要绑定其内容。`actualQtSourceBackports` 单独记录派生文件，供应方依赖图仍来自其原始 SPDX。
+
 跨文档引用可能指向 SDK 原始 tag-value `.spdx`，其摘要与 JSON 序列化不同。工具先核对被引用原文摘要，并严格比较两种序列化中用于追溯的文档身份、包许可／版权／版本、文件身份、去重关系和外部引用；仅这些字段一致才关联同一目标。未通过比较、摘要不符或缺失的目标继续保留缺口，不修改供应方原文，也不据此宣称全部 SPDX 字段等同。依赖关系采用供应方声明，通用 `DEPENDS_ON` 可同时涉及构建和运行，不代表已经证实最终机器码中的组件；依据见 [SPDX 文档引用](https://spdx.github.io/spdx-spec/v2.3.1/document-creation-information/)及[关系定义](https://spdx.github.io/spdx-spec/v2.3.1/relationships-between-SPDX-elements/)。

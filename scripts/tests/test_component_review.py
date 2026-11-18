@@ -1,5 +1,7 @@
 """Real SPDX graph shapes preserve declaration gaps without inventing inclusion."""
 import copy
+import hashlib
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -7,7 +9,7 @@ from unittest.mock import patch
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from component_review import dependency_review
-from component_review import review
+from component_review import network_derivation, review
 from fetch_delivery_evidence import fetch
 
 
@@ -49,3 +51,60 @@ class ComponentReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError): dependency_review(docs, {('base', 'not-delivered')}, {})
         docs['base']['packages'].append(docs['base']['packages'][0])
         with self.assertRaises(ValueError): dependency_review(docs, {('base', 'core.dll')}, {})
+
+    def test_supplier_sdk_reviews_a_derived_linux_library_without_substituting_hashes(self):
+        from qt_source_access import config
+
+        with tempfile.TemporaryDirectory() as folder:
+            qt = Path(folder)
+            path = 'lib/libQt6Network.so.6.8.2'
+            binary = qt / path
+            binary.parent.mkdir()
+            binary.write_bytes(b'original supplier bytes')
+            supplier_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
+            prepared_sha = hashlib.sha256(b'derived bytes').hexdigest()
+            doc = self.fixture()['base']
+            doc['spdxVersion'] = 'SPDX-2.3'
+            doc['files'][0]['fileName'] = './' + path
+            sbom = 'qtbase-6.8.2.spdx.json'
+            (qt / 'sbom').mkdir()
+            spdx_bytes = json.dumps(doc).encode()
+            (qt / 'sbom' / sbom).write_bytes(spdx_bytes)
+            source = next(row for row in config()['modules'] if row['module'] == 'qtbase')
+            files = {path: {'sha256': prepared_sha, 'originalSdkSha256': supplier_sha}}
+            backport = {'source': source, 'files': files, 'sourceCodeInRelease': False}
+            receipt = {**backport, 'system': 'Linux', 'files': {path: {**files[path], 'originalBackup': '/ci/private'}}}
+            identity = {'dependencies': {'qt': {'version': '6.8.2'}}, 'qtNetworkBackports': receipt}
+            linkage = {'ok': True, 'buildIdentity': identity, 'members': []}
+            material = {'supplier': {'sbom': sbom, 'spdxId': 'core.dll'}, 'sdkFile': path,
+                        'sdkSha256': prepared_sha, 'nativeSectionsMatchSdk': True, 'sourceBackport': backport}
+            evidence = {'ok': True, 'buildIdentity': identity, 'files': [{'path': path, 'evidence': material}],
+                        'qtModules': [{'sbom': sbom, 'sha256': hashlib.sha256(spdx_bytes).hexdigest()}],
+                        'qtSourceAccess': {'networkBackports': backport}}
+
+            self.assertEqual(review(evidence, linkage, qt)['actualQtSourceBackports'], files)
+            for key, value in [('sdkSha256', supplier_sha), ('sourceBackport', None), ('nativeSectionsMatchSdk', False)]:
+                with self.subTest(key=key), patch.dict(material, {key: value}):
+                    with self.assertRaises(ValueError):
+                        review(evidence, linkage, qt)
+            binary.write_bytes(b'changed supplier bytes')
+            with self.assertRaises(ValueError):
+                review(evidence, linkage, qt)
+
+    def test_windows_compact_payload_requires_sealed_source_access_digest(self):
+        from qt_source_access import config, manifest
+
+        source = next(row for row in config()['modules'] if row['module'] == 'qtbase')
+        files = {name: {'sha256': 'a' * 64, 'originalSdkSha256': 'b' * 64}
+                 for name in ('bin/Qt6Network.dll', 'lib/Qt6Network.lib')}
+        public = {'source': source, 'files': files, 'sourceCodeInRelease': False}
+        receipt = {**public, 'system': 'Windows'}
+        modules = [{'sbom': 'qtbase-6.8.2.spdx.json'}]
+        encoded = (json.dumps(manifest(modules, public), indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
+        sealed = {'path': 'licenses/qt/source-access.json', 'sha256': hashlib.sha256(encoded).hexdigest()}
+        evidence = {'kind': 'unsigned product-only Windows installer payload', 'qtSbom': modules,
+                    'buildIdentity': {'qtNetworkBackports': receipt}, 'files': [sealed]}
+        self.assertEqual(network_derivation(evidence), public)
+        sealed['sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'Sealed Windows Qt source access digest differs'):
+            network_derivation(evidence)
