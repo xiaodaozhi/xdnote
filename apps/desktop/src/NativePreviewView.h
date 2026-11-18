@@ -42,8 +42,8 @@ public:
     QPair<int, int> selection() const;
     void copy();
     void selectAll();
-    bool navigateToHeading(const QString &fragment, const NativePreviewStamp &stamp);
-    bool activateAction(int action);
+    bool navigateToHeading(const QString &fragment, const NativePreviewStamp &stamp, bool followFocus = false);
+    bool activateAction(int action, bool followFocus = false);
     QRect characterRect(int offset);
     int offsetAtPoint(const QPoint &viewportPoint);
     void scrollToText(int offset, bool navigation = false);
@@ -94,6 +94,7 @@ private:
     int actionAtPoint(const QPoint &point);
     QRect linkClipRect(int offset) const;
     void revealAccessibleLink(int start, int end, bool navigation = true);
+    void notifyAccessibleFocus();
 };
 }
 Q_DECLARE_METATYPE(xdnote::NativePreviewStamp)
