@@ -97,9 +97,11 @@ def certificates(work, env):
     run('req', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', work/'server-key.pem', '-out', work/'server.csr',
         '-subj', '/CN=updates.fixture.invalid')
     for name, host in [('server', HOST), ('wrong-host', 'wrong.fixture.invalid')]:
+        if name != 'server':
+            run('req', '-new', '-key', work/'server-key.pem', '-out', work/(name+'.csr'), '-subj', '/CN='+host)
         extensions = work/(name+'.ext')
         extensions.write_text('basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:'+host+'\n')
-        run('x509', '-req', '-in', work/'server.csr', '-CA', work/'ca.pem', '-CAkey', work/'ca-key.pem', '-CAcreateserial',
+        run('x509', '-req', '-in', work/(name+'.csr'), '-CA', work/'ca.pem', '-CAkey', work/'ca-key.pem', '-CAcreateserial',
             '-out', work/(name+'.pem'), '-days', '1', '-extfile', extensions)
     run('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', work/'other-ca-key.pem', '-out', work/'other-ca.pem',
         '-days', '1', '-subj', '/CN=xdnote other owned fixture', '-addext', 'basicConstraints=critical,CA:TRUE')
