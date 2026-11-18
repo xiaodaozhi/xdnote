@@ -82,11 +82,18 @@ int main(int argc, const char **argv) {
             check(![updater xdnote_setDownloadProxyMode:SPUXdnoteDownloadProxySystem proxyURL:nil error:nil], @"immutable-after-start");
             report(@{@"ok": @YES, @"scope": @"native configuration only; no update check or installation", @"checks": checks}, 0);
         }
+        if (argc == 3 && strcmp(argv[1], "system-pac") == 0) {
+            NSDictionary *proxies = CFBridgingRelease(CFNetworkCopySystemProxySettings());
+            NSString *enableKey = (__bridge NSString *)kCFNetworkProxiesProxyAutoConfigEnable;
+            NSString *urlKey = (__bridge NSString *)kCFNetworkProxiesProxyAutoConfigURLString;
+            BOOL match = [proxies[enableKey] boolValue] && [proxies[urlKey] isEqualToString:@(argv[2])];
+            report(@{@"matches": @(match)}, 0);
+        }
         if (argc >= 4 && argc <= 5 && strcmp(argv[1], "request") == 0) {
             NSURL *url = [NSURL URLWithString:@(argv[3])];
             NSURL *proxy = argc == 5 ? [NSURL URLWithString:@(argv[4])] : nil;
             check([url.scheme isEqualToString:@"https"] && url.port.intValue > 0 &&
-                  ([url.host isEqualToString:@"127.0.0.1"] || (proxy != nil && [url.host isEqualToString:@"xdnote-sparkle-fixture.invalid"])), @"fixture-target-only");
+                  ([url.host isEqualToString:@"127.0.0.1"] || [url.host isEqualToString:@"xdnote-sparkle-fixture.invalid"]), @"fixture-target-only");
             check(proxy == nil || [proxy.host isEqualToString:@"127.0.0.1"], @"loopback-proxy-only");
             NSError *error = nil;
             NSURLSessionConfiguration *configuration = SPUXdnoteCreateDownloadConfiguration(mode(@(argv[2])), proxy, &error);

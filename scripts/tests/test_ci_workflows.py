@@ -40,7 +40,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn(forbidden, text)
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("if: startsWith(inputs.scope, 'updates')", text)
@@ -103,13 +103,16 @@ class WorkflowContractTests(unittest.TestCase):
     def test_sparkle_admission_is_separate_from_desktop_and_release(self):
         text = (WORKFLOWS / 'desktop-admission.yml').read_text(encoding='utf-8')
         job = text.split('  sparkle:', 1)[1].split('  desktop:', 1)[0]
-        self.assertIn("if: inputs.scope == 'sparkle-macos'", job)
-        self.assertIn('os: [macos-15]', job)
+        self.assertIn("if: inputs.scope == 'sparkle-macos' || inputs.scope == 'sparkle-system-pac'", job)
+        self.assertIn('runs-on: ${{ inputs.macos_runner }}', job)
+        self.assertIn('}}-${{ inputs.macos_runner }}', job)
         self.assertIn('python scripts/sparkle.py prepare --download', job)
         self.assertIn('python scripts/sparkle.py build', job)
         self.assertIn('python scripts/check_sparkle.py', job)
+        self.assertIn('if [ "$XDNOTE_SPARKLE_SCOPE" = sparkle-system-pac ]; then', job)
+        self.assertIn('xdnote_probe_options+=(--system-pac)', job)
         self.assertIn('needs.sparkle.result', text)
-        self.assertIn("if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos'", text)
+        self.assertIn("if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'sparkle-system-pac'", text)
         for forbidden in ('prepare_qt', 'desktop.py', 'pip install', 'secrets.', 'contents: write', 'gh release'):
             self.assertNotIn(forbidden, job)
 

@@ -1,5 +1,5 @@
 name: Desktop admission
-run-name: ${{ inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'installer-windows' && 'Windows installer verification' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
+run-name: ${{ inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'installer-windows' && 'Windows installer verification' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow]
       evidence_run:
         description: 'Source product run for delivery-review only'
         type: string
@@ -53,14 +53,10 @@ jobs:
     if: inputs.scope == 'installer-windows'
     uses: ./.github/workflows/windows-installer.yml
   sparkle:
-    if: inputs.scope == 'sparkle-macos'
-    name: Sparkle admission (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    if: inputs.scope == 'sparkle-macos' || inputs.scope == 'sparkle-system-pac'
+    name: ${{ inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC' || 'Sparkle admission' }} (${{ inputs.macos_runner }})
+    runs-on: ${{ inputs.macos_runner }}
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,9 +71,16 @@ jobs:
       - name: Build native framework library from reviewed source phases
         run: python scripts/sparkle.py build
       - name: Check isolated native policy and loopback routes
+        env:
+          XDNOTE_SPARKLE_SCOPE: ${{ inputs.scope }}
+        shell: bash
         run: |
           python scripts/cleanup_cycles.py --init cycle-161-sparkle
-          python scripts/check_sparkle.py --work-dir build/cycle-161-sparkle/probe --evidence build/evidence/sparkle
+          xdnote_probe_options=()
+          if [ "$XDNOTE_SPARKLE_SCOPE" = sparkle-system-pac ]; then
+            xdnote_probe_options+=(--system-pac)
+          fi
+          python scripts/check_sparkle.py --work-dir build/cycle-161-sparkle/probe --evidence build/evidence/sparkle "${xdnote_probe_options[@]}"
       - name: Collect Sparkle input and build receipts
         if: always()
         run: |
@@ -95,12 +98,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: sparkle-admission-${{ matrix.os }}
+          name: ${{ inputs.scope == 'sparkle-system-pac' && 'sparkle-system-pac' || 'sparkle-admission' }}-${{ inputs.macos_runner }}
           path: build/evidence/sparkle/
           if-no-files-found: ignore
           retention-days: 7
   desktop:
-    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'update-helpers' && inputs.scope != 'update-products' && inputs.scope != 'qt-replacement' && inputs.scope != 'delivery-review' && inputs.scope != 'network-flow'
+    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'sparkle-system-pac' && inputs.scope != 'update-helpers' && inputs.scope != 'update-products' && inputs.scope != 'qt-replacement' && inputs.scope != 'delivery-review' && inputs.scope != 'network-flow'
     name: ${{ startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }})
     runs-on: ${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.os }}
     timeout-minutes: 50
@@ -312,12 +315,12 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: ${{ inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
+    name: ${{ inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop, installer, sparkle, update-helpers, update-products, qt-replacement, delivery-review, network-flow]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Require every selected matrix result
         env:
-          XDNOTE_DESKTOP_RESULT: ${{ inputs.scope == 'network-flow' && needs.network-flow.result || inputs.scope == 'delivery-review' && needs.delivery-review.result || inputs.scope == 'qt-replacement' && needs.qt-replacement.result || inputs.scope == 'update-products' && needs.update-products.result || inputs.scope == 'update-helpers' && needs.update-helpers.result || inputs.scope == 'sparkle-macos' && needs.sparkle.result || inputs.scope == 'installer-windows' && needs.installer.result || needs.desktop.result }}
+          XDNOTE_DESKTOP_RESULT: ${{ inputs.scope == 'network-flow' && needs.network-flow.result || inputs.scope == 'delivery-review' && needs.delivery-review.result || inputs.scope == 'qt-replacement' && needs.qt-replacement.result || inputs.scope == 'update-products' && needs.update-products.result || inputs.scope == 'update-helpers' && needs.update-helpers.result || (inputs.scope == 'sparkle-macos' || inputs.scope == 'sparkle-system-pac') && needs.sparkle.result || inputs.scope == 'installer-windows' && needs.installer.result || needs.desktop.result }}
         run: test "$XDNOTE_DESKTOP_RESULT" = success
