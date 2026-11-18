@@ -51,6 +51,7 @@ class Product:
         controller = self.source / 'apps/desktop/src/UpdateController.cpp'
         replace(controller, '#include "UpdateDownload.h"', '#include "UpdateDownload.h"\n#include "Fixture.h"')
         replace(controller, ': UpdateController(nullptr, BuildInfo::version()', ': UpdateController(fixtureNetwork(parent), BuildInfo::version()')
+        replace(controller, '    m_download = new UpdateDownload(m_network, this);', '    m_network->setParent(this);\n    m_download = new UpdateDownload(m_network, this);')
         replace(controller, 'm_attemptPath = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/updates/attempt.json";', 'm_attemptPath = fixtureDirectory() + "/attempt.json";')
         handoff = self.source / 'apps/desktop/src/UpdateHandoff.cpp'
         replace(handoff, '#include "UpdateHandoff.h"', '#include "UpdateHandoff.h"\n#include "Fixture.h"')

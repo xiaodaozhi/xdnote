@@ -49,11 +49,12 @@ class ProxyReply final:public QNetworkReply {
 public:
     ProxyReply(const QNetworkRequest &original,QNetworkReply *reply,QObject *parent):QNetworkReply(parent),inner(reply) {
         reply->setReadBufferSize(65536);
-        reply->setParent(this);setRequest(original);setUrl(original.url());setOperation(QNetworkAccessManager::GetOperation);open(QIODevice::ReadOnly|QIODevice::Unbuffered);
+        setRequest(original);setUrl(original.url());setOperation(QNetworkAccessManager::GetOperation);open(QIODevice::ReadOnly|QIODevice::Unbuffered);
         connect(reply,&QNetworkReply::metaDataChanged,this,[this]{metadata();emit metaDataChanged();});
         connect(reply,&QIODevice::readyRead,this,[this]{metadata();emit readyRead();});
         connect(reply,&QNetworkReply::finished,this,[this]{metadata();if(inner->error()!=NoError)setError(inner->error(),"Owned proxy transfer failed");setFinished(true);emit finished();});
     }
+    ~ProxyReply()override{if(inner){disconnect(inner,nullptr,this,nullptr);if(!inner->isFinished())inner->abort();inner->deleteLater();}}
     qint64 bytesAvailable()const override{return inner?inner->bytesAvailable()+QIODevice::bytesAvailable():0;}
     void abort()override{if(inner&&!inner->isFinished())inner->abort();}
 protected:qint64 readData(char *data,qint64 size)override{return inner?inner->read(data,size):-1;}
@@ -113,7 +114,7 @@ void fixtureBoot(QApplication *application){
             *finished=true;if(mode!="corrupt"&&mode!="network"){fail("controller_"+updates->errorCode());return;}
             const bool buffer=bool(*pane)&&(*pane)->document()->session()->snapshot().utf8==QByteArray("edited owned\n");
             QFile f(fixtureDirectory()+"/owned.md");const bool disk=f.open(QIODevice::ReadOnly)&&f.readAll()==QByteArray("owned\n");
-            write("corrupt.json",{{"ok",buffer&&disk},{"bufferPreserved",buffer},{"diskPreserved",disk},{"error",updates->errorCode()}});QCoreApplication::exit(buffer&&disk?0:54);return;
+            write("corrupt.json",{{"ok",buffer&&disk},{"bufferPreserved",buffer},{"diskPreserved",disk},{"error",updates->errorCode()}});QTimer::singleShot(0,qApp,[buffer,disk]{QCoreApplication::exit(buffer&&disk?0:54);});return;
         }
         if(updates->state()=="available"&&updates->trusted()&&updates->errorCode().isEmpty())QTimer::singleShot(0,updates,&xdnote::UpdateController::install);
         else if(mode=="cancel"&&updates->state()=="available"&&updates->errorCode()=="cancelled"){
