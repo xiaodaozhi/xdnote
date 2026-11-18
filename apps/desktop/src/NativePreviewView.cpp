@@ -605,7 +605,7 @@ public:
     QStringList actionNames() const override { return {QAccessibleActionInterface::pressAction(), QAccessibleActionInterface::setFocusAction()}; }
     void doAction(const QString &name) override {
         if (!isValid()) return;
-        if (name == QAccessibleActionInterface::pressAction()) { m_view->activateAction(m_index); return; }
+        if (name == QAccessibleActionInterface::pressAction()) { m_view->activateAction(m_index, true); return; }
         if (name == QAccessibleActionInterface::setFocusAction()) {
             const auto action = m_view->content()->actions[m_index];
             if (action.copyCode)
@@ -1290,7 +1290,7 @@ QPair<int, int> NativePreviewView::selection() const { return {d->anchor, d->cur
 void NativePreviewView::copy() { if (d->current() && d->anchor != d->cursor) emit copyTextRequested(selectedText()); }
 void NativePreviewView::selectAll() { if (d->content) setSelection(0, int(d->content->text.size())); }
 
-bool NativePreviewView::activateAction(int index) {
+bool NativePreviewView::activateAction(int index, bool followFocus) {
     if (d->actionValidator && !d->actionValidator(d->shown)) return false;
     d->keyboardOutline = false; InputModality::forApplication()->clear(); viewport()->update();
     if (!d->current() || index < 0 || index >= d->content->actions.size()) return false;
@@ -1303,19 +1303,34 @@ bool NativePreviewView::activateAction(int index) {
         auto buffer = xdnote_workspace_resolve(reinterpret_cast<const unsigned char *>(document.constData()), std::size_t(document.size()), reinterpret_cast<const unsigned char *>(bytes.constData()), std::size_t(bytes.size()));
         const auto object = buffer.status == 0 ? QJsonDocument::fromJson(QByteArray(reinterpret_cast<const char *>(buffer.data), qsizetype(buffer.length))).object() : QJsonObject();
         xdnote_markdown_free(&buffer);
-        if (object.value("ok").toBool()) return navigateToHeading(object.value("fragment").toString(), d->shown);
+        if (object.value("ok").toBool())
+            return navigateToHeading(object.value("fragment").toString(), d->shown, followFocus);
         emit navigationMessage(QStringLiteral("链接中的标题标识无效。")); return false;
     } else if (d->localDocumentsAdmitted && !target.isEmpty() && !target.startsWith('/') && !target.contains(':') && !target.contains('\\')) {
         const auto snapshot = d->shown; emit documentLinkRequested(target, snapshot); return true;
     }
     emit navigationMessage(QStringLiteral("此链接不属于当前允许的本地文档导航。")); return false;
 }
-bool NativePreviewView::navigateToHeading(const QString &fragment, const NativePreviewStamp &stamp) {
+bool NativePreviewView::navigateToHeading(const QString &fragment, const NativePreviewStamp &stamp, bool followFocus) {
     if (!d->current() || stamp != d->shown) return false;
     const QString requested = fragment; const auto encoded = requested.toUtf8();
     for (const auto &heading : d->content->headings)
         if (d->content->model.text(d->content->model.node(heading.node)) == QByteArrayView(encoded)) {
-            scrollToText(heading.position); emit fragmentNavigated(requested); return true;
+            const int position = heading.position;
+            const auto snapshot = d->shown;
+            const QPointer<NativePreviewView> alive(this);
+            scrollToText(position);
+            if (!alive || d->shown != snapshot) return true;
+            if (followFocus) {
+                d->focusedAction = -1;
+                setSelection(position, position);
+                if (!alive || d->shown != snapshot) return true;
+                setFocus(Qt::OtherFocusReason);
+                if (!alive || d->shown != snapshot) return true;
+                notifyAccessibleFocus();
+            }
+            if (alive && d->shown == snapshot) emit fragmentNavigated(requested);
+            return true;
         }
     emit navigationMessage(QStringLiteral("未找到标题：%1").arg(fragment.left(120))); return false;
 }
@@ -1536,6 +1551,15 @@ int NativePreviewView::actionAtPoint(const QPoint &point) {
     }
     return -1;
 }
+void NativePreviewView::notifyAccessibleFocus()
+{
+    if (auto *reader = QAccessible::queryAccessibleInterface(this)) {
+        auto *focused = reader->focusChild();
+        QAccessibleEvent event(focused ? focused : reader, QAccessible::Focus);
+        QAccessible::updateAccessibility(&event);
+    }
+}
+
 bool NativePreviewView::focusNextPrevChild(bool next) {
     if (!d->current() || d->content->actions.isEmpty()) return QAbstractScrollArea::focusNextPrevChild(next);
     const int target = d->focusedAction < 0 ? (next ? 0 : int(d->content->actions.size()) - 1) : d->focusedAction + (next ? 1 : -1);
@@ -1553,12 +1577,7 @@ bool NativePreviewView::focusNextPrevChild(bool next) {
     setFocus(next ? Qt::TabFocusReason : Qt::BacktabFocusReason);
     if (!alive || d->shown != snapshot) return true;
     // The QWidget may already own focus while Tab moves between virtual links.
-    if (auto *reader = QAccessible::queryAccessibleInterface(this)) {
-        if (auto *focused = reader->focusChild()) {
-            QAccessibleEvent event(focused, QAccessible::Focus);
-            QAccessible::updateAccessibility(&event);
-        }
-    }
+    notifyAccessibleFocus();
     if (!alive || d->shown != snapshot) return true;
     viewport()->update(); emit verticalNavigationRequested(); return true;
 }
@@ -1568,7 +1587,7 @@ void NativePreviewView::keyPressEvent(QKeyEvent *event) {
     if (event->matches(QKeySequence::SelectAll)) { selectAll(); event->accept(); return; }
     if (event->key() == Qt::Key_Escape) { d->keyboardOutline = false; d->dragging = false; d->pressedAction = -1; InputModality::forApplication()->clear(); viewport()->update(); event->accept(); return; }
     if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space) && d->focusedAction >= 0) {
-        activateAction(d->focusedAction); event->accept(); return;
+        activateAction(d->focusedAction, true); event->accept(); return;
     }
     const bool shift = event->modifiers() & Qt::ShiftModifier, control = event->modifiers() & Qt::ControlModifier;
     int position = d->cursor;

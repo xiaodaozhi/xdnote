@@ -417,6 +417,25 @@ private slots:
         const auto data = content("[go](#title-1)\n\n# title\n\n# title\n"); QVERIFY(data);
         Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 300); view.expect(stamp()); QVERIFY(view.present(stamp(), data));
         QSignalSpy moved(&view, &NativePreviewView::fragmentNavigated); QVERIFY(view.activateAction(0)); QCOMPARE(moved.size(), 1); QCOMPARE(moved.first().first().toString(), QString("title-1"));
+        view.show();
+        QApplication::setActiveWindow(&view);
+        view.setFocus();
+        QTRY_VERIFY(view.hasFocus());
+        auto *reader = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(reader);
+        auto *link = reader->child(readerActionOffset);
+        QVERIFY(link);
+        const int position = data->headings.last().position;
+        const auto expectedSelection = qMakePair(position, position);
+        QTest::keyClick(&view, Qt::Key_Tab);
+        QVERIFY(link->state().focused);
+        QTest::keyClick(&view, Qt::Key_Return);
+        QCOMPARE(view.selection(), expectedSelection);
+        QVERIFY(!link->state().focused);
+        view.setSelection(0, 0);
+        link->actionInterface()->doAction(QAccessibleActionInterface::pressAction());
+        QCOMPARE(view.selection(), expectedSelection);
+        QCOMPARE(readerText(reader)->textInterface()->cursorPosition(), position);
         const auto guarded = content(QByteArray("[x] ").repeated(1000) + "\n\n[x]: " + QByteArray(2000, 'a') + "\n"); QVERIFY(guarded); QVERIFY(!guarded->model.referencesComplete());
         view.expect(stamp(2)); QVERIFY(view.present(stamp(2), guarded)); QVERIFY(!view.activateAction(0));
     }
