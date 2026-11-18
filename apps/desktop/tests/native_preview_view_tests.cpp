@@ -77,9 +77,19 @@ private slots:
         QImage source(64, 32, QImage::Format_ARGB32); source.fill(Qt::red); QByteArray png; QBuffer buffer(&png); QVERIFY(buffer.open(QIODevice::WriteOnly)); QVERIFY(source.save(&buffer, "PNG"));
         NativePreviewView view(&appearance); view.resize(640, 420); view.expect(stamp()); QVERIFY(view.presentAsync(stamp(), data, {{0, png}})); view.show(); QTRY_VERIFY(view.ready());
         for (const qreal zoom : {1.0, 1.5}) {
-            view.setZoomFactor(zoom); QTRY_VERIFY(view.ready()); view.verticalScrollBar()->setValue(0); QApplication::processEvents();
-            const auto before = view.grab().toImage(); const auto bytes = view.statistics().decodedImageBytes; const auto loads = view.statistics().resourceLoads;
-            QVERIFY(bytes > 0); QVERIFY(loads > 0);
+            view.setZoomFactor(zoom);
+            view.verticalScrollBar()->setValue(0);
+            QImage before;
+            const auto captureLoadedFrame = [&] {
+                if (!view.ready() || !view.verticalScrollBar()->isVisible()) return false;
+                before = view.grab().toImage();
+                const auto stats = view.statistics();
+                return view.ready() && stats.decodedImageBytes > 0 && stats.resourceLoads > 0;
+            };
+            // Showing the scrollbar can resize the viewport and queue another layout.
+            QTRY_VERIFY(captureLoadedFrame());
+            const auto bytes = view.statistics().decodedImageBytes;
+            const auto loads = view.statistics().resourceLoads;
             bool visuallyStable = true;
             for (int turn = 0; turn < 80; ++turn) {
                 view.viewport()->update(); QApplication::processEvents(); const auto image = view.grab().toImage();
