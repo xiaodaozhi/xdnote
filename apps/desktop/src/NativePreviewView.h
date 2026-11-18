@@ -84,6 +84,7 @@ protected:
     bool focusNextPrevChild(bool next) override;
 private:
     friend class AccessibleNativePreview;
+    friend class AccessiblePreviewAction;
     struct State;
     std::unique_ptr<State> d;
     void rebuild(bool keepPosition);
@@ -91,6 +92,8 @@ private:
     void scheduleLayout();
     void finishLayout(int offset, bool restore);
     int actionAtPoint(const QPoint &point);
+    QRect linkClipRect(int offset) const;
+    void revealAccessibleLink(int start, int end);
 };
 }
 Q_DECLARE_METATYPE(xdnote::NativePreviewStamp)
