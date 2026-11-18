@@ -22,6 +22,7 @@
 using namespace xdnote;
 #ifdef Q_OS_MACOS
 bool macWindowIsZoomed(QWidget *window);
+void verifyMacApplicationTitlebars();
 #endif
 namespace {
 void write(const QString &path, const QByteArray &bytes) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); QCOMPARE(file.write(bytes), bytes.size()); }
@@ -47,6 +48,12 @@ BOOL CALLBACK collectMonitor(HMONITOR handle, HDC, LPRECT, LPARAM context) {
 class GeometryTests final : public QObject {
     Q_OBJECT
 private slots:
+#ifdef Q_OS_MACOS
+    void macApplicationTitlebarsShareTheNativeCaption() {
+        if (QGuiApplication::platformName() != "cocoa") QSKIP("Requires the native Cocoa backend");
+        verifyMacApplicationTitlebars();
+    }
+#endif
     void captionTogglePreservesNormalClientSize() {
         class Probe final : public ApplicationWindow {
         public:

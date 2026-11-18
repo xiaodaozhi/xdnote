@@ -171,8 +171,9 @@ private slots:
         Window owned{new SingleFileWindow(&manager, &appearance)}; auto *window = owned.value.data(); window->setDocument(document); window->show();
         QTRY_VERIFY_WITH_TIMEOUT(painted(window->preview(), &appearance), 20000);
         auto *header = window->findChild<QWidget *>("documentHeader"); const auto pixels = header->grab().toImage();
-        const auto logoCenter = inkCenter(pixels, header->devicePixelRatioF(), 40, 103, appearance.color("sidebar"));
-        const auto titleCenter = inkCenter(pixels, header->devicePixelRatioF(), 136, 440, appearance.color("sidebar"));
+        const int left = header->layout()->contentsMargins().left();
+        const auto logoCenter = inkCenter(pixels, header->devicePixelRatioF(), left + 40, left + 103, appearance.color("sidebar"));
+        const auto titleCenter = inkCenter(pixels, header->devicePixelRatioF(), left + 136, left + 440, appearance.color("sidebar"));
         QVERIFY(logoCenter > 0 && titleCenter > 0); QVERIFY(qAbs(logoCenter - titleCenter) <= 1.25);
         QCOMPARE(window->findChild<QWidget *>("documentHeader")->height(), 48); QCOMPARE(window->findChild<QWidget *>("documentToolbar")->height(), 48);
         QCOMPARE(window->findChild<QWidget *>("documentFooter")->height(), 26); QCOMPARE(window->findChild<QWidget *>("modeSwitch")->height(), 32);
