@@ -485,6 +485,28 @@ private slots:
         QVERIFY(qAbs(advance - QFontMetricsF(sourceFont()).horizontalAdvance(' ') * 8) < 3);
         QVERIFY(!data->highlights.isEmpty()); view.expect(stamp(2)); QVERIFY(!link->isValid()); QVERIFY(!copy->isValid());
     }
+    void accessibleLinkFocusRevealsHorizontallyClippedTableCell() {
+        const auto wide = QByteArray("widecell").repeated(100);
+        const auto data = content("| First | Second | Third | Link |\n| --- | --- | --- | --- |\n| "
+                                  + wide + " | " + wide + " | " + wide + " | [find me](other.md) |\n");
+        QVERIFY(data);
+        Appearance appearance;
+        NativePreviewView view(&appearance);
+        view.resize(640, 400);
+        view.expect(stamp());
+        QVERIFY(view.present(stamp(), data));
+        view.show();
+        QTRY_VERIFY(view.ready());
+        auto *reader = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(reader);
+        auto *link = reader->child(readerActionOffset);
+        QVERIFY(link);
+        QCOMPARE(link->role(), QAccessible::Link);
+        QVERIFY(link->state().offscreen);
+        link->actionInterface()->doAction(QAccessibleActionInterface::setFocusAction());
+        QVERIFY(!link->state().offscreen);
+        QVERIFY(QRect(view.viewport()->mapToGlobal(QPoint()), view.viewport()->size()).contains(link->rect()));
+    }
     void lightAndDarkUseSharedTokensAndSaveEvidence() {
         const auto data = content(QStringLiteral("# 一个安静的写作空间\n\n把想法写下来，让思考慢慢清晰。**中文粗体**与 *italic*。 😀\n\n- [x] 完成一项任务\n- [ ] 保留一点时间\n\n> 少一点干扰，多一点专注。\n\n```cpp\nconst auto title = \"写作\";\n```\n\n|项目|状态|\n|:--|--:|\n|原生预览|进行中|\n\n[打开文档](notes/start.md)\n").toUtf8()); QVERIFY(data);
         const auto directory = qEnvironmentVariable("XDNOTE_NATIVE_EVIDENCE");

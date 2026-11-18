@@ -7,6 +7,9 @@
 #include "UiFonts.h"
 #include "Utf8Text.h"
 #include "VisualTokens.h"
+#ifdef Q_OS_MACOS
+#include "MacPreviewLinkRotor.h"
+#endif
 #include <QAbstractTextDocumentLayout>
 #include <QAccessibleWidget>
 #include <QBuffer>
@@ -563,6 +566,10 @@ public:
         if (!isValid()) return {};
         const auto &action = m_view->content()->actions[m_index];
         if (type == QAccessible::Name) return action.copyCode ? QStringLiteral("复制代码") : m_view->content()->text.mid(action.start, action.length);
+#ifdef Q_OS_MACOS
+        if (type == QAccessible::Identifier && !action.copyCode)
+            return macPreviewLinkId(QAccessible::uniqueId(const_cast<AccessiblePreviewAction *>(this)));
+#endif
         if (type == QAccessible::Description && !action.copyCode) {
 #ifdef Q_OS_MACOS
             // Cocoa exposes Description as the label VoiceOver prefers for links.
@@ -576,13 +583,13 @@ public:
     QRect rect() const override {
         if (!isValid()) return {};
         const auto &action = m_view->content()->actions[m_index];
-        const auto area = QRect(m_view->viewport()->mapToGlobal(QPoint()), m_view->viewport()->size());
         if (action.copyCode) {
             for (auto *button : m_view->findChildren<SharedButton *>("nativeCodeCopy"))
                 if (button->isVisible() && button->property("previewNode").toUInt() == action.node) return QRect(button->mapToGlobal(QPoint()), button->size());
             return {};
         }
-        return m_view->characterRect(action.start).united(m_view->characterRect(qMax(action.start, action.start + action.length - 1))).intersected(area);
+        const auto end = qMax(action.start, action.start + action.length - 1);
+        return m_view->characterRect(action.start).united(m_view->characterRect(end)).intersected(m_view->linkClipRect(action.start));
     }
     QAccessible::Role role() const override { return isValid() && m_view->content()->actions[m_index].copyCode ? QAccessible::Button : QAccessible::Link; }
     QAccessible::State state() const override { QAccessible::State value; value.invalid = !isValid(); value.focusable = true; value.readOnly = true; value.offscreen = rect().isEmpty(); return value; }
@@ -591,7 +598,15 @@ public:
     void doAction(const QString &name) override {
         if (!isValid()) return;
         if (name == QAccessibleActionInterface::pressAction()) { m_view->activateAction(m_index); return; }
-        if (name == QAccessibleActionInterface::setFocusAction()) { m_view->scrollToText(m_view->content()->actions[m_index].start, true); m_view->setFocus(Qt::OtherFocusReason); }
+        if (name == QAccessibleActionInterface::setFocusAction()) {
+            const auto action = m_view->content()->actions[m_index];
+            if (action.copyCode)
+                m_view->scrollToText(action.start, true);
+            else
+                m_view->revealAccessibleLink(action.start, qMax(action.start, action.start + action.length - 1));
+            if (m_view)
+                m_view->setFocus(Qt::OtherFocusReason);
+        }
     }
     QStringList keyBindingsForAction(const QString &) const override { return {}; }
 };
@@ -758,7 +773,12 @@ public:
         if (action >= 0) return child(action + actionOffset);
         return actionOffset ? body() : nullptr;
     }
-#ifndef Q_OS_MACOS
+#ifdef Q_OS_MACOS
+    QString text(QAccessible::Text type) const override {
+        if (type == QAccessible::Identifier) return QString::fromLatin1(MacPreviewAccessibleId);
+        return QAccessibleWidget::text(type);
+    }
+#else
     void *interface_cast(QAccessible::InterfaceType type) override {
         if (type == QAccessible::TextInterface) return static_cast<QAccessibleTextInterface *>(this);
         return QAccessibleWidget::interface_cast(type);
@@ -1372,6 +1392,40 @@ int NativePreviewView::offsetAtPoint(const QPoint &point) {
     }
     return flow.start;
 }
+QRect NativePreviewView::linkClipRect(int offset) const
+{
+    const QPoint origin = viewport()->mapToGlobal(QPoint());
+    const QRect visible(origin, viewport()->size());
+    if (!d->content || d->geometry.isEmpty())
+        return visible;
+    const int index = d->flowAt(offset);
+    const auto &flow = d->flow(index);
+    if (flow.kind != Content::FlowKind::TableRow)
+        return visible;
+    const QRect table(origin.x() + qRound(d->x(index)), origin.y(), qRound(d->available(flow)), visible.height());
+    return visible.intersected(table);
+}
+
+void NativePreviewView::revealAccessibleLink(int start, int end)
+{
+    if (!d->content || d->geometry.isEmpty())
+        return;
+    const auto &flow = d->flow(d->flowAt(start));
+    if (flow.kind == Content::FlowKind::TableRow) {
+        const QRect clip = linkClipRect(start);
+        const QRect bounds = characterRect(start).united(characterRect(end));
+        const int delta = bounds.width() > clip.width() || bounds.left() < clip.left()
+            ? bounds.left() - clip.left() : qMax(0, bounds.right() - clip.right());
+        if (delta) {
+            const qreal maximum = qMax(0.0, d->groups[flow.owner].width - d->available(flow));
+            d->horizontal[flow.owner] = qBound(0.0, d->offsetX(flow.owner) + delta, maximum);
+            updateControls();
+            viewport()->update();
+        }
+    }
+    scrollToText(start, true);
+}
+
 void NativePreviewView::scrollToText(int offset, bool navigation) {
     if (!d->content || d->geometry.isEmpty() || !boundary(d->content->text, offset)) return;
     const auto rectangle = characterRect(offset); const int relative = rectangle.y() - viewport()->mapToGlobal(QPoint()).y();
@@ -1399,8 +1453,20 @@ std::optional<NativePreviewView::ScrollSpan> NativePreviewView::scrollSpanAtY(qr
     return d->scrollSpan(int(right - flows.cbegin()));
 }
 void NativePreviewView::resizeEvent(QResizeEvent *event) { QAbstractScrollArea::resizeEvent(event); rebuild(true); }
-void NativePreviewView::showEvent(QShowEvent *event) { QAbstractScrollArea::showEvent(event); if (d->asynchronous) rebuild(true); }
-void NativePreviewView::hideEvent(QHideEvent *event) { QAbstractScrollArea::hideEvent(event); if (d->asynchronous) rebuild(true); }
+void NativePreviewView::showEvent(QShowEvent *event) {
+    QAbstractScrollArea::showEvent(event);
+#ifdef Q_OS_MACOS
+    QTimer::singleShot(0, this, [this] { if (isVisible()) setMacPreviewLinkRotor(this, true); });
+#endif
+    if (d->asynchronous) rebuild(true);
+}
+void NativePreviewView::hideEvent(QHideEvent *event) {
+    QAbstractScrollArea::hideEvent(event);
+#ifdef Q_OS_MACOS
+    setMacPreviewLinkRotor(this, false);
+#endif
+    if (d->asynchronous) rebuild(true);
+}
 void NativePreviewView::scrollContentsBy(int, int) { updateControls(); viewport()->update(); }
 
 void NativePreviewView::mousePressEvent(QMouseEvent *event) {
