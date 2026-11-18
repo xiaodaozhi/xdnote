@@ -241,6 +241,10 @@ qt_add_resources(xdnote_admission_ui xdnote_admission_assets PREFIX /xdnote BASE
 
 qt_add_executable(xdnote WIN32 apps/desktop/main.cpp)
 target_link_libraries(xdnote PRIVATE xdnote_desktop)
+if(APPLE)
+    qt_add_resources(xdnote xdnote_macos_icon PREFIX /xdnote BASE "${PROJECT_SOURCE_DIR}"
+        FILES design/assets/ui-v2/brand/png/app-icon-macos-1024.png)
+endif()
 if(MSVC)
     target_link_options(xdnote PRIVATE "/MAP:${CMAKE_BINARY_DIR}/xdnote-link.map")
 elseif(APPLE)

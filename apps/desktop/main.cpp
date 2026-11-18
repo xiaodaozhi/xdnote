@@ -29,7 +29,12 @@ int main(int argc, char **argv) {
     QApplication application(argc, argv);
     application.setApplicationName(QStringLiteral("xdnote")); application.setOrganizationName(QStringLiteral("xiaodaozhi"));
     xdnote::configureGuiApplication(); xdnote::SourceEditor::installAccessibility();
-    xdnote::visualTokens(); application.setWindowIcon(QIcon(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/app-icon.svg")));
+    xdnote::visualTokens();
+#ifdef Q_OS_MACOS
+    application.setWindowIcon(QIcon(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/png/app-icon-macos-1024.png")));
+#else
+    application.setWindowIcon(QIcon(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/app-icon.svg")));
+#endif
     application.setQuitOnLastWindowClosed(false);
     if (!installation.allowed()) {
         QMessageBox::critical(nullptr, QStringLiteral("xdnote"), QStringLiteral("安装维护正在进行，或无法建立运行保护。请完成安装后重试。"));

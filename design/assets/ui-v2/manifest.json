@@ -21,10 +21,10 @@
     "boardCount": 33,
     "surfaceCount": 89,
     "icons": 90,
-    "logicalAssets": 583,
+    "logicalAssets": 584,
     "referenceSlices": 141,
     "componentVariants": 310,
-    "files": 2192,
+    "files": 2193,
     "svg": 442,
     "png": 1748
   },
@@ -15939,16 +15939,25 @@
       "approval": "approved-design-direction",
       "source": "brand/png/app-icon-1024.png",
       "files": [
-        "brand/app-icon.ico",
-        "brand/app-icon.icns"
+        "brand/app-icon.ico"
+      ]
+    },
+    {
+      "id": "brand-macos-icon",
+      "kind": "native-icon-design-export",
+      "approval": "approved-design-direction",
+      "source": "brand/png/app-icon-1024.png",
+      "files": [
+        "brand/app-icon.icns",
+        "brand/png/app-icon-macos-1024.png"
       ]
     }
   ],
   "files": [
     {
       "path": "brand/app-icon.icns",
-      "bytes": 104475,
-      "sha256": "2bb8607f259a208dd90ddc70c7d951cae18a4ec0b83403a4edf013ef4f638b8c"
+      "bytes": 111078,
+      "sha256": "a135a9212160f4cd97b4caa63a5c0ab27b08dfa07a0b706c33b358c31ccec2d8"
     },
     {
       "path": "brand/app-icon.ico",
@@ -16024,6 +16033,11 @@
       "path": "brand/png/app-icon-64.png",
       "bytes": 1330,
       "sha256": "7cf1bfda5c6db6c7e9b602a9e91b7d26e9ece074b35b71c3483fc1f035b73418"
+    },
+    {
+      "path": "brand/png/app-icon-macos-1024.png",
+      "bytes": 49993,
+      "sha256": "7cdbac71a8b116a3e4f1be7d395c75a0dda19b457f96df17dcca6841c7907046"
     },
     {
       "path": "brand/png/logo-dark@1x.png",

@@ -152,6 +152,9 @@ def linux_stage(build, qt, destination, evidence, product=False):
     return bindir, plugins, libdir
 
 
+MAC_APP_ICON = desktop.ROOT / "design/assets/ui-v2/brand/app-icon.icns"
+
+
 def mac_stage(build, qt, destination, evidence, product=False):
     bundle = destination / "xdnote.app"
     contents = bundle / "Contents"
@@ -160,9 +163,11 @@ def mac_stage(build, qt, destination, evidence, product=False):
     copy_programs(build, bindir, programs)
     resources = contents / "Resources"
     resources.mkdir()
+    shutil.copy2(MAC_APP_ICON, resources / MAC_APP_ICON.name)
     with (contents / "Info.plist").open("wb") as file:
         plistlib.dump({"CFBundleExecutable": "xdnote", "CFBundleIdentifier": "io.github.xiaodaozhi.xdnote" + ("" if product else ".diagnostic"),
                       "CFBundleName": "xdnote", "CFBundlePackageType": "APPL", "CFBundleVersion": "0",
+                      "CFBundleIconFile": MAC_APP_ICON.name,
                       "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
                       "CFBundleDocumentTypes": [{"CFBundleTypeName": "Markdown", "CFBundleTypeRole": "Editor", "LSHandlerRank": "Alternate", "LSItemContentTypes": ["net.daringfireball.markdown"]}],
                       "UTImportedTypeDeclarations": [{"UTTypeIdentifier": "net.daringfireball.markdown", "UTTypeDescription": "Markdown", "UTTypeConformsTo": ["public.plain-text"], "UTTypeTagSpecification": {"public.filename-extension": ["md", "markdown"], "public.mime-type": "text/markdown"}}]}, file)

@@ -30,7 +30,7 @@ class DesktopToolTests(unittest.TestCase):
         desktop.BUILD.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="icon-identity-",dir=desktop.BUILD) as directory:
             root=Path(directory)
-            for name in ("CMakeLists.txt","Cargo.toml","Cargo.lock","rust-toolchain.toml","docs/visual/tokens.json","scripts/desktop.py","scripts/prepare_qt.py","scripts/qt_network_backports.py","scripts/qt_cocoa_backports.py","scripts/build_version.py","design/assets/ui-v2/icons/svg/document.svg","design/assets/ui-v2/brand/logo-light.svg"):
+            for name in ("CMakeLists.txt","Cargo.toml","Cargo.lock","rust-toolchain.toml","docs/visual/tokens.json","scripts/desktop.py","scripts/prepare_qt.py","scripts/qt_network_backports.py","scripts/qt_cocoa_backports.py","scripts/build_version.py","design/assets/ui-v2/icons/svg/document.svg","design/assets/ui-v2/brand/logo-light.svg","design/assets/ui-v2/brand/app-icon.icns","design/assets/ui-v2/brand/png/app-icon-macos-1024.png"):
                 target=root/name
                 target.parent.mkdir(parents=True,exist_ok=True)
                 target.write_text("original",encoding="utf-8")
@@ -45,6 +45,12 @@ class DesktopToolTests(unittest.TestCase):
                 extra.write_text("new",encoding="utf-8")
                 self.assertNotEqual(desktop.source_fingerprint(),original)
                 extra.unlink()
+                for name in ("app-icon.icns", "png/app-icon-macos-1024.png"):
+                    native_icon = root / "design/assets/ui-v2/brand" / name
+                    with self.subTest(name=name):
+                        native_icon.write_text("changed")
+                        self.assertNotEqual(desktop.source_fingerprint(),original)
+                        native_icon.write_text("original")
                 (root/"design/assets/ui-v2/brand/logo-light.svg").write_text("changed",encoding="utf-8")
                 self.assertNotEqual(desktop.source_fingerprint(),original)
 

@@ -8,13 +8,30 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "design/assets/ui-v2"
 source = OUT / "brand/png/app-icon-1024.png"
 image = Image.open(source).convert("RGBA")
-targets = [OUT / "brand/app-icon.ico", OUT / "brand/app-icon.icns"]
-image.save(targets[0], format="ICO", sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
-image.save(targets[1], format="ICNS")
+windows_icon = OUT / "brand/app-icon.ico"
+macos_icon = OUT / "brand/app-icon.icns"
+macos_png = OUT / "brand/png/app-icon-macos-1024.png"
+image.save(windows_icon, format="ICO", sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
+
+# Keep the approved artwork proportional while resizing the visible backing,
+# then center it on the legacy macOS canvas used by Finder and the Dock.
+artwork = image.crop(image.getchannel("A").getbbox())
+artwork = artwork.resize((824, 824), Image.Resampling.LANCZOS)
+macos = Image.new("RGBA", (1024, 1024))
+macos.paste(artwork, (100, 100))
+macos.save(macos_png)
+macos.save(macos_icon, format="ICNS")
+
+targets = [windows_icon, macos_icon, macos_png]
 manifest_path = OUT / "manifest.json"
 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-manifest["assets"] = [a for a in manifest["assets"] if a["id"] != "brand-native-containers"]
-manifest["assets"].append({"id": "brand-native-containers", "kind": "native-icon-design-export", "approval": "approved-design-direction", "source": "brand/png/app-icon-1024.png", "files": [p.relative_to(OUT).as_posix() for p in targets]})
+native_ids = {"brand-native-containers", "brand-macos-icon"}
+manifest["assets"] = [a for a in manifest["assets"] if a["id"] not in native_ids]
+for asset_id, files in (("brand-native-containers", [windows_icon]), ("brand-macos-icon", [macos_icon, macos_png])):
+    manifest["assets"].append({
+        "id": asset_id, "kind": "native-icon-design-export", "approval": "approved-design-direction",
+        "source": "brand/png/app-icon-1024.png", "files": [p.relative_to(OUT).as_posix() for p in files],
+    })
 for target in targets:
     data = target.read_bytes()
     record = {"path": target.relative_to(OUT).as_posix(), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
