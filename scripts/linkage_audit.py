@@ -4,7 +4,7 @@ Object selection is evidence of linked compilation units, not a claim that every
 line/third-party component in those units survived optimization or dead stripping.
 """
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 import hashlib
 import json
 from pathlib import Path
@@ -12,6 +12,7 @@ import re
 import os
 import subprocess
 from installer_common import ROOT, build_output, digest
+from pe_binary_evidence import function_ranges, layout as pe_layout, pe_code_sections
 from unix_binary_evidence import code_sections
 
 ARCHIVE_MEMBER = r'(?:lib)?xdnote_services\.(?:a|lib)\(([^)]+)\)'
@@ -96,10 +97,106 @@ def macos_text_evidence(link_map, sections, symbols, binary):
             'textBytes': length, 'members': rows}
 
 
+def linux_text_section(path):
+    headers = subprocess.check_output(['/usr/bin/readelf', '--wide', '--section-headers', path], text=True)
+    section = re.search(r'^\s*\[\s*\d+\]\s+\.text\s+PROGBITS\s+([0-9a-f]+)\s+([0-9a-f]+)\s+([0-9a-f]+)\s+\S+\s+AX\s',
+                        headers, re.MULTILINE)
+    if not section:
+        raise ValueError('ELF executable .text section missing')
+    address, offset, length = (int(value, 16) for value in section.groups())
+    return address, offset, length
+
+
+def section_digest(data, offset, length):
+    if length <= 0 or offset < 0 or offset + length > len(data):
+        raise ValueError('Executable section escapes the binary')
+    return hashlib.sha256(data[offset:offset + length]).hexdigest()
+
+
+def linux_text_evidence(link_map, section, symbols, binary):
+    start, offset, length = section
+    _, marker, live = link_map.partition('Linker script and memory map')
+    mapped = re.search(r'^\.text[ \t]+(0x[0-9a-f]+)[ \t]+(0x[0-9a-f]+)', live, re.MULTILINE)
+    if not marker or not mapped or tuple(int(value, 16) for value in mapped.groups()) != (start, length):
+        raise ValueError('GNU map .text bounds differ from the ELF')
+    live = live[mapped.end():]
+    live = re.split(r'^\.\S+', live, maxsplit=1, flags=re.MULTILINE)[0]
+    by_address = {(int(address, 16), int(size, 16), name) for name, address, size in re.findall(
+        r'^(\S+) [tTwW] ([0-9a-f]+) ([0-9a-f]+)$', symbols, re.MULTILINE)}
+    rows = defaultdict(Counter)
+    spans = []
+    pattern = (r'^ \.text(?:\.(\S+))?[ \t\n]+(0x[0-9a-f]+)[ \t]+(0x[0-9a-f]+)'
+               r'[ \t]+[^\n]*?' + ARCHIVE_MEMBER + r'[ \t]*$')
+    for name, address, size, member in re.findall(pattern, live, re.MULTILINE):
+        address, size = int(address, 16), int(size, 16)
+        if not size:
+            continue
+        if not start <= address < address + size <= start + length:
+            raise ValueError('GNU map Rust input section escapes ELF .text')
+        spans.append((address, address + size))
+        bucket = rows[member]
+        bucket['mappedRanges'] += 1
+        bucket['mappedBytes'] += size
+        name = re.sub(r'^(unlikely|hot|startup|exit)\.', '', name)
+        if (address, size, name) in by_address:
+            bucket['confirmedRanges'] += 1
+            bucket['confirmedBytes'] += size
+    spans.sort()
+    if not any(row['confirmedRanges'] for row in rows.values()) or any(a[1] > b[0] for a, b in zip(spans, spans[1:])):
+        raise ValueError('ELF Rust input ranges overlap or lack symbol confirmation')
+    return {'binarySha256': hashlib.sha256(binary).hexdigest(), 'textSha256': section_digest(binary, offset, length),
+            'textBytes': length, 'members': text_rows(rows, ('mappedRanges', 'mappedBytes', 'confirmedRanges', 'confirmedBytes'))}
+
+
+def text_rows(rows, keys):
+    return [dict(member=member, **{key: counts[key] for key in keys}) for member, counts in sorted(rows.items())]
+
+
+def windows_text_evidence(link_map, binary):
+    base, sections, exception = pe_layout(binary)
+    preferred = re.search(r'Preferred load address is ([a-fA-F0-9]+)', link_map)
+    if not preferred or int(preferred[1], 16) != base:
+        raise ValueError('MSVC map base differs from the PE')
+    functions = function_ranges(binary, sections, exception)
+    entries = defaultdict(set)
+    rust = defaultdict(set)
+    pattern = (r'^[ \t]*([0-9a-f]+):([0-9a-f]+)[ \t]+\S+[ \t]+([0-9a-f]+)'
+               r'[ \t]+f[ \t]+(?:i[ \t]+)?(\S+)[ \t]*$')
+    for index, offset, absolute, origin in re.findall(pattern, link_map, re.MULTILINE | re.IGNORECASE):
+        index, offset, address = int(index, 16), int(offset, 16), int(absolute, 16) - base
+        entries[address].add(origin)
+        owner = re.fullmatch(r'xdnote_services(?:\.lib)?:([^\s]+\.(?:obj|o))', origin, re.IGNORECASE)
+        if not owner:
+            continue
+        if not 0 < index <= len(sections):
+            raise ValueError('Rust map symbol has no corresponding PE section')
+        sec = sections[index - 1]
+        if not sec.flags & 0x20000000 or sec.address + offset != address or not sec.contains(address, address + 1):
+            raise ValueError('Rust map symbol disagrees with the file-backed PE code address')
+        rust[owner[1]].add(address)
+
+    rows = {}
+    for member, addresses in rust.items():
+        counts = Counter(mappedAddresses=len(addresses))
+        for address in addresses:
+            if len(entries[address]) != 1:
+                counts['ambiguousAddresses'] += 1
+            elif address in functions:
+                counts['confirmedRanges'] += 1
+                counts['confirmedBytes'] += functions[address] - address
+            else:
+                counts['mapOnlyAddresses'] += 1
+        rows[member] = counts
+    if not any(row['confirmedRanges'] for row in rows.values()):
+        raise ValueError('No Rust map address matches an unambiguous PE exception range')
+    return {'binarySha256': hashlib.sha256(binary).hexdigest(), 'codeSections': pe_code_sections(binary),
+            'members': text_rows(rows, ('mappedAddresses', 'confirmedRanges', 'confirmedBytes', 'ambiguousAddresses', 'mapOnlyAddresses'))}
+
+
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('build-dir','output'): p.add_argument('--'+name,type=Path,required=True)
-    p.add_argument('--deployed-binary', type=Path, help='Optional packaged arm64 macOS executable to compare')
+    p.add_argument('--deployed-binary', type=Path, help='Optional packaged executable to compare')
     a=p.parse_args(); build=build_output(a.build_dir); path=build/'xdnote-link.map'
     manifest=json.loads((ROOT/'LICENSES/third-party/manifest.json').read_bytes())
     sysroot=Path(subprocess.check_output(['rustup','run','1.99.0','rustc','--print','sysroot'],text=True,env=os.environ).strip())
@@ -126,6 +223,26 @@ if __name__=='__main__':
             if deployed_text != [report['macosTextEvidence']['textSha256']]:
                 raise ValueError('Packaged Mach-O text differs from the linked executable')
             report['macosTextEvidence']['deployedBinarySha256'] = hashlib.sha256(deployed).hexdigest()
+    elif target == 'x86_64-unknown-linux-gnu':
+        binary = build / 'xdnote'
+        symbols = subprocess.check_output(['/usr/bin/nm', '--defined-only', '--format=posix', '--print-size', binary], text=True, errors='backslashreplace')
+        evidence = linux_text_evidence(link_map, linux_text_section(binary), symbols, binary.read_bytes())
+        if a.deployed_binary:
+            deployed_path = build_output(a.deployed_binary)
+            deployed = deployed_path.read_bytes()
+            _, offset, size = linux_text_section(deployed_path)
+            if section_digest(deployed, offset, size) != evidence['textSha256']:
+                raise ValueError('Packaged ELF .text differs from the linked executable')
+            evidence['deployedBinarySha256'] = hashlib.sha256(deployed).hexdigest()
+        report['linuxTextEvidence'] = evidence
+    elif target == 'x86_64-pc-windows-msvc':
+        evidence = windows_text_evidence(link_map, (build / 'xdnote.exe').read_bytes())
+        if a.deployed_binary:
+            deployed = build_output(a.deployed_binary).read_bytes()
+            if pe_code_sections(deployed) != evidence['codeSections']:
+                raise ValueError('Packaged PE code sections differ from the linked executable')
+            evidence['deployedBinarySha256'] = hashlib.sha256(deployed).hexdigest()
+        report['windowsTextEvidence'] = evidence
     elif a.deployed_binary:
-        p.error('--deployed-binary requires the arm64 macOS target')
+        p.error('Packaged code comparison unavailable for this target')
     build_output(a.output).write_text(json.dumps(report,indent=2)+'\n')

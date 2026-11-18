@@ -203,6 +203,9 @@ jobs:
           export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
           python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
           python scripts/compatibility_audit.py --root build/cycle-112-deployment/staging --report build/cycle-112-deployment/staging-evidence/compatibility.json
+      - name: Cross-check live Rust ranges in the packaged Linux executable
+        if: startsWith(inputs.scope, 'deployment-') && runner.os == 'Linux'
+        run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/cycle-112-deployment/staging/bin/xdnote --output build/cycle-112-deployment/staging-evidence/linkage.json
       - name: Inspect native Linux package without installing system paths
         if: startsWith(inputs.scope, 'deployment-') && runner.os == 'Linux'
         run: |
