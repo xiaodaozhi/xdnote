@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-acceptance]
       evidence_run:
         description: 'Source product run for delivery-review only'
         type: string
@@ -108,7 +108,9 @@ jobs:
       fail-fast: false
       matrix:
         include: >-
-          ${{ fromJSON(inputs.scope == 'updates' &&
+          ${{ fromJSON(inputs.scope == 'reader-acceptance' &&
+          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
+          inputs.scope == 'updates' &&
           '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
@@ -171,6 +173,27 @@ jobs:
       - name: Build desktop admission (Unix)
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
+      - name: Verify the product with real Orca in a private X11 session
+        if: inputs.scope == 'reader-acceptance' && runner.os == 'Linux'
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=' -o Acquire::Retries=1 -o Acquire::http::Timeout=20)
+          timeout 300s sudo apt-get "${xdnote_apt_options[@]}" install -y orca speech-dispatcher-espeak-ng dbus-x11 openbox xdotool xauth pulseaudio
+          xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- bash scripts/reader-acceptance/orca-acceptance.sh
+      - name: Verify the product with genuine portable NVDA
+        if: inputs.scope == 'reader-acceptance' && runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 8
+        run: ./scripts/reader-acceptance/nvda-acceptance.ps1
+      - name: Preserve owned screen reader diagnostics
+        if: always() && inputs.scope == 'reader-acceptance'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reader-evidence-${{ runner.os }}
+          path: build/evidence/reader-*/*.log
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Test explicit update checks and settings
         if: startsWith(inputs.scope, 'updates')
         run: python scripts/desktop.py test --suite updates
