@@ -10,6 +10,7 @@ import json
 from pathlib import Path, PurePosixPath
 import desktop
 from installer_common import build_output, digest
+from spdx_serialization import equivalent
 
 
 def read_json(path):
@@ -25,6 +26,8 @@ def documents(directory, records):
         if Path(name).name != name or not name.endswith('.spdx.json') or name in result:
             raise ValueError('Invalid or duplicate supplier document')
         path = directory / name
+        if path.is_symlink() or not path.resolve().is_relative_to(directory.resolve()):
+            raise ValueError('Supplier document must stay in the SDK SBOM directory')
         if digest(path) != record['sha256']:
             raise ValueError('Supplier document differs from actual product evidence')
         value = read_json(path)
@@ -54,9 +57,14 @@ def dependency_review(docs, seeds, raw_hashes):
             algorithm = checksum.get('algorithm', '').lower(); expected = checksum.get('checksumValue', '').lower()
             actual = raw_hashes.get(target, {}).get(algorithm)
             valid = bool(target and actual and actual == expected)
+            serialization = 'json' if valid else None
+            if target and not valid:
+                for variant in raw_hashes.get(target, {}).get('verifiedVariants', []):
+                    if variant.get('projectionEquivalent') and variant.get(algorithm) == expected:
+                        actual = variant[algorithm]; valid = True; serialization = variant['fileName']; break
             external[(name, ref['externalDocumentId'])] = target if valid else None
             reference_checks.append({'document': name, 'reference': ref['externalDocumentId'], 'namespace': ref['spdxDocument'],
-                                     'expected': checksum, 'actual': actual, 'matches': valid})
+                                     'expected': checksum, 'actual': actual, 'matches': valid, 'matchedSerialization': serialization})
     def resolve(name, identifier):
         if ':' in identifier:
             alias, identifier = identifier.split(':', 1); name = external.get((name, alias))
@@ -90,8 +98,8 @@ def dependency_review(docs, seeds, raw_hashes):
                      'unresolvedFields': [field for field in ['licenseConcluded', 'licenseDeclared', 'copyrightText'] if item.get(field) in (None, '', 'NOASSERTION')]})
     return {'supplierDependencyPackages': rows, 'unresolvedReferences': unresolved, 'externalDocumentChecks': reference_checks,
             'notReachedPackageCount': len(packages) - len(selected),
-            'notReachedMeaning': 'not reached by supplied runtime dependency edges; does not prove absence from binary bytes',
-            'inference': 'package owners of actual delivered Qt files plus transitive supplier DEPENDS_ON/STATIC_LINK/DYNAMIC_LINK; compiler BUILD_DEPENDENCY_OF and whole-module CONTAINS are not runtime roots'}
+            'notReachedMeaning': 'not reached by supplied supplier dependency edges; does not prove absence from binary bytes',
+            'inference': 'package owners of actual delivered Qt files plus transitive supplier DEPENDS_ON/STATIC_LINK/DYNAMIC_LINK; compiler BUILD_DEPENDENCY_OF and whole-module CONTAINS are not roots; generic DEPENDS_ON can cover build/run requirements'}
 
 
 def review(evidence, linkage, qt):
@@ -100,6 +108,14 @@ def review(evidence, linkage, qt):
     if evidence['buildIdentity']['dependencies']['qt']['version'] != '6.8.2': raise ValueError('Unexpected Qt version')
     records = evidence.get('qtModules', evidence.get('qtSbom', [])); docs = documents(qt / 'sbom', records)
     raw_hashes = {name: {algorithm: hashlib.new(algorithm, (qt / 'sbom' / name).read_bytes()).hexdigest() for algorithm in ['sha1', 'sha256']} for name in docs}
+    for name, doc in docs.items():
+        variant = qt / 'sbom' / name.removesuffix('.json')
+        if not variant.is_symlink() and variant.is_file() and variant.resolve().is_relative_to((qt / 'sbom').resolve()) and variant.stat().st_size <= 64 * 1024**2:
+            data = variant.read_bytes()
+            try: same = equivalent(data.decode('utf-8'), doc)
+            except ValueError: same = False
+            raw_hashes[name]['verifiedVariants'] = [{'fileName': variant.name, 'projectionEquivalent': same,
+                                                   **{algorithm: hashlib.new(algorithm, data).hexdigest() for algorithm in ['sha1', 'sha256']}}]
     shipped = {row['path']: row for row in evidence['files']}; seeds = set()
     for row in shipped.values():
         material = row.get('evidence', {}); supplier = material.get('supplier')
@@ -121,6 +137,7 @@ def review(evidence, linkage, qt):
     if not seeds: raise ValueError('No actual Qt file roots')
     result = dependency_review(docs, seeds, raw_hashes)
     return {'ok': True, 'buildIdentity': evidence['buildIdentity'], 'supplierDocuments': records, 'actualQtFileRoots': sorted(seeds), **result,
+            'supplierSerializationEvidence': raw_hashes,
             'rustSelectedCompilationUnits': linkage['members'], 'rustSummary': dict(Counter(row['kind'] for row in linkage['members'])),
             'licenseReviewComplete': False, 'releaseReady': False,
             'pending': ['review actual compiled-in third-party source and applicable license choices', 'resolve supplier reference gaps without rewriting upstream evidence',

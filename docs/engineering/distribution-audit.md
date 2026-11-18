@@ -38,6 +38,8 @@ macOS Sparkle 实际 framework／helper 的供应方文件、arm64 指令节及�
 
 源码 Core 构建与替换入口覆盖 Windows／Linux／macOS，方法见[自行替换说明](qt-library-replacement.md)。PE／ELF／Mach-O 读取实际指令节，运行报告保留实际 Core 加载路径、证明函数、SDK 与输入摘要及维护拒绝；三平台的最终结论须以各次原始报告为准，不从某个平台通过推定其他平台或全部 Qt 模块通过。
 
-`scripts/component_review.py` 从同一实际产品的材料清单和 linker 报告出发，核对原始 Qt SPDX 摘要及 SDK 文件，定位实际分发文件所属包，再追溯供应方运行依赖关系。编译器的构建依赖、整个模块的包含关系不作为运行根；未被这些关系到达不等于二进制中不存在。包级许可选项和未确定字段保持原文，跨文档引用必须匹配供应方声明的摘要，否则保留为待核验引用，不仅凭同名包修复。
+`scripts/component_review.py` 从同一实际产品的材料清单和 linker 报告出发，核对原始 Qt SPDX 摘要及 SDK 文件，定位实际分发文件所属包，再追溯供应方依赖／链接关系。编译器的构建依赖、整个模块的包含关系不作为追溯根；未被这些关系到达不等于二进制中不存在。包级许可选项和未确定字段保持原文，跨文档引用必须匹配供应方声明的摘要，否则保留为待核验引用，不仅凭同名包修复。
 
 手动 `delivery-review.yml`（或桌面入口 `scope=delivery-review`）要求显式提供有未过期实际产品工件的 Qt 替换运行 ID。工具只读获取同仓库成功运行、核对 ZIP 摘要和报告身份，在三平台固定 SDK 上生成审阅清单；运行中的工具提交与来源产品提交分别记录。不构建、签名、安装、注册或发布软件，不读取生产私钥；原始材料审阅和源码／替换义务继续保持 `licenseReviewComplete=false`、`releaseReady=false`。已过期工件需重新生成源证据，不能拼接其他提交冒充同一候选。
+
+跨文档引用可能指向 SDK 原始 tag-value `.spdx`，其摘要与 JSON 序列化不同。工具先核对被引用原文摘要，并严格比较两种序列化中用于追溯的文档身份、包许可／版权／版本、文件身份、去重关系和外部引用；仅这些字段一致才关联同一目标。未通过比较、摘要不符或缺失的目标继续保留缺口，不修改供应方原文，也不据此宣称全部 SPDX 字段等同。依赖关系采用供应方声明，通用 `DEPENDS_ON` 可同时涉及构建和运行，不代表已经证实最终机器码中的组件；依据见 [SPDX 文档引用](https://spdx.github.io/spdx-spec/v2.3.1/document-creation-information/)及[关系定义](https://spdx.github.io/spdx-spec/v2.3.1/relationships-between-SPDX-elements/)。
