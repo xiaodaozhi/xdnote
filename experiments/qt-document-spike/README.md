@@ -32,6 +32,8 @@ Qt Quick 允许调用方将 `QTextDocument` 绑定到 `TextEdit`，并由调用�
 
 ## 重要限制
 
+对照 Qt 6.8.2 和 6.8.3 的公开源码，两版均未把文档重新绑定与已创建的辅助接口同步生命周期，两版的整段值写入也都没有应用只读策略或保留撤销历史。后续 6.8.3 的结论限于静态核对，本项目的构建及安全前置条件试验继续使用 6.8.2。真实辅助技术及原生平台桥接需要独立验证。[Qt 6.8.2 源码](https://github.com/qt/qtdeclarative/blob/v6.8.2/src/quick/accessible/qaccessiblequickitem.cpp) [Qt 6.8.3 源码](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/accessible/qaccessiblequickitem.cpp)
+
 - 使用 `QSaveFile` 同目录暂存且关闭直接覆盖回退；两次比较目标字节能发现测试中注入的变化，但最后一次检查到提交之间仍有跨进程竞争。相同字节的文件替换、系统文件 ID、链接／重解析点、权限和网络卷尚未解决，不能用于真实用户文件保存。参见 [Qt 6.8 QSaveFile](https://doc.qt.io/qt-6.8/qsavefile.html)。
 - 打开时拒绝混合换行、非 UTF-8 和源文已有的 U+2028／U+2029；编辑过程中 U+2028 拒绝保存。Qt 内部普通段落也使用 U+2029，因此编辑过程中插入字面 U+2029 尚不能和普通换行区分，这是待决的文本保真问题。
 - `MarkdownNoHTML` 和占位资源加载只覆盖当前实验路径与样本；未完成对完整方言、嵌入对象、实际本地图片、链接协议、复杂文档及渲染资源上限的安全／兼容验收。

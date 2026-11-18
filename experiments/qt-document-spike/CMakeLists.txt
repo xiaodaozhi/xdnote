@@ -5,6 +5,10 @@ set(CMAKE_AUTOMOC ON)
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../../tools/desktop-dependencies.json" XDNOTE_DEPENDENCIES)
 string(JSON XDNOTE_QT_VERSION GET "${XDNOTE_DEPENDENCIES}" qt version)
 find_package(Qt6 ${XDNOTE_QT_VERSION} EXACT REQUIRED COMPONENTS Core Gui Network Qml Quick Test Widgets)
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/QtAppleOpenGLCompatibility.cmake")
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    add_compile_options(-include "${CMAKE_CURRENT_LIST_DIR}/../../cmake/QtCompilerCompatibility.h")
+endif()
 
 add_executable(qt_open_intent_sender
     src/spike_ipc.cpp
