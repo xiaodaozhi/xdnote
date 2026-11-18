@@ -13,6 +13,7 @@
 #include <QTextLayout>
 #include <QGlyphRun>
 #include <QRawFont>
+#include <QtMath>
 #ifdef Q_OS_WIN
 #define NOMINMAX
 #include <windows.h>
@@ -23,6 +24,11 @@
 namespace xdnote {
 namespace {
 int titleHeight() { return visualTokens().value("windows").toObject().value("main").toObject().value("titlebarHeight").toInt(); }
+qreal brandWidth(const QSvgRenderer &logo) {
+    const qreal height = visualTokens().value("brand").toObject().value("displayHeight").toDouble();
+    const auto viewBox = logo.viewBoxF();
+    return viewBox.isEmpty() ? 0 : height * viewBox.width() / viewBox.height();
+}
 }
 WindowTitleBar::WindowTitleBar(Appearance *appearance, QWidget *parent) : QWidget(parent), m_appearance(appearance) {
     setFixedHeight(titleHeight()); setObjectName("documentHeader");
@@ -43,24 +49,46 @@ void WindowTitleBar::setTitle(const QString &title, bool dirty) {
 }
 void WindowTitleBar::setCenter(QWidget *widget, int leftInset) {
     if (m_center || !widget) return;
-    delete m_row->takeAt(0); m_row->insertSpacing(0, leftInset); m_row->insertWidget(1, widget, 1); m_center = widget; update();
+    delete m_row->takeAt(0);
+    m_center = widget;
+    m_centerLeftInset = leftInset;
+    m_row->insertWidget(0, widget, 1);
+    updateCenterInsets();
+    update();
 }
+void WindowTitleBar::updateCenterInsets() {
+    const int left = m_nativeInsets.left();
+    const int logoSpace = left ? left + 32 + qCeil(brandWidth(m_logo)) : 0;
+    const int contentLeft = m_center ? qMax(m_centerLeftInset, logoSpace) : left;
+    m_row->setContentsMargins(contentLeft, 0, m_nativeInsets.right(), 0);
+}
+#ifdef Q_OS_MACOS
+void WindowTitleBar::setNativeInsets(const QMargins &insets) {
+    if (m_nativeInsets == insets) return;
+    m_nativeInsets = insets;
+    updateCenterInsets();
+    update();
+}
+#endif
 void WindowTitleBar::updateWindowState() { if (m_maximize) { m_maximize->setSymbol(window()->isMaximized() ? "restore-window" : "maximize"); m_maximize->setAccessibleName(window()->isMaximized() ? QStringLiteral("还原窗口") : QStringLiteral("最大化窗口")); } }
 int WindowTitleBar::captionWidth() const {
 #ifdef Q_OS_WIN
     return 3 * titleHeight();
 #else
-    return 0;
+    return m_nativeInsets.right();
 #endif
 }
 void WindowTitleBar::paintEvent(QPaintEvent *) {
     QPainter painter(this); painter.setFont(font()); painter.setRenderHint(QPainter::Antialiasing); painter.fillRect(rect(), m_appearance->color("sidebar"));
     const qreal height = visualTokens().value("brand").toObject().value("displayHeight").toDouble();
-    const qreal width = height * m_logo.viewBoxF().width() / m_logo.viewBoxF().height();
-    m_logo.render(&painter, QRectF(16, (this->height() - height) / 2, width, height));
+    const qreal width = brandWidth(m_logo);
+    const int inset = m_nativeInsets.left();
+    painter.save();
+    painter.setClipRect(rect().marginsRemoved(m_nativeInsets));
+    m_logo.render(&painter, QRectF(inset + 16, (this->height() - height) / 2, width, height));
     if (!m_center) {
-        painter.setPen(m_appearance->color("border")); painter.drawLine(QPointF(32 + width, 14), QPointF(32 + width, this->height() - 14));
-        const qreal left = 48 + width; QFontMetricsF metrics(font());
+        painter.setPen(m_appearance->color("border")); painter.drawLine(QPointF(inset + 32 + width, 14), QPointF(inset + 32 + width, this->height() - 14));
+        const qreal left = inset + 48 + width; QFontMetricsF metrics(font());
         const auto title = metrics.elidedText(m_title, Qt::ElideMiddle, qMax(0.0, this->width() - left - 32 - captionWidth()));
         QTextLayout text(title, font()); QTextOption option; option.setWrapMode(QTextOption::NoWrap); text.setTextOption(option);
         text.beginLayout(); auto line = text.createLine(); if (line.isValid()) line.setLineWidth(qMax(0.0, this->width() - left - captionWidth())); text.endLayout();
@@ -69,9 +97,43 @@ void WindowTitleBar::paintEvent(QPaintEvent *) {
         painter.setPen(m_appearance->color("text")); text.draw(&painter, QPointF(left, this->height() / 2.0 - ink.center().y()));
         if (m_dirty) themedIcon("dirty",m_appearance->semantic("warning")).paint(&painter,QRect(qRound(left+metrics.horizontalAdvance(title)+4),(this->height()-16)/2,16,16));
     }
+    painter.restore();
     const int border = visualTokens().value("controls").toObject().value("borderWidth").toInt(); painter.fillRect(QRect(0, this->height() - border, this->width(), border), m_appearance->color("border"));
 }
-void WindowTitleBar::mousePressEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton && window()->windowHandle()) window()->windowHandle()->startSystemMove(); }
+void WindowTitleBar::mousePressEvent(QMouseEvent *event) {
+    if (event->button() != Qt::LeftButton) return;
+#ifdef Q_OS_MACOS
+    if (QGuiApplication::platformName() == "cocoa") {
+        m_dragOrigin = event->globalPosition();
+        m_dragWindowOrigin = window()->pos();
+        m_triedNativeMove = false;
+        return;
+    }
+#endif
+    if (auto *handle = window()->windowHandle()) handle->startSystemMove();
+}
+#ifdef Q_OS_MACOS
+void WindowTitleBar::mouseMoveEvent(QMouseEvent *event) {
+    if (!m_dragOrigin || !event->buttons().testFlag(Qt::LeftButton)) return;
+    const auto delta = event->globalPosition() - *m_dragOrigin;
+    if (delta.manhattanLength() < QApplication::startDragDistance()) return;
+    if (!m_triedNativeMove) {
+        m_triedNativeMove = true;
+        // Cocoa can accept a drag event without moving the window. Let
+        // AppKit finish its native move before using the Qt pointer delta.
+        const auto before = window()->pos();
+        if (auto *handle = window()->windowHandle(); handle && handle->startSystemMove() && window()->pos() != before) {
+            m_dragOrigin.reset();
+            return;
+        }
+    }
+    if (!window()->isMaximized() && !window()->isFullScreen())
+        window()->move(m_dragWindowOrigin + delta.toPoint());
+}
+void WindowTitleBar::mouseReleaseEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton) m_dragOrigin.reset();
+}
+#endif
 void WindowTitleBar::mouseDoubleClickEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton) static_cast<ApplicationWindow *>(window())->toggleMaximized(); }
 void WindowTitleBar::changeEvent(QEvent *event) { QWidget::changeEvent(event); updateWindowState(); }
 ApplicationWindow::ApplicationWindow(Appearance *appearance) : m_chromeAppearance(appearance ? appearance : new Appearance(this)) {
@@ -79,6 +141,19 @@ ApplicationWindow::ApplicationWindow(Appearance *appearance) : m_chromeAppearanc
     // Qt Widgets keeps zero client margins; Win32 receives the native caption
     // style at attachment so system commands retain DWM transition behavior.
     setWindowFlag(Qt::FramelessWindowHint);
+#endif
+}
+void ApplicationWindow::resetNativeFrame() {
+    m_frameInitialized = false;
+    m_nativeMaxPressed = false;
+#ifdef Q_OS_MACOS
+    delete m_macChromeObserver;
+    m_macChromeObserver = nullptr;
+    setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea);
+    if (m_windowHeader) {
+        m_windowHeader->setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea);
+        m_windowHeader->setNativeInsets({});
+    }
 #endif
 }
 void ApplicationWindow::toggleMaximized() {
@@ -99,6 +174,9 @@ void ApplicationWindow::changeEvent(QEvent *event) {
 void ApplicationWindow::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
     if (!isWindow()) return;
+#ifdef Q_OS_MACOS
+    applyMacWindowChrome();
+#endif
 #ifdef Q_OS_WIN
     if (QGuiApplication::platformName() != "windows") return;
     if (m_frameInitialized) { QTimer::singleShot(0, this, &ApplicationWindow::applyNativeAppearance); return; }
@@ -119,6 +197,9 @@ void ApplicationWindow::showEvent(QShowEvent *event) {
 #endif
 }
 void ApplicationWindow::applyNativeAppearance() {
+#ifdef Q_OS_MACOS
+    applyMacWindowChrome();
+#endif
 #ifdef Q_OS_WIN
     if (!isWindow() || !m_frameInitialized || QGuiApplication::platformName() != "windows") return;
     const auto hwnd = reinterpret_cast<HWND>(internalWinId()); DWORD process = 0;

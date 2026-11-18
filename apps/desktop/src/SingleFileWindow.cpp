@@ -337,9 +337,7 @@ void SingleFileWindow::applyAppearance() {
     const QHash<QString, QString> symbols{{"copyPath","copy"},{"revealFolder","folder-open"},{"openAction","folder-open"},{"saveAction","save"},{"saveAsAction","save-as"},{"reloadAction","refresh"},{"undoAction","undo"},{"redoAction","redo"},{"closeAction","close"},{"quitAction","exit"},{"theme-system","monitor"},{"theme-light","sun"},{"theme-dark","moon"},{"openWorkspaceAction","folder-open"},{"transferWorkspaceAction","workspace"},{"insertImageAction","image"},{"insertWorkspaceLinkAction","link"},{"openDocumentLinkAction","link"},{"settingsAction","settings"},{"outlineAction","outline"},{"focusAction","focus"}};
     for (auto *item : findChildren<QAction *>()) if (symbols.contains(item->objectName())) item->setIcon(themedIcon(symbols.value(item->objectName()), m_appearance->color("text")));
     for (auto *menu : findChildren<QMenu *>()) if (menu->objectName() == "appearanceMenu" || menu->objectName() == "accentMenu") menu->menuAction()->setIcon(themedIcon("palette", m_appearance->color("text")));
-#ifdef Q_OS_WIN
     applyNativeAppearance();
-#endif
     if (m_footer && m_footer->parentWidget() != this) m_footer->setStyleSheet(styleSheet());
     update();
 }
