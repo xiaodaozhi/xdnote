@@ -9,6 +9,13 @@ from linkage_audit import classify, selected_members
 
 
 class QtReplacementEvidence(unittest.TestCase):
+    def test_toolchain_attribution_requires_the_archive_hash(self):
+        members = ['std-abc.std.cgu.0.rcgu.o', 'std-def.std.cgu.0.rcgu.o']
+        matching, changed = classify(members, [], [('std', 'abc')])
+        self.assertEqual(matching['kind'], 'Rust toolchain source unit')
+        self.assertEqual(matching['archiveHash'], 'abc')
+        self.assertEqual(changed['kind'], 'unclassified Rust source unit')
+
     def test_msvc_archive_members_and_import_descriptors_keep_distinct_evidence(self):
         text = '''0001:00000270 symbol 0000000140001270 f xdnote_services:xdnote_markdown-f9b650fb0abc18ad.xdnote_markdown.cgu.07.rcgu.o
 0001:00000300 symbol 0000000140001300 f xdnote_services.lib:std_detect-2e160def0ea9d132.std_detect.cgu.0.rcgu.o
