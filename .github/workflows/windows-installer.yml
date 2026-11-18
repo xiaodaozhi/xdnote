@@ -109,6 +109,8 @@ jobs:
           python scripts/compatibility_audit.py --root build/product-install/payload --report build/product-install/compatibility.json
           python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-windows-x86_64-dev.zip
           python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
+      - name: Cross-check live Rust ranges in the packaged Windows executable
+        run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/product-install/payload/xdnote.exe --output build/product-install/linkage.json
       - name: Check unsigned Store package layout with disposable identity
         run: python scripts/check_msix.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --payload build/product-install/payload --audit build/product-install/payload-inventory.json --work-dir build/product-install/msix-fixture
       - name: Validate actual native package roundtrip

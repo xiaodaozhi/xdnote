@@ -40,7 +40,7 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 `scope=settings-unix` 仅补验 Linux、macOS ARM64 的[设置、偏好及自动保存](settings-window.md)受影响路径，使用 `test --suite settings` 固定离屏运行；不执行真实文件选择器、原生辅助技术或完整桌面矩阵。新设置窗口的人工视觉验收另行记录，未验收时不宣称通过。
 
-`scope=deployment-unix` 仅在 Linux、macOS ARM64 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 只补验同一范围的 Linux，用于 Linux 专属修正，不重复已有 macOS 证据。其通过不代表完整桌面回归、最低系统、真实用户目录安装、系统关联或发行许可验收。
+`scope=deployment-unix` 仅在 Linux、macOS ARM64 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 复用同一 Linux 开发包，在一次性 GitHub 托管 Ubuntu 22.04 运行器中通过 apt 安装并以 dpkg 核对版本、文件归属与卸载。系统启动器另外在虚拟 X11 上通过帮助入口验证原生加载，证据覆盖系统包安装和清理；可见会话、文件管理器、系统默认应用及发行验收单独记录。
 
 桌面工作流的 Ubuntu 22.04 依赖准备使用显式 jammy／updates／security 源与 Ubuntu 归档密钥；主站域名解析失败时改用 [Linux Kernel Archives 的 Ubuntu 镜像](https://mirrors.kernel.org/)，实际地址写入日志，签名与有效期检查保持启用。APT 配置只对该命令生效，不沿用宿主预设的镜像优先级。DNS 探测、索引更新、包下载及整个准备步骤均有时限；网络故障作为基础设施失败记录，不无限等待或计为产品测试结果。
 
@@ -52,7 +52,7 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 `scope=updates-macos` 只补验同一更新范围的 macOS arm64，不重复已通过的 Windows／Linux。桌面工作流可显式选择 `macos_runner=macos-15`（默认）或 `macos-26`；两者均为 GitHub 提供的原生 arm64 标准宿主，实际宿主名进入作业和工件名。宿主版本选择不改变 macOS 14+ 产品目标，也不能作为最低系统验收。标签以 [GitHub runner 清单](https://github.com/actions/runner-images/blob/main/README.md)为准，不使用付费 large／xlarge 或 Intel 宿主替代原生 arm64 检查。
 
-独立 `update-helper.yml` 仅手动触发，在一次性 Windows／Ubuntu 22.04 账户运行[原生事务夹具](../../experiments/native-update-fixture/README.md)。它使用临时信任根和独立进程映像实际执行 helper 与安装器，覆盖取消、并行门、验签／摘要拒绝、父进程等待、安装后身份和重启；不编译 Qt 桌面、不发布，也不替代可见向导、polkit 对话框或产品完整更新验收。Linux 系统包操作只允许在该一次性 CI 环境执行。
+独立 `update-helper.yml` 仅手动触发，在一次性 Windows／Ubuntu 22.04 账户运行[原生事务夹具](../../experiments/native-update-fixture/README.md)。它使用临时信任根和独立进程映像实际执行 helper 与安装器，覆盖取消、并行门、验签／摘要拒绝、父进程等待、安装后身份和重启；不编译 Qt 桌面、不发布，也不替代可见向导、polkit 对话框或产品完整更新验收。Linux 系统包操作仅用于一次性 GitHub 托管 CI 的原生事务和 Linux 部署专项。
 
 `scope=update-products` 另调用其 product 范围，在相同的一次性环境编译两个私有产品版本，验证真实文档保存／取消、原生包升级、回执与重启。临时信任根、文件回复及静默安装／授权限定于私有 worktree；正常产品构建和信任文件不修改。该范围仍不包含最低系统、公开发行、真实授权对话框或人工桌面验收。
 
