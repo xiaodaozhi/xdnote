@@ -54,6 +54,22 @@ class NativePreviewViewTests final : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() { installFontFallbacks(); InputModality::forApplication(); qRegisterMetaType<NativePreviewStamp>(); }
+    void firstReaderGetsTheReadOnlyTextInterface() {
+        Appearance appearance;
+        NativePreviewView view(&appearance);
+        auto *interface = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(interface);
+#ifdef Q_OS_MACOS
+        QCOMPARE(interface->role(), QAccessible::EditableText);
+#else
+        QCOMPARE(interface->role(), QAccessible::Document);
+#endif
+        QVERIFY(interface->state().multiLine);
+        QVERIFY(interface->state().readOnly);
+        QVERIFY(!interface->state().editable);
+        QVERIFY(interface->textInterface());
+        QVERIFY(!interface->editableTextInterface());
+    }
     void cachedImagesRemainStableAcrossRepaints_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
     void cachedImagesRemainStableAcrossRepaints() {
         QFETCH(QString, theme); Appearance appearance; QVERIFY(appearance.setPreferences(theme, "graphite"));

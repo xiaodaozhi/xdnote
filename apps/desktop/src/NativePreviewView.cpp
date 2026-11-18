@@ -603,6 +603,15 @@ public:
     }
     QAccessibleInterface *focusChild() const override { return view() && view()->hasFocus() ? child(view()->d->focusedAction) : nullptr; }
     explicit AccessibleNativePreview(NativePreviewView *view) : QAccessibleWidget(view, QAccessible::Document) {}
+    QAccessible::Role role() const override {
+#ifdef Q_OS_MACOS
+        // Qt 6.8 Cocoa drops Document from the native tree. Its text-area
+        // mapping requires EditableText and multiLine; state() keeps it read-only.
+        return QAccessible::EditableText;
+#else
+        return QAccessibleWidget::role();
+#endif
+    }
     NativePreviewView *view() const { return qobject_cast<NativePreviewView *>(object()); }
     void *interface_cast(QAccessible::InterfaceType type) override {
         if (type == QAccessible::TextInterface) return static_cast<QAccessibleTextInterface *>(this);
@@ -663,8 +672,9 @@ static void installNativeAccessibility() {
 
 NativePreviewView::NativePreviewView(Appearance *appearance, QWidget *parent, int padding)
     : QAbstractScrollArea(parent), d(std::make_unique<State>(this, appearance ? appearance : new Appearance(this), padding)) {
-    setObjectName("nativeMarkdownPreview"); setAccessibleName(QStringLiteral("Markdown 阅读内容"));
+    // Setting the accessible name emits an event that resolves and caches the interface.
     installNativeAccessibility();
+    setObjectName("nativeMarkdownPreview"); setAccessibleName(QStringLiteral("Markdown 阅读内容"));
     d->worker = new QFutureWatcher<std::shared_ptr<LayoutPlan>>(this);
     connect(d->worker, &QFutureWatcher<std::shared_ptr<LayoutPlan>>::finished, this, [this] {
         d->runningPlan = false;
