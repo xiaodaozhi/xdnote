@@ -57,7 +57,7 @@ class QtNetworkPreparation(unittest.TestCase):
             sdk = Path(directory) / 'sdk'; backup = Path(directory) / 'backup'
             target = sdk / network.module_paths('Linux')[0]; target.parent.mkdir(parents=True)
             target.write_bytes(b'prepared'); backup.write_bytes(b'supplier')
-            record = {'files': {str(target.relative_to(sdk)): {'sha256': digest(target),
+            record = {'files': {target.relative_to(sdk).as_posix(): {'sha256': digest(target),
                 'originalSdkSha256': digest(backup), 'originalBackup': str(backup)}}}
             (sdk / network.RECEIPT).write_text(json.dumps(record))
             target.write_bytes(b'user change')
