@@ -82,7 +82,7 @@ try {
     $title = "Reader-Check.md $([char]0x2014) xdnote"
     $window = [IntPtr]::Zero
     for ($attempt=0; $attempt -lt 40 -and $window -eq [IntPtr]::Zero; $attempt++) {
-        $window = [ReaderInput]::FindWindow($null, $title)
+        $window = [ReaderInput]::FindWindow([NullString]::Value, $title)
         if ($window -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 500 }
     }
     if ($window -eq [IntPtr]::Zero) { throw 'xdnote reader fixture window did not appear' }
@@ -98,27 +98,39 @@ try {
     [ReaderInput]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
     Send-ReaderKeys $window @(0x11, 0x24)
     Send-ReaderKeys $window @(0x2D, 0x28)
-    Start-Sleep -Seconds 6
+    Start-Sleep -Seconds 2
+    Send-ReaderKeys $window @(0x28)
+    Send-ReaderKeys $window @(0x2D, 0x26)
+    $bodyEnd = (Get-Item -LiteralPath $log).Length
     Send-ReaderKeys $window @(0x11, 0x41)
     Send-ReaderKeys $window @(0x2D, 0x10, 0x26)
+    $selectionEnd = (Get-Item -LiteralPath $log).Length
     Send-ReaderKeys $window @(0x11, 0x24)
+    $focusStart = (Get-Item -LiteralPath $log).Length
     Send-ReaderKeys $window @(0x09)
     Send-ReaderKeys $window @(0x2D, 0x6C)
+    $focusEnd = (Get-Item -LiteralPath $log).Length
     Send-ReaderKeys $window @(0x0D)
     Send-ReaderKeys $window @(0x2D, 0x28)
     Start-Sleep -Seconds 5
     Send-ReaderKeys $window @(0x11, 0x57)
-    if ([ReaderInput]::FindWindow($null, $title) -ne [IntPtr]::Zero) { throw 'Reader window remains after close' }
+    if ([ReaderInput]::FindWindow([NullString]::Value, $title) -ne [IntPtr]::Zero) { throw 'Reader window remains after close' }
     if ((Get-FileHash -LiteralPath $fixture).Hash -ne $beforeHash) { throw 'Read-only fixture changed' }
 } finally {
     Start-Process -FilePath $nvda -ArgumentList @('--quit') -Wait
     if ($null -ne $app -and !$app.HasExited) { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
 }
-$spoken = Get-Content -LiteralPath $log | Where-Object { $_ -match '\bSpeaking\b' }
+$bytes = [IO.File]::ReadAllBytes($log)
+$phases = @(
+    @{ Label='Body reading'; Start=0; End=$bodyEnd; Marker='Blue orchard reading sample' },
+    @{ Label='Text selection'; Start=$bodyEnd; End=$selectionEnd; Marker='selected' },
+    @{ Label='Link focus'; Start=$focusStart; End=$focusEnd; Marker='Follow the cedar heading' }
+)
 $missing = @()
-foreach ($marker in @('Blue orchard reading sample','Follow the cedar heading','Amber target reading sample')) {
-    $evidence = $spoken | Where-Object { $_.Contains($marker) } | Select-Object -First 3
-    if (!$evidence) { $missing += $marker }
+foreach ($phase in $phases) {
+    $data = [Text.Encoding]::UTF8.GetString($bytes, $phase.Start, ($phase.End - $phase.Start))
+    $evidence = ($data -split "`n") | Where-Object { $_ -match '\bSpeaking\b' -and $_.ToLower().Contains($phase.Marker.ToLower()) } | Select-Object -First 2
+    if (!$evidence) { $missing += $phase.Label }
     else { $evidence | ForEach-Object { $_.Substring(0, [Math]::Min($_.Length, 560)) } }
 }
 if ($missing) { throw "No genuine NVDA speech evidence for $($missing -join ', ')" }

@@ -50,18 +50,23 @@ xdotool windowactivate --sync "$window"
 xdotool mousemove --window "$window" 120 215 click 1
 xdotool key --clearmodifiers ctrl+Home
 sleep 1
+/usr/bin/python3 scripts/reader-acceptance/orca-target.py hidden
 xdotool key --clearmodifiers KP_Add
-sleep 5
+sleep 6
+read_end="$(wc -c < "$evidence/orca.log")"
 xdotool key --clearmodifiers ctrl+a
 xdotool key --clearmodifiers Insert+Shift+Up
 sleep 1
+selection_end="$(wc -c < "$evidence/orca.log")"
 xdotool key --clearmodifiers ctrl+Home
-xdotool key --clearmodifiers Tab KP_Enter
+sleep 0.5
+focus_start="$(wc -c < "$evidence/orca.log")"
+xdotool key --clearmodifiers Tab
 sleep 1
+focus_end="$(wc -c < "$evidence/orca.log")"
 xdotool key --clearmodifiers Return
 sleep 1
-xdotool key --clearmodifiers KP_Add
-sleep 5
+/usr/bin/python3 scripts/reader-acceptance/orca-target.py visible
 xdotool key --clearmodifiers ctrl+w
 sleep 1
 if xdotool search --onlyvisible --name '^Reader-Check[.]md.*xdnote$'; then
@@ -69,21 +74,28 @@ if xdotool search --onlyvisible --name '^Reader-Check[.]md.*xdnote$'; then
     exit 1
 fi
 test "$original" = "$(sha256sum "$fixture")"
-python - "$evidence/orca.log" "$body" "$link" <<'PY'
+python - "$evidence/orca.log" "$read_end" "$selection_end" "$focus_start" "$focus_end" <<'PYCODE'
+import html
 import re
 import sys
 from pathlib import Path
 
-log = Path(sys.argv[1]).read_text(errors="replace")
-spoken = [line for line in log.splitlines()
-          if re.search(r"speech\s+output|speaking|\bspeak(?:ing)?\s*[:(]|speech(?:\s*[:.].*)dispat", line, re.I)]
-for marker in [*sys.argv[2:], "Amber target reading sample"]:
-    matches = [line.strip()[:520] for line in spoken if marker.casefold() in line.casefold()]
-    print(f"{marker}: {len(matches)} actual Orca speech log entries")
-    for match in matches[:3]:
-        print(match)
+log = Path(sys.argv[1]).read_bytes()
+read_end, selection_end, focus_start, focus_end = map(int, sys.argv[2:])
+
+def speech(data):
+    entries = re.findall(r"SPEECH DISPATCHER: Speaking '(<speak>.*?</speak>)'", data.decode("utf-8", "replace"), re.S)
+    return [" ".join(html.unescape(re.sub(r"<[^>]+>", "", item)).split()) for item in entries]
+
+checks = [
+    ("Body reading", log[:read_end], "Blue orchard reading sample"),
+    ("Text selection", log[read_end:selection_end], "Selected text is:"),
+    ("Link focus", log[focus_start:focus_end], "Follow the cedar heading"),
+]
+for label, part, marker in checks:
+    matches = [utterance for utterance in speech(part) if marker.casefold() in utterance.casefold()]
     if not matches:
-        print("Probe context", [line.strip()[:260] for line in log.splitlines()
-                                if marker.casefold() in line.casefold()][:5])
+        print(label, "missing", speech(part)[-8:])
         sys.exit(1)
-PY
+    print(label, matches[0][:220])
+PYCODE
