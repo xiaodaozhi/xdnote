@@ -26,6 +26,8 @@ def documents(directory, records):
         if Path(name).name != name or not name.endswith('.spdx.json') or name in result:
             raise ValueError('Invalid or duplicate supplier document')
         path = directory / name
+        if path.is_symlink() or not path.resolve().is_relative_to(directory.resolve()):
+            raise ValueError('Supplier document must stay in the SDK SBOM directory')
         if digest(path) != record['sha256']:
             raise ValueError('Supplier document differs from actual product evidence')
         value = read_json(path)
@@ -108,7 +110,7 @@ def review(evidence, linkage, qt):
     raw_hashes = {name: {algorithm: hashlib.new(algorithm, (qt / 'sbom' / name).read_bytes()).hexdigest() for algorithm in ['sha1', 'sha256']} for name in docs}
     for name, doc in docs.items():
         variant = qt / 'sbom' / name.removesuffix('.json')
-        if variant.is_file() and variant.stat().st_size <= 64 * 1024**2:
+        if not variant.is_symlink() and variant.is_file() and variant.resolve().is_relative_to((qt / 'sbom').resolve()) and variant.stat().st_size <= 64 * 1024**2:
             data = variant.read_bytes()
             try: same = equivalent(data.decode('utf-8'), doc)
             except ValueError: same = False
