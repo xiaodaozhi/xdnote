@@ -54,9 +54,12 @@ sleep 1
 xdotool key --clearmodifiers KP_Add
 sleep 6
 read_end="$(wc -c < "$evidence/orca.log")"
-xdotool key --clearmodifiers ctrl+a
-xdotool key --clearmodifiers Insert+Shift+Up
+xdotool key --clearmodifiers Escape
 sleep 1
+xdotool key --clearmodifiers ctrl+a
+sleep 0.8
+xdotool key --clearmodifiers Insert+Shift+Up
+sleep 2
 selection_end="$(wc -c < "$evidence/orca.log")"
 xdotool key --clearmodifiers ctrl+Home
 sleep 0.5
@@ -67,6 +70,9 @@ focus_end="$(wc -c < "$evidence/orca.log")"
 xdotool key --clearmodifiers Return
 sleep 1
 /usr/bin/python3 scripts/reader-acceptance/orca-target.py visible
+xdotool key --clearmodifiers KP_Add
+sleep 6
+target_end="$(wc -c < "$evidence/orca.log")"
 xdotool key --clearmodifiers ctrl+w
 sleep 1
 if xdotool search --onlyvisible --name '^Reader-Check[.]md.*xdnote$'; then
@@ -74,14 +80,14 @@ if xdotool search --onlyvisible --name '^Reader-Check[.]md.*xdnote$'; then
     exit 1
 fi
 test "$original" = "$(sha256sum "$fixture")"
-python - "$evidence/orca.log" "$read_end" "$selection_end" "$focus_start" "$focus_end" <<'PYCODE'
+python - "$evidence/orca.log" "$read_end" "$selection_end" "$focus_start" "$focus_end" "$target_end" <<'PYCODE'
 import html
 import re
 import sys
 from pathlib import Path
 
 log = Path(sys.argv[1]).read_bytes()
-read_end, selection_end, focus_start, focus_end = map(int, sys.argv[2:])
+read_end, selection_end, focus_start, focus_end, target_end = map(int, sys.argv[2:])
 
 def speech(data):
     entries = re.findall(r"SPEECH DISPATCHER: Speaking '(<speak>.*?</speak>)'", data.decode("utf-8", "replace"), re.S)
@@ -91,6 +97,7 @@ checks = [
     ("Body reading", log[:read_end], "Blue orchard reading sample"),
     ("Text selection", log[read_end:selection_end], "Selected text is:"),
     ("Link focus", log[focus_start:focus_end], "Follow the cedar heading"),
+    ("Reading from target", log[focus_end:target_end], "Amber target reading sample"),
 ]
 for label, part, marker in checks:
     matches = [utterance for utterance in speech(part) if marker.casefold() in utterance.casefold()]

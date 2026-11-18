@@ -113,8 +113,12 @@ try {
     Send-ReaderKeys $window @(0x0D)
     Send-ReaderKeys $window @(0x2D, 0x28)
     Start-Sleep -Seconds 5
-    Send-ReaderKeys $window @(0x11, 0x57)
-    if ([ReaderInput]::FindWindow([NullString]::Value, $title) -ne [IntPtr]::Zero) { throw 'Reader window remains after close' }
+    $targetEnd = (Get-Item -LiteralPath $log).Length
+    Send-ReaderKeys $window @(0x12, 0x73)
+    for ($attempt=0; $attempt -lt 30 -and [ReaderInput]::FindWindow([NullString]::Value, $title) -ne [IntPtr]::Zero; $attempt++) {
+        Start-Sleep -Milliseconds 100
+    }
+    if ([ReaderInput]::FindWindow([NullString]::Value, $title) -ne [IntPtr]::Zero) { throw 'Reader window remains after Alt+F4' }
     if ((Get-FileHash -LiteralPath $fixture).Hash -ne $beforeHash) { throw 'Read-only fixture changed' }
 } finally {
     Start-Process -FilePath $nvda -ArgumentList @('--quit') -Wait
@@ -124,7 +128,8 @@ $bytes = [IO.File]::ReadAllBytes($log)
 $phases = @(
     @{ Label='Body reading'; Start=0; End=$bodyEnd; Marker='Blue orchard reading sample' },
     @{ Label='Text selection'; Start=$bodyEnd; End=$selectionEnd; Marker='selected' },
-    @{ Label='Link focus'; Start=$focusStart; End=$focusEnd; Marker='Follow the cedar heading' }
+    @{ Label='Link focus'; Start=$focusStart; End=$focusEnd; Marker='Follow the cedar heading' },
+    @{ Label='Reading from target'; Start=$focusEnd; End=$targetEnd; Marker='Amber target reading sample' }
 )
 $missing = @()
 foreach ($phase in $phases) {
