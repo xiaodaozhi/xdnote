@@ -93,7 +93,7 @@ private:
     void finishLayout(int offset, bool restore);
     int actionAtPoint(const QPoint &point);
     QRect linkClipRect(int offset) const;
-    void revealAccessibleLink(int start, int end);
+    void revealAccessibleLink(int start, int end, bool navigation = true);
 };
 }
 Q_DECLARE_METATYPE(xdnote::NativePreviewStamp)

@@ -592,7 +592,15 @@ public:
         return m_view->characterRect(action.start).united(m_view->characterRect(end)).intersected(m_view->linkClipRect(action.start));
     }
     QAccessible::Role role() const override { return isValid() && m_view->content()->actions[m_index].copyCode ? QAccessible::Button : QAccessible::Link; }
-    QAccessible::State state() const override { QAccessible::State value; value.invalid = !isValid(); value.focusable = true; value.readOnly = true; value.offscreen = rect().isEmpty(); return value; }
+    QAccessible::State state() const override {
+        QAccessible::State value;
+        value.invalid = !isValid();
+        value.focusable = true;
+        value.focused = !value.invalid && m_view->hasFocus() && m_view->d->focusedAction == m_index;
+        value.readOnly = true;
+        value.offscreen = rect().isEmpty();
+        return value;
+    }
     void *interface_cast(QAccessible::InterfaceType type) override { return type == QAccessible::ActionInterface ? static_cast<QAccessibleActionInterface *>(this) : nullptr; }
     QStringList actionNames() const override { return {QAccessibleActionInterface::pressAction(), QAccessibleActionInterface::setFocusAction()}; }
     void doAction(const QString &name) override {
@@ -1406,7 +1414,7 @@ QRect NativePreviewView::linkClipRect(int offset) const
     return visible.intersected(table);
 }
 
-void NativePreviewView::revealAccessibleLink(int start, int end)
+void NativePreviewView::revealAccessibleLink(int start, int end, bool navigation)
 {
     if (!d->content || d->geometry.isEmpty())
         return;
@@ -1423,7 +1431,7 @@ void NativePreviewView::revealAccessibleLink(int start, int end)
             viewport()->update();
         }
     }
-    scrollToText(start, true);
+    scrollToText(start, navigation);
 }
 
 void NativePreviewView::scrollToText(int offset, bool navigation) {
@@ -1533,15 +1541,25 @@ bool NativePreviewView::focusNextPrevChild(bool next) {
     const int target = d->focusedAction < 0 ? (next ? 0 : int(d->content->actions.size()) - 1) : d->focusedAction + (next ? 1 : -1);
     if (target < 0 || target >= d->content->actions.size()) { d->focusedAction = -1; d->keyboardOutline = false; return QAbstractScrollArea::focusNextPrevChild(next); }
     d->focusedAction = target; d->keyboardOutline = InputModality::forApplication()->keyboardNavigation();
-    const auto &action = d->content->actions[target];
+    const auto action = d->content->actions[target];
+    const auto snapshot = d->shown;
+    const QPointer<NativePreviewView> alive(this);
     if (action.copyCode) {
         for (int owner = 0; owner < d->content->owners.size(); ++owner) if (d->content->owners[owner].node == action.node) {
             verticalScrollBar()->setValue(qRound(d->groups[owner].y)); break;
         }
-    } else scrollToText(action.start);
-    const QPointer<NativePreviewView> alive(this);
+    } else revealAccessibleLink(action.start, qMax(action.start, action.start + action.length - 1), false);
+    if (!alive || d->shown != snapshot) return true;
     setFocus(next ? Qt::TabFocusReason : Qt::BacktabFocusReason);
-    if (!alive) return true;
+    if (!alive || d->shown != snapshot) return true;
+    // The QWidget may already own focus while Tab moves between virtual links.
+    if (auto *reader = QAccessible::queryAccessibleInterface(this)) {
+        if (auto *focused = reader->focusChild()) {
+            QAccessibleEvent event(focused, QAccessible::Focus);
+            QAccessible::updateAccessibility(&event);
+        }
+    }
+    if (!alive || d->shown != snapshot) return true;
     viewport()->update(); emit verticalNavigationRequested(); return true;
 }
 void NativePreviewView::keyPressEvent(QKeyEvent *event) {

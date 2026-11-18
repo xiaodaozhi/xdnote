@@ -507,6 +507,32 @@ private slots:
         QVERIFY(!link->state().offscreen);
         QVERIFY(QRect(view.viewport()->mapToGlobal(QPoint()), view.viewport()->size()).contains(link->rect()));
     }
+    void tabBetweenLinksNotifiesAssistiveClients() {
+        const auto data = content("[first](one.md)\n\n[second](two.md)\n");
+        QVERIFY(data);
+        Appearance appearance;
+        NativePreviewView view(&appearance);
+        view.resize(640, 400);
+        view.expect(stamp());
+        QVERIFY(view.present(stamp(), data));
+        view.show();
+        QApplication::setActiveWindow(&view);
+        view.setFocus();
+        QTRY_VERIFY(view.hasFocus());
+        static QStringList focusedLinks;
+        focusedLinks.clear();
+        const auto previous = QAccessible::installUpdateHandler([](QAccessibleEvent *event) {
+            if (event->type() != QAccessible::Focus) return;
+            auto *interface = event->accessibleInterface();
+            if (interface && interface->role() == QAccessible::Link && interface->state().focused)
+                focusedLinks.append(interface->text(QAccessible::Name));
+        });
+        QTest::keyClick(&view, Qt::Key_Tab);
+        QTest::keyClick(&view, Qt::Key_Tab);
+        QTest::keyClick(&view, Qt::Key_Backtab);
+        QAccessible::installUpdateHandler(previous);
+        QCOMPARE(focusedLinks, QStringList({QStringLiteral("first"), QStringLiteral("second"), QStringLiteral("first")}));
+    }
     void lightAndDarkUseSharedTokensAndSaveEvidence() {
         const auto data = content(QStringLiteral("# 一个安静的写作空间\n\n把想法写下来，让思考慢慢清晰。**中文粗体**与 *italic*。 😀\n\n- [x] 完成一项任务\n- [ ] 保留一点时间\n\n> 少一点干扰，多一点专注。\n\n```cpp\nconst auto title = \"写作\";\n```\n\n|项目|状态|\n|:--|--:|\n|原生预览|进行中|\n\n[打开文档](notes/start.md)\n").toUtf8()); QVERIFY(data);
         const auto directory = qEnvironmentVariable("XDNOTE_NATIVE_EVIDENCE");
