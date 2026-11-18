@@ -10,36 +10,16 @@ import os
 from pathlib import Path
 import platform
 import shutil
-import struct
 import desktop
 import deployment_unix as deploy
 import product_deployment_unix as product
 import user_install
 from background_validation import execute, offscreen_environment
 from installer_common import build_output, digest
+from pe_binary_evidence import pe_code_sections
 from unix_binary_evidence import code_sections
 
 PROOF = 'xdnote-qt-source-rebuild-6.8.2'
-
-
-def pe_code_sections(data):
-    def read(fmt, offset):
-        if offset < 0 or offset + struct.calcsize(fmt) > len(data): raise ValueError('Truncated PE code evidence')
-        return struct.unpack_from(fmt, data, offset)
-    if data[:2] != b'MZ': raise ValueError('Not a PE image')
-    header, = read('<I', 0x3c)
-    if data[header:header + 4] != b'PE\0\0' or read('<H', header + 4)[0] != 0x8664: raise ValueError('PE64 x86_64 required')
-    count, = read('<H', header + 6); optional, = read('<H', header + 20)
-    if read('<H', header + 24)[0] != 0x20b: raise ValueError('PE64 optional header required')
-    result = {}
-    for index in range(count):
-        offset = header + 24 + optional + index * 40
-        name, _, _, length, start, _, _, _, _, flags = read('<8sIIIIIIHHI', offset)
-        if not flags & 0x20000000 or not length: continue
-        if start + length > len(data): raise ValueError('PE executable section escapes image')
-        result[str(index) + ':' + name.rstrip(b'\0').decode('ascii')] = {'bytes': length, 'sha256': hashlib.sha256(data[start:start + length]).hexdigest()}
-    if not result: raise ValueError('No PE executable sections')
-    return result
 
 
 def windows_smoke(installed, build, qt, output):
