@@ -603,6 +603,15 @@ public:
     }
     QAccessibleInterface *focusChild() const override { return view() && view()->hasFocus() ? child(view()->d->focusedAction) : nullptr; }
     explicit AccessibleNativePreview(NativePreviewView *view) : QAccessibleWidget(view, QAccessible::Document) {}
+    QAccessible::Role role() const override {
+#ifdef Q_OS_MACOS
+        // Qt 6.8 Cocoa drops Document from the native tree. Its text-area
+        // mapping requires EditableText and multiLine; state() keeps it read-only.
+        return QAccessible::EditableText;
+#else
+        return QAccessibleWidget::role();
+#endif
+    }
     NativePreviewView *view() const { return qobject_cast<NativePreviewView *>(object()); }
     void *interface_cast(QAccessible::InterfaceType type) override {
         if (type == QAccessible::TextInterface) return static_cast<QAccessibleTextInterface *>(this);

@@ -320,6 +320,13 @@ private slots:
         const auto data = content(QStringLiteral("# 文本\n\n中文😀正文\n\n").repeated(2000).toUtf8()); QVERIFY(data);
         Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400); view.expect(stamp()); QVERIFY(view.present(stamp(), data)); view.show(); QApplication::processEvents();
         auto *interface = QAccessible::queryAccessibleInterface(&view); QVERIFY(interface); QVERIFY(interface->state().readOnly); QVERIFY(!interface->editableTextInterface());
+#ifdef Q_OS_MACOS
+        QCOMPARE(interface->role(), QAccessible::EditableText);
+        QVERIFY(interface->state().multiLine);
+        QVERIFY(!interface->state().editable);
+#else
+        QCOMPARE(interface->role(), QAccessible::Document);
+#endif
         auto *text = interface->textInterface(); QVERIFY(text); QCOMPARE(text->characterCount(), int(data->text.size())); QCOMPARE(text->text(0, -1), data->text);
         interface->setText(QAccessible::Value, "forbidden"); QCOMPARE(text->text(0, -1), data->text);
         text->setSelection(0, 0, int(data->text.size())); QCOMPARE(view.selectedText(), data->text);
