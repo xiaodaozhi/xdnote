@@ -24,6 +24,7 @@
 | 预览流水线 | [分析与刷新](engineering/preview-pipeline.md) | 共享分析、有界缓存、资源重验、阶段取消和分阶段测量 |
 | 原生预览 | [全局语义模型](engineering/native-preview-model.md)、[阅读控件准入](engineering/native-preview-view.md) | 只读块树、布局／交互、资源和版本边界及未完成项 |
 | 构建 | [桌面工程与本地构建](engineering/developer-build.md) | 固定依赖、分阶段入口、内存样本与实际准入边界 |
+| 代理传输 | [未限速流与缓存诊断](../experiments/update-network-flow/README.md) | 固定 Qt Network 修正、TLS 拒绝、背压与 EOF，与实际安装分别验证 |
 | 后台验证 | [无交互桌面自动化](qa/background-validation.md) | 固定离屏回归、自有样本性能、证据与真实桌面边界 |
 | 用户安装 | [开发安装维护](engineering/user-installation.md) | 清单归属、升级／卸载与打开方式，保留发行边界 |
 | 部署 | [实际依赖与诊断目录](engineering/deployment.md) | 各平台诊断入口、隔离运行、动态库闭包、Qt 模块许可输入与发行剩余项 |

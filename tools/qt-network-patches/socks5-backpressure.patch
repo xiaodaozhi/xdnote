@@ -1,0 +1,58 @@
+--- a/src/network/socket/qsocks5socketengine.cpp
++++ b/src/network/socket/qsocks5socketengine.cpp
+@@ -1166,6 +1166,10 @@
+                 _q_controlSocketReadNotification();
+             break;
+         case Connected: {
++            // Keep at most one control-socket chunk while the reader is paused.
++            // The bounded control socket then supplies TCP backpressure.
++            if (mode == ConnectMode && !connectData->readBuffer.isEmpty())
++                break;
+             QByteArray buf;
+             if (!data->authenticator->unSeal(data->controlSocket, &buf)) {
+                 // qDebug("unseal error maybe need to wait for more data");
+@@ -1220,7 +1224,8 @@
+         // If read notifications are disabled, setReadNotificationEnabled()
+         // announces both when they are enabled again.
+         emitReadNotification();
+-        data->controlSocket->close();
++        // QTcpSocket closes on the remote EOF itself. Keep its unread bounded
++        // buffer available until the outer reader has consumed it.
+         // cause a disconnect in the outer socket
+         emitWriteNotification();
+     } else if (socks5State == Uninitialized
+@@ -1463,6 +1468,8 @@
+     Q_D(QSocks5SocketEngine);
+     QSOCKS5_Q_DEBUG << "read( , maxlen = " << maxlen << ')';
+     if (d->mode == QSocks5SocketEnginePrivate::ConnectMode) {
++        if (d->connectData->readBuffer.isEmpty() && d->data->controlSocket->bytesAvailable() > 0)
++            d->_q_controlSocketReadNotification();
+         if (d->connectData->readBuffer.isEmpty()) {
+             if (d->data->controlSocket->state() == QAbstractSocket::UnconnectedState) {
+                 //imitate remote closed
+@@ -1722,9 +1729,8 @@
+         return false;
+     if (d->data->controlSocket->state() == QAbstractSocket::UnconnectedState)
+         return true;
+-    if (bytesAvailable() && d->readNotificationPending) {
+-        // We've got some data incoming, but the queued call hasn't been performed yet.
+-        // The data is where we expect it to be already, so just return true.
++    if (bytesAvailable()) {
++        // Buffered data is readable even when no notification is pending.
+         return true;
+     }
+ 
+@@ -1841,6 +1847,13 @@
+ 
+     d->readNotificationEnabled = enable;
+ 
++    if (enable && d->mode == QSocks5SocketEnginePrivate::ConnectMode
++        && d->socks5State == QSocks5SocketEnginePrivate::Connected
++        && d->connectData->readBuffer.isEmpty()
++        && d->data->controlSocket->bytesAvailable() > 0) {
++        QMetaObject::invokeMethod(this, "_q_controlSocketReadNotification", Qt::QueuedConnection);
++    }
++
+     if (emitSignal)
+         d->emitReadNotification();
+ }

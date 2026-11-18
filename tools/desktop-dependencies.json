@@ -3,11 +3,16 @@
   "phase": "desktop-admission",
   "qt": {
     "version": "6.8.2",
-    "modules": ["qt5compat"],
+    "modules": [
+      "qt5compat"
+    ],
     "aqtinstall": "3.3.0",
-    "py7zr": "1.0.0"
+    "py7zr": "1.0.0",
+    "networkVariant": "xdnote-network.1"
   },
-  "rust": {"toolchain": "1.99.0"},
+  "rust": {
+    "toolchain": "1.99.0"
+  },
   "compatibilityProfiles": {
     "msvc2019": {
       "host": "windows",

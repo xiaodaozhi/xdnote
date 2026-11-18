@@ -18,24 +18,30 @@ def config():
     return value
 
 
-def collect(destination, modules):
+def collect(destination, modules, qt=None):
     value=config(); destination=Path(destination)
     names={record['sbom'].split('-'+value['qtVersion'])[0] for record in modules}
     selected=[r for r in value['modules'] if r['module'] in names]
     if {r['module'] for r in selected}!=names: raise ValueError('Shipped Qt module lacks independent source locator')
     source=ROOT/'docs/engineering/qt-library-replacement.md'
     manifest={**value,'modules':selected,'replacementInstructionsSha256':digest(source),'sourceAccessFulfillmentReviewComplete':False}
+    if qt is not None:
+        from qt_network_backports import public_record
+        manifest['networkBackports'] = public_record(qt)
     destination.mkdir(parents=True,exist_ok=True)
     (destination/'source-access.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     shutil.copyfile(source,destination/'REPLACEMENT.md')
     return manifest
 
 
-def verify(destination):
+def verify(destination, qt=None):
     destination=Path(destination); record=json.loads((destination/'source-access.json').read_text(encoding='utf-8')); value=config()
     if record['qtVersion']!=value['qtVersion'] or record['sourceCodeInRelease'] is not False: raise ValueError('Source access metadata changed')
     if not record['modules'] or any(r not in value['modules'] for r in record['modules']): raise ValueError('Unknown source locator')
     if record['replacementInstructionsSha256']!=digest(ROOT/'docs/engineering/qt-library-replacement.md') or digest(destination/'REPLACEMENT.md')!=record['replacementInstructionsSha256']: raise ValueError('Replacement instructions changed')
+    if qt is not None and (qt / 'xdnote-network-backports.json').is_file():
+        from qt_network_backports import public_record
+        if record.get('networkBackports') != public_record(qt): raise ValueError('Qt Network source derivation differs')
     return record
 
 

@@ -67,20 +67,32 @@ def qt_files(root, qt, records, shipped):
             actual_sha1 = hashlib.sha1(data).hexdigest()
             if target in result:
                 raise ValueError('Ambiguous Qt file evidence: ' + target)
+            derivation = None
+            if (qt / 'xdnote-network-backports.json').is_file():
+                from qt_network_backports import verify as verify_network_backports, public_record
+                prepared = verify_network_backports(qt)
+                if relative.as_posix() in prepared['files']:
+                    row = prepared['files'][relative.as_posix()]
+                    original = Path(row['originalBackup']).read_bytes()
+                    if (hashlib.sha1(original).hexdigest() != checksums.get('SHA1')
+                            and not unsigned_pe_match(original, checksums.get('SHA1'))):
+                        raise ValueError('Original Qt Network SDK bytes lack matching supplier checksum')
+                    derivation = public_record(qt)
             result[target] = {'kind': 'Qt runtime or plugin', 'sdkFile': relative.as_posix(),
                 'sdkSha256Matches': True, 'sbom': record['sbom'], 'spdxId': item['SPDXID'],
                 'licenseOptions': item.get('licenseConcluded', 'NOASSERTION'),
                 'copyright': item.get('copyrightText', 'NOASSERTION'),
                 'upstreamFileChecksums': checksums, 'deliveredSha1': actual_sha1,
                 'upstreamSha1Matches': actual_sha1 == checksums.get('SHA1') if 'SHA1' in checksums else None,
-                'unsignedPeSha1Matches': unsigned_pe_match(data, checksums.get('SHA1'))}
+                'unsignedPeSha1Matches': unsigned_pe_match(data, checksums.get('SHA1')),
+                'sourceBackport': derivation}
     return result
 
 
 def audit(root, metadata, qt):
     verify_payload(root, metadata)
     rust_runtime = runtime_materials.verify(root / 'licenses/rust-runtime')
-    source_access = qt_source_access.verify(root / 'licenses/qt')
+    source_access = qt_source_access.verify(root / 'licenses/qt', qt)
     problems = source_audit(ROOT)
     if problems:
         raise ValueError('Source materials failed: ' + '; '.join(problems))
@@ -159,7 +171,7 @@ def audit(root, metadata, qt):
             raise ValueError('Unclassified delivered file: ' + name)
         evidence[name] = record
     checksums = [name for name, item in evidence.items() if item.get('upstreamSha1Matches') is False]
-    unexplained = [name for name in checksums if not evidence[name]['unsignedPeSha1Matches']]
+    unexplained = [name for name in checksums if not evidence[name]['unsignedPeSha1Matches'] and not evidence[name].get('sourceBackport')]
     unresolved = [{'module': item['sbom'], 'packages': item['packagesWithUnresolvedLicenseFields'],
                    'scope': 'full upstream module; not a list of proven delivered third-party components'} for item in records]
     return {'schemaVersion': 1, 'kind': 'actual payload license evidence; not a legal-compliance determination',

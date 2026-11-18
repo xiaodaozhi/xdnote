@@ -78,7 +78,7 @@ jobs:
           EOF
           xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
           timeout 180s sudo apt-get "${xdnote_apt_options[@]}" update
-          timeout 360s sudo apt-get "${xdnote_apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 patchelf desktop-file-utils shared-mime-info
+          timeout 360s sudo apt-get "${xdnote_apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 patchelf desktop-file-utils shared-mime-info zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev
       - name: Prepare pinned Linux Qt SDK
         if: inputs.scope == 'product' && runner.os == 'Linux'
         run: python scripts/prepare_qt.py --download --host linux --arch linux_gcc_64

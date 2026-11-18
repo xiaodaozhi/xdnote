@@ -56,7 +56,7 @@ def material_evidence(root, qt, records, system):
     bindir, plugins, libraries, notices = locations(root, system)
     supplier = {}; upstream_packages = []; runtime = runtime_notices()
     rust_runtime = runtime_materials.verify(notices / 'licenses/rust-runtime')
-    source_access = qt_source_access.verify(notices / 'licenses/qt')
+    source_access = qt_source_access.verify(notices / 'licenses/qt', qt)
     for record in records:
         raw = notices / 'licenses/qt' / record['sbom']
         if digest(raw) != record['sha256'] or digest(qt / 'sbom' / record['sbom']) != record['sha256']:
@@ -141,6 +141,10 @@ def material_evidence(root, qt, records, system):
                     if before != after: raise ValueError('Deployed Qt executable sections differ: ' + item['path'])
                     if name in supplier:
                         record['supplier'] = supplier[name]
+                        relative = origin.relative_to(qt).as_posix()
+                        backports = source_access.get('networkBackports', {})
+                        if relative in backports.get('files', {}):
+                            record['sourceBackport'] = backports
                     elif origin.name.startswith(('libQt', 'Qt')) or path.is_relative_to(plugins):
                         raise ValueError('Qt binary lacks exact SPDX file evidence: ' + name)
                     else:
@@ -226,7 +230,7 @@ def prepare(build, qt, root):
         (licenses / 'DESIGN-ATTRIBUTION.txt').write_text('xdnote 项目及其贡献者；https://github.com/xiaodaozhi/xdnote\n文档与原创设计：CC BY 4.0；https://creativecommons.org/licenses/by/4.0/\n', encoding='utf-8')
         records = deploy.collect_qt_notices(qt, notices, names)
         runtime_materials.collect(licenses / 'rust-runtime')
-        qt_source_access.collect(licenses / 'qt', records)
+        qt_source_access.collect(licenses / 'qt', records, qt)
         runtime = runtime_notices()
         relevant = [r for r in runtime['runtime'] if r['platform'] == system and any((root / 'lib' / name).is_file() for name in r['sdkFiles'])]
         if relevant:

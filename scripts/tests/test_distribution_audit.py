@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import distribution_audit as material
@@ -57,6 +58,25 @@ class DistributionAuditTests(unittest.TestCase):
         (qt / 'bin/Qt6Core.dll').write_bytes(b'changed')
         with self.assertRaisesRegex(ValueError, 'supplier byte mismatch'):
             material.qt_files(root, qt, records, {item['path']: item for item in inventory(root)})
+
+    def test_prepared_network_keeps_original_spdx_and_requires_original_checksum(self):
+        root, qt, records = self.fixture()
+        for directory in [root, qt / 'bin']: (directory / 'Qt6Core.dll').rename(directory / 'Qt6Network.dll')
+        backup = qt / 'original'; backup.write_bytes(b'original supplier')
+        value = json.loads((qt / 'sbom/base.json').read_bytes())
+        value['files'][0]['fileName'] = './bin/Qt6Network.dll'
+        value['files'][0]['checksums'][0]['checksumValue'] = hashlib.sha1(backup.read_bytes()).hexdigest()
+        for path in [qt / 'sbom/base.json', root / 'licenses/qt/base.json']: path.write_text(json.dumps(value))
+        records[0]['sha256'] = material.digest(qt / 'sbom/base.json')
+        (qt / 'xdnote-network-backports.json').write_text('{}')
+        receipt = {'files': {'bin/Qt6Network.dll': {'originalBackup': str(backup)}}}
+        public = {'variant': 'owned test derivative'}
+        with patch('qt_network_backports.verify', return_value=receipt), patch('qt_network_backports.public_record', return_value=public):
+            result = material.qt_files(root, qt, records, {r['path']: r for r in inventory(root)})['Qt6Network.dll']
+            self.assertFalse(result['upstreamSha1Matches']); self.assertEqual(result['sourceBackport'], public)
+            backup.write_bytes(b'wrong supplier')
+            with self.assertRaisesRegex(ValueError, 'supplier checksum'):
+                material.qt_files(root, qt, records, {r['path']: r for r in inventory(root)})
 
     def test_missing_required_materials_cannot_be_reported_as_complete(self):
         root, qt, records = self.fixture()
