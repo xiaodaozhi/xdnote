@@ -179,7 +179,8 @@ def launch(source,run,qt,env,mode,server,transport='none',proxy=None):
             stream.seek(path.stat().st_size//2);byte=stream.read(1);stream.seek(-1,1);stream.write(bytes([byte[0]^1]))
     child_env=env.copy();child_env.update(CFFIXED_USER_HOME=str(run/'home'),XDG_CONFIG_HOME=str(run/'config'),XDG_CACHE_HOME=str(run/'cache'))
     command=[os.sys.executable,source/'scripts/desktop.py','run','--profile','default','--build-dir',source/'build/desktop','--qt-prefix',qt,'--fixture-bundle',install]
-    checked(command,env=child_env,log=run/(mode+'.log'))
+    try:checked(command,env=child_env,log=run/(transport+'-'+mode+'.log'))
+    finally:dump(run/(transport+'-'+mode+'-transport.json'),{'originRequests':server.requests[start:],'proxyConnections':proxy.records[proxy_start:] if proxy else [],'proxyErrors':proxy.errors if proxy else []})
     report=run/({'cancel':'cancelled','install':'restarted','discard':'restarted','network':'corrupt'}.get(mode,mode)+'.json');deadline=time.monotonic()+120
     while not report.exists() and time.monotonic()<deadline:time.sleep(.2)
     value=json.loads(report.read_bytes())

@@ -63,7 +63,7 @@ QString fixtureArchive(){return config()["server"].toString()+"archive.app.zip";
 void fixtureBoot(QApplication *application){
     application->setQuitOnLastWindowClosed(false);
     const auto mode=config()["mode"].toString();
-    if(mode!="cancel"&&mode!="install"&&mode!="discard"&&mode!="corrupt"&&mode!="recovery"){fail("invalid_fixture_mode");return;}
+    if(mode!="cancel"&&mode!="install"&&mode!="discard"&&mode!="corrupt"&&mode!="recovery"&&mode!="network"){fail("invalid_fixture_mode");return;}
     auto *desktop=new xdnote::FileApplication(application,directory()+"/settings.json",xdnote::FileApplication::Presentation::HiddenNative);
     QObject::connect(application,&QCoreApplication::aboutToQuit,desktop,[desktop]{delete desktop;});
     auto *updates=desktop->findChild<xdnote::UpdateController *>();
