@@ -46,4 +46,6 @@ macOS Sparkle 实际 framework／helper 的供应方文件、arm64 指令节及�
 
 审阅 Qt Network 派生模块时，工具将原始 SDK 摘要与独立取得的原厂文件核对，将修改后摘要与同一候选的构建身份、来源清单及逐文件证据核对。Unix 还要求部署前后的代码节核对结果。Windows 精简载荷报告用原 `source-access.json` 的封存摘要绑定其内容。`actualQtSourceBackports` 单独记录派生文件，供应方依赖图仍来自其原始 SPDX。
 
+macOS 的 QtGui 与 Cocoa 平台插件按相同证据链核对。构建身份、`source-access.json.cocoaBackports`、原厂 SDK 和重定位后代码节共同绑定，实际部署必须包含同一配方产生的两份派生模块。审阅旧 Windows 载荷时，从该载荷的文件清单取得当时的替换说明摘要，重建并核查原有来源清单。
+
 跨文档引用可能指向 SDK 原始 tag-value `.spdx`，其摘要与 JSON 序列化不同。工具先核对被引用原文摘要，并严格比较两种序列化中用于追溯的文档身份、包许可／版权／版本、文件身份、去重关系和外部引用；仅这些字段一致才关联同一目标。未通过比较、摘要不符或缺失的目标继续保留缺口，不修改供应方原文，也不据此宣称全部 SPDX 字段等同。依赖关系采用供应方声明，通用 `DEPENDS_ON` 可同时涉及构建和运行，不代表已经证实最终机器码中的组件；依据见 [SPDX 文档引用](https://spdx.github.io/spdx-spec/v2.3.1/document-creation-information/)及[关系定义](https://spdx.github.io/spdx-spec/v2.3.1/relationships-between-SPDX-elements/)。

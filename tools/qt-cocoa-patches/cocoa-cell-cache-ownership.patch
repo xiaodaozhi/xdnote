@@ -1,0 +1,13 @@
+--- a/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.mm
++++ b/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.mm
+@@ -224,7 +224,9 @@
+ + (void)removeElementsFromCache:(NSArray *)array {
+     for (uint i = 0; i < array.count; ++i) {
+         QMacAccessibilityElement *cell = [array objectAtIndex:i];
+-        if (cell->axid) { // it's a proper cell, remove from cache
++        // A synthesized row, column, or placeholder borrows its parent's ID.
++        // Invalidate only the element that actually owns this cache entry.
++        if (cell->axid && QAccessibleCache::instance()->elementForId(cell->axid) == cell) {
+             QAccessibleCache::instance()->deleteInterface(cell->axid);
+         }
+     }

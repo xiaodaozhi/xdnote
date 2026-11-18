@@ -9,7 +9,7 @@ from unittest.mock import patch
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from component_review import dependency_review
-from component_review import network_derivation, review
+from component_review import cocoa_derivation, network_derivation, review
 from fetch_delivery_evidence import fetch
 
 
@@ -100,11 +100,31 @@ class ComponentReviewTests(unittest.TestCase):
         public = {'source': source, 'files': files, 'sourceCodeInRelease': False}
         receipt = {**public, 'system': 'Windows'}
         modules = [{'sbom': 'qtbase-6.8.2.spdx.json'}]
-        encoded = (json.dumps(manifest(modules, public), indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
+        instructions = {'path': 'licenses/qt/REPLACEMENT.md', 'sha256': 'f' * 64}
+        encoded = (json.dumps(manifest(modules, public, replacement_sha256=instructions['sha256']), indent=2)
+                   + '\n').replace('\n', '\r\n').encode('utf-8')
         sealed = {'path': 'licenses/qt/source-access.json', 'sha256': hashlib.sha256(encoded).hexdigest()}
         evidence = {'kind': 'unsigned product-only Windows installer payload', 'qtSbom': modules,
-                    'buildIdentity': {'qtNetworkBackports': receipt}, 'files': [sealed]}
+                    'buildIdentity': {'qtNetworkBackports': receipt}, 'files': [sealed, instructions]}
         self.assertEqual(network_derivation(evidence), public)
         sealed['sha256'] = '0' * 64
         with self.assertRaisesRegex(ValueError, 'Sealed Windows Qt source access digest differs'):
             network_derivation(evidence)
+
+    def test_cocoa_derivation_requires_the_fixed_pair_and_both_receipts(self):
+        from qt_cocoa_backports import MODULES, config, qtbase_source
+
+        public = {'system': 'Darwin', 'architecture': 'arm64', 'source': qtbase_source(),
+                  'patches': config()['patches'], 'sourceCodeInRelease': False,
+                  'files': {name: {'sha256': 'a' * 64, 'originalSdkSha256': 'b' * 64} for name in MODULES}}
+        private = {**public, 'originalBackups': {name: '/ci/private' for name in MODULES}}
+        identity = {'platform': 'Darwin', 'qtCocoaBackports': private}
+        materials = {'cocoaBackports': public}
+        evidence = {'buildIdentity': identity, 'qtSourceAccess': materials}
+        self.assertEqual(cocoa_derivation(evidence), public)
+        with patch.dict(materials, {'cocoaBackports': {**public, 'originalBackups': private['originalBackups']}}):
+            with self.assertRaisesRegex(ValueError, 'differs across'):
+                cocoa_derivation(evidence)
+        with patch.dict(private, {'files': {next(iter(MODULES)): {}}}):
+            with self.assertRaisesRegex(ValueError, 'derivation scope'):
+                cocoa_derivation(evidence)

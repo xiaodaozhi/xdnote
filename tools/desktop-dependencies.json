@@ -8,7 +8,8 @@
     ],
     "aqtinstall": "3.3.0",
     "py7zr": "1.0.0",
-    "networkVariant": "xdnote-network.1"
+    "networkVariant": "xdnote-network.1",
+    "cocoaVariant": "xdnote-cocoa.1"
   },
   "rust": {
     "toolchain": "1.99.0"

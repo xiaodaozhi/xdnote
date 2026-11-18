@@ -57,6 +57,12 @@ def material_evidence(root, qt, records, system):
     supplier = {}; upstream_packages = []; runtime = runtime_notices()
     rust_runtime = runtime_materials.verify(notices / 'licenses/rust-runtime')
     source_access = qt_source_access.verify(notices / 'licenses/qt', qt)
+    records_by_binary = {}
+    for key in ('networkBackports', 'cocoaBackports'):
+        if key in source_access:
+            derivation = source_access[key]
+            records_by_binary.update({name: derivation for name in derivation['files']})
+    cocoa_files = set(source_access.get('cocoaBackports', {}).get('files', {}))
     for record in records:
         raw = notices / 'licenses/qt' / record['sbom']
         if digest(raw) != record['sha256'] or digest(qt / 'sbom' / record['sbom']) != record['sha256']:
@@ -141,10 +147,9 @@ def material_evidence(root, qt, records, system):
                     if before != after: raise ValueError('Deployed Qt executable sections differ: ' + item['path'])
                     if name in supplier:
                         record['supplier'] = supplier[name]
-                        relative = origin.relative_to(qt).as_posix()
-                        backports = source_access.get('networkBackports', {})
-                        if relative in backports.get('files', {}):
-                            record['sourceBackport'] = backports
+                        if name in records_by_binary:
+                            record['sourceBackport'] = records_by_binary[name]
+                            cocoa_files.discard(name)
                     elif origin.name.startswith(('libQt', 'Qt')) or path.is_relative_to(plugins):
                         raise ValueError('Qt binary lacks exact SPDX file evidence: ' + name)
                     else:
@@ -159,6 +164,8 @@ def material_evidence(root, qt, records, system):
                                   sectionScope='read-only data-only ELF payload' if any(k.startswith('elf-readonly-data:') for k in after) else 'executable instructions',
                                   transformations='directory-local rpath and imports; macdeployqt/ad-hoc seal on macOS; no claim of complete file-byte equivalence')
         result.append(dict(item, evidence=record))
+    if cocoa_files:
+        raise ValueError('Product is missing a prepared Qt Cocoa module: ' + ', '.join(sorted(cocoa_files)))
     return {'ok': True, 'files': result, 'qtModules': records, 'rustRuntimeMaterials': rust_runtime, 'qtSourceAccess': source_access, 'licenseReviewComplete': False, 'releaseReady': False,
             'pending': ['final compiled-in third-party scope and license options', 'Qt corresponding source and replacement obligations', 'exact Rust/runtime static component scope', 'final release artifact review'],
             'scope': 'actual file hashes, supplier paths and code sections; metadata/signature changes recorded separately; no signing trust or final license determination'}

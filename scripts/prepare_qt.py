@@ -34,6 +34,7 @@ def main():
 
     # Use aqt's supported metadata layout and retain XML and binary checksums.
     from aqt.installer import Cli
+    import qt_cocoa_backports
     import qt_network_backports
     build = ROOT / "build"
     if build.is_symlink() or (hasattr(build, "is_junction") and build.is_junction()):
@@ -43,30 +44,32 @@ def main():
         parser.error("Build directory escapes the repository")
     folder = {"windows": "msvc2022_64", "linux": "gcc_64", "mac": "macos"}[args.host]
     prefix = build / "Qt" / version / folder
-    if (prefix / qt_network_backports.RECEIPT).exists():
-        if args.supplier_only:
-            parser.error("Supplier-only evidence requires an unmodified SDK directory")
+    network_prepared = (prefix / qt_network_backports.RECEIPT).exists()
+    if args.supplier_only and (network_prepared or (prefix / qt_cocoa_backports.RECEIPT).exists()):
+        parser.error("Supplier-only evidence requires an unmodified SDK directory")
+    if network_prepared:
         qt_network_backports.verify(prefix)
-        return 0
-    os.chdir(build)
-    archives_to_install = ["qtbase", "qtdeclarative", "qttools", "qtshadertools", "qtsvg"]
-    if args.host == "linux":
-        # Official Linux Qt binaries require the SDK's matching ICU libraries.
-        # The minimum reference system ships an older incompatible ICU SONAME.
-        # Wayland is a separate SDK archive; keep both supported native backends.
-        archives_to_install.extend(("icu", "qtwayland"))
-    result = Cli().run([
-        "install-qt", args.host, "desktop", version, args.arch,
-        "-O", str(build / "Qt"), "-m", *qt["modules"],
-        "--archives", *archives_to_install,
-    ])
-    if result:
-        return result
-    os.chdir(ROOT)
-    if args.supplier_only:
-        return 0
+    else:
+        os.chdir(build)
+        archives_to_install = ["qtbase", "qtdeclarative", "qttools", "qtshadertools", "qtsvg"]
+        if args.host == "linux":
+            # Keep the SDK's matching ICU and both supported native display backends.
+            archives_to_install.extend(("icu", "qtwayland"))
+        result = Cli().run([
+            "install-qt", args.host, "desktop", version, args.arch,
+            "-O", str(build / "Qt"), "-m", *qt["modules"],
+            "--archives", *archives_to_install,
+        ])
+        os.chdir(ROOT)
+        if result or args.supplier_only:
+            return result
     output = build / "QtNetworkBackports" / qt_network_backports.config()["variant"] / folder
-    qt_network_backports.build(prefix, output, allow_download=True, vcvars=args.vcvars)
+    if not network_prepared:
+        qt_network_backports.build(prefix, output, allow_download=True, vcvars=args.vcvars)
+    if args.host == "mac":
+        archive = output / qt_cocoa_backports.qtbase_source()["archive"]
+        cocoa_output = build / "QtCocoaBackports" / qt["cocoaVariant"] / folder
+        qt_cocoa_backports.build(prefix, cocoa_output, archive if archive.is_file() else None, allow_download=True)
     return 0
 
 

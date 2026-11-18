@@ -134,6 +134,8 @@ AppleClang 21 的 Apple ARM64 构建在 Qt 6.8.2 `qyieldcpu.h` 中需要先声�
 
 macOS 构建入口要求原生 Apple Silicon 与 macOS 14+；CMake 固定部署目标 14.0、`arm64` 与对应 Rust target。旧的 13.0／Intel 构建缓存不会继续使用，须通过既有 `build --fresh` 重新配置。检查声明和编译通过仍不等同于最低系统或正式安装验收。
 
+macOS 的 `prepare_qt.py --download --host mac --arch clang_64` 在固定 SDK 上准备 `xdnote-cocoa.1`。QtGui 和 Cocoa 插件一起从 Qt Base 6.8.2 构建，只有两份均通过导出符号、运行依赖和 ad-hoc 封印核对才记录准备成功。现有项目 SDK 如仅有 Network 回移植，可重跑同一准备入口。build、test、run 和部署核对已准备 SDK 的回执，不自行下载或重建 Qt。原厂两份二进制与 QtGui 封印备份保存在项目 build，具体回滚见[补丁说明](../../tools/qt-cocoa-patches/README.md)。
+
 macOS 桌面更新提供方需要先在本项目显式准备并构建固定 Sparkle：`python scripts/sparkle.py prepare --download`、`python scripts/sparkle.py build`；之后仍通过 `scripts/desktop.py build`／`run` 使用对应 Qt 和构建目录。CMake 只核对本项目 SDK 回执，不自动下载。生产公钥为空时不会开放自动安装。
 
 默认构建生成真实开发身份。只有受控发行输入才使用 `build --release-identity <JSON>`，字段和严格递增条件见[发行与更新](release-and-updates.md)；不给默认开发构建分配正式版本／build。主程序的 `--version-json` 只输出编入的身份，不启动 GUI、文档或单实例服务，供独立安装助手复验。

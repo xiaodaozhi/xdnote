@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import platform
 import shutil
 import time
 import urllib.request
@@ -18,25 +19,30 @@ def config():
     return value
 
 
-def manifest(modules, network_backports=None):
+def manifest(modules, network_backports=None, cocoa_backports=None, replacement_sha256=None):
     value=config()
     names={record['sbom'].split('-'+value['qtVersion'])[0] for record in modules}
     selected=[r for r in value['modules'] if r['module'] in names]
     if {r['module'] for r in selected}!=names: raise ValueError('Shipped Qt module lacks independent source locator')
     source=ROOT/'docs/engineering/qt-library-replacement.md'
-    result={**value,'modules':selected,'replacementInstructionsSha256':digest(source),'sourceAccessFulfillmentReviewComplete':False}
+    result={**value,'modules':selected,'replacementInstructionsSha256':replacement_sha256 or digest(source),'sourceAccessFulfillmentReviewComplete':False}
     if network_backports is not None:
         result['networkBackports'] = network_backports
+    if cocoa_backports is not None:
+        result['cocoaBackports'] = cocoa_backports
     return result
 
 
 def collect(destination, modules, qt=None):
     destination=Path(destination)
-    network_backports = None
+    network_backports = cocoa_backports = None
     if qt is not None:
         from qt_network_backports import public_record
         network_backports = public_record(qt)
-    record = manifest(modules, network_backports)
+        if platform.system() == 'Darwin':
+            from qt_cocoa_backports import public_record as cocoa_record
+            cocoa_backports = cocoa_record(qt)
+    record = manifest(modules, network_backports, cocoa_backports)
     destination.mkdir(parents=True,exist_ok=True)
     (destination/'source-access.json').write_text(json.dumps(record,indent=2)+'\n',encoding='utf-8')
     shutil.copyfile(ROOT/'docs/engineering/qt-library-replacement.md',destination/'REPLACEMENT.md')
@@ -51,6 +57,9 @@ def verify(destination, qt=None):
     if qt is not None and (qt / 'xdnote-network-backports.json').is_file():
         from qt_network_backports import public_record
         if record.get('networkBackports') != public_record(qt): raise ValueError('Qt Network source derivation differs')
+    if qt is not None and platform.system() == 'Darwin':
+        from qt_cocoa_backports import public_record as cocoa_record
+        if record.get('cocoaBackports') != cocoa_record(qt): raise ValueError('Qt Cocoa source derivation differs')
     return record
 
 
