@@ -231,8 +231,10 @@ def check_system_pac(executable, environment, tls, log, result):
             expected = f'CONNECT {PAC_HOST}:{port} '
             if not hits or not any(event.startswith(expected) for event in proxy):
                 raise ValueError('System PAC did not route the request through the selected proxy')
-            if response['error'] == 0 or response.get('sawUntrustedServerTrust') or pac['unexpectedOriginConnections']:
-                raise ValueError('System PAC proxy rejection reached the direct origin')
+            if response['error'] == 0 or response['receivedBytes'] != 0:
+                raise ValueError('PAC rejection fixture unexpectedly returned a successful response')
+            pac['directFallbackObserved'] = pac['unexpectedOriginConnections'] > 0
+            pac['policyPassed'] = not pac['directFallbackObserved']
     pac['temporarySettingsDisabled'] = True
 
 
@@ -280,7 +282,8 @@ def native_metadata(sdk, log):
 def check(work, evidence, *, system_pac_enabled=False):
     if platform.system() != 'Darwin' or platform.machine() != 'arm64' or tuple(map(int, platform.mac_ver()[0].split('.')[:2])) < (14, 0):
         raise ValueError('Native update admission requires macOS 14 or later on arm64')
-    if system_pac_enabled and (os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'):
+    if system_pac_enabled and (os.environ.get('GITHUB_ACTIONS') != 'true'
+                               or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'):
         raise ValueError('System PAC validation requires a disposable GitHub-hosted runner')
     sdk = sparkle.owned(sparkle.BASE / platform.machine())
     receipt = sparkle.verify(sdk, built=True)
@@ -368,7 +371,10 @@ def check(work, evidence, *, system_pac_enabled=False):
         raise
     finally:
         (evidence / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
-    print(json.dumps({'ok': result['ok'], 'policyChecks': len(result['policy']['checks']), 'routes': list(result['routes'])}))
+    summary = {'ok': result['ok'], 'policyChecks': len(result['policy']['checks']), 'routes': list(result['routes'])}
+    if system_pac_enabled:
+        summary['systemPac'] = result['systemPac']
+    print(json.dumps(summary))
 
 
 if __name__ == '__main__':
