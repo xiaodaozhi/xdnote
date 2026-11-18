@@ -102,6 +102,44 @@ def dependency_review(docs, seeds, raw_hashes):
             'inference': 'package owners of actual delivered Qt files plus transitive supplier DEPENDS_ON/STATIC_LINK/DYNAMIC_LINK; compiler BUILD_DEPENDENCY_OF and whole-module CONTAINS are not roots; generic DEPENDS_ON can cover build/run requirements'}
 
 
+def network_derivation(evidence):
+    receipt = evidence['buildIdentity'].get('qtNetworkBackports')
+    public = evidence.get('qtSourceAccess', {}).get('networkBackports')
+    if receipt is None and public is None:
+        return None
+    if not isinstance(receipt, dict) or not isinstance(public, dict):
+        raise ValueError('Incomplete Qt Network derivation')
+    from qt_network_backports import module_paths
+    from qt_source_access import config as source_access_config
+    qtbase = next(module for module in source_access_config()['modules'] if module['module'] == 'qtbase')
+    if set(receipt['files']) != set(module_paths(receipt['system'])) or receipt.get('source') != qtbase:
+        raise ValueError('Unexpected Qt Network derivation scope')
+    private_fields = {'architecture', 'coreConfiguration', 'originalSignature', 'system', 'files'}
+    expected = {name: value for name, value in receipt.items() if name not in private_fields}
+    expected['files'] = {
+        path: {name: row[name] for name in ('sha256', 'originalSdkSha256')}
+        for path, row in receipt['files'].items()
+    }
+    if public != expected or public.get('sourceCodeInRelease') is not False:
+        raise ValueError('Qt Network derivation differs across source access and build evidence')
+    return public
+
+
+def verify_qt_file(qt, path, actual, derivation, backport):
+    source = (qt / path).resolve()
+    if not source.is_relative_to(qt.resolve()):
+        raise ValueError('Supplier path escapes SDK')
+    sdk_sha = digest(source)
+    row = derivation['files'].get(path) if derivation else None
+    if row is None:
+        if backport is not None or sdk_sha != actual:
+            raise ValueError('Actual Qt file differs from the supplier SDK without a source derivation')
+        return None
+    if backport != derivation or actual != row['sha256'] or sdk_sha != row['originalSdkSha256']:
+        raise ValueError('Derived Qt file lacks matching build and supplier evidence')
+    return row
+
+
 def review(evidence, linkage, qt):
     if evidence.get('ok') is not True or linkage.get('ok') is not True or evidence['buildIdentity'] != linkage['buildIdentity']:
         raise ValueError('Actual inventory and linker evidence must have the same successful build identity')
@@ -117,11 +155,17 @@ def review(evidence, linkage, qt):
             raw_hashes[name]['verifiedVariants'] = [{'fileName': variant.name, 'projectionEquivalent': same,
                                                    **{algorithm: hashlib.new(algorithm, data).hexdigest() for algorithm in ['sha1', 'sha256']}}]
     shipped = {row['path']: row for row in evidence['files']}; seeds = set()
+    derivation = network_derivation(evidence)
+    derived_files = {}
     for row in shipped.values():
         material = row.get('evidence', {}); supplier = material.get('supplier')
         if supplier:
-            sdk = (qt / material['sdkFile']).resolve()
-            if not sdk.is_relative_to(qt.resolve()) or digest(sdk) != material['sdkSha256']: raise ValueError('Actual supplier file differs from SDK')
+            path = material['sdkFile']
+            row = verify_qt_file(qt, path, material['sdkSha256'], derivation, material.get('sourceBackport'))
+            if row is not None:
+                if material.get('nativeSectionsMatchSdk') is not True:
+                    raise ValueError('Relocated Qt derivative lacks verified code sections')
+                derived_files[path] = row
             seeds.add((supplier['sbom'], supplier['spdxId']))
     if not seeds:  # Windows inventory retains exact, unrelocated Qt DLL bytes.
         for name, doc in docs.items():
@@ -131,13 +175,17 @@ def review(evidence, linkage, qt):
                 if not relative.parts or relative.parts[0] not in ('bin', 'plugins'): continue
                 target = relative.relative_to(relative.parts[0]).as_posix()
                 if target not in shipped or not target.lower().endswith('.dll'): continue
-                source = (qt / relative).resolve()
-                if not source.is_relative_to(qt.resolve()) or digest(source) != shipped[target]['sha256']: raise ValueError('Delivered DLL differs from pinned SDK')
+                actual = shipped[target]
+                path = relative.as_posix()
+                row = verify_qt_file(qt, path, actual['sha256'], derivation, actual.get('evidence', {}).get('sourceBackport'))
+                if row is not None:
+                    derived_files[path] = row
                 seeds.add((name, item['SPDXID']))
     if not seeds: raise ValueError('No actual Qt file roots')
     result = dependency_review(docs, seeds, raw_hashes)
     return {'ok': True, 'buildIdentity': evidence['buildIdentity'], 'supplierDocuments': records, 'actualQtFileRoots': sorted(seeds), **result,
             'supplierSerializationEvidence': raw_hashes,
+            'actualQtSourceBackports': derived_files,
             'rustSelectedCompilationUnits': linkage['members'], 'rustSummary': dict(Counter(row['kind'] for row in linkage['members'])),
             'licenseReviewComplete': False, 'releaseReady': False,
             'pending': ['review actual compiled-in third-party source and applicable license choices', 'resolve supplier reference gaps without rewriting upstream evidence',

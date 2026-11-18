@@ -1,5 +1,7 @@
 """Real SPDX graph shapes preserve declaration gaps without inventing inclusion."""
 import copy
+import hashlib
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -49,3 +51,42 @@ class ComponentReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError): dependency_review(docs, {('base', 'not-delivered')}, {})
         docs['base']['packages'].append(docs['base']['packages'][0])
         with self.assertRaises(ValueError): dependency_review(docs, {('base', 'core.dll')}, {})
+
+    def test_supplier_sdk_reviews_a_derived_linux_library_without_substituting_hashes(self):
+        from qt_source_access import config
+
+        with tempfile.TemporaryDirectory() as folder:
+            qt = Path(folder)
+            path = 'lib/libQt6Network.so.6.8.2'
+            binary = qt / path
+            binary.parent.mkdir()
+            binary.write_bytes(b'original supplier bytes')
+            supplier_sha = hashlib.sha256(binary.read_bytes()).hexdigest()
+            prepared_sha = hashlib.sha256(b'derived bytes').hexdigest()
+            doc = self.fixture()['base']
+            doc['spdxVersion'] = 'SPDX-2.3'
+            doc['files'][0]['fileName'] = './' + path
+            sbom = 'qtbase-6.8.2.spdx.json'
+            (qt / 'sbom').mkdir()
+            spdx_bytes = json.dumps(doc).encode()
+            (qt / 'sbom' / sbom).write_bytes(spdx_bytes)
+            source = next(row for row in config()['modules'] if row['module'] == 'qtbase')
+            files = {path: {'sha256': prepared_sha, 'originalSdkSha256': supplier_sha}}
+            backport = {'source': source, 'files': files, 'sourceCodeInRelease': False}
+            receipt = {**backport, 'system': 'Linux', 'files': {path: {**files[path], 'originalBackup': '/ci/private'}}}
+            identity = {'dependencies': {'qt': {'version': '6.8.2'}}, 'qtNetworkBackports': receipt}
+            linkage = {'ok': True, 'buildIdentity': identity, 'members': []}
+            material = {'supplier': {'sbom': sbom, 'spdxId': 'core.dll'}, 'sdkFile': path,
+                        'sdkSha256': prepared_sha, 'nativeSectionsMatchSdk': True, 'sourceBackport': backport}
+            evidence = {'ok': True, 'buildIdentity': identity, 'files': [{'path': path, 'evidence': material}],
+                        'qtModules': [{'sbom': sbom, 'sha256': hashlib.sha256(spdx_bytes).hexdigest()}],
+                        'qtSourceAccess': {'networkBackports': backport}}
+
+            self.assertEqual(review(evidence, linkage, qt)['actualQtSourceBackports'], files)
+            for key, value in [('sdkSha256', supplier_sha), ('sourceBackport', None), ('nativeSectionsMatchSdk', False)]:
+                with self.subTest(key=key), patch.dict(material, {key: value}):
+                    with self.assertRaises(ValueError):
+                        review(evidence, linkage, qt)
+            binary.write_bytes(b'changed supplier bytes')
+            with self.assertRaises(ValueError):
+                review(evidence, linkage, qt)
