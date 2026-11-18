@@ -10,6 +10,7 @@
 #include <QDialog>
 #include <QFile>
 #include <QLayout>
+#include <QMouseEvent>
 #include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -113,6 +114,21 @@ void verifyMacApplicationTitlebars() {
     document.showNormal();
     QTRY_VERIFY(!(nativeView(&document).window.styleMask & NSWindowStyleMaskFullScreen));
     verifyHeader(document, normalSize);
+
+    auto *documentHeader = document.findChild<QWidget *>("documentHeader", Qt::FindDirectChildrenOnly);
+    QVERIFY(documentHeader);
+    const auto origin = document.pos();
+    const QPoint start(documentHeader->width() / 2, documentHeader->height() / 2);
+    const auto global = documentHeader->mapToGlobal(start);
+    const QPoint delta(36, 12);
+    QMouseEvent press(QEvent::MouseButtonPress, start, global, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(documentHeader, &press);
+    QMouseEvent drag(QEvent::MouseMove, start + delta, global + delta, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(documentHeader, &drag);
+    QTRY_COMPARE(document.pos(), origin + delta);
+    QMouseEvent release(QEvent::MouseButtonRelease, start, global + delta, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(documentHeader, &release);
+    QCOMPARE(document.size(), normalSize);
 
     QVERIFY(appearance.setPreferences("dark", "graphite"));
     QVERIFY(appearance.dark());

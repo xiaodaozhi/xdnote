@@ -1,6 +1,9 @@
 #pragma once
 #include <QWidget>
 #include <QSvgRenderer>
+#ifdef Q_OS_MACOS
+#include <optional>
+#endif
 
 class QHBoxLayout;
 namespace xdnote {
@@ -19,6 +22,10 @@ public:
 protected:
     void paintEvent(QPaintEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
+#ifdef Q_OS_MACOS
+    void mouseMoveEvent(QMouseEvent *) override;
+    void mouseReleaseEvent(QMouseEvent *) override;
+#endif
     void mouseDoubleClickEvent(QMouseEvent *) override;
     void changeEvent(QEvent *) override;
 private:
@@ -33,6 +40,11 @@ private:
     QSvgRenderer m_logo;
     QString m_title;
     bool m_dirty = false;
+#ifdef Q_OS_MACOS
+    std::optional<QPointF> m_dragOrigin;
+    QPoint m_dragWindowOrigin;
+    bool m_triedNativeMove = false;
+#endif
 };
 class ApplicationWindow : public QWidget {
     Q_OBJECT

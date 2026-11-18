@@ -100,7 +100,40 @@ void WindowTitleBar::paintEvent(QPaintEvent *) {
     painter.restore();
     const int border = visualTokens().value("controls").toObject().value("borderWidth").toInt(); painter.fillRect(QRect(0, this->height() - border, this->width(), border), m_appearance->color("border"));
 }
-void WindowTitleBar::mousePressEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton && window()->windowHandle()) window()->windowHandle()->startSystemMove(); }
+void WindowTitleBar::mousePressEvent(QMouseEvent *event) {
+    if (event->button() != Qt::LeftButton) return;
+#ifdef Q_OS_MACOS
+    if (QGuiApplication::platformName() == "cocoa") {
+        m_dragOrigin = event->globalPosition();
+        m_dragWindowOrigin = window()->pos();
+        m_triedNativeMove = false;
+        return;
+    }
+#endif
+    if (auto *handle = window()->windowHandle()) handle->startSystemMove();
+}
+#ifdef Q_OS_MACOS
+void WindowTitleBar::mouseMoveEvent(QMouseEvent *event) {
+    if (!m_dragOrigin || !event->buttons().testFlag(Qt::LeftButton)) return;
+    const auto delta = event->globalPosition() - *m_dragOrigin;
+    if (delta.manhattanLength() < QApplication::startDragDistance()) return;
+    if (!m_triedNativeMove) {
+        m_triedNativeMove = true;
+        // Cocoa can accept a drag event without moving the window. Let
+        // AppKit finish its native move before using the Qt pointer delta.
+        const auto before = window()->pos();
+        if (auto *handle = window()->windowHandle(); handle && handle->startSystemMove() && window()->pos() != before) {
+            m_dragOrigin.reset();
+            return;
+        }
+    }
+    if (!window()->isMaximized() && !window()->isFullScreen())
+        window()->move(m_dragWindowOrigin + delta.toPoint());
+}
+void WindowTitleBar::mouseReleaseEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton) m_dragOrigin.reset();
+}
+#endif
 void WindowTitleBar::mouseDoubleClickEvent(QMouseEvent *event) { if (event->button() == Qt::LeftButton) static_cast<ApplicationWindow *>(window())->toggleMaximized(); }
 void WindowTitleBar::changeEvent(QEvent *event) { QWidget::changeEvent(event); updateWindowState(); }
 ApplicationWindow::ApplicationWindow(Appearance *appearance) : m_chromeAppearance(appearance ? appearance : new Appearance(this)) {
