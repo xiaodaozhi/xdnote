@@ -34,6 +34,8 @@ Qt Quick 允许调用方将 `QTextDocument` 绑定到 `TextEdit`，并由调用�
 
 对照 Qt 6.8.2 和 6.8.3 的公开源码，两版均未把文档重新绑定与已创建的辅助接口同步生命周期，两版的整段值写入也都没有应用只读策略或保留撤销历史。后续 6.8.3 的结论限于静态核对，本项目的构建及安全前置条件试验继续使用 6.8.2。真实辅助技术及原生平台桥接需要独立验证。[Qt 6.8.2 源码](https://github.com/qt/qtdeclarative/blob/v6.8.2/src/quick/accessible/qaccessiblequickitem.cpp) [Qt 6.8.3 源码](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/accessible/qaccessiblequickitem.cpp)
 
+后续抽查的 Qt 6.9.3、6.10.3、6.11.0、6.11.3、6.12.0 源码仍显示同样的两项限制。辅助文本接口在创建时保存文档引用，未见随重绑定刷新；整段值写入仍直接替换文档文本，未增加只读检查或撤销保护。结论仅覆盖所列源码的直接接口语义；系统桥接行为需另行核验。产品继续使用独立的会话接口，试验固定 Qt 6.8.2。[Qt 6.9.3](https://github.com/qt/qtdeclarative/tree/c1640ba76059882e1d2bc978b6904a19333be4a9/src/quick/accessible) [Qt 6.10.3](https://github.com/qt/qtdeclarative/tree/3a714efe0672ae1ba06f09864f64957560c69b91/src/quick/accessible) [Qt 6.11.0](https://github.com/qt/qtdeclarative/tree/e602a097ca314e9610b1fd3b7dbfa467a868731a/src/quick/accessible) [Qt 6.11.3](https://github.com/qt/qtdeclarative/tree/95e4ceccb77c82411f8a048eda4360e5967f4e60/src/quick/accessible) [Qt 6.12.0](https://github.com/qt/qtdeclarative/tree/4332fbbb4c340463dc8cee36dda0c85d932122d8/src/quick/accessible)
+
 - 使用 `QSaveFile` 同目录暂存且关闭直接覆盖回退；两次比较目标字节能发现测试中注入的变化，但最后一次检查到提交之间仍有跨进程竞争。相同字节的文件替换、系统文件 ID、链接／重解析点、权限和网络卷尚未解决，不能用于真实用户文件保存。参见 [Qt 6.8 QSaveFile](https://doc.qt.io/qt-6.8/qsavefile.html)。
 - 打开时拒绝混合换行、非 UTF-8 和源文已有的 U+2028／U+2029；编辑过程中 U+2028 拒绝保存。Qt 内部普通段落也使用 U+2029，因此编辑过程中插入字面 U+2029 尚不能和普通换行区分，这是待决的文本保真问题。
 - `MarkdownNoHTML` 和占位资源加载只覆盖当前实验路径与样本；未完成对完整方言、嵌入对象、实际本地图片、链接协议、复杂文档及渲染资源上限的安全／兼容验收。
