@@ -533,13 +533,13 @@ struct NativePreviewView::State {
     }
 };
 
-// Virtual children are created only when an assistive client asks for them.
-// Their stamp prevents retained interfaces activating a replacement document.
-class AccessiblePreviewAction final : public QAccessibleInterface, public QAccessibleActionInterface {
-    QPointer<NativePreviewView> m_view; NativePreviewStamp m_stamp; int m_index;
+class AccessiblePreviewChild : public QAccessibleInterface {
+protected:
+    QPointer<NativePreviewView> m_view;
+    explicit AccessiblePreviewChild(NativePreviewView *view) : m_view(view) {}
+
 public:
-    AccessiblePreviewAction(NativePreviewView *view, int index) : m_view(view), m_stamp(view->displayedStamp()), m_index(index) {}
-    bool isValid() const override { return m_view && m_view->content() && m_view->displayedStamp() == m_stamp && m_index < m_view->content()->actions.size(); }
+    bool isValid() const override { return m_view; }
     QObject *object() const override { return nullptr; }
     QWindow *window() const override { return m_view ? m_view->window()->windowHandle() : nullptr; }
     QAccessibleInterface *parent() const override { return m_view ? QAccessible::queryAccessibleInterface(m_view) : nullptr; }
@@ -547,14 +547,32 @@ public:
     QAccessibleInterface *child(int) const override { return nullptr; }
     int indexOfChild(const QAccessibleInterface *) const override { return -1; }
     QAccessibleInterface *childAt(int, int) const override { return nullptr; }
+    void setText(QAccessible::Text, const QString &) override {}
+};
+
+// Retained action interfaces may only activate the document they were created for.
+class AccessiblePreviewAction final : public AccessiblePreviewChild, public QAccessibleActionInterface {
+    NativePreviewStamp m_stamp;
+    int m_index;
+
+public:
+    AccessiblePreviewAction(NativePreviewView *view, int index)
+        : AccessiblePreviewChild(view), m_stamp(view->displayedStamp()), m_index(index) {}
+    bool isValid() const override { return m_view && m_view->content() && m_view->displayedStamp() == m_stamp && m_index < m_view->content()->actions.size(); }
     QString text(QAccessible::Text type) const override {
         if (!isValid()) return {};
         const auto &action = m_view->content()->actions[m_index];
         if (type == QAccessible::Name) return action.copyCode ? QStringLiteral("复制代码") : m_view->content()->text.mid(action.start, action.length);
-        if (type == QAccessible::Description && !action.copyCode) return QString::fromUtf8(m_view->content()->model.text(m_view->content()->model.node(action.node)));
+        if (type == QAccessible::Description && !action.copyCode) {
+#ifdef Q_OS_MACOS
+            // Cocoa exposes Description as the label VoiceOver prefers for links.
+            return text(QAccessible::Name);
+#else
+            return QString::fromUtf8(m_view->content()->model.text(m_view->content()->model.node(action.node)));
+#endif
+        }
         return {};
     }
-    void setText(QAccessible::Text, const QString &) override {}
     QRect rect() const override {
         if (!isValid()) return {};
         const auto &action = m_view->content()->actions[m_index];
@@ -578,58 +596,12 @@ public:
     QStringList keyBindingsForAction(const QString &) const override { return {}; }
 };
 
-class AccessibleNativePreview final : public QAccessibleWidget, public QAccessibleTextInterface {
-    mutable QHash<int, QAccessible::Id> actions;
-    mutable NativePreviewStamp stamp;
-    void synchronize() const {
-        if (view() && stamp == view()->displayedStamp()) return;
-        for (auto id : actions) QAccessible::deleteAccessibleInterface(id);
-        actions.clear(); stamp = view() ? view()->displayedStamp() : NativePreviewStamp{};
-    }
-public:
-    ~AccessibleNativePreview() override { for (auto id : actions) QAccessible::deleteAccessibleInterface(id); }
-    int childCount() const override { synchronize(); return view() && view()->content() ? int(view()->content()->actions.size()) : 0; }
-    QAccessibleInterface *child(int index) const override {
-        if (index < 0 || index >= childCount()) return nullptr;
-        if (!actions.contains(index)) actions.insert(index, QAccessible::registerAccessibleInterface(new AccessiblePreviewAction(view(), index)));
-        return QAccessible::accessibleInterface(actions.value(index));
-    }
-    int indexOfChild(const QAccessibleInterface *value) const override {
-        synchronize(); for (auto it = actions.cbegin(); it != actions.cend(); ++it) if (QAccessible::accessibleInterface(it.value()) == value) return it.key(); return -1;
-    }
-    QAccessibleInterface *childAt(int x, int y) const override {
-        if (!view()) return nullptr;
-        const int action = view()->actionAtPoint(view()->viewport()->mapFromGlobal(QPoint(x, y))); return action >= 0 ? child(action) : nullptr;
-    }
-    QAccessibleInterface *focusChild() const override { return view() && view()->hasFocus() ? child(view()->d->focusedAction) : nullptr; }
-    explicit AccessibleNativePreview(NativePreviewView *view) : QAccessibleWidget(view, QAccessible::Document) {}
-    QAccessible::Role role() const override {
-#ifdef Q_OS_MACOS
-        // Qt 6.8 Cocoa drops Document from the native tree. Its text-area
-        // mapping requires EditableText and multiLine; state() keeps it read-only.
-        return QAccessible::EditableText;
-#else
-        return QAccessibleWidget::role();
-#endif
-    }
-    NativePreviewView *view() const { return qobject_cast<NativePreviewView *>(object()); }
-    void *interface_cast(QAccessible::InterfaceType type) override {
-        if (type == QAccessible::TextInterface) return static_cast<QAccessibleTextInterface *>(this);
-        return QAccessibleWidget::interface_cast(type);
-    }
+class AccessiblePreviewText : public QAccessibleTextInterface {
+protected:
+    virtual NativePreviewView *view() const = 0;
     QString contents() const { return view() && view()->content() ? view()->content()->text : QString(); }
-    QAccessible::State state() const override {
-        auto value = QAccessibleWidget::state(); value.readOnly = true; value.editable = false;
-        value.multiLine = true; value.selectableText = true; value.focusable = true; return value;
-    }
-    QString text(QAccessible::Text type) const override {
-        if (type == QAccessible::Value) return contents();
-        if (type == QAccessible::Description && view()) return view()->error();
-        return QAccessibleWidget::text(type);
-    }
-    void setText(QAccessible::Text type, const QString &value) override {
-        if (type != QAccessible::Value) QAccessibleWidget::setText(type, value);
-    }
+
+public:
     int characterCount() const override { return int(contents().size()); }
     QString text(int start, int end) const override {
         const auto value = contents(); if (end == -1) end = int(value.size());
@@ -657,6 +629,153 @@ public:
         if (!boundary(contents(), offset)) { *start = *end = -1; return {}; }
         *start = 0; *end = characterCount(); return QStringLiteral("readonly:true;");
     }
+};
+
+#ifdef Q_OS_MACOS
+// Cocoa treats static text as a leaf in VoiceOver navigation. Keep the
+// navigable body and its focusable actions as siblings within the reader.
+class AccessiblePreviewBody final : public AccessiblePreviewChild, public AccessiblePreviewText, public QAccessibleActionInterface {
+    NativePreviewView *view() const override { return m_view; }
+
+public:
+    explicit AccessiblePreviewBody(NativePreviewView *view) : AccessiblePreviewChild(view) {}
+    QString text(QAccessible::Text type) const override {
+        // Qt maps the Name of static text to AXValue.
+        if (type == QAccessible::Name || type == QAccessible::Value)
+            return contents();
+        if (type == QAccessible::Help)
+            return QStringLiteral("只读正文。可逐行阅读或选择文本。");
+        if (type == QAccessible::Description && view())
+            return view()->error().isEmpty() ? view()->accessibleName() : view()->error();
+        return {};
+    }
+    QRect rect() const override {
+        if (!view()) return {};
+        const auto *viewport = view()->viewport();
+        return QRect(viewport->mapToGlobal(QPoint()), viewport->size());
+    }
+    QAccessible::Role role() const override { return QAccessible::StaticText; }
+    QAccessible::State state() const override {
+        QAccessible::State value;
+        value.invalid = !view();
+        value.invisible = !view() || !view()->isVisible();
+        value.focusable = true;
+        value.focused = view() && view()->hasFocus() && parent()->focusChild() == this;
+        value.multiLine = true;
+        value.readOnly = true;
+        value.selectableText = true;
+        return value;
+    }
+    void *interface_cast(QAccessible::InterfaceType type) override {
+        if (type == QAccessible::TextInterface) return static_cast<QAccessibleTextInterface *>(this);
+        if (type == QAccessible::ActionInterface) return static_cast<QAccessibleActionInterface *>(this);
+        return nullptr;
+    }
+    QStringList actionNames() const override { return {QAccessibleActionInterface::setFocusAction()}; }
+    void doAction(const QString &name) override {
+        if (view() && name == QAccessibleActionInterface::setFocusAction()) view()->setFocus(Qt::OtherFocusReason);
+    }
+    QStringList keyBindingsForAction(const QString &) const override { return {}; }
+};
+#endif
+
+class AccessibleNativePreview final : public QAccessibleWidget
+#ifndef Q_OS_MACOS
+    , public AccessiblePreviewText
+#endif
+{
+#ifdef Q_OS_MACOS
+    static constexpr int actionOffset = 1;
+    mutable QAccessible::Id bodyId = 0;
+#else
+    static constexpr int actionOffset = 0;
+#endif
+    mutable QHash<int, QAccessible::Id> actions;
+    mutable NativePreviewStamp stamp;
+
+    void synchronize() const {
+        if (view() && stamp == view()->displayedStamp()) return;
+        for (auto id : actions) QAccessible::deleteAccessibleInterface(id);
+        actions.clear(); stamp = view() ? view()->displayedStamp() : NativePreviewStamp{};
+    }
+    NativePreviewView *view() const
+#ifndef Q_OS_MACOS
+        override
+#endif
+    { return qobject_cast<NativePreviewView *>(object()); }
+
+public:
+    explicit AccessibleNativePreview(NativePreviewView *view)
+#ifdef Q_OS_MACOS
+        : QAccessibleWidget(view, QAccessible::Grouping) {}
+#else
+        : QAccessibleWidget(view, QAccessible::Document) {}
+#endif
+    ~AccessibleNativePreview() override {
+#ifdef Q_OS_MACOS
+        if (bodyId) QAccessible::deleteAccessibleInterface(bodyId);
+#endif
+        for (auto id : actions) QAccessible::deleteAccessibleInterface(id);
+    }
+    QAccessibleInterface *body() const {
+#ifdef Q_OS_MACOS
+        if (!bodyId && view())
+            bodyId = QAccessible::registerAccessibleInterface(new AccessiblePreviewBody(view()));
+        return QAccessible::accessibleInterface(bodyId);
+#else
+        return const_cast<AccessibleNativePreview *>(this);
+#endif
+    }
+    int childCount() const override {
+        synchronize();
+        return view() ? actionOffset + (view()->content() ? int(view()->content()->actions.size()) : 0) : 0;
+    }
+    QAccessibleInterface *child(int index) const override {
+        if (index < 0 || index >= childCount()) return nullptr;
+        if (index < actionOffset) return body();
+        const int action = index - actionOffset;
+        if (!actions.contains(action))
+            actions.insert(action, QAccessible::registerAccessibleInterface(new AccessiblePreviewAction(view(), action)));
+        return QAccessible::accessibleInterface(actions.value(action));
+    }
+    int indexOfChild(const QAccessibleInterface *value) const override {
+        if (actionOffset && value && value == body()) return 0;
+        synchronize();
+        for (auto it = actions.cbegin(); it != actions.cend(); ++it)
+            if (QAccessible::accessibleInterface(it.value()) == value) return it.key() + actionOffset;
+        return -1;
+    }
+    QAccessibleInterface *childAt(int x, int y) const override {
+        if (!view()) return nullptr;
+        const int action = view()->actionAtPoint(view()->viewport()->mapFromGlobal(QPoint(x, y)));
+        if (action >= 0) return child(action + actionOffset);
+        if (actionOffset && body()->rect().contains(x, y)) return body();
+        return nullptr;
+    }
+    QAccessibleInterface *focusChild() const override {
+        if (!view() || !view()->hasFocus()) return nullptr;
+        const int action = view()->d->focusedAction;
+        if (action >= 0) return child(action + actionOffset);
+        return actionOffset ? body() : nullptr;
+    }
+#ifndef Q_OS_MACOS
+    void *interface_cast(QAccessible::InterfaceType type) override {
+        if (type == QAccessible::TextInterface) return static_cast<QAccessibleTextInterface *>(this);
+        return QAccessibleWidget::interface_cast(type);
+    }
+    QAccessible::State state() const override {
+        auto value = QAccessibleWidget::state(); value.readOnly = true; value.editable = false;
+        value.multiLine = true; value.selectableText = true; value.focusable = true; return value;
+    }
+    QString text(QAccessible::Text type) const override {
+        if (type == QAccessible::Value) return contents();
+        if (type == QAccessible::Description && view()) return view()->error();
+        return QAccessibleWidget::text(type);
+    }
+    void setText(QAccessible::Text type, const QString &value) override {
+        if (type != QAccessible::Value) QAccessibleWidget::setText(type, value);
+    }
+#endif
 };
 
 static void installNativeAccessibility() {
@@ -1130,7 +1249,14 @@ void NativePreviewView::setSelection(int anchor, int cursor) {
     const QPointer<NativePreviewView> alive(this); const auto snapshot = d->shown;
     emit selectionChanged(); if (!alive || d->shown != snapshot) return;
     viewport()->update();
-    QAccessibleTextSelectionEvent event(this, qMin(anchor, cursor), qMax(anchor, cursor)); QAccessible::updateAccessibility(&event);
+#ifdef Q_OS_MACOS
+    auto *accessible = QAccessible::queryAccessibleInterface(this);
+    if (!accessible || !accessible->child(0)) return;
+    QAccessibleTextSelectionEvent event(accessible->child(0), qMin(anchor, cursor), qMax(anchor, cursor));
+#else
+    QAccessibleTextSelectionEvent event(this, qMin(anchor, cursor), qMax(anchor, cursor));
+#endif
+    QAccessible::updateAccessibility(&event);
 }
 QPair<int, int> NativePreviewView::selection() const { return {d->anchor, d->cursor}; }
 void NativePreviewView::copy() { if (d->current() && d->anchor != d->cursor) emit copyTextRequested(selectedText()); }

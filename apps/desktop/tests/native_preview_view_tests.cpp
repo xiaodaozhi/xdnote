@@ -49,6 +49,14 @@ QRect inkPixels(const QImage &image, QColor foreground, QColor background, QRect
         if(alpha>.25&&qAbs(pr-alpha*r)+qAbs(pg-alpha*g)+qAbs(pb-alpha*b)<40){left=qMin(left,x);right=qMax(right,x);top=qMin(top,y);bottom=qMax(bottom,y);}}
     return right<left?QRect():QRect(QPoint(left,top),QPoint(right,bottom));
 }
+#ifdef Q_OS_MACOS
+constexpr int readerActionOffset = 1;
+#else
+constexpr int readerActionOffset = 0;
+#endif
+QAccessibleInterface *readerText(QAccessibleInterface *reader) {
+    return readerActionOffset && reader ? reader->child(0) : reader;
+}
 }
 class NativePreviewViewTests final : public QObject {
     Q_OBJECT
@@ -60,15 +68,25 @@ private slots:
         auto *interface = QAccessible::queryAccessibleInterface(&view);
         QVERIFY(interface);
 #ifdef Q_OS_MACOS
-        QCOMPARE(interface->role(), QAccessible::EditableText);
+        QCOMPARE(interface->role(), QAccessible::Grouping);
+        QCOMPARE(interface->childCount(), 1);
+        QVERIFY(!interface->textInterface());
 #else
         QCOMPARE(interface->role(), QAccessible::Document);
 #endif
-        QVERIFY(interface->state().multiLine);
-        QVERIFY(interface->state().readOnly);
-        QVERIFY(!interface->state().editable);
-        QVERIFY(interface->textInterface());
-        QVERIFY(!interface->editableTextInterface());
+        auto *body = readerText(interface);
+        QVERIFY(body);
+#ifdef Q_OS_MACOS
+        QCOMPARE(body->role(), QAccessible::StaticText);
+        QCOMPARE(body->parent(), interface);
+        QCOMPARE(interface->indexOfChild(body), 0);
+        QCOMPARE(body->text(QAccessible::Help), QStringLiteral("只读正文。可逐行阅读或选择文本。"));
+#endif
+        QVERIFY(body->state().multiLine);
+        QVERIFY(body->state().readOnly);
+        QVERIFY(!body->state().editable);
+        QVERIFY(body->textInterface());
+        QVERIFY(!body->editableTextInterface());
     }
     void cachedImagesRemainStableAcrossRepaints_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
     void cachedImagesRemainStableAcrossRepaints() {
@@ -183,7 +201,10 @@ private slots:
         QVERIFY(qAbs(right-(hit.right()+1)-4)<=1.5);QVERIFY(qAbs(hit.top()+hit.height()/2.0-(panel.top()/dpr+16))<=1.5);
         const auto glyph=inkPixels(image,a.color("text"),a.color("codeSurface"),QRect(qRound(hit.x()*dpr),qRound(hit.y()*dpr),qRound(hit.width()*dpr),qRound(hit.height()*dpr)));QVERIFY(!glyph.isEmpty());
         QVERIFY(qAbs(glyph.center().x()-(hit.x()+16)*dpr)<=2*dpr);QVERIFY(qAbs(glyph.center().y()-(hit.y()+16)*dpr)<=2*dpr);
-        auto*accessible=QAccessible::queryAccessibleInterface(&view);QVERIFY(accessible&&accessible->childCount()==1);QCOMPARE(accessible->child(0)->rect(),QRect(button->mapToGlobal(QPoint()),button->size()));
+        auto *accessible = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(accessible);
+        QCOMPARE(accessible->childCount(), readerActionOffset + 1);
+        QCOMPARE(accessible->child(readerActionOffset)->rect(), QRect(button->mapToGlobal(QPoint()), button->size()));
         QSignalSpy copied(&view,&NativePreviewView::copyTextRequested);QTest::mouseClick(button,Qt::LeftButton);QCOMPARE(copied.size(),1);QCOMPARE(copied.first().first().toString(),QString("const int answer = 42;\n"));
     }
     void codeCopyButtonStaysWithHeaderDuringScrollAndResize() {
@@ -345,7 +366,11 @@ private slots:
     void accessibleTextIsReadOnlyAndSurvivesLayoutEviction() {
         const auto data = content(QStringLiteral("# 文本\n\n中文😀正文\n\n").repeated(2000).toUtf8()); QVERIFY(data);
         Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400); view.expect(stamp()); QVERIFY(view.present(stamp(), data)); view.show(); QApplication::processEvents();
-        auto *interface = QAccessible::queryAccessibleInterface(&view); QVERIFY(interface); QVERIFY(interface->state().readOnly); QVERIFY(!interface->editableTextInterface());
+        auto *interface = readerText(QAccessible::queryAccessibleInterface(&view));
+        QVERIFY(interface); QVERIFY(interface->state().readOnly); QVERIFY(!interface->editableTextInterface());
+#ifdef Q_OS_MACOS
+        QCOMPARE(interface->text(QAccessible::Name), data->text);
+#endif
         auto *text = interface->textInterface(); QVERIFY(text); QCOMPARE(text->characterCount(), int(data->text.size())); QCOMPARE(text->text(0, -1), data->text);
         interface->setText(QAccessible::Value, "forbidden"); QCOMPARE(text->text(0, -1), data->text);
         text->setSelection(0, 0, int(data->text.size())); QCOMPARE(view.selectedText(), data->text);
@@ -440,11 +465,20 @@ private slots:
         const auto data = content("[open](other.md)\n\n```cpp\nconst\tvalue = 1; /* multi\nline */\n```\n"); QVERIFY(data);
         view.expect(stamp()); QVERIFY(view.present(stamp(), data, {}, true)); view.show(); QApplication::processEvents();
         auto *accessible = QAccessible::queryAccessibleInterface(&view); QVERIFY(accessible);
-        QCOMPARE(accessible->childCount(), 2); auto *link = accessible->child(0); QVERIFY(link && link->isValid());
+        QCOMPARE(accessible->childCount(), readerActionOffset + 2);
+        auto *link = accessible->child(readerActionOffset); QVERIFY(link && link->isValid());
         QCOMPARE(link->role(), QAccessible::Link); QCOMPARE(link->text(QAccessible::Name), QString("open"));
+        QCOMPARE(link->parent(), accessible);
+        QCOMPARE(accessible->indexOfChild(link), readerActionOffset);
+#ifdef Q_OS_MACOS
+        QCOMPARE(link->text(QAccessible::Description), QString("open"));
+#else
+        QCOMPARE(link->text(QAccessible::Description), QString("other.md"));
+#endif
         QSignalSpy opened(&view, &NativePreviewView::documentLinkRequested), copied(&view, &NativePreviewView::copyTextRequested);
         link->actionInterface()->doAction(QAccessibleActionInterface::pressAction()); QCOMPARE(opened.size(), 1);
-        auto *copy = accessible->child(1); QVERIFY(copy && copy->actionInterface()); copy->actionInterface()->doAction(QAccessibleActionInterface::pressAction());
+        QCOMPARE(opened.first().first().toString(), QString("other.md"));
+        auto *copy = accessible->child(readerActionOffset + 1); QVERIFY(copy && copy->actionInterface()); copy->actionInterface()->doAction(QAccessibleActionInterface::pressAction());
         QCOMPARE(copied.size(), 1); QVERIFY(copied.first().first().toString().contains('\t'));
         const int from = data->text.indexOf("const"), to = data->text.indexOf("value");
         const auto advance = view.characterRect(to).left() - view.characterRect(from).left();
