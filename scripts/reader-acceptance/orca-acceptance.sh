@@ -45,7 +45,7 @@ kill -0 "$screen_reader"
 python scripts/desktop.py run --profile default --build-dir build/desktop-admission \
     --qt-prefix build/Qt/6.8.2/gcc_64 --file "$fixture" > "$evidence/app.log" 2>&1 &
 owned_pids+=("$!")
-window="$(timeout 30s xdotool search --sync --onlyvisible --name '^Reader-Check[.]md . xdnote$' | head -1)"
+window="$(timeout 30s xdotool search --sync --onlyvisible --name '^Reader-Check[.]md.*xdnote$' | head -1)"
 xdotool windowactivate --sync "$window"
 xdotool mousemove --window "$window" 120 215 click 1
 xdotool key --clearmodifiers ctrl+Home
@@ -64,7 +64,7 @@ xdotool key --clearmodifiers KP_Add
 sleep 5
 xdotool key --clearmodifiers ctrl+w
 sleep 1
-if xdotool search --onlyvisible --name '^Reader-Check[.]md . xdnote$'; then
+if xdotool search --onlyvisible --name '^Reader-Check[.]md.*xdnote$'; then
     echo 'Owned document window still visible after closing'
     exit 1
 fi
