@@ -54,6 +54,22 @@ class NativePreviewViewTests final : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase() { installFontFallbacks(); InputModality::forApplication(); qRegisterMetaType<NativePreviewStamp>(); }
+    void firstReaderGetsTheReadOnlyTextInterface() {
+        Appearance appearance;
+        NativePreviewView view(&appearance);
+        auto *interface = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(interface);
+#ifdef Q_OS_MACOS
+        QCOMPARE(interface->role(), QAccessible::EditableText);
+#else
+        QCOMPARE(interface->role(), QAccessible::Document);
+#endif
+        QVERIFY(interface->state().multiLine);
+        QVERIFY(interface->state().readOnly);
+        QVERIFY(!interface->state().editable);
+        QVERIFY(interface->textInterface());
+        QVERIFY(!interface->editableTextInterface());
+    }
     void cachedImagesRemainStableAcrossRepaints_data() { QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark"); }
     void cachedImagesRemainStableAcrossRepaints() {
         QFETCH(QString, theme); Appearance appearance; QVERIFY(appearance.setPreferences(theme, "graphite"));
@@ -320,13 +336,6 @@ private slots:
         const auto data = content(QStringLiteral("# 文本\n\n中文😀正文\n\n").repeated(2000).toUtf8()); QVERIFY(data);
         Appearance appearance; NativePreviewView view(&appearance); view.resize(700, 400); view.expect(stamp()); QVERIFY(view.present(stamp(), data)); view.show(); QApplication::processEvents();
         auto *interface = QAccessible::queryAccessibleInterface(&view); QVERIFY(interface); QVERIFY(interface->state().readOnly); QVERIFY(!interface->editableTextInterface());
-#ifdef Q_OS_MACOS
-        QCOMPARE(interface->role(), QAccessible::EditableText);
-        QVERIFY(interface->state().multiLine);
-        QVERIFY(!interface->state().editable);
-#else
-        QCOMPARE(interface->role(), QAccessible::Document);
-#endif
         auto *text = interface->textInterface(); QVERIFY(text); QCOMPARE(text->characterCount(), int(data->text.size())); QCOMPARE(text->text(0, -1), data->text);
         interface->setText(QAccessible::Value, "forbidden"); QCOMPARE(text->text(0, -1), data->text);
         text->setSelection(0, 0, int(data->text.size())); QCOMPARE(view.selectedText(), data->text);
