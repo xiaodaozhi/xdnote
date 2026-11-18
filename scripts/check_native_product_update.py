@@ -16,6 +16,8 @@ import subprocess
 import sys
 import time
 import desktop
+from native_fixture_proxy import Proxy, Origin, HOST
+import threading
 from check_native_update import replace, dump, checked
 from check_update_helper import guard, command, wait_file
 from installer_common import ROOT, build_output, digest
@@ -146,14 +148,16 @@ class Product:
             if uninstaller.exists(): raise RuntimeError('Owned uninstaller cleanup incomplete')
         else: command(['sudo', '-n', 'apt-get', '-y', 'purge', 'xdnote'], log=self.work / 'uninstall.log')
 
-    def scenario(self, mode):
+    def scenario(self, mode, transport="none", origin=None, proxy=None):
         self.install_old(); before = digest(self.image)
         for name in ['helper.json', 'error.json', 'status.json', 'restarted.json', 'cancelled.json', 'corrupt.json', 'recovery.json']: (self.run / name).unlink(missing_ok=True)
-        (self.run / 'owned.md').write_bytes(b'owned\n'); dump(self.run / 'settings.json', {'schemaVersion': 1, 'fixtureUnknown': 'retained'})
+        (self.run / 'owned.md').write_bytes(b'owned\n'); dump(self.run / 'settings.json', {'schemaVersion': 1, 'fixtureUnknown': 'retained', 'updates': {'proxyMode': 'custom' if proxy else transport, 'proxyAddress': f'{transport}://127.0.0.1:{proxy.server_address[1]}' if proxy else '', 'mirror': ''}})
         unrelated = {'id': '11111111-1111-4111-8111-111111111111', 'path': str(self.run / 'unrelated.md'), 'root': '', 'content': base64.b64encode(b'owned unrelated recovery\n').decode()}
         dump(self.run / 'settings.json.recovery', {'schemaVersion': 1, 'documents': [], 'drafts': [unrelated] if mode == 'discard' else []})
         dump(self.run / 'allowed.json', {'owner': 'xdnote-private-native-product-v1', 'root': str(self.root), 'executableSha256': before})
-        dump(self.run / 'configuration.json', {'mode': mode, 'routes': self.routes})
+        dump(self.run / 'configuration.json', {'mode': mode, 'routes': self.routes, 'package': self.filename, 'server': f'http://{HOST}:{origin.server_address[1]}/' if origin else ''})
+        if origin: origin.disconnect_archive = mode == 'network'
+        start = len(origin.requests) if origin else 0; proxy_start = len(proxy.records) if proxy else 0
         attempt = self.run / 'attempt.json'
         if mode == 'recovery': dump(attempt, {'schema_version': 1, 'transaction': 'a' * 32, 'phase': 'committed', 'version': '0.1.0-alpha.2', 'build': 201, 'commit': self.identities['new']['revision'], 'root': str(self.root), 'executable': str(self.image)})
         else: attempt.unlink(missing_ok=True)
@@ -164,8 +168,9 @@ class Product:
         env = self.env.copy(); env.update(XDG_CONFIG_HOME=str(self.run / 'config'), XDG_CACHE_HOME=str(self.run / 'cache'), XDG_DATA_HOME=str(self.run / 'data'))
         if self.windows: env.update(APPDATA=str(self.run / 'appdata'), LOCALAPPDATA=str(self.run / 'localappdata'))
         args = [sys.executable, self.source / 'scripts/desktop.py', 'run', '--profile', 'default', '--build-dir', self.source / 'build/desktop', '--qt-prefix', self.qt, '--fixture-installation', self.root]
-        checked(args, env=env, log=self.work / (mode + '.log'))
-        report = self.run / ({'cancel': 'cancelled', 'install': 'restarted', 'discard': 'restarted'}.get(mode, mode) + '.json')
+        try: checked(args, env=env, log=self.work / (transport + '-' + mode + '.log'))
+        finally: dump(self.work / (transport + '-' + mode + '-transport.json'), {'originRequests': origin.requests[start:] if origin else [], 'proxyConnections': proxy.records[proxy_start:] if proxy else [], 'proxyErrors': proxy.errors if proxy else []})
+        report = self.run / ({'cancel': 'cancelled', 'install': 'restarted', 'discard': 'restarted', 'network': 'corrupt'}.get(mode, mode) + '.json')
         result = json.loads(wait_file(report, timeout=180).read_bytes())
         if not result.get('ok'): raise RuntimeError('Product fixture failed: ' + mode)
         if mode not in ('install', 'discard') and digest(self.image) != before: raise RuntimeError('Old product unexpectedly changed')
@@ -196,6 +201,10 @@ class Product:
                         if not poll.poll(30000): raise TimeoutError('Owned authorizer/helper still active')
                     finally: os.close(fd)
             result['helperExitObserved'] = True
+        if proxy:
+            records = proxy.records[proxy_start:]; requests = origin.requests[start:]; ports = {r['originClientPort'] for r in records if r['accepted']}
+            if not ports or not requests or any(r['clientPort'] not in ports for r in requests): raise RuntimeError('Package transfer escaped observed private proxy')
+            result['transport'] = {'mode': transport, 'proxyConnections': records, 'originRequests': requests}
         self.uninstall(); return result
 
 
@@ -203,10 +212,11 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     for name in ['work-dir', 'qt-prefix']: p.add_argument('--' + name, type=Path, required=True)
     for name in ['toolchain', 'runtime', 'vcvars']: p.add_argument('--' + name, type=Path)
+    p.add_argument('--proxy-matrix', action='store_true')
     a = p.parse_args(); guard(); work = build_output(a.work_dir); qt = desktop.checked_tool_path(a.qt_prefix, 'Qt SDK', sdk=True)
     if work.exists(): p.error('Preserve existing evidence')
     work.mkdir(); trust = digest(ROOT / 'tools/update-trust.json'); opt_mode = None
-    result = {'ok': False, 'scenarios': {}, 'releaseReady': False, 'scope': 'real private product versions, document save/cancel, native package installation and receipt/restart; injected file replies and temporary trust; no production network, minimum OS, visible wizard or polkit prompt acceptance'}
+    result = {'ok': False, 'scenarios': {}, 'releaseReady': False, 'scope': 'real private product versions, document save/cancel, native package installation and receipt/restart; owned metadata replies, optional controlled HTTP proxy package streams and temporary trust; no production TLS network, minimum OS, visible wizard or polkit prompt acceptance'}
     try:
         if platform.system() == 'Linux':
             metadata = Path('/opt').stat()
@@ -216,6 +226,17 @@ if __name__ == '__main__':
         result.update(sourceRevision=fixture.revision, fixtureIdentities=fixture.identities, privateSeedRemoved=not fixture.seed.exists())
         for mode in ['recovery', 'corrupt', 'cancel', 'install', 'discard']:
             result['scenarios'][mode] = fixture.scenario(mode); dump(work / 'report.json', result); print(mode + ' passed', flush=True)
+        if a.proxy_matrix:
+            origin = Origin(fixture.run / fixture.filename); threading.Thread(target=origin.serve_forever, daemon=True).start()
+            try:
+                for transport in ['http', 'socks5']:
+                    proxy = Proxy(transport, origin.server_address[1]); threading.Thread(target=proxy.serve_forever, daemon=True).start()
+                    try:
+                        for mode in ['network', 'cancel', 'install', 'discard']:
+                            key = transport + '-' + mode
+                            result['scenarios'][key] = fixture.scenario(mode, transport, origin, proxy); dump(work / 'report.json', result); print(key + ' passed', flush=True)
+                    finally: proxy.shutdown(); proxy.server_close()
+            finally: origin.shutdown(); origin.server_close()
         if digest(ROOT / 'tools/update-trust.json') != trust: raise ValueError('Production trust changed')
         result.update(ok=True, productionTrustUnchanged=True)
     finally:

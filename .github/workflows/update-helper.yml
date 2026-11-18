@@ -1,4 +1,5 @@
 name: Native update helper transactions
+run-name: ${{ inputs.proxy_matrix && 'Native product proxy updates' || 'Native update helper transactions' }}
 
 on:
   workflow_dispatch:
@@ -7,18 +8,24 @@ on:
         type: choice
         options: [helper, product]
         default: helper
+      proxy_matrix:
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       scope:
         type: string
         default: helper
+      proxy_matrix:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   helper:
-    name: ${{ inputs.scope == 'product' && 'Product update' || 'Native helper' }} (${{ matrix.os }})
+    name: ${{ inputs.proxy_matrix && 'Product proxy update' || inputs.scope == 'product' && 'Product update' || 'Native helper' }} (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +37,9 @@ jobs:
       PYTHONUTF8: '1'
       XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf
     steps:
+      - name: Require product scope for proxy matrix
+        if: inputs.proxy_matrix && inputs.scope != 'product'
+        run: python -c "raise SystemExit('Proxy matrix requires product scope')"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -80,10 +90,10 @@ jobs:
           python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64
           python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
       - name: Exercise Windows native transactions in the disposable account
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !inputs.proxy_matrix
         run: python scripts/check_update_helper.py --work-dir build/native-helper-fixture --toolchain build/toolchain/installer
       - name: Exercise Linux native transactions on the disposable runner
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !inputs.proxy_matrix
         run: python scripts/check_update_helper.py --work-dir build/native-helper-fixture
       - name: Exercise Windows product updates with owned documents
         if: inputs.scope == 'product' && runner.os == 'Windows'
@@ -92,10 +102,10 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
-          python scripts/check_native_product_update.py --work-dir build/native-product-fixture --qt-prefix build/Qt/6.8.2/msvc2022_64 --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+          python scripts/check_native_product_update.py --work-dir build/native-product-fixture --qt-prefix build/Qt/6.8.2/msvc2022_64 --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat" ${{ inputs.proxy_matrix && '--proxy-matrix' || '' }}
       - name: Exercise Linux product updates with owned documents
         if: inputs.scope == 'product' && runner.os == 'Linux'
-        run: python scripts/check_native_product_update.py --work-dir build/native-product-fixture --qt-prefix build/Qt/6.8.2/gcc_64
+        run: python scripts/check_native_product_update.py --work-dir build/native-product-fixture --qt-prefix build/Qt/6.8.2/gcc_64 ${{ inputs.proxy_matrix && '--proxy-matrix' || '' }}
       - name: Preserve bounded transaction evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

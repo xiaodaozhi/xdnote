@@ -131,6 +131,8 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_native_helper_uses_disposable_explicit_platforms_without_publishing(self):
         text = (WORKFLOWS / 'update-helper.yml').read_text(encoding='utf-8')
+        self.assertIn("if: inputs.proxy_matrix && inputs.scope != 'product'", text)
+        self.assertIn("inputs.proxy_matrix && '--proxy-matrix'", text)
         self.assertEqual(events(WORKFLOWS / 'update-helper.yml'), {'workflow_dispatch', 'workflow_call'})
         dispatcher = (WORKFLOWS / 'desktop-admission.yml').read_text(encoding='utf-8')
         self.assertIn("if: inputs.scope == 'update-helpers'", dispatcher)

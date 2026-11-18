@@ -4,10 +4,11 @@ import socketserver
 import struct
 import threading
 import unittest
+import tempfile
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from native_fixture_proxy import Proxy, HOST, read
+from native_fixture_proxy import Proxy, Origin, HOST, read
 
 
 class Echo(socketserver.BaseRequestHandler):
@@ -17,6 +18,22 @@ class Echo(socketserver.BaseRequestHandler):
 
 
 class NativeProxyTests(unittest.TestCase):
+    def test_http_forward_is_bound_to_the_owned_package_and_origin_connection(self):
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / 'package'; package.write_bytes(b'owned fixture package')
+            origin = Origin(package); proxy = Proxy('http', origin.server_address[1])
+            for server in [origin, proxy]: threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                with socket.create_connection(proxy.server_address, timeout=5) as client:
+                    client.sendall(f'GET http://{HOST}:{origin.server_address[1]}/archive.app.zip HTTP/1.1\r\nHost: {HOST}\r\nConnection: close\r\n\r\n'.encode())
+                    data = b''
+                    while chunk := client.recv(4096): data += chunk
+                self.assertIn(b'200 OK', data); self.assertTrue(data.endswith(package.read_bytes()))
+                self.assertEqual(proxy.records[0]['protocol'], 'HTTP-forward')
+                self.assertEqual(origin.requests[0]['clientPort'], proxy.records[0]['originClientPort'])
+            finally:
+                for server in [proxy, origin]: server.shutdown(); server.server_close()
+
     def test_connect_and_socks_only_reach_owned_target(self):
         origin = socketserver.ThreadingTCPServer(('127.0.0.1', 0), Echo); origin.requests = 0
         threading.Thread(target=origin.serve_forever, daemon=True).start()
