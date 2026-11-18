@@ -101,7 +101,8 @@ class WorkflowContractTests(unittest.TestCase):
         text = (WORKFLOWS / 'desktop-admission.yml').read_text(encoding='utf-8')
         job = text.split('  sparkle:', 1)[1].split('  desktop:', 1)[0]
         self.assertIn("if: inputs.scope == 'sparkle-macos'", job)
-        self.assertIn('os: [macos-15]', job)
+        self.assertIn('runs-on: ${{ inputs.macos_runner }}', job)
+        self.assertIn('name: sparkle-admission-${{ inputs.macos_runner }}', job)
         self.assertIn('python scripts/sparkle.py prepare --download', job)
         self.assertIn('python scripts/sparkle.py build', job)
         self.assertIn('python scripts/check_sparkle.py', job)
