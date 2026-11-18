@@ -18,20 +18,29 @@ def config():
     return value
 
 
-def collect(destination, modules, qt=None):
-    value=config(); destination=Path(destination)
+def manifest(modules, network_backports=None):
+    value=config()
     names={record['sbom'].split('-'+value['qtVersion'])[0] for record in modules}
     selected=[r for r in value['modules'] if r['module'] in names]
     if {r['module'] for r in selected}!=names: raise ValueError('Shipped Qt module lacks independent source locator')
     source=ROOT/'docs/engineering/qt-library-replacement.md'
-    manifest={**value,'modules':selected,'replacementInstructionsSha256':digest(source),'sourceAccessFulfillmentReviewComplete':False}
+    result={**value,'modules':selected,'replacementInstructionsSha256':digest(source),'sourceAccessFulfillmentReviewComplete':False}
+    if network_backports is not None:
+        result['networkBackports'] = network_backports
+    return result
+
+
+def collect(destination, modules, qt=None):
+    destination=Path(destination)
+    network_backports = None
     if qt is not None:
         from qt_network_backports import public_record
-        manifest['networkBackports'] = public_record(qt)
+        network_backports = public_record(qt)
+    record = manifest(modules, network_backports)
     destination.mkdir(parents=True,exist_ok=True)
-    (destination/'source-access.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
-    shutil.copyfile(source,destination/'REPLACEMENT.md')
-    return manifest
+    (destination/'source-access.json').write_text(json.dumps(record,indent=2)+'\n',encoding='utf-8')
+    shutil.copyfile(ROOT/'docs/engineering/qt-library-replacement.md',destination/'REPLACEMENT.md')
+    return record
 
 
 def verify(destination, qt=None):

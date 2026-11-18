@@ -9,7 +9,7 @@ from unittest.mock import patch
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from component_review import dependency_review
-from component_review import review
+from component_review import network_derivation, review
 from fetch_delivery_evidence import fetch
 
 
@@ -90,3 +90,21 @@ class ComponentReviewTests(unittest.TestCase):
             binary.write_bytes(b'changed supplier bytes')
             with self.assertRaises(ValueError):
                 review(evidence, linkage, qt)
+
+    def test_windows_compact_payload_requires_sealed_source_access_digest(self):
+        from qt_source_access import config, manifest
+
+        source = next(row for row in config()['modules'] if row['module'] == 'qtbase')
+        files = {name: {'sha256': 'a' * 64, 'originalSdkSha256': 'b' * 64}
+                 for name in ('bin/Qt6Network.dll', 'lib/Qt6Network.lib')}
+        public = {'source': source, 'files': files, 'sourceCodeInRelease': False}
+        receipt = {**public, 'system': 'Windows'}
+        modules = [{'sbom': 'qtbase-6.8.2.spdx.json'}]
+        encoded = (json.dumps(manifest(modules, public), indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
+        sealed = {'path': 'licenses/qt/source-access.json', 'sha256': hashlib.sha256(encoded).hexdigest()}
+        evidence = {'kind': 'unsigned product-only Windows installer payload', 'qtSbom': modules,
+                    'buildIdentity': {'qtNetworkBackports': receipt}, 'files': [sealed]}
+        self.assertEqual(network_derivation(evidence), public)
+        sealed['sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'Sealed Windows Qt source access digest differs'):
+            network_derivation(evidence)

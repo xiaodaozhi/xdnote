@@ -107,7 +107,7 @@ def network_derivation(evidence):
     public = evidence.get('qtSourceAccess', {}).get('networkBackports')
     if receipt is None and public is None:
         return None
-    if not isinstance(receipt, dict) or not isinstance(public, dict):
+    if not isinstance(receipt, dict):
         raise ValueError('Incomplete Qt Network derivation')
     from qt_network_backports import module_paths
     from qt_source_access import config as source_access_config
@@ -120,6 +120,16 @@ def network_derivation(evidence):
         path: {name: row[name] for name in ('sha256', 'originalSdkSha256')}
         for path, row in receipt['files'].items()
     }
+    if public is None and evidence.get('kind') == 'unsigned product-only Windows installer payload':
+        from qt_source_access import manifest
+        # Compact payload reports contain the sealed manifest digest. Preserve
+        # its serialized property order and Windows's original text line endings.
+        expected = {key: expected[key] for key in receipt if key in expected}
+        data = (json.dumps(manifest(evidence['qtSbom'], expected), indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
+        files = [item for item in evidence['files'] if item['path'] == 'licenses/qt/source-access.json']
+        if len(files) != 1 or files[0]['sha256'] != hashlib.sha256(data).hexdigest():
+            raise ValueError('Sealed Windows Qt source access digest differs')
+        public = expected
     if public != expected or public.get('sourceCodeInRelease') is not False:
         raise ValueError('Qt Network derivation differs across source access and build evidence')
     return public
@@ -177,7 +187,12 @@ def review(evidence, linkage, qt):
                 if target not in shipped or not target.lower().endswith('.dll'): continue
                 actual = shipped[target]
                 path = relative.as_posix()
-                row = verify_qt_file(qt, path, actual['sha256'], derivation, actual.get('evidence', {}).get('sourceBackport'))
+                material = actual.get('evidence')
+                backport = material.get('sourceBackport') if material is not None else None
+                if (material is None and derivation and path in derivation['files']
+                        and evidence.get('kind') == 'unsigned product-only Windows installer payload'):
+                    backport = derivation  # Already bound to the sealed manifest and payload digest.
+                row = verify_qt_file(qt, path, actual['sha256'], derivation, backport)
                 if row is not None:
                     derived_files[path] = row
                 seeds.add((name, item['SPDXID']))
