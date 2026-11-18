@@ -18,6 +18,39 @@ class Echo(socketserver.BaseRequestHandler):
 
 
 class NativeProxyTests(unittest.TestCase):
+    def test_tunnels_drain_response_after_client_half_close(self):
+        payload = b'owned response' * 16384
+        class HalfClosed(socketserver.BaseRequestHandler):
+            def handle(self):
+                self.request.settimeout(5)
+                if read(self.request, 4) != b'PING': return
+                if self.request.recv(1) != b'': return
+                self.request.sendall(payload)
+        origin = socketserver.ThreadingTCPServer(('127.0.0.1', 0), HalfClosed)
+        threading.Thread(target=origin.serve_forever, daemon=True).start()
+        try:
+            for mode in ['http', 'socks5']:
+                proxy = Proxy(mode, origin.server_address[1])
+                threading.Thread(target=proxy.serve_forever, daemon=True).start()
+                try:
+                    with socket.create_connection(proxy.server_address, timeout=5) as client:
+                        if mode == 'http':
+                            client.sendall(f'CONNECT {HOST}:{origin.server_address[1]} HTTP/1.1\r\n\r\n'.encode())
+                            header = b''
+                            while not header.endswith(b'\r\n\r\n'): header += read(client, 1)
+                            self.assertIn(b'200', header)
+                        else:
+                            client.sendall(b'\x05\x01\x00'); self.assertEqual(read(client, 2), b'\x05\x00')
+                            client.sendall(b'\x05\x01\x00\x03' + bytes([len(HOST)]) + HOST.encode() + struct.pack('!H', origin.server_address[1]))
+                            self.assertEqual(read(client, 10)[1], 0)
+                        client.sendall(b'PING'); client.shutdown(socket.SHUT_WR)
+                        received = b''
+                        while data := client.recv(4096): received += data
+                        self.assertEqual(received, payload)
+                    self.assertEqual(proxy.errors, [])
+                finally: proxy.shutdown(); proxy.server_close()
+        finally: origin.shutdown(); origin.server_close()
+
     def test_http_forward_is_bound_to_the_owned_package_and_origin_connection(self):
         with tempfile.TemporaryDirectory() as folder:
             package = Path(folder) / 'package'; package.write_bytes(b'owned fixture package')

@@ -63,12 +63,16 @@ class Handler(socketserver.BaseRequestHandler):
                 if initial: remote.sendall(initial)
                 else: client.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n' if self.server.mode == 'http' else b'\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00')
                 started = time.monotonic()
-                while time.monotonic() - started < 120:
-                    ready, _, _ = select.select([client, remote], [], [], 1)
+                readers = [client, remote]
+                while readers and time.monotonic() - started < 120:
+                    ready, _, _ = select.select(readers, [], [], 1)
                     for source in ready:
                         data = source.recv(65536)
-                        if not data: return
-                        (remote if source is client else client).sendall(data)
+                        destination = remote if source is client else client
+                        if not data:
+                            readers.remove(source)
+                            destination.shutdown(socket.SHUT_WR)
+                        else: destination.sendall(data)
         except (OSError, ValueError) as error:
             self.server.errors.append(type(error).__name__)
 
@@ -82,6 +86,7 @@ class Origin(socketserver.ThreadingTCPServer):
 
 
 class OriginHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
     def log_message(self, *args): pass
     def do_GET(self):
         if self.path != '/archive.app.zip': self.send_error(404); return
@@ -94,3 +99,6 @@ class OriginHandler(http.server.BaseHTTPRequestHandler):
                 try: self.wfile.write(data)
                 except (BrokenPipeError, ConnectionResetError): break
                 if self.server.disconnect_archive: self.close_connection = True; break
+                # Yield between owned loopback chunks; this fixture exercises
+                # native transactions, not an unpaced LAN throughput benchmark.
+                time.sleep(0.002)
