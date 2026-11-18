@@ -5,10 +5,41 @@ import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from verify_qt_replacement import pe_code_sections
-from linkage_audit import classify, selected_members
+from linkage_audit import classify, macos_text_evidence, selected_members
 
 
 class QtReplacementEvidence(unittest.TestCase):
+    def test_macos_text_reports_only_live_symbols_and_separates_unconfirmed_names(self):
+        link_map = '''# Arch: arm64
+# Object files:
+[ 1] libxdnote_services.a(std-abc.first.o)
+[ 2] libxdnote_services.a(core-def.second.o)
+# Sections:
+0x1000 0x10 __TEXT __text
+# Symbols:
+0x1000 0x04 [ 1] _confirmed
+0x1004 0x04 [ 1] _map_only
+# Dead Stripped Symbols:
+0x1008 0x04 [ 2] _dead
+'''
+        sections = 'sectname __text\nsegname __TEXT\naddr 0x1000\nsize 0x10\noffset 8\n'
+        symbols = '0000000000001000 t _confirmed\n'
+        binary = bytes(24)
+        evidence = macos_text_evidence(link_map, sections, symbols, binary)
+        self.assertEqual(evidence['textBytes'], 16)
+        self.assertEqual(evidence['members'], [
+            {'member': 'core-def.second.o', 'mappedSymbols': 0, 'mappedBytes': 0,
+             'confirmedSymbols': 0, 'confirmedBytes': 0},
+            {'member': 'std-abc.first.o', 'mappedSymbols': 2, 'mappedBytes': 8,
+             'confirmedSymbols': 1, 'confirmedBytes': 4},
+        ])
+        with self.assertRaisesRegex(ValueError, 'text bounds'):
+            macos_text_evidence(link_map, sections.replace('0x10\noffset', '0x11\noffset'), symbols, binary)
+        with self.assertRaisesRegex(ValueError, 'overlapping'):
+            macos_text_evidence(link_map.replace('0x1004 0x04', '0x1002 0x04'), sections, symbols, binary)
+        with self.assertRaisesRegex(ValueError, 'No mapped Rust text symbols'):
+            macos_text_evidence(link_map, sections, '', binary)
+
     def test_toolchain_attribution_requires_the_archive_hash(self):
         members = ['std-abc.std.cgu.0.rcgu.o', 'std-def.std.cgu.0.rcgu.o']
         matching, changed = classify(members, [], [('std', 'abc')])
