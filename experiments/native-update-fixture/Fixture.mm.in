@@ -63,7 +63,7 @@ QString fixtureArchive(){return config()["server"].toString()+"archive.app.zip";
 void fixtureBoot(QApplication *application){
     application->setQuitOnLastWindowClosed(false);
     const auto mode=config()["mode"].toString();
-    if(mode!="cancel"&&mode!="install"&&mode!="discard"&&mode!="corrupt"&&mode!="recovery"){fail("invalid_fixture_mode");return;}
+    if(mode!="cancel"&&mode!="install"&&mode!="discard"&&mode!="corrupt"&&mode!="recovery"&&mode!="network"){fail("invalid_fixture_mode");return;}
     auto *desktop=new xdnote::FileApplication(application,directory()+"/settings.json",xdnote::FileApplication::Presentation::HiddenNative);
     QObject::connect(application,&QCoreApplication::aboutToQuit,desktop,[desktop]{delete desktop;});
     auto *updates=desktop->findChild<xdnote::UpdateController *>();
@@ -98,14 +98,14 @@ void fixtureBoot(QApplication *application){
         auto session=(*pane)->document()->session();
         if(session->replace(0,0,"edited ",session->revision())!=xdnote::EditResult::Applied){fail("edit_failed");return;}
         if(!(*pane)->appearance()->setPreferences("dark","graphite")){fail("settings_failed");return;}
-        *started=true;updates->configureNetwork("none");updates->check();
+        *started=true;updates->check();
     });timer->start();
     QObject::connect(updates,&xdnote::UpdateController::changed,desktop,[=]{
         write("status.json",{{"state",updates->state()},{"error",updates->errorCode()},{"trusted",updates->trusted()},{"native",macUpdateExitStatus()}});
         if(*finished)return;
         if(updates->state()=="error"||updates->state()=="recovery_required"){
             *finished=true;
-            if(mode!="corrupt"){fail("controller_"+updates->errorCode());return;}
+            if(mode!="corrupt"&&mode!="network"){fail("controller_"+updates->errorCode());return;}
             const auto settle=[=]{
                 bool buffer=bool(*pane)&&(*pane)->document()->session()->snapshot().utf8==QByteArray("edited owned\n");
                 QFile file(directory()+"/owned.md");bool disk=file.open(QIODevice::ReadOnly)&&file.readAll()==QByteArray("owned\n");

@@ -21,6 +21,7 @@ import time
 import xml.etree.ElementTree as ET
 import desktop
 import sparkle
+from native_fixture_proxy import Proxy, HOST
 from installer_common import ROOT,build_output,digest
 from release_candidate import TARGETS
 
@@ -93,7 +94,7 @@ def source_tree(work,qt,env):
     public=checked([signer,'public',seed]).stdout.decode().strip()
     dump(source/'tools/update-trust.json',{'schema_version':1,'keys':[{'key_id':'isolated-native-fixture','public_key':public}]})
     dump(source/'tools/sparkle-update-key.json',{'schemaVersion':1,'publicKey':base64.b64encode(bytes.fromhex(public)).decode()})
-    dump(run/'settings.json',{'schemaVersion':1,'fixtureUnknown':'retained'})
+    dump(run/'settings.json',{'schemaVersion':1,'fixtureUnknown':'retained','updates':{'proxyMode':'none','proxyAddress':'','mirror':''}})
     (run/'owned.md').write_text('owned\n')
     checked(['git','-C',source,'add','CMakeLists.txt','apps/desktop','crates/update/examples','experiments/native-update-fixture','scripts/desktop.py','tools/update-trust.json','tools/sparkle-update-key.json'])
     checked(['git','-C',source,'-c','commit.gpgsign=false','commit','-m','test: isolate native update fixture and ephemeral trust'])
@@ -112,7 +113,7 @@ def bundle(source,destination):
     if destination.exists():shutil.rmtree(destination)
     shutil.copytree(source,destination,symlinks=True)
     info_path=destination/'Contents/Info.plist';info=plistlib.loads(info_path.read_bytes())
-    info.update(CFBundleIdentifier=BUNDLE_ID,NSAppTransportSecurity={'NSAllowsLocalNetworking':True})
+    info.update(CFBundleIdentifier=BUNDLE_ID,NSAppTransportSecurity={'NSAllowsLocalNetworking':True,'NSExceptionDomains':{HOST:{'NSExceptionAllowsInsecureHTTPLoads':True}}})
     if not info.get('SURequireSignedFeed') or not info.get('SUVerifyUpdateBeforeExtraction') or info.get('SUSignedFeedFailureExpirationInterval')!=0:raise ValueError('Native authentication policy missing from product deployment')
     info_path.write_bytes(plistlib.dumps(info));checked(['/usr/bin/codesign','--force','--sign','-',destination]);checked(['/usr/bin/codesign','--verify','--deep','--strict',destination])
 
@@ -143,6 +144,7 @@ class Server(socketserver.ThreadingTCPServer):
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def do_GET(self):
+        self.server.requests.append({'path':self.path,'clientPort':self.client_address[1]})
         name={'/appcast.xml':'appcast.xml','/archive.app.zip':'archive.app.zip'}.get(self.path)
         if not name:self.send_error(404);return
         with (self.server.directory/name).open('rb') as source:
@@ -150,13 +152,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             while data:=source.read(65536):
                 try:self.wfile.write(data)
                 except (BrokenPipeError,ConnectionResetError):break
+                if name=='archive.app.zip' and self.server.disconnect_archive:
+                    self.close_connection=True;break
 
 
-def launch(source,run,qt,env,mode,server):
+def launch(source,run,qt,env,mode,server,transport='none',proxy=None):
     install=source/'build/native-run/installed/xdnote.app';bundle(source/'build/old-product/xdnote.app',install)
     before=digest(install/'Contents/MacOS/xdnote');dump(install.parent/'.fixture-allowed.json',{'owner':OWNER,'allowedExecutableSha256':[before]})
     version='0.1.0-alpha.2';base=f'https://github.com/xiaodaozhi/xdnote/releases/download/v{version}/'
-    dump(run/'configuration.json',{'mode':mode,'server':f'http://127.0.0.1:{server.server_address[1]}/','routes':{'https://api.github.com/repos/xiaodaozhi/xdnote/releases?per_page=100&page=1':'listing.json',base+'release.json':'release.json',base+'release.json.sig':'release.json.sig'}})
+    address=f'{transport}://127.0.0.1:{proxy.server_address[1]}' if proxy else ''
+    settings=json.loads((run/'settings.json').read_bytes());settings['updates']={'proxyMode':'custom' if proxy else transport,'proxyAddress':address,'mirror':''};dump(run/'settings.json',settings)
+    host=HOST if proxy else '127.0.0.1'
+    dump(run/'configuration.json',{'mode':mode,'server':f'http://{host}:{server.server_address[1]}/','routes':{'https://api.github.com/repos/xiaodaozhi/xdnote/releases?per_page=100&page=1':'listing.json',base+'release.json':'release.json',base+'release.json.sig':'release.json.sig'}})
+    server.disconnect_archive=mode=='network';start=len(server.requests);proxy_start=len(proxy.records) if proxy else 0
     (run/'owned.md').write_text('owned\n')
     unrelated={'id':'11111111-1111-4111-8111-111111111111','path':str(run/'unrelated.md'),'root':'','content':base64.b64encode(b'owned unrelated recovery\n').decode()}
     dump(run/'settings.json.recovery',{'schemaVersion':1,'documents':[],'drafts':[unrelated] if mode=='discard' else []})
@@ -171,21 +179,26 @@ def launch(source,run,qt,env,mode,server):
             stream.seek(path.stat().st_size//2);byte=stream.read(1);stream.seek(-1,1);stream.write(bytes([byte[0]^1]))
     child_env=env.copy();child_env.update(CFFIXED_USER_HOME=str(run/'home'),XDG_CONFIG_HOME=str(run/'config'),XDG_CACHE_HOME=str(run/'cache'))
     command=[os.sys.executable,source/'scripts/desktop.py','run','--profile','default','--build-dir',source/'build/desktop','--qt-prefix',qt,'--fixture-bundle',install]
-    checked(command,env=child_env,log=run/(mode+'.log'))
-    report=run/({'cancel':'cancelled','install':'restarted','discard':'restarted'}.get(mode,mode)+'.json');deadline=time.monotonic()+120
+    try:checked(command,env=child_env,log=run/(transport+'-'+mode+'.log'))
+    finally:dump(run/(transport+'-'+mode+'-transport.json'),{'originRequests':server.requests[start:],'proxyConnections':proxy.records[proxy_start:] if proxy else [],'proxyErrors':proxy.errors if proxy else []})
+    report=run/({'cancel':'cancelled','install':'restarted','discard':'restarted','network':'corrupt'}.get(mode,mode)+'.json');deadline=time.monotonic()+120
     while not report.exists() and time.monotonic()<deadline:time.sleep(.2)
     value=json.loads(report.read_bytes())
     if not value.get('ok'):raise RuntimeError('Native fixture assertion failed: '+mode)
-    if mode in ('cancel','corrupt','recovery') and digest(install/'Contents/MacOS/xdnote')!=before:raise RuntimeError('Old fixture app unexpectedly replaced')
-    if mode=='corrupt':
+    if mode in ('cancel','corrupt','recovery','network') and digest(install/'Contents/MacOS/xdnote')!=before:raise RuntimeError('Old fixture app unexpectedly replaced')
+    if mode in ('corrupt','network'):
         error=json.loads((run/'native-error.json').read_bytes())
         value['nativeError']=error
+    value['transport']={'mode':transport,'originRequests':server.requests[start:],'proxyConnections':proxy.records[proxy_start:] if proxy else []}
+    if proxy and mode!='recovery':
+        ports={r['originClientPort'] for r in proxy.records[proxy_start:] if r['accepted']}
+        if not ports or not server.requests[start:] or any(r['clientPort'] not in ports for r in server.requests[start:]):raise RuntimeError('Native request escaped observed private proxy')
     return value
 
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--work-dir',type=Path,required=True);p.add_argument('--qt-prefix',type=Path,required=True);a=p.parse_args()
+    p.add_argument('--work-dir',type=Path,required=True);p.add_argument('--qt-prefix',type=Path,required=True);p.add_argument('--proxy-matrix',action='store_true');a=p.parse_args()
     if platform.system()!='Darwin' or platform.machine()!='arm64':p.error('Requires native macOS 14+ arm64')
     desktop.check_host(platform.system(),platform.machine(),platform.mac_ver()[0]);qt=desktop.checked_tool_path(a.qt_prefix,'Qt SDK',sdk=True);work=build_output(a.work_dir)
     if work.exists():p.error('Preserve an existing private fixture')
@@ -198,10 +211,18 @@ def main():
     try:
         source,run,sdk,signer,identities,revision=source_tree(work,qt,env);candidate(source,run,sdk,signer,identities['new'])
         result.update(sourceRevision=revision,fixtureIdentities=identities,privateSeedRemoved=not (run/'private-test-seed').exists(),templates={path.name:digest(path) for path in TEMPLATES.iterdir() if path.is_file()})
-        server=Server(('127.0.0.1',0),Handler);server.directory=run;threading.Thread(target=server.serve_forever,daemon=True).start()
+        server=Server(('127.0.0.1',0),Handler);server.directory=run;server.requests=[];server.disconnect_archive=False;threading.Thread(target=server.serve_forever,daemon=True).start()
         try:
             for mode in ['recovery','corrupt','cancel','install','discard']:
                 result['scenarios'][mode]=launch(source,run,qt,env,mode,server);dump(work/'report.json',result);print(mode+' passed',flush=True)
+            if a.proxy_matrix:
+                result['scenarios']['system-install']=launch(source,run,qt,env,'install',server,'system');dump(work/'report.json',result);print('system-install passed',flush=True)
+                for transport in ['http','socks5']:
+                    proxy=Proxy(transport,server.server_address[1]);threading.Thread(target=proxy.serve_forever,daemon=True).start()
+                    try:
+                        for mode in ['network','cancel','install','discard']:
+                            key=transport+'-'+mode;result['scenarios'][key]=launch(source,run,qt,env,mode,server,transport,proxy);dump(work/'report.json',result);print(key+' passed',flush=True)
+                    finally:proxy.shutdown();proxy.server_close()
         finally:server.shutdown();server.server_close()
         if any(digest(ROOT/'tools'/name)!=sha for name,sha in trust.items()):raise ValueError('Production trust files changed')
         result.update(ok=True,productionTrustUnchanged=True,scope='actual private macOS updates with compiled ephemeral trust, local signed feed/archive, synthetic other-platform asset records and owned document/settings; no production, minimum-OS or Applications registration acceptance')
