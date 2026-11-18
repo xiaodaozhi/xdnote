@@ -61,15 +61,15 @@ $log = Join-Path $out 'nvda.log'
     autoCheck = False
 '@ | Set-Content -LiteralPath (Join-Path $config 'nvda.ini') -Encoding ascii
 
-function Send-ReaderKeys([IntPtr]$window, [byte[]]$keys) {
+function Send-ReaderKeys([IntPtr]$window, [byte[]]$keys, [bool]$keypadEnter = $false) {
     if ([ReaderInput]::GetForegroundWindow() -ne $window) { throw 'Fixture window lost foreground' }
     foreach ($key in $keys) {
-        $extended = [uint32]($key -in @(0x24, 0x26, 0x28, 0x2D))
+        $extended = [uint32](($key -in @(0x24, 0x26, 0x28, 0x2D)) -or ($keypadEnter -and $key -eq 0x0D))
         [ReaderInput]::keybd_event($key, 0, $extended, [UIntPtr]::Zero)
     }
     for ($index = $keys.Count - 1; $index -ge 0; --$index) {
         $key = $keys[$index]
-        $extended = [uint32]($key -in @(0x24, 0x26, 0x28, 0x2D))
+        $extended = [uint32](($key -in @(0x24, 0x26, 0x28, 0x2D)) -or ($keypadEnter -and $key -eq 0x0D))
         [ReaderInput]::keybd_event($key, 0, ($extended -bor 2), [UIntPtr]::Zero)
     }
     Start-Sleep -Milliseconds 500
@@ -108,9 +108,8 @@ try {
     Send-ReaderKeys $window @(0x11, 0x24)
     $focusStart = (Get-Item -LiteralPath $log).Length
     Send-ReaderKeys $window @(0x09)
-    Send-ReaderKeys $window @(0x2D, 0x6C)
     $focusEnd = (Get-Item -LiteralPath $log).Length
-    Send-ReaderKeys $window @(0x0D)
+    Send-ReaderKeys $window @(0x2D, 0x0D) $true
     Send-ReaderKeys $window @(0x2D, 0x28)
     Start-Sleep -Seconds 5
     $targetEnd = (Get-Item -LiteralPath $log).Length
