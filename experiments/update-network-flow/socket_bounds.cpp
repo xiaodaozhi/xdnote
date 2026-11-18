@@ -19,7 +19,8 @@ struct QSocks5Data { QTcpSocket *controlSocket; QSocks5Authenticator *authentica
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv); QCommandLineParser parser;
     for (const auto &name : {"proxy", "port", "bytes", "sha256", "pause-ms"}) parser.addOption(QCommandLineOption(name, name, "value"));
-    parser.addOption(QCommandLineOption("blocking")); parser.addOption(QCommandLineOption("remote-closes")); parser.process(app);
+    parser.addOption(QCommandLineOption("blocking")); parser.addOption(QCommandLineOption("remote-closes"));
+    parser.addOption(QCommandLineOption("notify-close")); parser.process(app);
     const QUrl proxy(parser.value("proxy"), QUrl::StrictMode);
     bool number = false; const qint64 expected = parser.value("bytes").toLongLong(&number);
     const int port = parser.value("port").toInt(), pause = parser.value("pause-ms").toInt();
@@ -29,7 +30,8 @@ int main(int argc, char **argv) {
         || parser.value("sha256").size() != 64 || pause < 0 || pause > 1000) return 4;
     QTcpSocket socket; socket.setProxy(QNetworkProxy(QNetworkProxy::Socks5Proxy, proxy.host(), quint16(proxy.port())));
     socket.setReadBufferSize(4096); QCryptographicHash hash(QCryptographicHash::Sha256);
-    qint64 received = 0, peakEngine = 0, peakControl = 0, peakSocket = 0; bool paused = pause > 0, pauseStarted = false, finished = false;
+    qint64 received = 0, peakEngine = 0, peakControl = 0, peakSocket = 0;
+    bool paused = pause > 0, pauseStarted = false, finished = false, closeNotified = false, closeScheduled = false;
     const auto sample = [&] {
         peakSocket = qMax(peakSocket, socket.bytesAvailable());
         const auto *d = static_cast<QAbstractSocketPrivate *>(QObjectPrivate::get(&socket));
@@ -37,7 +39,22 @@ int main(int argc, char **argv) {
         if (!engine || QByteArray(engine->metaObject()->className()) != "QSocks5SocketEngine") return;
         peakEngine = qMax(peakEngine, engine->bytesAvailable());
         const auto *s = static_cast<QSocks5SocketEnginePrivate *>(QObjectPrivate::get(engine));
-        if (s->data) peakControl = qMax(peakControl, s->data->controlSocket->bytesAvailable());
+        if (s->data) {
+            auto *control = s->data->controlSocket;
+            peakControl = qMax(peakControl, control->bytesAvailable());
+            // Replay the Windows close notifier in an owned diagnostic, even
+            // on another host, while both bounded layers are under backpressure.
+            if (parser.isSet("notify-close") && !closeScheduled && control->bytesAvailable() >= 65536) {
+                const auto *inner = static_cast<QAbstractSocketPrivate *>(QObjectPrivate::get(control));
+                if (inner->socketEngine) {
+                    closeScheduled = true;
+                    auto *nativeEngine = inner->socketEngine;
+                    QTimer::singleShot(50, nativeEngine, [&, nativeEngine] {
+                        closeNotified = QMetaObject::invokeMethod(nativeEngine, "closeNotification", Qt::QueuedConnection);
+                    });
+                }
+            }
+        }
     };
     const auto drain = [&] {
         sample();
@@ -53,10 +70,12 @@ int main(int argc, char **argv) {
         const auto actual = QString::fromLatin1(hash.result().toHex());
         const bool eof = socket.state() == QAbstractSocket::UnconnectedState;
         const bool ok = received == expected && actual == parser.value("sha256") && peakEngine <= 65536
-            && peakControl <= 65536 && peakSocket <= 4096 && (!parser.isSet("remote-closes") || eof);
+            && peakControl <= 65536 && peakSocket <= 4096 && (!parser.isSet("remote-closes") || eof)
+            && (!parser.isSet("notify-close") || closeNotified);
         std::puts(QJsonDocument(QJsonObject{{"ok", ok}, {"bytes", double(received)}, {"sha256", actual},
             {"peakEngineBytes", double(peakEngine)}, {"peakControlBytes", double(peakControl)}, {"peakSocketBytes", double(peakSocket)},
-            {"eofObserved", eof}, {"blocking", parser.isSet("blocking")}, {"scope", "pinned private socket bound/EOF diagnostic only"}}).toJson(QJsonDocument::Compact).constData());
+            {"eofObserved", eof}, {"closeNotificationReplayed", closeNotified}, {"blocking", parser.isSet("blocking")},
+            {"scope", "pinned private socket bound/EOF diagnostic only"}}).toJson(QJsonDocument::Compact).constData());
         app.exit(ok ? 0 : 2);
     };
     if (parser.isSet("blocking")) {
@@ -71,7 +90,8 @@ int main(int argc, char **argv) {
         if (parser.isSet("remote-closes") && socket.state() != QAbstractSocket::UnconnectedState) socket.waitForDisconnected(3000);
         report(); return received == expected && hash.result().toHex() == parser.value("sha256").toLatin1()
             && peakEngine <= 65536 && peakControl <= 65536 && peakSocket <= 4096
-            && (!parser.isSet("remote-closes") || socket.state() == QAbstractSocket::UnconnectedState) ? 0 : 2;
+            && (!parser.isSet("remote-closes") || socket.state() == QAbstractSocket::UnconnectedState)
+            && (!parser.isSet("notify-close") || closeNotified) ? 0 : 2;
     }
     QObject::connect(&socket, &QAbstractSocket::connected, &app, [&] { socket.write("PING"); });
     const auto maybeDone = [&] { if (socket.state() == QAbstractSocket::UnconnectedState

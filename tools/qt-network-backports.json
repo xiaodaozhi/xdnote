@@ -34,6 +34,15 @@
       "platforms": [
         "Darwin"
       ]
+    },
+    {
+      "file": "tools/qt-network-patches/socks5-windows-close.patch",
+      "sha256": "e0c4b91eaf58cd3ba48dbe92536c2d1e18c92ae23c04df7cfa2f9aa94ee5d29e",
+      "kind": "project Qt derivative change",
+      "license": "LGPL-3.0-only",
+      "platforms": [
+        "Windows"
+      ]
     }
   ],
   "sourceCodeInRelease": false,

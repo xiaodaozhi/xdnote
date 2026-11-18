@@ -133,7 +133,7 @@ def check(qt, work, vcvars=None):
     if command(args, 'configure.log').returncode or command([cmake, '--build', build, '--parallel', '2'], 'build.log').returncode:
         raise RuntimeError('Flow probe build failed; see owned logs')
     suffix = '.exe' if platform.system() == 'Windows' else ''
-    def scenario(key, transport, size, mode='valid', close=False, pause=0, tls=False, raw=False, blocking=False):
+    def scenario(key, transport, size, mode='valid', close=False, pause=0, tls=False, raw=False, blocking=False, notify=False):
         origin = Origin(size, mode, close, raw); proxy = Proxy(transport, origin.server_address[1])
         if tls:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -148,6 +148,7 @@ def check(qt, work, vcvars=None):
                 args += ['--port', origin.server_address[1]]
                 if close: args += ['--remote-closes']
                 if blocking: args += ['--blocking']
+                if notify: args += ['--notify-close']
             else:
                 args += ['--url', f'{"https" if tls else "http"}://{HOST}:{origin.server_address[1]}/archive.app.zip',
                          '--ca', work/('other-ca.pem' if mode == 'untrusted' else 'ca.pem')]
@@ -182,6 +183,8 @@ def check(qt, work, vcvars=None):
             for close in [False, True]:
                 scenario(f'socket-{blocking}-{close}', 'socks5', 4*1024*1024, close=close, pause=300, raw=True, blocking=blocking)
         scenario('socket-exact-buffer-eof', 'socks5', 4096, close=True, pause=300, raw=True)
+        if platform.system() == 'Windows':
+            scenario('socket-replayed-close', 'socks5', 4*1024*1024, close=True, pause=300, raw=True, notify=True)
         report['ok'] = True
     finally:
         for path in work.glob('*key.pem'): path.unlink()

@@ -10,4 +10,6 @@ python scripts/check_qt_network_flow.py --qt-prefix build/Qt/6.8.2/macos --work-
 
 同一入口覆盖 HTTP forward／CONNECT 与 SOCKS5、真实 HTTPS、256 MiB 未限速持久连接、暂停后正常关闭、截断／损坏／超长拒绝，以及错误主机名和未受信 CA 拒绝。公开回复探针固定 64 KiB 接收缓冲、严格证书校验、长度和 SHA-256 门槛。私有 socket 探针只在此工程使用 Qt 6.8.2 私有头，分别采样 64 KiB 引擎／控制缓存和 4096 字节外层缓存，并覆盖事件与阻塞读取、持续连接和 EOF；不把私有 API 带入产品。
 
+私有探针另提供 `--notify-close`，在受限控制缓存填满后重放 Windows 的底层关闭通知，用于隔离复现及修复对照。它要求实际发生该通知且最终数据／摘要和缓存上限全部满足；不能将其他宿主的通知重放算作真实 Windows 验收。
+
 三平台手动工作流为 [qt-network-flow.yml](../../.github/workflows/qt-network-flow.yml)，只上传报告及日志。通过此诊断不代表原生安装、最低系统、真实公网或完整发行验收；实际产品另按[私有更新夹具](../native-update-fixture/README.md)验证验签、取消、保存和事务回执。单次结果记录在对应 Issue／PR。
