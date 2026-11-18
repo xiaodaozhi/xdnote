@@ -209,28 +209,31 @@ def fixture_hostname(log):
 
 def check_system_pac(executable, environment, tls, log, result):
     service = primary_network_service(log)
-    with fixture_hostname(log), listener('tls', tls) as (port, origin), listener('http') as (proxy_port, proxy):
+    with fixture_hostname(log), listener('tls', tls) as (port, origin):
         target = f'https://{PAC_HOST}:{port}/pac-fixture'
-        with pac_server(proxy_port) as (url, hits), system_pac(url, service, log):
+        baseline = json.loads(execute([executable, 'request', 'direct', target], log, env=environment))
+        pac = {'macos': platform.mac_ver()[0], 'directBaseline': baseline, 'directOriginConnections': origin.count('connection')}
+        result['systemPac'] = pac
+        if not pac['directOriginConnections'] or not baseline.get('sawUntrustedServerTrust') or baseline['error'] not in (-1200, -1202):
+            raise ValueError('Direct fixture baseline did not reach the same origin')
+
+        with listener('http') as (proxy_port, proxy), pac_server(proxy_port) as (url, hits), system_pac(url, service, log):
             deadline = time.monotonic() + 15
             while not json.loads(execute([executable, 'system-pac', url], log, env=environment))['matches']:
                 if time.monotonic() >= deadline:
                     raise ValueError('CFNetwork did not observe the enabled fixture PAC')
                 time.sleep(0.25)
-            baseline = json.loads(execute([executable, 'request', 'direct', target], log, env=environment))
-            if not origin or proxy or not baseline.get('sawUntrustedServerTrust') or baseline['error'] not in (-1200, -1202):
-                raise ValueError('Direct fixture baseline did not reach the same origin')
-            before = len(origin)
+            pac['systemConfigurationObserved'] = True
+            before = origin.count('connection')
             response = json.loads(execute([executable, 'request', 'system', target], log, env=environment))
-            result['systemPac'] = {'macos': platform.mac_ver()[0], 'pacRequests': len(hits), 'proxy': list(proxy),
-                                   'directBaseline': baseline, 'response': response,
-                                   'unexpectedOriginConnections': len(origin) - before}
+            pac.update(pacRequests=len(hits), proxy=list(proxy), response=response,
+                       unexpectedOriginConnections=origin.count('connection') - before)
             expected = f'CONNECT {PAC_HOST}:{port} '
             if not hits or not any(event.startswith(expected) for event in proxy):
                 raise ValueError('System PAC did not route the request through the selected proxy')
-            if response['error'] == 0 or response.get('sawUntrustedServerTrust') or len(origin) != before:
+            if response['error'] == 0 or response.get('sawUntrustedServerTrust') or pac['unexpectedOriginConnections']:
                 raise ValueError('System PAC proxy rejection reached the direct origin')
-    result['systemPac']['temporarySettingsDisabled'] = True
+    pac['temporarySettingsDisabled'] = True
 
 
 def native_metadata(sdk, log):
