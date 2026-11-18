@@ -16,6 +16,10 @@ python scripts/check_native_update.py --work-dir build/cycle-155-native-update/n
 
 此演练可以在锁屏下自动完成，不读写个人文档、不改系统代理、不安装 `/Applications`，也不证明最低 macOS、真实代理设置／PAC、生产公钥、公开候选 API、商店或人工界面验收。模板会因源入口变化而明确拒绝应用补丁，不能放宽匹配或生产门槛来使测试通过。
 
+显式增加 `--proxy-matrix` 时，在同一次私有两版本构建中补验当前宿主系统策略，以及受控 HTTP CONNECT／SOCKS5 下的中途断线、取消、保存后替换和不保存后替换。网络偏好从真实 `Preferences` 读取；代理只允许固定 `.invalid` 主机和自有回环原站端口，记录原站连接来源并拒绝越界转发。原生 feed／归档仍由 Sparkle 验签、替换及重启，其他元数据沿用文件回复。
+
+这部分使用私有 bundle 的固定域名 HTTP 测试例外，便于观测回环隧道；例外和代理均不进入普通产品。它验证实际代理流量与原生安装，不能作为生产 HTTPS 信任、真实系统 PAC 或正式公开候选安装通过的证据。下载断线按实际失败处理，原包／文档与缓冲区保护继续核对。
+
 ## Windows／Linux 独立 helper 事务
 
 `scripts/check_update_helper.py` 仅允许在一次性 GitHub Actions 账户执行，入口为手动工作流 `update-helper.yml`。它使用独立源副本、临时公钥和两个自有 Rust 进程映像，实际调用现有安装引擎／Debian 包与 helper，验证未知密钥、损坏包、准备后取消、并行更新门、安装后身份不符，以及等待父进程退出后的安装和重启。执行前删除私有种子，生产信任根不变。
