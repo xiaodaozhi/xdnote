@@ -298,19 +298,29 @@ SingleFileWindow::SingleFileWindow(FileManager *manager, Appearance *appearance,
     auto *footer = m_footer = new QWidget(this); footer->setObjectName("documentFooter"); footer->setFixedHeight(size.value("statusbarHeight").toInt());
     QFont secondary = ui; secondary.setPixelSize(visualTokens().value("typography").toObject().value("secondary").toObject().value("size").toInt()); footer->setFont(secondary);
     auto *foot = new QHBoxLayout(footer); foot->setContentsMargins(16, 0, 16, 0); foot->setSpacing(8);
-    m_statusIcon = new QLabel(footer); m_statusIcon->setFixedSize(16, 16); foot->addWidget(m_statusIcon);
+    const int footerControlHeight = footer->height() - 2 * visualTokens()["controls"].toObject()["footerControlInset"].toInt();
+    const auto addFooterText = [foot, footerControlHeight](QWidget *widget, int stretch = 0) {
+        // Use the same text box for native labels and the custom zoom button.
+        widget->setAttribute(Qt::WA_LayoutUsesWidgetRect);
+        widget->setFixedHeight(footerControlHeight);
+        foot->addWidget(widget, stretch, Qt::AlignVCenter);
+    };
+    m_statusIcon = new QLabel(footer); m_statusIcon->setFixedSize(16, 16);
+    m_statusIcon->setAttribute(Qt::WA_LayoutUsesWidgetRect);
+    foot->addWidget(m_statusIcon, 0, Qt::AlignVCenter);
     m_statusIcon->setObjectName("documentStatusIcon");
-    m_saveSpinner = new SharedSpinner(m_appearance, footer); m_saveSpinner->setFixedSize(16, 16); foot->addWidget(m_saveSpinner);
-    m_status = new ElidedLabel(footer); m_status->setObjectName("documentStatus"); foot->addWidget(m_status, 1);
-    m_cursor = new QLabel(footer); m_cursor->setObjectName("cursorPosition"); foot->addWidget(m_cursor); separator(foot, m_appearance, footer);
-    m_encoding = new QLabel(footer); foot->addWidget(m_encoding); separator(foot, m_appearance, footer);auto*fileFormat=new QLabel("Markdown",footer);fileFormat->setObjectName("documentFormat");foot->addWidget(fileFormat);separator(foot,m_appearance,footer);
-    m_zoomButton = new SharedButton("100%", "contentZoom", m_appearance, footer); m_zoomButton->setProperty("footerControl", true); m_zoomButton->setFixedHeight(size.value("statusbarHeight").toInt() - 2 * visualTokens()["controls"].toObject()["footerControlInset"].toInt()); m_zoomButton->setAccessibleName(QStringLiteral("正文缩放，100%"));
+    m_saveSpinner = new SharedSpinner(m_appearance, footer); m_saveSpinner->setFixedSize(16, 16); foot->addWidget(m_saveSpinner, 0, Qt::AlignVCenter);
+    m_status = new ElidedLabel(footer); m_status->setObjectName("documentStatus"); addFooterText(m_status, 1);
+    m_cursor = new QLabel(footer); m_cursor->setObjectName("cursorPosition"); addFooterText(m_cursor); separator(foot, m_appearance, footer);
+    m_encoding = new QLabel(footer); addFooterText(m_encoding); separator(foot, m_appearance, footer);
+    auto *fileFormat = new QLabel("Markdown", footer); fileFormat->setObjectName("documentFormat"); addFooterText(fileFormat); separator(foot, m_appearance, footer);
+    m_zoomButton = new SharedButton("100%", "contentZoom", m_appearance, footer); m_zoomButton->setProperty("footerControl", true); m_zoomButton->setAccessibleName(QStringLiteral("正文缩放，100%"));
     auto *zoomMenu = new SharedMenu(m_appearance, m_zoomButton); zoomMenu->setTitle(QStringLiteral("正文缩放")); auto *zoomGroup = new QActionGroup(zoomMenu);
     for (const int percent : {50, 75, 100, 125, 150, 200}) {
         auto *item = zoomMenu->addAction(QString::number(percent) + '%'); item->setCheckable(true); item->setChecked(percent == 100); zoomGroup->addAction(item);
         connect(item, &QAction::triggered, this, [this, percent] { setContentZoom(percent); });
     }
-    m_zoomButton->setMenu(zoomMenu); foot->addWidget(m_zoomButton); layout->addWidget(footer);
+    m_zoomButton->setMenu(zoomMenu); addFooterText(m_zoomButton); layout->addWidget(footer);
     connect(m_appearance, &Appearance::changed, this, [this] { m_appearanceError.clear(); applyAppearance(); updateState(); });
     connect(m_appearance, &Appearance::preferenceFailed, this, [this](const QString &message) { m_appearanceError = message; updateState(); });
     m_appearanceError = m_appearance->error(); setWindowTitle(QStringLiteral("xdnote")); qApp->installEventFilter(this); applyAppearance(); updateState();

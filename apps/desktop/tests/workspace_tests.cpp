@@ -700,15 +700,69 @@ private slots:
         QCOMPARE(session->snapshot().utf8, snapshot.utf8); QCOMPARE(session->revision(), snapshot.revision); QCOMPARE(disk(path), QByteArray("retained"));
     }
     void footerControlsShareTypographyAndSpacing() {
-        QTemporaryDir dir; const auto path = dir.filePath("footer.md"); QVERIFY(fileFixtures::write(path, "footer"));
-        FileApplication desktop(nullptr, dir.filePath("settings.json")); desktop.open(path); auto *pane = waitStandalone(path); QVERIFY(pane);
+        QTemporaryDir dir;
+        const auto path = dir.filePath("footer.md");
+        QVERIFY(fileFixtures::write(path, "# Footer"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json"));
+        desktop.open(path);
+        auto *pane = waitStandalone(path);
+        QVERIFY(pane);
+        auto *footer = pane->footer();
+        auto *label = footer->findChild<QLabel *>("documentFormat");
+        auto *zoom = footer->findChild<SharedButton *>("contentZoom");
+        auto *icon = footer->findChild<QLabel *>("documentStatusIcon");
+        QVERIFY(label && zoom && icon);
         const auto check = [&] {
-            auto *footer = pane->footer(); auto *zoom = footer->findChild<SharedButton *>("contentZoom");
-            if (!zoom || zoom->font().pixelSize() != 12) return false;
-            for (auto *label : footer->findChildren<QLabel *>()) if (!label->text().isEmpty() && label->font().pixelSize() != zoom->font().pixelSize()) return false;
-            return zoom->geometry().top() >= 3 && footer->height() - zoom->geometry().bottom() - 1 >= 3;
+            const auto text = label->text();
+            label->setText(zoom->text());
+            const auto restore = qScopeGuard([&] {
+                label->setText(text);
+                QApplication::processEvents();
+            });
+            QApplication::processEvents();
+            const auto rendered = footer->grab();
+            const auto pixels = rendered.toImage();
+            const auto dpr = rendered.devicePixelRatio();
+            const auto firstInkRow = [&](QWidget *widget, int rightInset) {
+                const auto background = pane->windowAppearance()->color("background");
+                const auto foreground = pane->windowAppearance()->color("text");
+                const bool darkInk = qGray(foreground.rgb()) < qGray(background.rgb());
+                const auto area = widget->geometry().adjusted(0, 2, -rightInset, -2);
+                for (int y = qRound(area.top() * dpr); y < qRound((area.bottom() + 1) * dpr); ++y)
+                    for (int x = qRound(area.left() * dpr); x < qRound((area.right() + 1) * dpr); ++x) {
+                        const int delta = qGray(pixels.pixel(x, y)) - qGray(background.rgb());
+                        if ((darkInk ? -delta : delta) > 64)
+                            return y;
+                    }
+                return -1;
+            };
+            const auto labelRow = firstInkRow(label, 0);
+            const auto zoomRow = firstInkRow(zoom, 16);
+            QVERIFY(labelRow >= 0 && zoomRow >= 0);
+            QVERIFY(qAbs(zoomRow - labelRow) <= 1);
+            QCOMPARE(footer->height(), 26);
+            QCOMPARE(zoom->font().pixelSize(), 12);
+            QCOMPARE(zoom->y(), 3);
+            QCOMPARE(footer->height() - zoom->geometry().bottom() - 1, 3);
+            QCOMPARE(2 * icon->y() + icon->height(), footer->height());
+            for (auto *footerLabel : footer->findChildren<QLabel *>()) {
+                if (!footerLabel->isVisible() || footerLabel->text().isEmpty()) continue;
+                QCOMPARE(footerLabel->font(), zoom->font());
+                QCOMPARE(footerLabel->y(), zoom->y());
+                QCOMPARE(footerLabel->height(), zoom->height());
+            }
         };
-        QApplication::processEvents(); QVERIFY(check()); auto *workspace = desktop.workspaceWindow(dir.path()); QVERIFY(desktop.transferToWorkspace(pane, workspace)); QApplication::processEvents(); QVERIFY(check()); capture(pane->window(), "footer-compact");
+        QVERIFY(pane->windowAppearance()->setPreferences("light", "graphite"));
+        check();
+        capture(footer, "footer-standalone-light");
+        pane->setEditing(true);
+        QVERIFY(pane->windowAppearance()->setPreferences("dark", "graphite"));
+        check();
+        capture(footer, "footer-standalone-dark");
+        auto *workspace = desktop.workspaceWindow(dir.path());
+        QVERIFY(desktop.transferToWorkspace(pane, workspace));
+        check();
+        capture(pane->window(), "footer-compact");
     }
     void windowsWorkspaceNativeResizeAndRestoreKeepPreference() {
 #ifdef Q_OS_WIN
