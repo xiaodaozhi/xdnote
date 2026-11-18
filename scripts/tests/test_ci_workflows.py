@@ -105,6 +105,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('python scripts/sparkle.py prepare --download', job)
         self.assertIn('python scripts/sparkle.py build', job)
         self.assertIn('python scripts/check_sparkle.py', job)
+        self.assertIn('--evidence build/evidence/sparkle --system-pac', job)
         self.assertIn('needs.sparkle.result', text)
         self.assertIn("if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos'", text)
         for forbidden in ('prepare_qt', 'desktop.py', 'pip install', 'secrets.', 'contents: write', 'gh release'):

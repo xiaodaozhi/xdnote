@@ -77,7 +77,7 @@ jobs:
       - name: Check isolated native policy and loopback routes
         run: |
           python scripts/cleanup_cycles.py --init cycle-161-sparkle
-          python scripts/check_sparkle.py --work-dir build/cycle-161-sparkle/probe --evidence build/evidence/sparkle
+          python scripts/check_sparkle.py --work-dir build/cycle-161-sparkle/probe --evidence build/evidence/sparkle --system-pac
       - name: Collect Sparkle input and build receipts
         if: always()
         run: |

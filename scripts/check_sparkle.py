@@ -1,7 +1,9 @@
 """Native shared-session policy and loopback admission, without a product updater."""
 import argparse
 from contextlib import contextmanager
+import http.server
 import json
+import os
 from pathlib import Path
 import platform
 import plistlib
@@ -14,14 +16,15 @@ import ssl
 import subprocess
 import tempfile
 import threading
+import time
 
 import sparkle
 
 
-def execute(arguments, log, **options):
+def execute(arguments, log, *, log_stdout=True, **options):
     result = subprocess.run(list(map(str, arguments)), capture_output=True, timeout=60, **options)
     with log.open('ab') as output:
-        output.write(result.stdout + result.stderr)
+        output.write((result.stdout if log_stdout else b'') + result.stderr)
     if result.returncode:
         raise RuntimeError('Native Sparkle probe command failed; see admission log')
     return result.stdout
@@ -116,6 +119,120 @@ def listener(kind, tls=None, forward_port=None):
             thread.join()
 
 
+PAC_HOST = 'xdnote-sparkle-fixture.invalid'
+NETWORKSETUP = '/usr/sbin/networksetup'
+
+
+def primary_network_service(log):
+    route = execute(['/sbin/route', '-n', 'get', 'default'], log).decode()
+    interface = re.search(r'^\s*interface: (\S+)$', route, re.MULTILINE)
+    if not interface:
+        raise ValueError('Runner has no primary network interface')
+    order = execute([NETWORKSETUP, '-listnetworkserviceorder'], log).decode()
+    services = re.findall(r'^\(\d+\) ([^\r\n]+)\r?\n\([^\r\n]+, Device: ([^\s)]+)\)', order, re.MULTILINE)
+    matches = [service for service, name in services if name == interface[1]]
+    if len(matches) != 1:
+        raise ValueError('Primary network interface does not match one enabled service')
+    return matches[0]
+
+
+@contextmanager
+def pac_server(proxy_port):
+    hits = []
+    program = (f'function FindProxyForURL(url, host) {{ if (host === "{PAC_HOST}") '
+               f'return "PROXY 127.0.0.1:{proxy_port}"; return "DIRECT"; }}').encode('ascii')
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != '/xdnote.pac':
+                self.send_error(404)
+                return
+            hits.append(self.path)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
+            self.send_header('Content-Length', str(len(program)))
+            self.end_headers()
+            self.wfile.write(program)
+
+        def log_message(self, *args):
+            return
+
+    with http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+        thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.05}, daemon=True)
+        thread.start()
+        try:
+            yield f'http://127.0.0.1:{server.server_port}/xdnote.pac', hits
+        finally:
+            server.shutdown()
+            thread.join()
+
+
+@contextmanager
+def system_pac(url, service, log):
+    command = ['/usr/bin/sudo', '-n', NETWORKSETUP]
+    settings = execute([NETWORKSETUP, '-getautoproxyurl', service], log).decode()
+    previous = re.search(r'^URL:[ \t]*(.*)$', settings, re.MULTILINE)
+    if previous is None or 'Enabled: No' not in settings or previous[1] not in ('', '(null)', 'null'):
+        raise ValueError('Expected an unused PAC configuration on the disposable runner')
+    try:
+        execute([*command, '-setautoproxyurl', service, url], log)
+        yield
+    finally:
+        execute([*command, '-setautoproxystate', service, 'off'], log)
+        settings = execute([NETWORKSETUP, '-getautoproxyurl', service], log).decode()
+        if 'Enabled: No' not in settings:
+            raise ValueError('Could not disable the test PAC')
+
+
+@contextmanager
+def fixture_hostname(log):
+    hosts = Path('/etc/hosts')
+    original = hosts.read_bytes()
+    if PAC_HOST.encode('ascii') in original:
+        raise ValueError('Fixture hostname already exists in runner hosts file')
+    updated = original + f'\n127.0.0.1 {PAC_HOST}\n'.encode('ascii')
+    overwrite = ['/usr/bin/sudo', '-n', '/usr/bin/tee', str(hosts)]
+    try:
+        execute(overwrite, log, input=updated, log_stdout=False)
+        if socket.gethostbyname(PAC_HOST) != '127.0.0.1':
+            raise ValueError('Fixture hostname does not resolve to the owned origin')
+        yield
+    finally:
+        current = hosts.read_bytes()
+        if current == updated:
+            execute(overwrite, log, input=original, log_stdout=False)
+        elif current != original:
+            raise ValueError('Hosts changed during the probe')
+        if hosts.read_bytes() != original:
+            raise ValueError('Failed to restore runner hosts file')
+
+
+def check_system_pac(executable, environment, tls, log, result):
+    service = primary_network_service(log)
+    with fixture_hostname(log), listener('tls', tls) as (port, origin), listener('http') as (proxy_port, proxy):
+        target = f'https://{PAC_HOST}:{port}/pac-fixture'
+        with pac_server(proxy_port) as (url, hits), system_pac(url, service, log):
+            deadline = time.monotonic() + 15
+            while not json.loads(execute([executable, 'system-pac', url], log, env=environment))['matches']:
+                if time.monotonic() >= deadline:
+                    raise ValueError('CFNetwork did not observe the enabled fixture PAC')
+                time.sleep(0.25)
+            baseline = json.loads(execute([executable, 'request', 'direct', target], log, env=environment))
+            if not origin or proxy or not baseline.get('sawUntrustedServerTrust') or baseline['error'] not in (-1200, -1202):
+                raise ValueError('Direct fixture baseline did not reach the same origin')
+            before = len(origin)
+            response = json.loads(execute([executable, 'request', 'system', target], log, env=environment))
+            result['systemPac'] = {'macos': platform.mac_ver()[0], 'pacRequests': len(hits), 'proxy': list(proxy),
+                                   'directBaseline': baseline, 'response': response,
+                                   'unexpectedOriginConnections': len(origin) - before}
+            expected = f'CONNECT {PAC_HOST}:{port} '
+            if not hits or not any(event.startswith(expected) for event in proxy):
+                raise ValueError('System PAC did not route the request through the selected proxy')
+            if response['error'] == 0 or response.get('sawUntrustedServerTrust') or len(origin) != before:
+                raise ValueError('System PAC proxy rejection reached the direct origin')
+    result['systemPac']['temporarySettingsDisabled'] = True
+
+
 def native_metadata(sdk, log):
     library = sdk / 'Sparkle.framework/Versions/B/Sparkle'
     architectures = execute(['/usr/bin/lipo', '-archs', library], log).decode().split()
@@ -157,9 +274,11 @@ def native_metadata(sdk, log):
     return {'architecture': architectures, 'minimumMacos': minimum[0], 'imports': imports, 'helpers': helpers}
 
 
-def check(work, evidence):
+def check(work, evidence, *, system_pac_enabled=False):
     if platform.system() != 'Darwin' or platform.machine() != 'arm64' or tuple(map(int, platform.mac_ver()[0].split('.')[:2])) < (14, 0):
         raise ValueError('Native update admission requires macOS 14 or later on arm64')
+    if system_pac_enabled and (os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'):
+        raise ValueError('System PAC validation requires a disposable GitHub-hosted runner')
     sdk = sparkle.owned(sparkle.BASE / platform.machine())
     receipt = sparkle.verify(sdk, built=True)
     work, evidence = sparkle.owned(work), sparkle.owned(evidence)
@@ -238,6 +357,8 @@ def check(work, evidence):
                             result['routes'][key] = {'response': response, 'proxy': list(requests), 'originConnections': len(origin) - before}
                             if response.get('error') not in (-1200, -1202) or not response.get('sawUntrustedServerTrust') or not any(value.startswith(expected) for value in requests) or len(origin) <= before:
                                 raise ValueError('Native proxy tunnel did not retain TLS trust: ' + key)
+            if system_pac_enabled:
+                check_system_pac(executable, environment, tls, log, result)
             result['ok'] = True
     except Exception as error:
         result['error'] = str(error)
@@ -251,5 +372,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--work-dir', required=True, type=Path)
     parser.add_argument('--evidence', required=True, type=Path)
+    parser.add_argument('--system-pac', action='store_true')
     args = parser.parse_args()
-    check(args.work_dir, args.evidence)
+    check(args.work_dir, args.evidence, system_pac_enabled=args.system_pac)
