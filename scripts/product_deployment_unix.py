@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import plistlib
 import shutil
 import tempfile
 
@@ -57,6 +58,12 @@ def material_evidence(root, qt, records, system):
     supplier = {}; upstream_packages = []; runtime = runtime_notices()
     rust_runtime = runtime_materials.verify(notices / 'licenses/rust-runtime')
     source_access = qt_source_access.verify(notices / 'licenses/qt', qt)
+    mac_icon = notices / deploy.MAC_APP_ICON.name
+    if system == 'Darwin':
+        bundle_info = plistlib.loads((notices.parent / 'Info.plist').read_bytes())
+        if bundle_info.get('CFBundleIconFile') != mac_icon.name or mac_icon.is_symlink() or not mac_icon.is_file():
+            raise ValueError('Missing approved macOS application icon or bundle declaration')
+        mac_icon_digest = digest(deploy.MAC_APP_ICON)
     records_by_binary = {}
     for key in ('networkBackports', 'cocoaBackports'):
         if key in source_access:
@@ -80,6 +87,10 @@ def material_evidence(root, qt, records, system):
         path = root / item['path']; origin = None
         if 'link' in item:
             record = {'kind': 'contained relative link', 'resolved': path.resolve().relative_to(root).as_posix()}
+        elif system == 'Darwin' and path == mac_icon:
+            if item['sha256'] != mac_icon_digest:
+                raise ValueError('Deployed macOS icon differs from approved artwork')
+            record = {'kind': 'project design artwork', 'license': 'CC-BY-4.0', 'sourceSha256': mac_icon_digest}
         elif system == 'Darwin' and 'Sparkle.framework' in path.parts:
             import sparkle_bundle
             relative = path.relative_to(libraries / 'Sparkle.framework')

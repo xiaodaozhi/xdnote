@@ -1226,8 +1226,8 @@
       "path": "sources/export-native-icons.py",
       "kind": "design-source",
       "status": "source",
-      "bytes": 1601,
-      "sha256": "e105b95171a9d3c124198cf64a91cd0058bf6238002eecf90a0f6a1ef7abbb47",
+      "bytes": 2259,
+      "sha256": "e9580e1d03fcac384c1066e6d76a6dbefc908b1de9554c462b4ca6dd766bafe3",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",
@@ -1291,8 +1291,8 @@
       "path": "assets/ui-v2/manifest.json",
       "kind": "asset-manifest",
       "status": "source",
-      "bytes": 827493,
-      "sha256": "1aca1bf2bd93bdcc387c6d5df63cf7191ef2571365421dbf4de73620381816b3",
+      "bytes": 827913,
+      "sha256": "bb0c372854ff265ded4281a209f0b9c2105a0d69f6b0fef84dec5d3c99ec5cf3",
       "referenceAssetIds": [],
       "source": {
         "kind": "project-local-design-export",

@@ -1,6 +1,7 @@
 """Product boundary and supplier-code evidence, without native execution."""
 import json
 from pathlib import Path
+import plistlib
 import struct
 import sys
 import tempfile
@@ -29,6 +30,28 @@ def macho():
 
 
 class UnixProductTests(unittest.TestCase):
+    def test_macos_icon_evidence_checks_bundle_declaration_and_bytes(self):
+        self.enterContext(patch.object(product.runtime_materials, 'verify', return_value={}))
+        self.enterContext(patch.object(product.qt_source_access, 'verify', return_value={}))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            contents = root / 'xdnote.app/Contents'
+            icon = contents / 'Resources' / product.deploy.MAC_APP_ICON.name
+            icon.parent.mkdir(parents=True)
+            icon.write_bytes(product.deploy.MAC_APP_ICON.read_bytes())
+            info = contents / 'Info.plist'
+            info.write_bytes(plistlib.dumps({'CFBundleIconFile': icon.name}))
+            evidence = product.material_evidence(root, root / 'qt', [], 'Darwin')['files']
+            record = next(item['evidence'] for item in evidence if item['path'].endswith('.icns'))
+            self.assertEqual(record['sourceSha256'], product.digest(icon))
+            self.assertEqual(record['license'], 'CC-BY-4.0')
+            icon.write_bytes(b'other image')
+            with self.assertRaisesRegex(ValueError, 'differs from approved artwork'):
+                product.material_evidence(root, root / 'qt', [], 'Darwin')
+            info.write_bytes(plistlib.dumps({}))
+            with self.assertRaisesRegex(ValueError, 'bundle declaration'):
+                product.material_evidence(root, root / 'qt', [], 'Darwin')
+
     def test_pinned_native_runtime_license_rejects_modified_text(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); (root / 'tools/notices').mkdir(parents=True)
