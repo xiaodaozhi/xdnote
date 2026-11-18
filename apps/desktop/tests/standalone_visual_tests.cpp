@@ -279,7 +279,12 @@ private slots:
             QCOMPARE(dialog->objectName(), QString("unsavedConfirmation")); QCOMPARE(dialog->findChild<QWidget *>("dialogSurface")->width(), 480);
             QVERIFY(dialog->windowFlags().testFlag(Qt::FramelessWindowHint)); QVERIFY(dialog->findChild<SharedButton *>("dialogClose"));
             QVERIFY(owned.value->findChild<QWidget *>("dialogDimOverlay")->isVisible()); QVERIFY(dialog->findChild<QLabel *>("dialogDirtyIndicator"));
-            QVERIFY(dialog->findChild<QWidget *>("dialogFile")); QVERIFY(dialog->findChildren<QScrollArea *>().isEmpty());
+            QVERIFY(dialog->findChild<QWidget *>("dialogFile"));
+            auto *content = dialog->findChild<QScrollArea *>("dialogContentScroll");
+            QVERIFY(content);
+            QCOMPARE(dialog->findChildren<QScrollArea *>().size(), 1);
+            QCOMPARE(content->verticalScrollBar()->maximum(), 0);
+            QCOMPARE(content->horizontalScrollBar()->maximum(), 0);
             auto *cancel = dialog->findChild<SharedButton *>("choice0"); auto *save = dialog->findChild<SharedButton *>("choice1"); auto *discard = dialog->findChild<SharedButton *>("choice2");
             QVERIFY(cancel && save && discard); QVERIFY(discard->x() < cancel->x() && cancel->x() < save->x());
             QVERIFY(!cancel->keyboardOutline()); QVERIFY(noOuterRing(dialog, cancel, appearance.color("background"))); capture(dialog, "unsaved-close-" + theme); QTest::keyClick(dialog, Qt::Key_Escape);
