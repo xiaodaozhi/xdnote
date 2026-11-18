@@ -186,7 +186,8 @@ def source_fingerprint():
     paths.extend((ROOT / "design/assets/ui-v2/brand").glob("*.ico"))
     vendor = BUILD / f"scintilla-{DEPS['scintilla']['version']}" / "scintilla"
     paths.extend(path for path in vendor.rglob("*") if path.suffix in (".h", ".cxx", ".cpp"))
-    paths.extend(ROOT / "scripts" / name for name in ("desktop.py", "prepare_qt.py", "qt_network_backports.py", "build_version.py"))
+    paths.extend(ROOT / "scripts" / name for name in (
+        "desktop.py", "prepare_qt.py", "qt_network_backports.py", "qt_cocoa_backports.py", "build_version.py"))
     digest = hashlib.sha256()
     for path in sorted(paths):
         digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
@@ -202,6 +203,10 @@ def verify_build_identity(build, profile, qt):
     from qt_network_backports import verify as verify_network_backports
     if identity.get("qtNetworkBackports") != verify_network_backports(qt):
         raise RuntimeError("Qt Network variant changed since the successful build; rebuild before testing or running")
+    if platform.system() == "Darwin":
+        from qt_cocoa_backports import verify as verify_cocoa_backports
+        if identity.get("qtCocoaBackports") != verify_cocoa_backports(qt):
+            raise RuntimeError("Qt Cocoa variant changed since the successful build; rebuild before testing or running")
     return identity
 
 
@@ -289,6 +294,11 @@ def main():
         raise RuntimeError("Qt Widgets SDK missing; run the explicit SDK preparation first")
     from qt_network_backports import verify as verify_network_backports
     network_backports = verify_network_backports(qt)
+    if platform.system() == "Darwin":
+        from qt_cocoa_backports import verify as verify_cocoa_backports
+        cocoa_identity = {"qtCocoaBackports": verify_cocoa_backports(qt)}
+    else:
+        cocoa_identity = {}
     env = runtime_environment(env, qt)
     if platform.system() == "Linux":
         for binary in (qt / "plugins/platforms/libqxcb.so",):
@@ -314,6 +324,7 @@ def main():
             "nativeToolchain": json.loads((build / "native-toolchain.json").read_text(encoding="utf-8")),
             "buildVersion": json.loads((build / "generated/build-version.json").read_text(encoding="utf-8")),
             "qtNetworkBackports": network_backports,
+            **cocoa_identity,
         }, indent=2) + "\n", encoding="utf-8")
     elif args.command == "test":
         verify_build_identity(build, args.profile, qt)

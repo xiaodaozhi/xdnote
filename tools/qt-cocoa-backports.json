@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "qtVersion": "6.8.2",
+  "variant": "xdnote-cocoa.1",
+  "patches": [
+    {
+      "file": "tools/qt-cocoa-patches/cocoa-accessible-cache.patch",
+      "sha256": "0fb9384b6af492b8c5244978985bc91dbd36cf304ebd8e7d35c3ab4d16764019",
+      "kind": "upstream backport",
+      "license": "LGPL-3.0-only",
+      "upstreamCommit": "b1ed5f656f064e553b33752f8e87d2f5b9553e38",
+      "url": "https://github.com/qt/qtbase/commit/b1ed5f656f064e553b33752f8e87d2f5b9553e38"
+    },
+    {
+      "file": "tools/qt-cocoa-patches/cocoa-cell-cache-ownership.patch",
+      "sha256": "05e35f1fb258db9df4398c7e9697d419d8de24e6d4f684737076158b2ac84a20",
+      "kind": "project Qt derivative change",
+      "license": "LGPL-3.0-only",
+      "url": "https://qt-project.atlassian.net/browse/QTBUG-149612"
+    }
+  ],
+  "sourceCodeInRelease": false
+}

@@ -125,13 +125,33 @@ def network_derivation(evidence):
         # Compact payload reports contain the sealed manifest digest. Preserve
         # its serialized property order and Windows's original text line endings.
         expected = {key: expected[key] for key in receipt if key in expected}
-        data = (json.dumps(manifest(evidence['qtSbom'], expected), indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
+        instructions = [item for item in evidence['files'] if item['path'] == 'licenses/qt/REPLACEMENT.md']
+        if len(instructions) != 1:
+            raise ValueError('Windows source access lacks sealed replacement instructions')
+        record = manifest(evidence['qtSbom'], expected, replacement_sha256=instructions[0]['sha256'])
+        data = (json.dumps(record, indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
         files = [item for item in evidence['files'] if item['path'] == 'licenses/qt/source-access.json']
         if len(files) != 1 or files[0]['sha256'] != hashlib.sha256(data).hexdigest():
             raise ValueError('Sealed Windows Qt source access digest differs')
         public = expected
     if public != expected or public.get('sourceCodeInRelease') is not False:
         raise ValueError('Qt Network derivation differs across source access and build evidence')
+    return public
+
+
+def cocoa_derivation(evidence):
+    receipt = evidence['buildIdentity'].get('qtCocoaBackports')
+    public = evidence.get('qtSourceAccess', {}).get('cocoaBackports')
+    if receipt is None and public is None:
+        return None
+    from qt_cocoa_backports import MODULES, config, public_from_receipt, qtbase_source
+    if (not isinstance(receipt, dict) or receipt.get('system') != 'Darwin'
+            or receipt.get('architecture') != 'arm64' or evidence['buildIdentity'].get('platform') != 'Darwin'
+            or receipt.get('source') != qtbase_source() or set(receipt.get('files', {})) != set(MODULES)
+            or receipt.get('patches') != config()['patches'] or receipt.get('sourceCodeInRelease') is not False):
+        raise ValueError('Unexpected Qt Cocoa derivation scope')
+    if public != public_from_receipt(receipt):
+        raise ValueError('Qt Cocoa derivation differs across source access and build evidence')
     return public
 
 
@@ -165,13 +185,18 @@ def review(evidence, linkage, qt):
             raw_hashes[name]['verifiedVariants'] = [{'fileName': variant.name, 'projectionEquivalent': same,
                                                    **{algorithm: hashlib.new(algorithm, data).hexdigest() for algorithm in ['sha1', 'sha256']}}]
     shipped = {row['path']: row for row in evidence['files']}; seeds = set()
-    derivation = network_derivation(evidence)
+    network = network_derivation(evidence)
+    cocoa = cocoa_derivation(evidence)
+    sources = {}
+    for derivation in (network, cocoa):
+        if derivation:
+            sources.update({name: derivation for name in derivation['files']})
     derived_files = {}
     for row in shipped.values():
         material = row.get('evidence', {}); supplier = material.get('supplier')
         if supplier:
             path = material['sdkFile']
-            row = verify_qt_file(qt, path, material['sdkSha256'], derivation, material.get('sourceBackport'))
+            row = verify_qt_file(qt, path, material['sdkSha256'], sources.get(path), material.get('sourceBackport'))
             if row is not None:
                 if material.get('nativeSectionsMatchSdk') is not True:
                     raise ValueError('Relocated Qt derivative lacks verified code sections')
@@ -189,13 +214,16 @@ def review(evidence, linkage, qt):
                 path = relative.as_posix()
                 material = actual.get('evidence')
                 backport = material.get('sourceBackport') if material is not None else None
-                if (material is None and derivation and path in derivation['files']
+                derivation = sources.get(path)
+                if (material is None and derivation
                         and evidence.get('kind') == 'unsigned product-only Windows installer payload'):
                     backport = derivation  # Already bound to the sealed manifest and payload digest.
                 row = verify_qt_file(qt, path, actual['sha256'], derivation, backport)
                 if row is not None:
                     derived_files[path] = row
                 seeds.add((name, item['SPDXID']))
+    if cocoa and not set(cocoa['files']).issubset(derived_files):
+        raise ValueError('Actual macOS delivery is missing a Qt Cocoa derivative')
     if not seeds: raise ValueError('No actual Qt file roots')
     result = dependency_review(docs, seeds, raw_hashes)
     return {'ok': True, 'buildIdentity': evidence['buildIdentity'], 'supplierDocuments': records, 'actualQtFileRoots': sorted(seeds), **result,

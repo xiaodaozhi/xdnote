@@ -1,0 +1,283 @@
+From b1ed5f656f064e553b33752f8e87d2f5b9553e38 Mon Sep 17 00:00:00 2001
+From: Volker Hilsheimer <volker.hilsheimer@qt.io>
+Date: Tue, 18 Mar 2025 15:17:14 +0100
+Subject: [PATCH] macOS a11y: maintain reference count for cached elements
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Retain elements when storing them in the cache, so that they only get
+destroyed when they are neither stored as rows/columns, and removed
+from the cache. If storing an element in the cache replaces a different
+element with the same ID, release that before retaining the new one.
+Give the insertElement() function a bool return value so that callers
+know whether the element has been retained, so that they can correctly
+release their own reference.
+
+Release elements when they are removed from the cache so that it's
+easier to see that the calls are balanced. For that to work, forward
+declare QMacAccessibilityElement as an NSObject type.
+
+A special case are place-holder cell elements. Those are not inserted
+into the cache until the interface is requested, so when those get
+inserted into the cache, we don't have a local reference to release -
+it's the reference held by the rows/columns array.
+
+However, we don't want stale elements in the cache, so when we release
+the rows and columns arrays, also remove all cell entries from the
+cache. Otherwise we end up with stale elements reporting outdated
+values.
+
+As this might invalidate references that our test object holds,
+refresh the test object when triggering a model update.
+
+Amends 1f7e926411d1e0d958c37dc597f24101d410c46b.
+
+Pick-to: 6.9 6.8
+Fixes: QTBUG-134784
+Change-Id: Ib3cce35058e4c80e3edc97ae578584610ee93487
+Reviewed-by: Tor Arne Vestbø <tor.arne.vestbo@qt.io>
+---
+ src/gui/accessible/qaccessiblecache_mac.mm    | 35 +++++++++++---
+ src/gui/accessible/qaccessiblecache_p.h       |  2 +-
+ .../cocoa/qcocoaaccessibilityelement.h        |  1 +
+ .../cocoa/qcocoaaccessibilityelement.mm       | 46 +++++++++++++++++--
+ .../platforms/ios/quiaccessibilityelement.mm  |  3 +-
+ .../tst_qaccessibilitymac.mm                  | 24 +++++++---
+ 6 files changed, 90 insertions(+), 21 deletions(-)
+
+diff --git a/src/gui/accessible/qaccessiblecache_mac.mm b/src/gui/accessible/qaccessiblecache_mac.mm
+index 1c8753919419..6b41867105fc 100644
+--- a/src/gui/accessible/qaccessiblecache_mac.mm
++++ b/src/gui/accessible/qaccessiblecache_mac.mm
+@@ -2,24 +2,45 @@
+ // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+ 
+ #include "qaccessiblecache_p.h"
++#include <QtCore/private/qcore_mac_p.h>
+ 
+ // qcocoaaccessibilityelement.h in platform plugin
+-@interface QT_MANGLE_NAMESPACE(QMacAccessibilityElement)
++QT_DECLARE_NAMESPACED_OBJC_INTERFACE(QMacAccessibilityElement, NSObject
+ - (void)invalidate;
+-@end
++)
+ 
+ QT_BEGIN_NAMESPACE
+ 
+-void QAccessibleCache::insertElement(QAccessible::Id axid, QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element) const
++bool QAccessibleCache::insertElement(QAccessible::Id axid,
++                                     QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element) const
+ {
+-    accessibleElements[axid] = element;
++    if (const auto it = accessibleElements.find(axid); it == accessibleElements.end()) {
++        accessibleElements[axid] = element;
++        [element retain];
++        return true;
++    } else if (it.value() != element) {
++        auto *oldElement = it.value();
++        // this might invalidate the iterator
++        [oldElement invalidate];
++        [oldElement release];
++
++        accessibleElements[axid] = element;
++        [element retain];
++        return true;
++    }
++    return false;
+ }
+ 
+ void QAccessibleCache::removeAccessibleElement(QAccessible::Id axid)
+ {
+-    QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element = elementForId(axid);
+-    [element invalidate];
+-    accessibleElements.remove(axid);
++    // Some QAccessibleInterface instances in the cache didn't get created in
++    // response to a query, but when we emit events. So we might get called with
++    // and axid for which we don't have any element (yet).
++    if (QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element = elementForId(axid)) {
++        [element invalidate];
++        accessibleElements.remove(axid);
++        [element release];
++    }
+ }
+ 
+ QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *QAccessibleCache::elementForId(QAccessible::Id axid) const
+diff --git a/src/gui/accessible/qaccessiblecache_p.h b/src/gui/accessible/qaccessiblecache_p.h
+index dcdf195dea48..903935bc660d 100644
+--- a/src/gui/accessible/qaccessiblecache_p.h
++++ b/src/gui/accessible/qaccessiblecache_p.h
+@@ -43,7 +43,7 @@ class Q_GUI_EXPORT QAccessibleCache  :public QObject
+ 
+ #ifdef Q_OS_APPLE
+     QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *elementForId(QAccessible::Id axid) const;
+-    void insertElement(QAccessible::Id axid, QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element) const;
++    bool insertElement(QAccessible::Id axid, QT_MANGLE_NAMESPACE(QMacAccessibilityElement) *element) const;
+ #endif
+ 
+ private Q_SLOTS:
+diff --git a/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.h b/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.h
+index a96ab55735d2..b120e8bc6d12 100644
+--- a/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.h
++++ b/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.h
+@@ -16,6 +16,7 @@ QT_DECLARE_NAMESPACED_OBJC_INTERFACE(QMacAccessibilityElement, NSObject <NSAcces
+ - (instancetype)initWithId:(QAccessible::Id)anId role:(NSAccessibilityRole)role;
+ + (instancetype)elementWithId:(QAccessible::Id)anId;
+ + (instancetype)elementWithInterface:(QAccessibleInterface *)iface;
+++ (void)removeElementsFromCache:(NSArray *)array;
+ - (void)updateTableModel;
+ - (QAccessibleInterface *)qtInterface;
+ )
+diff --git a/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.mm b/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.mm
+index 73476a15ce13..19134f4b376c 100644
+--- a/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.mm
++++ b/src/plugins/platforms/cocoa/qcocoaaccessibilityelement.mm
+@@ -178,6 +178,15 @@ - (instancetype)initWithId:(QAccessible::Id)anId role:(NSAccessibilityRole)role
+     return self;
+ }
+ 
++/*!
++    \internal
++
++    Constructs a new element with the ID \a anId and inserts it into the cache.
++
++    Elements representing table rows, columns, and cells are created directly
++    via initWithId (in populateTableArray and populateTableRow), as they don't
++    get added to the cache until later.
++*/
+ + (instancetype)elementWithId:(QAccessible::Id)anId
+ {
+     Q_ASSERT(anId);
+@@ -190,7 +199,8 @@ + (instancetype)elementWithId:(QAccessible::Id)anId
+     if (!element) {
+         Q_ASSERT(QAccessible::accessibleInterface(anId));
+         element = [[self alloc] initWithId:anId];
+-        cache->insertElement(anId, element);
++        if (cache->insertElement(anId, element))
++            [element release];
+     }
+     return element;
+ }
+@@ -205,28 +215,54 @@ + (instancetype)elementWithInterface:(QAccessibleInterface *)iface
+     return [self elementWithId:anId];
+ }
+ 
+-// called by QAccessibleCache::removeAccessibleElement
+++ (void)removeElementsFromCache:(NSArray *)array {
++    for (uint i = 0; i < array.count; ++i) {
++        QMacAccessibilityElement *cell = [array objectAtIndex:i];
++        if (cell->axid) { // it's a proper cell, remove from cache
++            QAccessibleCache::instance()->deleteInterface(cell->axid);
++        }
++    }
++}
++
++// called by QAccessibleCache::removeAccessibleElement, which also releases
+ - (void)invalidate {
+     axid = 0;
+     if (rows) {
++        [QMacAccessibilityElement removeElementsFromCache:rows];
+         [rows autorelease];
+         rows = nil;
+     }
+     if (columns) {
++        [QMacAccessibilityElement removeElementsFromCache:columns];
+         [columns autorelease];
+         columns = nil;
+     }
+     synthesizedRole = nil;
+ 
+     NSAccessibilityPostNotification(self, NSAccessibilityUIElementDestroyedNotification);
+-    [self release];
+ }
+ 
++/*!
++    \internal
++
++    If this element represents a table, then the rows and columns array are both
++    populated with elements representing the rows and columns. If this elements
++    represents a row, then the columns array is populated with elements
++    representing the cells. Not all of those synthesized elements might be in
++    the cache, but those that are need to be removed so that we don't end up
++    with stale representations of children when the higher-level element
++    expires.
++*/
+ - (void)dealloc {
+-    if (rows)
++    if (rows) {
++        [QMacAccessibilityElement removeElementsFromCache:rows];
+         [rows release]; // will also release all entries first
+-    if (columns)
++    }
++    if (columns) {
++        [QMacAccessibilityElement removeElementsFromCache:columns];
+         [columns release]; // will also release all entries first
++    }
++    QAccessibleCache::instance()->deleteInterface(axid);
+     [super dealloc];
+ }
+ 
+diff --git a/src/plugins/platforms/ios/quiaccessibilityelement.mm b/src/plugins/platforms/ios/quiaccessibilityelement.mm
+index 02fa0817e407..d7baba794363 100644
+--- a/src/plugins/platforms/ios/quiaccessibilityelement.mm
++++ b/src/plugins/platforms/ios/quiaccessibilityelement.mm
+@@ -47,7 +47,8 @@ + (instancetype)elementWithId:(QAccessible::Id)anId
+         if (window && window->handle()) {
+             auto *platformWindow = static_cast<QIOSWindow*>(window->handle());
+             element = [[self alloc] initWithId:anId withAccessibilityContainer:platformWindow->view()];
+-            cache->insertElement(anId, element);
++            if (cache->insertElement(anId, element))
++                [element release];
+         } else {
+             qWarning() << "Could not create a11y element for" << iface
+                 << "with window" << window
+diff --git a/tests/auto/other/qaccessibilitymac/tst_qaccessibilitymac.mm b/tests/auto/other/qaccessibilitymac/tst_qaccessibilitymac.mm
+index 21cde714b034..63971b0bf0bf 100644
+--- a/tests/auto/other/qaccessibilitymac/tst_qaccessibilitymac.mm
++++ b/tests/auto/other/qaccessibilitymac/tst_qaccessibilitymac.mm
+@@ -783,18 +783,20 @@ void clearChildren()
+     QVERIFY(window.valid);
+ 
+     // children of window
+-    AXUIElementRef treeView = [window findDirectChildByRole:kAXOutlineRole];
+-    QVERIFY(treeView != nil);
+ 
+-    TestAXObject *tv = [[TestAXObject alloc] initWithAXUIElementRef:treeView];
+-    QVERIFY(tv.valid);
++    auto accessibleTreeView = [window]() -> TestAXObject * {
++        AXUIElementRef treeView = [window findDirectChildByRole:kAXOutlineRole];
++        Q_ASSERT(treeView != nil);
++        TestAXObject *tv = [[TestAXObject alloc] initWithAXUIElementRef:treeView];
++        return tv;
++    };
+ 
+-    [appObject release];
+-    [window release];
++    TestAXObject *tv = accessibleTreeView();
++    QVERIFY(tv.valid);
+ 
+     // here start actual treeview tests. NSAccessibilityOutline is a specialization
+     // of NSAccessibilityTable, and we represent trees as tables.
+-    const auto cellText = [tv](int rowIndex, int columnIndex) -> QString {
++    const auto cellText = [&tv](int rowIndex, int columnIndex) -> QString {
+         NSArray *rowArray = [tv tableRows];
+         Q_ASSERT(rowArray.count > uint(rowIndex));
+         TestAXObject *row = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)rowArray[rowIndex]];
+@@ -848,9 +850,17 @@ void clearChildren()
+     // this should not trigger any assert
+     tw->setCurrentItem(lastChild);
+ 
++    // cache will have been cleared, reinitialize
++    [tv release];
++    tv = accessibleTreeView();
++    QVERIFY(tv.valid);
++
+     QCOMPARE(cellText(0, 0), root->text(0));
+     QCOMPARE(cellText(1, 0), users->text(0));
+     QCOMPARE(cellText(1, 1), users->text(1));
++
++    [appObject release];
++    [window release];
+ }
+ 
+ QTEST_MAIN(tst_QAccessibilityMac)
