@@ -17,11 +17,22 @@ def events(path):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_network_flow_is_explicit_and_does_not_upload_sources_or_keys(self):
+        path = WORKFLOWS / 'qt-network-flow.yml'; text = path.read_text()
+        self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})
+        for expected in ['ubuntu-22.04', 'windows-2022', 'macos-26', 'contents: read',
+                         'scripts/check_qt_network_flow.py', 'scripts/prepare_qt.py', 'retention-days: 7']:
+            self.assertIn(expected, text)
+        upload = text.split('Preserve bounded flow evidence', 1)[1]
+        for forbidden in ['contents: write', 'secrets.', 'gh release', '*.pem', '*.dll', '*.tar.xz', '*.patch']:
+            self.assertNotIn(forbidden, upload)
+
     def test_delivery_review_is_read_only_and_keeps_source_run_explicit(self):
         text = (WORKFLOWS / 'delivery-review.yml').read_text()
         self.assertEqual(events(WORKFLOWS / 'delivery-review.yml'), {'workflow_dispatch', 'workflow_call'})
         for required in ['actions: read', 'contents: read', 'evidence_run:', 'scripts/component_review.py', 'scripts/fetch_delivery_evidence.py']:
             self.assertIn(required, text)
+        self.assertIn('--supplier-only', text)
         dispatcher = (WORKFLOWS / 'desktop-admission.yml').read_text()
         self.assertIn("inputs.scope == 'delivery-review' && needs.delivery-review.result", dispatcher)
         self.assertIn('evidence_run: ${{ inputs.evidence_run }}', dispatcher)
@@ -29,7 +40,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn(forbidden, text)
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement, delivery-review]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("if: startsWith(inputs.scope, 'updates')", text)

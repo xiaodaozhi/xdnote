@@ -71,6 +71,17 @@ python scripts/prepare_qt.py --download --host mac --arch clang_64
 python scripts/prepare_qt.py --download --host linux --arch linux_gcc_64
 ```
 
+准备器在校验原始 SDK 后，从固定 Qt Base 6.8.2 源码构建 `xdnote-network.1`，修正高速 HTTP CONNECT／SOCKS5 通知、受限缓存排空及 macOS TLS 待消费数据。版本保持 6.8.2，全部 Network 功能开关与 SDK 相同；只替换 Network 与 macOS SecureTransport 插件，原始文件和封印保存在 `build/QtNetworkBackports/`。补丁、原始提交及许可见[说明](../../tools/qt-network-patches/README.md)。构建还会在 `build/toolchain/openssl-configure/` 准备固定 OpenSSL 静态配置输入，仅用于 Qt 的 DTLS／OCSP 特性探测，不复制进 SDK 或产品。Windows 源码准备使用已安装的 VS 2022；应用的 v142 兼容配置仍独立验证。
+
+现有 SDK 可使用下列显式入口，`--archive` 指向本项目已校验的 Qt Base 源归档；缺失时省略它并传 `--download`。普通构建／测试／运行只校验 `xdnote-network-backports.json` 中的配方、补丁、Core 配置、实际文件和原始备份，不下载或自动改写 SDK。配方变化后，先停止使用该 SDK 的进程，执行显式恢复，再选择新的构建输出重建；修改过的 SDK 文件或原始备份会阻止恢复。
+
+```text
+python scripts/qt_network_backports.py --qt-prefix build/Qt/6.8.2/macos --archive build/qtbase-everywhere-src-6.8.2.tar.xz --download --output build/QtNetworkBackports/xdnote-network.1/macos
+python scripts/qt_network_backports.py --qt-prefix build/Qt/6.8.2/macos --restore-original
+```
+
+只读复核历史供应方材料的工作流使用 `prepare_qt.py --supplier-only`，取得未修改 SDK；该模式不用于产品构建。未限速流量、TLS 拒绝与缓存上限回归见[网络诊断](../../experiments/update-network-flow/README.md)。它不代替实际更新事务或最低系统验收。
+
 以下入口三平台共用。`prepare` 显式下载并核验固定 Scintilla 源码及 Cargo 锁定依赖；Scintilla 准备器复用[现有脚本](../../experiments/scintilla-buffer-spike/prepare.py)，不会将内部缓冲区试验实现带入桌面工程。重复准备沿用已存在目录，不覆盖本地修改；需要全新核验时选用干净工作区。`build`、`test` 均离线使用已准备的依赖。
 
 ```text

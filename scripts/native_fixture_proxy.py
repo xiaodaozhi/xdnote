@@ -99,6 +99,3 @@ class OriginHandler(http.server.BaseHTTPRequestHandler):
                 try: self.wfile.write(data)
                 except (BrokenPipeError, ConnectionResetError): break
                 if self.server.disconnect_archive: self.close_connection = True; break
-                # Yield between owned loopback chunks; this fixture exercises
-                # native transactions, not an unpaced LAN throughput benchmark.
-                time.sleep(0.002)

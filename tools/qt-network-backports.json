@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "qtVersion": "6.8.2",
+  "variant": "xdnote-network.1",
+  "sourceModule": "qtbase",
+  "patches": [
+    {
+      "file": "tools/qt-network-patches/socks5-notifications.patch",
+      "sha256": "53ca00befe052d9f91b573d8728994aeeded46510cf914be9699f0679836f598",
+      "kind": "upstream backport",
+      "license": "LGPL-3.0-only",
+      "upstreamCommit": "da1fd7285725d0e84a9ba5f1b033c0dec5a055fa",
+      "url": "https://github.com/qt/qtbase/commit/da1fd7285725d0e84a9ba5f1b033c0dec5a055fa"
+    },
+    {
+      "file": "tools/qt-network-patches/http-connect-notifications.patch",
+      "sha256": "8bd222218bac2baad9a40754cb8f0f7fa02e19fc1530903e724d12248662eb73",
+      "kind": "upstream backport",
+      "license": "LGPL-3.0-only",
+      "upstreamCommit": "ac90cc53672ee570e629c8931b2347ac0de4f5e4",
+      "url": "https://github.com/qt/qtbase/commit/ac90cc53672ee570e629c8931b2347ac0de4f5e4"
+    },
+    {
+      "file": "tools/qt-network-patches/socks5-backpressure.patch",
+      "sha256": "ce2fd3a18f53d74d08841a26075f12705c52ca488a0244af9d469c945a0cf3ad",
+      "kind": "project Qt derivative change",
+      "license": "LGPL-3.0-only"
+    },
+    {
+      "file": "tools/qt-network-patches/securetransport-pending-data.patch",
+      "sha256": "803e21120fea08d2b20ceb8308becbf63dff372e23d22c79022cf5bc8f923114",
+      "kind": "project Qt derivative change",
+      "license": "LGPL-3.0-only",
+      "platforms": [
+        "Darwin"
+      ]
+    },
+    {
+      "file": "tools/qt-network-patches/socks5-windows-close.patch",
+      "sha256": "e0c4b91eaf58cd3ba48dbe92536c2d1e18c92ae23c04df7cfa2f9aa94ee5d29e",
+      "kind": "project Qt derivative change",
+      "license": "LGPL-3.0-only",
+      "platforms": [
+        "Windows"
+      ]
+    }
+  ],
+  "sourceCodeInRelease": false,
+  "configureDependency": {
+    "version": "3.5.9",
+    "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+    "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+    "license": "Apache-2.0",
+    "scope": "Qt DTLS/OCSP compile/link feature checks only; static input not copied to SDK or product"
+  }
+}

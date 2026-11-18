@@ -84,6 +84,10 @@ Linux 诊断候选另使用同版本 Qt Wayland 客户端平台插件及其传�
 
 Qt 6.8.2 的 [LGPL-3.0 原文](LICENSES/third-party/Qt-LGPL-3.0-only.txt)及其引用的 [GPL-3.0 原文](LICENSES/third-party/Qt-GPL-3.0-only.txt)以[来源和摘要](tools/deployment-notices.json)固定并由日常检查核对。各平台诊断目录生成与匹配 Qt 模块 SPDX／声明的收集见[部署诊断](docs/engineering/deployment.md)；模块 SBOM 的未确定字段、源码提供／用户替换等要求及最终发行核验仍须独立完成。
 
+Qt Network 6.8.2 的 `xdnote-network.1` 使用显式源码构建的[固定补丁](tools/qt-network-patches/README.md)，包含两项 Qt 官方回移、SOCKS5 背压／EOF 和 macOS SecureTransport 缓存读取修正。补丁属于 Qt 派生修改，采用 LGPL-3.0-only，原文件版权及许可不变。部署材料分别保留供应方原始 SPDX、原始 SDK 和修改模块摘要及固定源码／补丁来源。版本号不变不表示二进制未修改，也不表示最终许可验收完成。
+
+准备器显式下载并校验 OpenSSL 3.5.9（Apache-2.0），仅在本项目构建缓存中生成 Qt DTLS／OCSP 配置探测所需的静态输入；不复制 OpenSSL 库到 Qt SDK 或产品，不替换平台运行时 TLS 后端。来源及 SHA-256 见[固定清单](tools/qt-network-backports.json)，上游许可随下载源码保留。
+
 ## 字体、设计与研发工具
 
 当前源码不包含 TTF、OTF、WOFF 或 WOFF2 字体文件；界面代码请求系统字体和回退字体。设计素材清单将复用图标记为项目原创几何，并注明没有导出字体；设计素材的项目许可与来源见[素材交付说明](docs/visual/asset-handoff.md)。这些记录不授予第三方字体或素材的额外权利。

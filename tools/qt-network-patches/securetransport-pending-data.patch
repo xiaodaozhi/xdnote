@@ -1,0 +1,27 @@
+--- a/src/plugins/tls/securetransport/qtls_st_p.h
++++ b/src/plugins/tls/securetransport/qtls_st_p.h
+@@ -69,6 +69,7 @@
+     void startServerEncryption() override;
+     void transmit() override;
+     QList<QSslError> tlsErrors() const override;
++    bool hasUndecryptedData() const override;
+ 
+     SSLCipherSuite SSLCipherSuite_from_QSslCipher(const QSslCipher &ciph);
+ 
+--- a/src/plugins/tls/securetransport/qtls_st.cpp
++++ b/src/plugins/tls/securetransport/qtls_st.cpp
+@@ -443,6 +443,14 @@
+     }
+ 
+     startHandshake();
++}
++
++bool TlsCryptographSecureTransport::hasUndecryptedData() const
++{
++    if (!context || shutdown)
++        return false;
++    size_t available = 0;
++    return SSLGetBufferedReadSize(context, &available) == errSecSuccess && available > 0;
+ }
+ 
+ void TlsCryptographSecureTransport::transmit()

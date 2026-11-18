@@ -1,0 +1,76 @@
+--- a/src/network/socket/qsocks5socketengine.cpp
++++ b/src/network/socket/qsocks5socketengine.cpp
+@@ -4,6 +4,7 @@
+ #include "qsocks5socketengine_p.h"
+ 
+ #include "qtcpsocket.h"
++#include "private/qtcpsocket_p.h"
+ #include "qudpsocket.h"
+ #include "qtcpserver.h"
+ #include "qdebug.h"
+@@ -29,6 +30,56 @@
+ 
+ using namespace Qt::StringLiterals;
+ using namespace std::chrono_literals;
++
++// Windows' generic close notifier temporarily removes readBufferMaxSize.
++// Keep that policy out of the bounded SOCKS5 transport without changing any
++// existing Qt private class layout used by separately built TLS plugins.
++class QSocks5ControlSocketPrivate final : public QTcpSocketPrivate
++{
++public:
++    bool closePending = false;
++    bool closeQueued = false;
++
++    void connectionNotification() override
++    {
++        closePending = closeQueued = false;
++        QTcpSocketPrivate::connectionNotification();
++    }
++
++    void closeNotification() override
++    {
++        closeQueued = false;
++        closePending = true;
++        if (socketEngine)
++            canReadNotification(); // respects the configured buffer bound
++    }
++
++    void queueCloseAfterRead()
++    {
++        if (closePending && !closeQueued && socketEngine
++            && state == QAbstractSocket::ConnectedState
++            && (!readBufferMaxSize || buffer.size() < readBufferMaxSize)) {
++            closeQueued = true;
++            QMetaObject::invokeMethod(socketEngine, "closeNotification", Qt::QueuedConnection);
++        }
++    }
++};
++
++class QSocks5ControlSocket final : public QTcpSocket
++{
++    Q_DECLARE_PRIVATE(QSocks5ControlSocket)
++public:
++    explicit QSocks5ControlSocket(QObject *parent)
++        : QTcpSocket(*new QSocks5ControlSocketPrivate, parent) {}
++
++protected:
++    qint64 readData(char *data, qint64 maxSize) override
++    {
++        const qint64 result = QTcpSocket::readData(data, maxSize);
++        d_func()->queueCloseAfterRead();
++        return result;
++    }
++};
+ 
+ static const int MaxWriteBufferSize = 128*1024;
+ 
+@@ -518,7 +569,7 @@
+         data = bindData;
+     }
+ 
+-    data->controlSocket = new QTcpSocket(q);
++    data->controlSocket = new QSocks5ControlSocket(q);
+     data->controlSocket->setProxy(QNetworkProxy::NoProxy);
+     QObject::connect(data->controlSocket, SIGNAL(connected()), q, SLOT(_q_controlSocketConnected()),
+                      Qt::DirectConnection);
