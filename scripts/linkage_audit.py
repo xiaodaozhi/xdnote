@@ -23,8 +23,7 @@ def selected_members(text):
 
 def classify(members, registry, toolchain_units=()):
     result=[]; by_name={r['name'].replace('-','_'): r for r in registry}
-    toolchain={'std','core','alloc','panic_unwind','panic_abort','compiler_builtins','unwind','rustc_std_workspace_core','rustc_std_workspace_alloc',
-               'object','addr2line','gimli','rustc_demangle','hashbrown','memchr','libc','cfg_if','miniz_oxide','adler2','rustc_std_workspace_std','windows_link'}
+    verified_units = set(toolchain_units)
     for member in members:
         if re.fullmatch(r'[A-Za-z0-9_.-]+\.dll', member, re.IGNORECASE):
             result.append({'member': member, 'kind': 'PE import descriptor', 'name': member,
@@ -33,12 +32,11 @@ def classify(members, registry, toolchain_units=()):
         match=re.match(r'([A-Za-z0-9_]+)-([0-9a-f]+)\.', member)
         if not match: result.append({'member':member,'kind':'unclassified native/archive object'}); continue
         name=match[1]
-        if (name, match[2]) in toolchain_units:
+        if (name, match[2]) in verified_units:
             source={'kind':'Rust toolchain source unit','name':name,'archiveHash':match[2],'materials':'pinned toolchain COPYRIGHT and licenses; source-level component review remains separate'}
         elif name in by_name:
             value=by_name[name]; source={'kind':'locked Cargo source','name':value['name'],'version':value['version'],'license':value['selectedLicense'],'licenseFile':value['licenseFile']}
         elif name.startswith('xdnote_'): source={'kind':'project code','license':'Apache-2.0'}
-        elif name in toolchain: source={'kind':'Rust toolchain source unit','name':name,'materials':'pinned toolchain COPYRIGHT and licenses; source-level component review remains separate'}
         else: source={'kind':'unclassified Rust source unit','name':name}
         result.append({'member':member,**source})
     return result
