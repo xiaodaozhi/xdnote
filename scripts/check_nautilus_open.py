@@ -125,6 +125,23 @@ def select_item(node, *, clear=False):
         raise ValueError(f'Nautilus did not select {node.name}')
 
 
+def select_application(node):
+    # GTK exposes the application label inside a composite tree cell.
+    cell = node
+    while cell.parent is not None:
+        parent = cell.parent
+        if parent.getRoleName() in ('table', 'tree table'):
+            table = parent.queryTable()
+            row = table.getRowAtIndex(cell.getIndexInParent())
+            if row >= 0 and table.addRowSelection(row):
+                return
+            break
+        cell = parent
+    if node.queryComponent().grabFocus():
+        return
+    raise ValueError(f'Nautilus did not select the application {node.name}')
+
+
 def open_item(node):
     action = node.queryAction()
     for index in range(action.nActions):
@@ -197,7 +214,7 @@ def verify(binary, evidence, samples, backend):
                         '[' + repr(once.as_uri()) + ']', '')
                 print('Requested the owned Wayland file Properties', file=log, flush=True)
                 activate(lookup('Open With tab', ['Open With'], ['page tab']))
-                select_item(lookup('xdnote in Properties', ['xdnote']))
+                select_application(lookup('xdnote in Properties', ['xdnote']))
                 activate(lookup('Set as default', ['Set as default'], ['push button']))
                 deadline = time.monotonic() + 5
                 while default_handler() != DESKTOP and time.monotonic() < deadline:
