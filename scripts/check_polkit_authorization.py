@@ -1,5 +1,6 @@
 """Exercise native polkit/PAM in an isolated local login on a hosted Ubuntu runner."""
 import argparse
+from contextlib import nullcontext
 import fcntl
 import json
 import os
@@ -19,9 +20,6 @@ import sys
 import tempfile
 import termios
 import time
-
-from pexpect import EOF, TIMEOUT
-from pexpect.fdpexpect import fdspawn
 
 ACTION = 'org.xdnote.update'
 POLICY = Path('/usr/share/polkit-1/actions/org.xdnote.update.policy')
@@ -61,6 +59,9 @@ def wait_for(path, process, timeout=20):
 
 
 def authorize_at_prompt(command, password, *, cancel=False, installed_helper=False, after_grant=None):
+    from pexpect import EOF, TIMEOUT
+    from pexpect.fdpexpect import fdspawn
+
     request = None
     if installed_helper:
         # Register a process agent before the fixed helper can call pkexec.
@@ -155,7 +156,7 @@ def write_control(path, value):
     temporary.replace(path)
 
 
-def run_installed_helper(password, report):
+def run_installed_helper(password, report, authorize):
     home = Path.home()
     config = json.loads((home / 'fixture.json').read_bytes())
     old = config['old']
@@ -205,9 +206,8 @@ def run_installed_helper(password, report):
                           'parent_pid': parent.pid, 'current_version': old['version'], 'current_build': old['build'],
                           'install_root': str(install_root), 'package_file': str(job / PACKAGE),
                           'manifest_file': str(job / 'release.json'), 'signature_file': str(job / 'release.json.sig')})
-            status = authorize_at_prompt([HELPER, '--authorize', job / 'request.json'], password,
-                                         cancel=cancel, installed_helper=True,
-                                         after_grant=None if cancel else finish_after_grant)
+            status = authorize([HELPER, '--authorize', job / 'request.json'], password, cancel=cancel,
+                               installed_helper=True, after_grant=None if cancel else finish_after_grant)
             receipt = json.loads((job / 'result.json').read_bytes())
             if receipt.get('transaction') != transaction:
                 raise RuntimeError('The receipt refers to a different authorization request')
@@ -233,7 +233,10 @@ def run_installed_helper(password, report):
             parent.wait(timeout=10)
 
 
-def run_worker(installed_update):
+def run_worker(installed_update, graphical):
+    worker = Path(__file__).resolve().parent
+    if not worker.name.startswith('xdnote-polkit-') or Path.home() != worker / 'home' or os.getuid() == 0:
+        raise RuntimeError('Run the authorization worker in the isolated virtual-console account')
     os.umask(0o077)
     path = Path.home() / 'password'
     password = path.read_text()
@@ -241,19 +244,25 @@ def run_worker(installed_update):
     report = {'ok': False}
     try:
         report['session'] = session_properties()
-        if installed_update:
-            run_installed_helper(password, report)
-            report['ok'] = True
-            return
-        check = ['/usr/bin/pkcheck', '--action-id', ACTION, '--process', subject(os.getpid()) + ',' + str(os.getuid())]
-        baseline = subprocess.run(check, capture_output=True, timeout=10)
-        report['withoutInteraction'] = baseline.returncode
-        if baseline.returncode == 0:
-            raise RuntimeError('The action unexpectedly allowed an unauthenticated administrator')
-        report['cancelStatus'] = authorize_at_prompt([*check, '--allow-user-interaction'], password, cancel=True)
-        report['grantStatus'] = authorize_at_prompt([*check, '--allow-user-interaction'], password)
-        report['ok'] = report['cancelStatus'] != 0 and report['grantStatus'] == 0
+        session = nullcontext(authorize_at_prompt)
+        if graphical:
+            from polkit_gnome_session import graphical_session
+            session = graphical_session(report)
+        with session as authorize:
+            if installed_update:
+                run_installed_helper(password, report, authorize)
+                report['ok'] = True
+                return
+            check = ['/usr/bin/pkcheck', '--action-id', ACTION, '--process', subject(os.getpid()) + ',' + str(os.getuid())]
+            baseline = subprocess.run(check, capture_output=True, timeout=10)
+            report['withoutInteraction'] = baseline.returncode
+            if baseline.returncode == 0:
+                raise RuntimeError('The action unexpectedly allowed an unauthenticated administrator')
+            report['cancelStatus'] = authorize([*check, '--allow-user-interaction'], password, cancel=True)
+            report['grantStatus'] = authorize([*check, '--allow-user-interaction'], password)
+            report['ok'] = report['cancelStatus'] != 0 and report['grantStatus'] == 0
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+        report['ok'] = False
         report['error'] = str(error)
     finally:
         (Path.home() / 'report.json').write_text(json.dumps(report))
@@ -281,7 +290,7 @@ def install_fixture(home, username, output):
             'newPackageSha256': digest(fixture.packages['new']), 'installedPolicySha256': digest(POLICY)}
 
 
-def run_probe(output, installed_update):
+def run_probe(output, installed_update, graphical):
     if (platform.system() != 'Linux' or os.getuid() == 0 or os.environ.get('GITHUB_ACTIONS') != 'true'
             or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'):
         raise ValueError('An unprivileged disposable GitHub-hosted Linux runner is required')
@@ -299,8 +308,14 @@ def run_probe(output, installed_update):
         candidate = root / 'worker.py'
         candidate.write_bytes(Path(__file__).read_bytes())
         profile = root / 'login'
-        options = ['--installed-update'] if installed_update else []
-        profile.write_text('exec ' + shlex.join([sys.executable, str(candidate), '--inside-login', *options]) +
+        worker = [sys.executable, str(candidate), '--inside-login']
+        if graphical:
+            shutil.copyfile(SOURCE / 'scripts/polkit_gnome_session.py', root / 'polkit_gnome_session.py')
+            worker = ['/usr/bin/dbus-run-session', '--', '/usr/bin/xvfb-run', '-a', '-s', '-screen 0 1280x900x24',
+                      '/usr/bin/python3', str(candidate), '--inside-login', '--graphical']
+        if installed_update:
+            worker.append('--installed-update')
+        profile.write_text('exec ' + shlex.join(worker) +
                            ' >"$HOME/console.log" 2>&1\n')
         owned_user = False
         installed_policy = False
@@ -337,7 +352,7 @@ def run_probe(output, installed_update):
                 installed_policy = True
             login = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/openvt', '-c', '12', '-s', '-w', '--',
                                     '/bin/login', '-f', '--', username],
-                                   capture_output=True, timeout=380 if installed_update else 75)
+                                   capture_output=True, timeout=410 if installed_update else 115)
             receipt = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/cat', home / 'report.json'],
                                      capture_output=True, timeout=10)
             console_log = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/cat', home / 'console.log'],
@@ -345,6 +360,12 @@ def run_probe(output, installed_update):
             console = {'exit': login.returncode, 'warning': login.stderr.decode(errors='replace')[-500:],
                        'workerOutput': console_log.stdout.decode(errors='replace')[-1500:]}
             (output / 'console.json').write_text(json.dumps(console, indent=2) + '\n')
+            if graphical:
+                for name in ('gnome-shell.log', 'prompt-cancel.xwd', 'prompt-grant.xwd'):
+                    picture = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/cat', home / name],
+                                             capture_output=True, timeout=10)
+                    if picture.returncode == 0:
+                        (output / name).write_bytes(picture.stdout)
             if receipt.returncode:
                 raise RuntimeError('The console login did not return a receipt: ' + repr(console))
             result = json.loads(receipt.stdout)
@@ -377,10 +398,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--inside-login', action='store_true')
     parser.add_argument('--installed-update', action='store_true')
+    parser.add_argument('--graphical', action='store_true')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.inside_login:
-        run_worker(args.installed_update)
+        run_worker(args.installed_update, args.graphical)
     else:
         from installer_common import build_output
-        run_probe(build_output(args.output), args.installed_update)
+        run_probe(build_output(args.output), args.installed_update, args.graphical)
