@@ -174,33 +174,23 @@ jobs:
       - name: Build desktop admission (Unix)
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
-      - name: Prepare isolated Linux Orca sessions
+      - name: Prepare isolated Linux IBus session
         if: inputs.scope == 'reader-orca'
         timeout-minutes: 8
         shell: bash
         run: |
           xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::https::Timeout=20)
-          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends orca python3-pyatspi dbus-x11 openbox xdotool xauth pulseaudio speech-dispatcher-espeak-ng gnome-shell gnome-settings-daemon xwayland
-      - name: Run Orca on X11 and native GNOME Wayland
+          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends ibus ibus-libpinyin python3-pyatspi dbus-x11 openbox xdotool xauth
+      - name: Run real IBus Pinyin, workspace transfer, and undo
         if: inputs.scope == 'reader-orca'
-        timeout-minutes: 10
-        shell: bash
-        run: |
-          xdnote_qt_version=$(python -c 'import json; print(json.load(open("tools/desktop-dependencies.json"))["qt"]["version"])')
-          result=0
-          bash scripts/reader-acceptance/orca-linux.sh x11 build/desktop-admission "build/Qt/$xdnote_qt_version/gcc_64" || result=1
-          bash scripts/reader-acceptance/orca-linux.sh wayland build/desktop-admission "build/Qt/$xdnote_qt_version/gcc_64" || result=1
-          exit "$result"
+        timeout-minutes: 5
+        run: xvfb-run -a -s '-screen 0 1440x1080x24' dbus-run-session -- bash scripts/reader-acceptance/ibus-session.sh
       - name: Preserve Orca acceptance evidence
         if: always() && inputs.scope == 'reader-orca'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: reader-orca-ubuntu-22.04
-          path: |
-            build/reader-acceptance/orca-*/*/*.txt
-            build/reader-acceptance/orca-*/*/*.sha256
-            build/reader-acceptance/orca-*/*/*.log
-            build/reader-acceptance/orca-*/*/build-identity.json
+          name: ibus-x11-ubuntu-22.04
+          path: build/evidence/ibus-x11/*.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Test explicit update checks and settings
