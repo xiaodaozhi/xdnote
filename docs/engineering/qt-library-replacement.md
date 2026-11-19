@@ -6,6 +6,8 @@ xdnote 使用动态链接的 Qt 6.8.2。实际模块、供应方构建配置、�
 
 当前 Network 使用固定 6.8.2 的 `xdnote-network.1` 派生构建。随包 `source-access.json` 的 `networkBackports` 分别记录源码、补丁来源及 SHA-256、准备器摘要、原 SDK 和实际模块摘要；上游 SPDX 保持原文，新模块不声称与原始供应方字节相同。对应补丁和配方在 [项目源码](https://github.com/xiaodaozhi/xdnote/tree/main/tools/qt-network-patches)及 `scripts/qt_network_backports.py` 中维护，源码和补丁不进入产品 Release 载荷。恢复或重建应使用匹配该次构建身份的项目修订，全部对应源码和提供条件仍须按最终交付核验。
 
+Qt Network 的内嵌 Public Suffix List 使用 MPL-2.0。可编辑原文见[固定的上游列表](https://github.com/publicsuffix/list/blob/903a83ff7bfc3148e3692e09396f9f3bdc9462ef/public_suffix_list.dat)，SHA-256 为 `2dcffaa353cc1eb13be5c03d238dca7194dd35f4729d54740d2b9b5ec11b8f1e`。原始许可见 Qt Base 源码归档中的 `src/3rdparty/libpsl/PSL-LICENSE.txt`。同目录的 `README.txt` 说明如何用归档内的生成器从该列表重建 `psl_data.cpp` 和测试用 DAFSA。
+
 macOS 的 `xdnote-cocoa.1` 在同一 Qt Base 6.8.2 源码构建中生成 QtGui 和 Cocoa 平台插件。两者共享辅助功能对象缓存的私有接口，用户修改或恢复时应成对替换。随包 `cocoaBackports` 绑定这两份实际模块、原始 SDK、补丁来源、构建配方及兼容检查。对应[补丁与构建说明](https://github.com/xiaodaozhi/xdnote/tree/main/tools/qt-cocoa-patches)随项目源码独立维护。
 
 Windows 使用相匹配的 DLL 和插件目录；Linux 保留 SONAME 相对链接及目录内加载路径，同时满足目标系统 ABI；macOS 保留 `.app` 的 framework 布局和加载路径，修改后按本机策略对自有副本恢复必要的 ad-hoc 完整性封印。本项目不采用 Developer ID 或 Apple 公证，新增更新 framework／XPC／helper 时仍须保留各自签名参数。Store 安装目录的维护边界与可构建的自有副本分别核对。Qt 库的部署重定位和代码节核对不等于已经重编并验证了用户修改的 Qt。
