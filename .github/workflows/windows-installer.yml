@@ -116,7 +116,7 @@ jobs:
       - name: Validate actual native package roundtrip
         shell: pwsh
         run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
-      - name: Validate File Explorer and its default application picker
+      - name: Validate visible setup, File Explorer and its default application picker
         if: runner.environment == 'github-hosted'
         timeout-minutes: 8
         shell: powershell
