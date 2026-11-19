@@ -279,7 +279,8 @@ def run_probe(output, installed_update):
         candidate.write_bytes(Path(__file__).read_bytes())
         profile = root / 'login'
         options = ['--installed-update'] if installed_update else []
-        profile.write_text('exec ' + shlex.join([sys.executable, str(candidate), '--inside-login', *options]) + '\n')
+        profile.write_text('exec ' + shlex.join([sys.executable, str(candidate), '--inside-login', *options]) +
+                           ' >"$HOME/console.log" 2>&1\n')
         owned_user = False
         installed_policy = False
         candidate_receipt = {}
@@ -313,16 +314,20 @@ def run_probe(output, installed_update):
                 sudo('/usr/bin/install', '-m', '0644',
                      SOURCE / 'apps/desktop/packaging/linux/org.xdnote.update.policy', POLICY)
                 installed_policy = True
-            login = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/openvt', '-s', '-w', '--',
+            login = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/openvt', '-c', '12', '-s', '-w', '--',
                                     '/bin/login', '-f', '--', username],
                                    capture_output=True, timeout=380 if installed_update else 75)
             receipt = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/cat', home / 'report.json'],
                                      capture_output=True, timeout=10)
-            if login.returncode or receipt.returncode:
-                raise RuntimeError('The console login did not return a receipt: ' +
-                                   login.stderr.decode(errors='replace')[-500:])
+            console_log = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/cat', home / 'console.log'],
+                                         capture_output=True, timeout=10)
+            console = {'exit': login.returncode, 'warning': login.stderr.decode(errors='replace')[-500:],
+                       'workerOutput': console_log.stdout.decode(errors='replace')[-1500:]}
+            (output / 'console.json').write_text(json.dumps(console, indent=2) + '\n')
+            if receipt.returncode:
+                raise RuntimeError('The console login did not return a receipt: ' + repr(console))
             result = json.loads(receipt.stdout)
-            result.update(candidate_receipt)
+            result.update(candidate_receipt, virtualConsole=12)
             (output / 'report.json').write_text(json.dumps(result, indent=2) + '\n')
             if not result['ok']:
                 raise RuntimeError(result.get('error', 'Unexpected polkit authorization outcome'))
