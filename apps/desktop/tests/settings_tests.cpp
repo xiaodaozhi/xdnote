@@ -50,6 +50,22 @@ bool select(SettingsWindow *window, const char *name, const QVariant &value) {
 class SettingsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void firstLaunchUsesSystemAndGraphiteThenRestoresSavedAppearance() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = dir.filePath("settings.json");
+        QVERIFY(!QFile::exists(path));
+        {
+            Appearance first(nullptr, path);
+            QCOMPARE(first.theme(), QStringLiteral("system"));
+            QCOMPARE(first.accent(), QStringLiteral("graphite"));
+            QVERIFY(first.setPreferences(QStringLiteral("light"), QStringLiteral("olive")));
+        }
+        const Appearance reopened(nullptr, path);
+        QCOMPARE(reopened.theme(), QStringLiteral("light"));
+        QCOMPARE(reopened.accent(), QStringLiteral("olive"));
+    }
+
     void updateNetworkPersistsAtomicallyAndKeepsUnknownFields() {
         QTemporaryDir dir; const auto path = dir.filePath("settings.json");
         QVERIFY(fileFixtures::write(path, R"({"schemaVersion":1,"updates":{"future":7},"future":{"keep":42}})"));
