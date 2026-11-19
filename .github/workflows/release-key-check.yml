@@ -1,0 +1,57 @@
+name: Check production update keys
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  approval-policy:
+    if: github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require an environment reviewer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api "repos/$GITHUB_REPOSITORY/environments/release-signing" |
+            jq -e 'any(.protection_rules[]?; .type == "required_reviewers" and (.reviewers | length) > 0)' >/dev/null; then
+            echo 'Configure required reviewers on release-signing before checking keys.' >&2
+            exit 1
+          fi
+
+  match:
+    name: Compare production update keys
+    needs: approval-policy
+    runs-on: ubuntu-24.04
+    environment: release-signing
+    timeout-minutes: 15
+    env:
+      CARGO_HOME: ${{ github.workspace }}/build/cargo-home
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/release-tool
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Build the locked update tool
+        id: build
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup run 1.99.0 cargo fetch --locked
+          rustup run 1.99.0 cargo build --locked --offline --release -p xdnote-update --features release-tool --bin xdnote-update-tool
+      - name: Check manifest key
+        env:
+          XDNOTE_UPDATE_KEY_ID: ${{ vars.XDNOTE_UPDATE_KEY_ID }}
+          XDNOTE_UPDATE_SIGNING_KEY_HEX: ${{ secrets.XDNOTE_UPDATE_SIGNING_KEY_HEX }}
+        run: build/release-tool/release/xdnote-update-tool check-manifest-key
+      - name: Check Sparkle key
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          XDNOTE_SPARKLE_SIGNING_KEY_HEX: ${{ secrets.XDNOTE_SPARKLE_SIGNING_KEY_HEX }}
+        run: build/release-tool/release/xdnote-update-tool check-sparkle-key
