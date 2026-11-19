@@ -49,8 +49,6 @@ done
 test -n "$WAYLAND_DISPLAY"
 export WAYLAND_DISPLAY
 echo "GNOME nested compositor published $WAYLAND_DISPLAY"
-wayland-info > "$evidence/globals.log"
-rg -q 'xdg_wm_base' "$evidence/globals.log"
 window=
 for attempt in {1..30}; do
     window="$(xdotool search --onlyvisible --pid "$shell_pid" 2>/dev/null | sed -n '1p' || true)"
@@ -71,6 +69,7 @@ owned_pids+=("$!")
 screen_reader=${owned_pids[-1]}
 sleep 2
 kill -0 "$screen_reader"
+if [ "${XDNOTE_WAYLAND_SETUP_ONLY:-0}" = "1" ]; then exit 0; fi
 
 # The fixture client has only the GNOME Wayland connection. X11 is used
 # exclusively for the nested compositor's output and host input.

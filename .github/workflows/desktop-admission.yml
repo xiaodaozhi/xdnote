@@ -155,6 +155,14 @@ jobs:
           xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
           timeout 180s sudo apt-get "${xdnote_apt_options[@]}" update
           timeout 360s sudo apt-get "${xdnote_apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 fonts-noto-cjk fonts-noto-color-emoji xvfb gdb patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev
+      - name: Prepare isolated GNOME Wayland and Orca
+        if: inputs.scope == 'reader-wayland'
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20)
+          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends gnome-shell gnome-settings-daemon xwayland x11-utils dbus-x11 orca speech-dispatcher-espeak-ng openbox xdotool xauth pulseaudio
+          XDNOTE_WAYLAND_SETUP_ONLY=1 xvfb-run -a -s '-screen 0 1440x1080x24 +extension GLX' dbus-run-session -- bash scripts/reader-acceptance/orca-wayland.sh
       - name: Prepare pinned Qt SDK with checksums
         run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }} --profile ${{ matrix.profile || 'default' }}
       - name: Prepare pinned source dependencies
@@ -179,11 +187,8 @@ jobs:
       - name: Run genuine Orca in an isolated GNOME Wayland session
         if: inputs.scope == 'reader-wayland'
         shell: bash
-        timeout-minutes: 10
-        run: |
-          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=' -o Acquire::Retries=1 -o Acquire::http::Timeout=20)
-          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends gnome-shell gnome-settings-daemon xwayland wayland-utils x11-utils dbus-x11 orca speech-dispatcher-espeak-ng openbox xdotool xauth pulseaudio
-          xvfb-run -a -s '-screen 0 1440x1080x24 +extension GLX' dbus-run-session -- bash scripts/reader-acceptance/orca-wayland.sh
+        timeout-minutes: 4
+        run: xvfb-run -a -s '-screen 0 1440x1080x24 +extension GLX' dbus-run-session -- bash scripts/reader-acceptance/orca-wayland.sh
       - name: Preserve GNOME Wayland reader evidence
         if: always() && inputs.scope == 'reader-wayland'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
