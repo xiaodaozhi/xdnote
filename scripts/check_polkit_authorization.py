@@ -100,6 +100,12 @@ def authorize_at_prompt(command, password, *, cancel=False, installed_helper=Fal
                                        stderr=subprocess.DEVNULL)
         patterns = [r'Password:\s*', r'Choose identity[^\r\n]*:', TIMEOUT, EOF]
         position = terminal_output.expect(patterns)
+        if position in (0, 1) and f'AUTHENTICATING FOR {ACTION} ' not in terminal_output.before:
+            raise RuntimeError('The native prompt belongs to a different polkit action')
+        if position == 1 and cancel:
+            terminal_output.sendline('')
+            terminal_output.expect(r'AUTHENTICATION CANCEL[LE]*D')
+            return request.wait(timeout=20)
         if position == 1:
             account = os.environ['USER']
             match = next((re.match(r'\s*(\d+)\.\s+(.*)', line) for line in terminal_output.before.splitlines()
@@ -196,7 +202,7 @@ def run_installed_helper(password, report):
             if receipt.get('transaction') != transaction:
                 raise RuntimeError('The receipt refers to a different authorization request')
             if cancel:
-                if not status or receipt.get('error') != 'authorization_cancelled' or (job / 'ready.json').exists():
+                if not status or receipt.get('error') not in ('authorization_cancelled', 'authorization_failed') or (job / 'ready.json').exists():
                     raise RuntimeError('The native cancellation did not leave the update unauthorized: ' + repr(receipt))
                 if installed_identity() != old or (home / 'restarted.json').exists():
                     raise RuntimeError('Cancelling authorization changed the installed package')
@@ -218,6 +224,7 @@ def run_installed_helper(password, report):
 
 
 def run_worker(installed_update):
+    os.umask(0o077)
     path = Path.home() / 'password'
     password = path.read_text()
     path.unlink()
