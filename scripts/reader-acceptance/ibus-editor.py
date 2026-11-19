@@ -31,8 +31,10 @@ def walk(node, depth=0):
 def wait_for(predicate, description):
     desktop = pyatspi.Registry.getDesktop(0)
     deadline = time.monotonic() + 12
+    visible_nodes = []
     while time.monotonic() < deadline:
         desktop.clear_cache()
+        visible_nodes.clear()
         for app in desktop:
             if app is None or (app.name or "").casefold() != "xdnote":
                 continue
@@ -41,10 +43,12 @@ def wait_for(predicate, description):
                 try:
                     if predicate(node):
                         return node
+                    if node.name and visible(node) and node.getRoleName() in ("frame", "dialog", "push button", "text"):
+                        visible_nodes.append((node.getRoleName(), node.name))
                 except (LookupError, NotImplementedError):
                     pass
         time.sleep(0.25)
-    raise ValueError(description)
+    raise ValueError(f"{description}. Visible controls: {visible_nodes[:25]}")
 
 def visible(node):
     return node.getState().contains(pyatspi.STATE_SHOWING)
@@ -83,6 +87,8 @@ phase = sys.argv[1]
 if phase == "directory":
     activate(show("打开文件夹"))
     show("打开工作区目录")
+    if os.environ.get("XDNOTE_TEST_INPUT_WINDOW"):
+        time.sleep(0.25)  # Let the compositor switch keyboard focus to the new surface.
     keys("ctrl+l")
     input_event("type", "--clearmodifiers", sys.argv[2])
     keys("Return")

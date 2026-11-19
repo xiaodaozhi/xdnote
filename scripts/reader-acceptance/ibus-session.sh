@@ -111,6 +111,22 @@ switch_engine() {
 
 probe=(/usr/bin/python3 scripts/reader-acceptance/ibus-editor.py)
 "${launch[@]}" > "$evidence/app.log" 2>&1 & owned+=("$!")
+if [[ "$backend" == wayland ]]; then
+    for attempt in {1..60}; do
+        if grep -q 'GNOME Shell started' "$evidence/mutter.log" && grep -q 'xdg_toplevel.*set_title' "$trace"; then break; fi
+        sleep 0.25
+    done
+    xdotool windowactivate --sync "$window"
+    xdotool mousemove --sync --window "$window" 345 280
+    # Dismiss the initial GNOME overview so the native client can receive the seat.
+    xdotool key --clearmodifiers Escape
+    for attempt in {1..30}; do
+        if grep -q 'wl_keyboard.*enter(' "$trace"; then break; fi
+        if [[ "$attempt" == 8 ]]; then xdotool key --clearmodifiers alt+Tab; fi
+        sleep 0.25
+    done
+    grep -m 1 'wl_keyboard.*enter(' "$trace"
+fi
 "${probe[@]}" directory "$evidence/workspace"
 "${launch[@]}" --file "$fixture" >> "$evidence/app.log" 2>&1
 "${probe[@]}" edit
