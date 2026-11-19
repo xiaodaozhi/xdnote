@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 'fixtures checks engine guards; product builds and tests the actual installer payload'
+        description: 'Run installer checks or the isolated #87 Windows 11 reader acceptance'
         type: choice
-        options: [fixtures, product]
+        options: [fixtures, product, reader-win11]
         default: fixtures
   workflow_call:
     inputs:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   native-installer:
-    if: inputs.scope != 'product'
+    if: inputs.scope == 'fixtures'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -58,7 +58,7 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
   product-installer:
-    if: inputs.scope == 'product'
+    if: inputs.scope == 'product' || inputs.scope == 'reader-win11'
     runs-on: windows-2022
     timeout-minutes: 40
     env:
@@ -110,10 +110,13 @@ jobs:
           python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-windows-x86_64-dev.zip
           python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
       - name: Cross-check live Rust ranges in the packaged Windows executable
+        if: inputs.scope == 'product'
         run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/product-install/payload/xdnote.exe --output build/product-install/linkage.json
       - name: Check unsigned Store package layout with disposable identity
+        if: inputs.scope == 'product'
         run: python scripts/check_msix.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --payload build/product-install/payload --audit build/product-install/payload-inventory.json --work-dir build/product-install/msix-fixture
       - name: Validate actual native package roundtrip
+        if: inputs.scope == 'product'
         shell: pwsh
         run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
       - name: Upload product integration evidence only
@@ -131,5 +134,39 @@ jobs:
             build/desktop-admission/build-identity.json
             build/test-fonts/receipt.json
             build/test-fonts/Noto-OFL.txt
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Preserve the same-run x64 installer for NVDA acceptance
+        if: inputs.scope == 'reader-win11'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: xdnote-reader-win11-x64-${{ github.sha }}
+          path: |
+            build/product-install/xdnote-dev-setup.exe
+            build/product-install/installer-report.json
+          retention-days: 7
+          if-no-files-found: error
+  reader-win11:
+    if: inputs.scope == 'reader-win11'
+    needs: product-installer
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: xdnote-reader-win11-x64-${{ github.sha }}
+          path: build/reader-win11-package
+      - name: Verify x64 installation and real NVDA speech on Windows 11
+        shell: pwsh
+        run: ./scripts/reader-acceptance/nvda-win11.ps1
+      - name: Preserve bounded reader evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reader-nvda-win11-${{ github.run_attempt }}
+          path: build/evidence/reader-nvda/*.log
           retention-days: 7
           if-no-files-found: warn
