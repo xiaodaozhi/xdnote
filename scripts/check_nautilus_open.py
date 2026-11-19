@@ -121,10 +121,11 @@ def start_wayland(log):
         while time.monotonic() < deadline and compositor.poll() is None:
             socket = next((item.name for item in runtime.glob('wayland-*') if item.is_socket()), None)
             if socket:
-                windows = subprocess.run(['/usr/bin/xdotool', 'search', '--onlyvisible', '--class', 'gnome-shell|mutter'],
-                                         capture_output=True, text=True, timeout=3).stdout.splitlines()
-                if windows:
-                    return compositor, socket, windows[0]
+                for selector in (('--pid', str(compositor.pid)), ('--class', 'gnome-shell|mutter')):
+                    windows = subprocess.run(['/usr/bin/xdotool', 'search', '--onlyvisible', *selector],
+                                             capture_output=True, text=True, timeout=3).stdout.splitlines()
+                    if windows:
+                        return compositor, socket, windows[0]
             time.sleep(0.2)
         raise ValueError('Nested GNOME Wayland desktop did not become ready')
     except BaseException:
