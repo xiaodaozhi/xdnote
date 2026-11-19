@@ -49,6 +49,10 @@ using System.Text;
 public static class ExplorerAcceptance {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className, string title);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string title);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -235,35 +239,34 @@ function Install-ThroughWizard($Result) {
     $arguments = @('/NORESTART','/LANG=english',('/DIR="' + $root + '"'),
         ('/LOG="' + (Join-Path $output 'setup.log') + '"'))
     $before = Foreground
-    if ($before -and $before.Current.Name -eq 'Search' -and
-        (Get-Process -Id $before.Current.ProcessId -ErrorAction SilentlyContinue).ProcessName -eq 'SearchHost') {
+    if ($before -and $before.Current.Name -in 'Search','Start' -and
+        (Get-Process -Id $before.Current.ProcessId -ErrorAction SilentlyContinue).ProcessName -in 'SearchHost','StartMenuExperienceHost') {
         [ExplorerAcceptance]::keybd_event(27,0,0,[UIntPtr]::Zero)
         [ExplorerAcceptance]::keybd_event(27,0,2,[UIntPtr]::Zero)
     }
+    Send-GuestStage 'start-installer'
     $setup = Start-Process -FilePath $Package -ArgumentList $arguments -PassThru
+    Send-GuestStage 'installer-started'
     try {
-        $activator = New-Object -ComObject WScript.Shell
-        $wizardClass = [Windows.Automation.PropertyCondition]::new(
-            [Windows.Automation.AutomationElement]::ClassNameProperty, 'TWizardForm')
         $wizard = Wait-Result 'the visible xdnote Setup Wizard' {
             if ($setup.HasExited) { throw "Setup exited before displaying the wizard ($($setup.ExitCode))" }
-            $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll(
-                [Windows.Automation.TreeScope]::Children, $wizardClass)
-            foreach ($window in $windows) {
-                if ($window.Current.Name -ne 'Setup - xdnote' -or $window.Current.IsOffscreen) { continue }
-                $owner = $window.Current.ProcessId
-                if ($owner -eq $setup.Id -or (Get-CimInstance Win32_Process -Filter "ProcessId = $owner").ParentProcessId -eq $setup.Id) {
-                    $Result.setupWindowDiscovered = $true
-                    if (Picker-IsForeground $window) { return $window }
-                    $null = $activator.AppActivate($owner)
-                }
+            $handle = [ExplorerAcceptance]::FindWindow('TWizardForm', 'Setup - xdnote')
+            if ($handle -eq [IntPtr]::Zero) { return }
+            [uint32]$owner = 0
+            $null = [ExplorerAcceptance]::GetWindowThreadProcessId($handle, [ref]$owner)
+            if ($owner -eq $setup.Id -or (Get-CimInstance Win32_Process -Filter "ProcessId = $owner").ParentProcessId -eq $setup.Id) {
+                $Result.setupWindowDiscovered = $true
+                if ([ExplorerAcceptance]::GetForegroundWindow() -eq $handle) { return (Foreground) }
+                $null = [ExplorerAcceptance]::SetForegroundWindow($handle)
             }
         }
+        Send-GuestStage 'wizard-foreground'
         $Result.wizardPages = @()
         $pages = @('Welcome to the xdnote Setup Wizard', 'License Agreement', 'Information',
             'Select Destination Location', 'Select Additional Tasks')
         foreach ($page in $pages) {
             $null = Wait-Result "the setup page $page" { Visible-SetupPage $wizard $page }
+            Send-GuestStage ('page: ' + $page)
             $Result.wizardPages += $page
             if ($page -eq 'License Agreement') {
                 $notice = 'This agreement covers only the bundled Microsoft VC++ runtime. Other components retain their own licenses.'
@@ -447,6 +450,9 @@ $result = [ordered]@{ok=$false; buildIdentity=$metadata.buildIdentity; installer
     scope='Visible setup, Explorer item verbs and the Windows default application picker in a disposable desktop'}
 $uninstaller = Join-Path $root 'unins000.exe'
 try {
+    if ([ExplorerAcceptance]::SetThreadExecutionState([uint32]2147483651) -eq 0) {
+        throw 'The disposable desktop could not keep its display awake'
+    }
     $originalChoice = Read-MdUserChoice
     Install-ThroughWizard $result
     $controlFile = $metadata.files | Where-Object { $_.path -eq 'xdnote.exe' }
@@ -523,6 +529,7 @@ try {
     }
     throw
 } finally {
+    $null = [ExplorerAcceptance]::SetThreadExecutionState([uint32]2147483648)
     foreach ($process in @(Owned-Processes)) { Stop-Process -Id $process.Id }
     try {
         if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {

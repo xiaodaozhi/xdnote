@@ -167,6 +167,7 @@ jobs:
         if: always()
         run: |
           if test -S "$XDNOTE_GUEST/monitor"; then
+            sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" wake || true
             sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" screenshot || true
             sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" quit || true
           fi

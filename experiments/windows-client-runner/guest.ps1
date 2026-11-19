@@ -7,6 +7,10 @@ function Send-Result([string]$Marker, $Record) {
     $serial.WriteLine($Marker + ' ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)))
 }
 
+function Send-GuestStage([string]$Stage) {
+    $serial.WriteLine('XDNOTE_VM_STAGE ' + $Stage)
+}
+
 $root = 'C:\xdnote-acceptance'
 $result = [ordered]@{ok=$false}
 try {
@@ -40,6 +44,7 @@ try {
     $env:RUNNER_TEMP = "$root\temp"
     $installer = Join-Path "$root\temp" 'xdnote-dev-setup.exe'
     Copy-Item -LiteralPath (Join-Path $media 'xdnote-dev-setup.exe') -Destination $installer
+    Send-GuestStage 'installer-copied'
     & "$root\scripts\check_windows_file_manager.ps1" -Package $installer `
         -Audit (Join-Path $media 'payload-inventory.json') -PackageReport (Join-Path $media 'installer-report.json') `
         -EvidenceDirectory "$root\build\evidence"
