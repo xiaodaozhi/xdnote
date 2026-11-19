@@ -86,7 +86,7 @@ def wayland_document(sample, binary):
     while time.monotonic() < deadline:
         desktop.clear_cache()
         for app in desktop:
-            if app is None or (app.name or '').casefold() != 'xdnote':
+            if app is None or (app.name or '').casefold() != 'mousepad':
                 continue
             app.clear_cache()
             for window in app:
@@ -95,7 +95,7 @@ def wayland_document(sample, binary):
                     if Path(f'/proc/{pid}/exe').resolve(strict=True) != binary:
                         raise ValueError('The document window belongs to a different executable')
                     maps = Path(f'/proc/{pid}/maps').read_text()
-                    if not re.search(r'/platforms/libqwayland[^/\n ]*\.so', maps):
+                    if 'libwayland-client.so' not in maps:
                         raise ValueError('The installed application did not load a Wayland platform plugin')
                     return pid
         time.sleep(0.2)
@@ -140,7 +140,7 @@ def verify(binary, evidence, samples, backend):
     if any(sample.parent != samples[0].parent for sample in samples):
         raise ValueError('Expected owned samples in one private folder')
     fallback = Path(os.environ['XDG_DATA_HOME']) / 'applications' / FALLBACK
-    fallback.parent.mkdir(parents=True)
+    fallback.parent.mkdir(parents=True, exist_ok=True)
     fallback.write_text('[Desktop Entry]\nType=Application\nName=Acceptance fallback\n'
                         'Exec=/usr/bin/false %f\nMimeType=text/markdown;\n', encoding='utf-8')
     execute('/usr/bin/gio', 'mime', MIME, FALLBACK)
