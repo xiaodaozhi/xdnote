@@ -268,6 +268,10 @@ jobs:
           python scripts/build_linux_installer.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/xdnote-dev.deb --report build/cycle-112-deployment/staging-evidence/debian-package.json
           dpkg-deb --info build/cycle-112-deployment/xdnote-dev.deb
           dpkg-deb --contents build/cycle-112-deployment/xdnote-dev.deb
+      - name: Select the installed macOS Markdown content-type default
+        if: inputs.scope == 'deployment-macos' && inputs.macos_runner == 'macos-15' && runner.environment == 'github-hosted'
+        timeout-minutes: 6
+        run: python scripts/check_macos_markdown_default.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/macos-default-evidence
       - name: Validate installed developer payload without registration
         if: startsWith(inputs.scope, 'deployment-')
         shell: bash
@@ -283,10 +287,6 @@ jobs:
         run: |
           sudo apt-get -o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=1 -o Acquire::https::Timeout=20 -y --no-remove --no-install-recommends install x11-utils libglib2.0-bin nautilus openbox xdotool python3-pyatspi at-spi2-core libatk-adaptor gnome-shell gnome-settings-daemon xwayland
           python scripts/check_linux_package_install.py --package build/cycle-112-deployment/xdnote-dev.deb --metadata build/cycle-112-deployment/staging-evidence/debian-package.json --apt-sources build/ci-apt/ubuntu.list --evidence build/cycle-112-deployment/native-package-evidence --wayland
-      - name: Select the installed macOS Markdown content-type default
-        if: inputs.scope == 'deployment-macos' && runner.environment == 'github-hosted'
-        timeout-minutes: 6
-        run: python scripts/check_macos_markdown_default.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/macos-default-evidence
       - name: Test document tools, recovery and shortcuts on Unix
         if: startsWith(inputs.scope, 'tools-')
         run: python scripts/desktop.py test --suite tools

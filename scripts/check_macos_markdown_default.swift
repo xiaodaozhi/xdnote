@@ -9,6 +9,21 @@ private struct CheckError: LocalizedError {
     init(_ message: String) { errorDescription = message }
 }
 
+private final class Setting: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+    func complete(_ error: Error?) {
+        lock.lock()
+        value = error?.localizedDescription ?? ""
+        lock.unlock()
+    }
+    func message() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 private func require(_ value: Bool, _ message: String) throws {
     if !value { throw CheckError(message) }
 }
@@ -20,6 +35,15 @@ private func waitFor<T>(_ description: String, _ probe: () -> T?) throws -> T {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
     throw CheckError("Timed out waiting for " + description)
+}
+
+private func setTypeDefault(_ application: URL, for file: URL) throws {
+    let result = Setting()
+    NSWorkspace.shared.setDefaultApplication(at: application, toOpenContentTypeOfFileAt: file) { error in
+        result.complete(error)
+    }
+    let message = try waitFor("the NSWorkspace file-type setting") { result.message() }
+    try require(message.isEmpty, "NSWorkspace file-type setting failed: " + message)
 }
 
 private func defaultApplication(_ file: URL) -> URL? {
@@ -56,6 +80,8 @@ let role = LSRolesMask.all
 let id = Bundle(url: app)?.bundleIdentifier ?? ""
 var report: [String: Any] = ["ok": false, "contentType": markdown, "bundleIdentifier": id]
 var original: String?
+var originalApplication: URL?
+var referenceFile: URL?
 var changed = false
 var failure = false
 
@@ -70,6 +96,8 @@ do {
     for input in inputs { try source.write(to: input, options: [.withoutOverwriting]) }
 
     original = LSCopyDefaultRoleHandlerForContentType(markdown as CFString, role)?.takeRetainedValue() as String?
+    originalApplication = defaultApplication(md)
+    referenceFile = md
     let unrelatedApp = defaultApplication(txt)
     try require(LSRegisterURL(app as CFURL, true) == noErr, "Launch Services could not register xdnote")
     for file in [md, markdownLong] {
@@ -79,13 +107,14 @@ do {
     let baseline = [md, markdownLong].map { defaultApplication($0)?.path ?? "(none)" }
     report["previousHandler"] = original ?? "(none)"
     report["resolvedBefore"] = baseline
-    // This changes a content-type handler in Launch Services, without per-file overrides.
-    let status = LSSetDefaultRoleHandlerForContentType(markdown as CFString, role, id as CFString)
-    try require(status == noErr, "Launch Services content-type assignment returned \(status)")
     changed = true
+    try setTypeDefault(app, for: md)
     _ = try waitFor("the Markdown type handler and both file extensions") {
         let current = LSCopyDefaultRoleHandlerForContentType(markdown as CFString, role)?.takeRetainedValue() as String?
-        return current == id && defaultApplication(md) == app && defaultApplication(markdownLong) == app ? true : nil
+        let resolved = [md, markdownLong].map { defaultApplication($0)?.path ?? "(none)" }
+        report["observedHandler"] = current ?? "(none)"
+        report["resolvedAfter"] = resolved
+        return current == id && resolved == [app.path, app.path] ? true : nil
     }
     try require(defaultApplication(txt) == unrelatedApp, "The unrelated text handler changed")
     let later = evidence.appendingPathComponent("设默认后新建.md")
@@ -132,10 +161,18 @@ for process in NSRunningApplication.runningApplications(withBundleIdentifier: id
     where process.bundleURL?.resolvingSymlinksInPath() == app {
     _ = process.terminate()
 }
-if changed, let previous = original, previous != id {
-    let status = LSSetDefaultRoleHandlerForContentType(markdown as CFString, role, previous as CFString)
-    report["restoredPreviousHandler"] = status == noErr
-    if status != noErr { failure = true }
+if changed, let previous = originalApplication, let file = referenceFile, previous != app {
+    do {
+        try setTypeDefault(previous, for: file)
+        _ = try waitFor("the restored Markdown default") {
+            defaultApplication(file) == previous ? true : nil
+        }
+        report["restoredPreviousHandler"] = true
+    } catch {
+        report["restoredPreviousHandler"] = false
+        report["cleanupError"] = error.localizedDescription
+        failure = true
+    }
 }
 if failure { report["ok"] = false }
 try write(report, to: result)
