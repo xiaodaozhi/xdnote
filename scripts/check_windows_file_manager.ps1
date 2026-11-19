@@ -203,16 +203,12 @@ function Visible-SetupPage($Wizard, [string]$Title) {
     if (Read-PickerPoint $Wizard @($Title)) { return $true }
 }
 
-function Press-SetupButton($Wizard, [string]$Name) {
-    $button = Wait-Result "the setup $Name button" {
-        if (Picker-IsForeground $Wizard) {
-            $control = Named-Control $Wizard $Name
-            if ($control -and !$control.Current.IsOffscreen -and $control.Current.IsEnabled) { return $control }
-            if (!$control) { Read-PickerPoint $Wizard @($Name.Trim('<', '>',' ')) }
-        }
-    }
-    if ($button -is [Windows.Automation.AutomationElement] -and (Picker-IsForeground $Wizard)) { Click-Control $button }
-    else { Press-PickerPoint $Wizard $button }
+function Press-SetupAccelerator($Wizard, [byte]$Key) {
+    if (!(Picker-IsForeground $Wizard)) { throw 'The setup wizard lost the foreground' }
+    [ExplorerAcceptance]::keybd_event(0x12,0,0,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::keybd_event($Key,0,0,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::keybd_event($Key,0,2,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::keybd_event(0x12,0,2,[UIntPtr]::Zero)
 }
 
 function Install-ThroughWizard($Result) {
@@ -237,30 +233,37 @@ function Install-ThroughWizard($Result) {
             $Result.wizardPages += $page
             if ($page -eq 'License Agreement') {
                 $null = Wait-Result 'the runtime license scope' { Read-PickerPoint $wizard @('This agreement covers only') }
-                Press-SetupButton $wizard 'I accept the agreement'
+                Press-SetupAccelerator $wizard 0x41 # Alt+A, Accept
             }
-            Press-SetupButton $wizard 'Next >'
+            Press-SetupAccelerator $wizard 0x4E # Alt+N, Next
         }
         $null = Wait-Result 'the initial ready-to-install page' { Visible-SetupPage $wizard 'Ready to Install' }
         $task = 'Offer xdnote in Open with'
         if (Read-PickerPoint $wizard @($task)) { throw 'The Markdown candidate was selected by default' }
-        Press-SetupButton $wizard '< Back'
+        Press-SetupAccelerator $wizard 0x42 # Alt+B, Back
         $null = Wait-Result 'the setup additional tasks page' { Visible-SetupPage $wizard 'Select Additional Tasks' }
         $option = Wait-Result 'the Markdown candidate option' { Read-PickerPoint $wizard @($task) }
         # The Inno Setup checklist draws the checkbox immediately before the first word.
         $option.X -= 23
         Press-PickerPoint $wizard $option
-        Press-SetupButton $wizard 'Next >'
+        Press-SetupAccelerator $wizard 0x4E # Alt+N, Next
         $null = Wait-Result 'the explicit Markdown candidate in the installation recap' { Read-PickerPoint $wizard @($task) }
         $Result.wizardPages += 'Ready to Install'
         $Result.wizardMarkdownCandidate = 'initially unchecked, then selected in the wizard'
-        Press-SetupButton $wizard 'Install'
+        Press-SetupAccelerator $wizard 0x49 # Alt+I, Install
         $null = Wait-Result 'the visible installation completion page' { Visible-SetupPage $wizard 'Completing the xdnote Setup Wizard' }
         $Result.wizardPages += 'Completing the xdnote Setup Wizard'
-        Press-SetupButton $wizard 'Finish'
+        Press-SetupAccelerator $wizard 0x46 # Alt+F, Finish
         if (!$setup.WaitForExit(20000) -or $setup.ExitCode -ne 0) { throw 'The visible installer did not exit successfully' }
         $command = (Get-Item -LiteralPath 'HKCU:\Software\Classes\xdnote.Markdown\shell\open\command').GetValue('')
         if ($command -ne ('"' + $exe + '" -- "%1"')) { throw 'The wizard did not register the selected Markdown candidate' }
+    } catch {
+        if ($wizard -and (Picker-IsForeground $wizard)) {
+            $Result.wizardControls = @($wizard.FindAll([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.Condition]::TrueCondition) | Where-Object { !$_.Current.IsOffscreen } |
+                Select-Object -First 60 | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
+        }
+        throw
     } finally {
         # A failed diagnostic must release its private setup window before package cleanup.
         if (!$setup.HasExited) {
