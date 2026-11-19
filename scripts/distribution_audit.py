@@ -5,7 +5,7 @@ import json
 import struct
 from pathlib import Path, PurePosixPath
 
-from check_third_party_licenses import audit as source_audit, source_license_texts
+from check_third_party_licenses import DEPLOYMENT_NOTICE_PATHS, audit as source_audit, source_license_texts
 from installer_common import ROOT, build_output, digest
 from installer_payload import verify_payload, product_qt_records
 import runtime_materials
@@ -101,13 +101,13 @@ def audit(root, metadata, qt):
     required = {'licenses/Apache-2.0.txt', 'licenses/THIRD_PARTY_NOTICES.md', 'licenses/DESIGN-ATTRIBUTION.txt',
                 'licenses/project-and-source-dependencies/CC-BY-4.0.txt',
                 'licenses/project-and-source-dependencies/third-party/manifest.json',
-                'licenses/project-and-source-dependencies/third-party/Qt-LGPL-3.0-only.txt',
-                'licenses/project-and-source-dependencies/third-party/Qt-GPL-3.0-only.txt',
                 'share/notices/Microsoft-VC-runtime/license.rtf', 'share/notices/Windows-runtime-NOTICE.txt',
                 'share/notices/InnoSetup-license.txt', 'share/notices/InnoSetup-PascalScript-license.md',
                 'share/notices/Installer-CREDITS.txt'}
     required.update('licenses/project-and-source-dependencies/' + item['licenseFile'].removeprefix('LICENSES/')
                     for item in source_license_texts(source_manifest))
+    required.update('licenses/project-and-source-dependencies/' + path.removeprefix('LICENSES/')
+                    for path in DEPLOYMENT_NOTICE_PATHS)
     if required - set(shipped):
         raise ValueError('Required distribution material missing: ' + ', '.join(sorted(required - set(shipped))))
     records = product_qt_records(metadata['qtSbom'], metadata['files'])

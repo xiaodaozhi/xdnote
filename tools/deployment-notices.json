@@ -11,6 +11,21 @@
       "path": "LICENSES/third-party/Qt-GPL-3.0-only.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/v6.8.2/LICENSES/GPL-3.0-only.txt",
       "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    {
+      "path": "LICENSES/third-party/Qt-PSL-MPL-2.0.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/v6.8.2/src/3rdparty/libpsl/PSL-LICENSE.txt",
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
+    },
+    {
+      "path": "LICENSES/third-party/Qt-Tika-NOTICE.txt",
+      "url": "https://raw.githubusercontent.com/apache/tika/5101bc7fb090ed7deffe56837d7633c9485a1e5d/NOTICE.txt",
+      "sha256": "4cd09bac8d81bd34decf6b95fb23d42fc9b3d6b653ec4be8ef44674b692c97cd"
+    },
+    {
+      "path": "LICENSES/third-party/Qt-Tika-OGL-UK-3.0.txt",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/31ba1a50e5397e00a304dbadc76531740e89ee48/text/OGL-UK-3.0.txt",
+      "sha256": "eb22384c866b63b513254ae3baff6b3bc7d001f559d03e02b6b8b83333a04806"
     }
   ]
 }
