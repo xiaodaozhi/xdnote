@@ -42,6 +42,20 @@ try {
     }
     if (!$open.CloseMainWindow()) { throw 'Could not close the owned Notepad window' }
     Write-Host 'Explorer used the selected handler and showed the owned document'
+    $wordpad = Join-Path $env:ProgramFiles 'Windows NT\Accessories\wordpad.exe'
+    if (Test-Path -LiteralPath $wordpad) {
+        $alternate = 'HKCU:\Software\Classes\xdnote.Acceptance.WordPad\shell\open\command'
+        New-Item -Path $alternate -Force | Out-Null
+        Set-Item -Path $alternate -Value ('"' + $wordpad + '" "%1"')
+        New-ItemProperty -Path $candidates -Name 'xdnote.Acceptance.WordPad' -PropertyType String -Value '' -Force | Out-Null
+        [ExplorerAcceptance]::SHChangeNotify(0x08000000,0,[IntPtr]::Zero,[IntPtr]::Zero)
+        $choice = Read-MdUserChoice
+        Select-DefaultInProperties $item 'WordPad' 'wordpad.exe'
+        if ([IO.Path]::GetFileName([ExplorerAcceptance]::MarkdownHandler()) -ne 'wordpad.exe' -or (Read-MdUserChoice) -eq $choice) {
+            throw 'Second explicit default was not selected'
+        }
+        Write-Host 'Explorer Properties selected a second explicit default through the picker'
+    }
 } catch {
     $window = Foreground
     if ($window) {

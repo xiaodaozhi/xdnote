@@ -51,6 +51,7 @@ public static class ExplorerAcceptance {
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
+    [DllImport("shell32.dll")] public static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
     [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode)]
     static extern int AssocQueryString(uint flags, uint kind, string extension, string verb, StringBuilder path, ref uint size);
     public static string MarkdownHandler() {
@@ -97,6 +98,10 @@ function Press-Control($Control) {
         $pattern.Invoke()
         return
     }
+    Click-Control $Control
+}
+
+function Click-Control($Control) {
     $rect = $Control.Current.BoundingRectangle
     if ($Control.Current.IsOffscreen -or $rect.IsEmpty) { throw 'Picker item is not visible' }
     if (![ExplorerAcceptance]::SetCursorPos([int]($rect.X + $rect.Width/2), [int]($rect.Y + $rect.Height/2))) {
@@ -195,6 +200,20 @@ function Open-DocumentProcess([string]$Filename) {
     }
 }
 
+function Verify-ExplorerDocuments($Items) {
+    if (Owned-Processes) { throw 'An xdnote process was already running before the Explorer cold launch' }
+    $processIds = @()
+    foreach ($item in $Items) {
+        $item.InvokeVerb('open')
+        $opened = Wait-Result 'the installed xdnote document window' {
+            Open-DocumentProcess ([IO.Path]::GetFileName($item.Path))
+        }
+        $processIds += $opened.Id
+    }
+    if ($processIds[0] -ne $processIds[1]) { throw 'File Explorer warm opening did not reuse the installed process' }
+    return $processIds[0]
+}
+
 function Read-MdUserChoice {
     $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.md\UserChoice')
     if ($key) {
@@ -216,11 +235,25 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe) {
         if (!$button) { $button = Named-Control $properties ('Change' + [char]0x2026) }
         $button
     }
-    Press-Control $change
+    if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $properties.Current.NativeWindowHandle) {
+        throw 'File Properties lost the foreground before Change'
+    }
+    Click-Control $change
+    $observed = [Collections.Generic.List[string]]::new()
     $picker = Wait-Result 'the Windows app picker' {
         $window = Foreground
-        if ($window -and $window.Current.NativeWindowHandle -ne $properties.Current.NativeWindowHandle -and
-            $window.Current.ClassName -eq 'Shell_Flyout' -and $window.Current.Name -match '\.md files') { $window }
+        if ($window) {
+            $caption = $window.Current.ClassName + ': ' + $window.Current.Name
+            if (!$observed.Contains($caption)) {
+                $observed.Add($caption)
+                Write-Host "Picker ($Name) foreground: $caption"
+            }
+            if ($window.Current.NativeWindowHandle -ne $properties.Current.NativeWindowHandle -and
+                ($window.Current.ClassName -eq 'Open With' -or
+                 ($window.Current.ClassName -eq 'Shell_Flyout' -and $window.Current.Name -match 'How do you want to open'))) {
+                $window
+            }
+        }
     }
     # The server's Shell_Flyout is drawn but exposes no accessible children.
     $app = Wait-Result "$Name or More apps in the Windows picker" {
@@ -267,6 +300,19 @@ try {
     $result.installerPreservedExplicitChoice = ((Read-MdUserChoice) -eq $originalChoice)
     $result.inferredHandlerAfterInstall = ($effectiveAfterInstall -eq $exe)
 
+    if ($effectiveAfterInstall -eq $exe) {
+        # Add a stock alternative as a candidate only, before Explorer can cache
+        # the associations. The chooser itself still makes each default choice.
+        $notepad = Join-Path $env:SystemRoot 'System32\notepad.exe'
+        if (!(Test-Path -LiteralPath $notepad)) { throw 'Stock Notepad unavailable' }
+        $fallback = 'HKCU:\Software\Classes\xdnote.Acceptance.Notepad\shell\open\command'
+        $candidates = 'HKCU:\Software\Classes\.md\OpenWithProgids'
+        New-Item -Path $fallback -Force | Out-Null
+        Set-Item -Path $fallback -Value ('"' + $notepad + '" "%1"')
+        New-ItemProperty -Path $candidates -Name 'xdnote.Acceptance.Notepad' -PropertyType String -Value '' -Force | Out-Null
+        [ExplorerAcceptance]::SHChangeNotify(0x08000000,0,[IntPtr]::Zero,[IntPtr]::Zero)
+    }
+
     $shell = New-Object -ComObject Shell.Application
     $shell.Explore($files)
     $explorer = Wait-Result 'the owned File Explorer folder' {
@@ -283,29 +329,26 @@ try {
     if ($cold.Path -ne (Join-Path $files $samples[0]) -or $warm.Path -ne (Join-Path $files $samples[1])) {
         throw 'File Explorer did not resolve both owned document items'
     }
-    if ($effectiveAfterInstall -eq $exe) {
+    if ([ExplorerAcceptance]::MarkdownHandler() -eq $exe) {
+        $openedId = Verify-ExplorerDocuments @($cold,$warm)
+        $result.inferredHandlerDocuments = $samples
+        $result.inferredHandlerSameProcess = $true
+        Stop-Process -Id $openedId
+        Wait-Process -Id $openedId -Timeout 10 -ErrorAction SilentlyContinue
+        $result.pickerStage = 'Notepad'
         Select-DefaultInProperties $cold 'Notepad' 'notepad.exe'
         $null = Wait-Result 'the selected fallback editor' {
             if ([IO.Path]::GetFileName([ExplorerAcceptance]::MarkdownHandler()) -eq 'notepad.exe') { $true }
         }
     }
     $beforeChoice = Read-MdUserChoice
+    $result.pickerStage = 'xdnote'
     Select-DefaultInProperties $cold 'xdnote' 'xdnote.exe'
     $null = Wait-Result 'the selected default executable' {
         if ([ExplorerAcceptance]::MarkdownHandler() -eq $exe -and (Read-MdUserChoice) -ne $beforeChoice) { $true }
     }
     $result.selectedDefault = 'xdnote.exe'
-    if (Owned-Processes) { throw 'An xdnote process was already running before the Explorer cold launch' }
-
-    $processIds = @()
-    foreach ($item in @($cold,$warm)) {
-        $item.InvokeVerb('open')
-        $opened = Wait-Result 'the installed xdnote document window' {
-            Open-DocumentProcess ([IO.Path]::GetFileName($item.Path))
-        }
-        $processIds += $opened.Id
-    }
-    if ($processIds[0] -ne $processIds[1]) { throw 'File Explorer warm opening did not reuse the installed process' }
+    $null = Verify-ExplorerDocuments @($cold,$warm)
     $result.documents = $samples
     $result.sameProcess = $true
     $result.ok = $true
