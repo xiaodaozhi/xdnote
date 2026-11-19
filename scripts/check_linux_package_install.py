@@ -94,7 +94,35 @@ def desktop_entry_launch(desktop_file, binary, fixtures, env, log):
                 display.wait(timeout=5)
 
 
-def verify(package, metadata, apt_sources, evidence):
+def nautilus_session(binary, fixtures, env, log, evidence, backend):
+    evidence.mkdir(exist_ok=True)
+    with (tempfile.TemporaryDirectory(prefix='nautilus-', dir=evidence) as isolated,
+          tempfile.TemporaryDirectory(prefix='xdnote-runtime-') as runtime_dir):
+        home = Path(isolated)
+        files = home / 'File manager acceptance'
+        files.mkdir()
+        samples = [files / fixture.name for fixture in fixtures]
+        for source, target in zip(fixtures, samples, strict=True):
+            target.write_bytes(source.read_bytes())
+        before = [digest(item) for item in samples]
+        desktop_env = dict(env, HOME=isolated, XDG_RUNTIME_DIR=runtime_dir,
+                           XDG_CONFIG_HOME=str(home / 'config'), XDG_DATA_HOME=str(home / 'data'),
+                           XDG_CACHE_HOME=str(home / 'cache'), XDG_DATA_DIRS='/usr/local/share:/usr/share',
+                           GDK_BACKEND='x11', GSETTINGS_BACKEND='memory', NO_AT_BRIDGE='0',
+                           GTK_MODULES='atk-bridge', LC_ALL='C.UTF-8', XDG_SESSION_TYPE=backend)
+        if backend == 'wayland':
+            desktop_env.update(XDG_CURRENT_DESKTOP='GNOME', QT_LINUX_ACCESSIBILITY_ALWAYS_ON='1',
+                               LIBGL_ALWAYS_SOFTWARE='1')
+        command = ['/usr/bin/xvfb-run', '-a', '-s', '-screen 0 1440x1080x24 +extension GLX',
+                   '/usr/bin/dbus-run-session', '--', '/usr/bin/python3',
+                   Path(__file__).with_name('check_nautilus_open.py'), backend, binary, evidence, *samples]
+        run(command, log, env=desktop_env, timeout=150)
+        if [digest(item) for item in samples] != before:
+            raise ValueError('File-manager acceptance modified a user fixture')
+    return json.loads((evidence / 'nautilus.json').read_bytes())
+
+
+def verify(package, metadata, apt_sources, evidence, wayland):
     if (os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'
             or platform.machine() != 'x86_64' or platform.freedesktop_os_release().get('VERSION_ID') != '22.04'
             or platform.freedesktop_os_release().get('ID') != 'ubuntu' or os.geteuid() == 0):
@@ -166,27 +194,11 @@ def verify(package, metadata, apt_sources, evidence):
                 report['checks'].append('installed launcher returned the expected build and initialized native X11 Qt')
                 report['desktopLaunch'] = desktop_entry_launch(desktop_file, binary, fixtures, env, log)
                 report['checks'].append('installed Markdown default handler and desktop entry opened documents in one process')
-                with (tempfile.TemporaryDirectory(prefix='nautilus-', dir=evidence) as isolated,
-                      tempfile.TemporaryDirectory(prefix='xdnote-runtime-') as runtime_dir):
-                    home = Path(isolated)
-                    files = home / 'File manager acceptance'
-                    files.mkdir()
-                    samples = [files / fixture.name for fixture in fixtures]
-                    for source, target in zip(fixtures, samples, strict=True):
-                        target.write_bytes(source.read_bytes())
-                    desktop_env = dict(env, HOME=isolated, XDG_RUNTIME_DIR=runtime_dir,
-                                       XDG_CONFIG_HOME=str(home / 'config'), XDG_DATA_HOME=str(home / 'data'),
-                                       XDG_CACHE_HOME=str(home / 'cache'), XDG_DATA_DIRS='/usr/local/share:/usr/share',
-                                       GDK_BACKEND='x11', GSETTINGS_BACKEND='memory', NO_AT_BRIDGE='0',
-                                       GTK_MODULES='atk-bridge', LC_ALL='C.UTF-8')
-                    command = ['/usr/bin/dbus-run-session', '--', '/usr/bin/xvfb-run', '-a',
-                               '/usr/bin/python3', Path(__file__).with_name('check_nautilus_open.py'),
-                               binary, evidence, *samples]
-                    run(command, log, env=desktop_env, timeout=150)
-                    if [digest(item) for item in samples] != before:
-                        raise ValueError('File-manager acceptance modified a user fixture')
-                report['nautilus'] = json.loads((evidence / 'nautilus.json').read_bytes())
+                report['nautilus'] = nautilus_session(binary, fixtures, env, log, evidence, 'x11')
                 report['checks'].append('Nautilus opened a file once, changed the Markdown default, and used that default')
+                if wayland:
+                    report['nautilusWayland'] = nautilus_session(binary, fixtures, env, log, evidence / 'wayland', 'wayland')
+                    report['checks'].append('Native GNOME Wayland repeated the Nautilus acceptance')
             finally:
                 if query().returncode == 0:
                     run(['/usr/bin/sudo', '-n', '/usr/bin/dpkg', '--purge', 'xdnote'], log, timeout=150)
@@ -207,6 +219,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for argument in ('package', 'metadata', 'apt-sources', 'evidence'):
         parser.add_argument('--' + argument, type=Path, required=True)
+    parser.add_argument('--wayland', action='store_true', help='also run the private GNOME Wayland session')
     args = parser.parse_args()
     verify(build_output(args.package), json.loads(build_output(args.metadata).read_bytes()),
-           build_output(args.apt_sources), build_output(args.evidence))
+           build_output(args.apt_sources), build_output(args.evidence), args.wayland)
