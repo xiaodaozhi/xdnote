@@ -24,7 +24,7 @@ def run(command, log, *, env=None, timeout=60, check=True):
 
 
 def desktop_entry_launch(desktop_file, binary, fixtures, env, log):
-    """Use GIO to launch the installed desktop entry on its own native X11 server."""
+    """Use GIO to exercise the installed entry and MIME handler on a private X11 server."""
     def window_pid(fixture, environment):
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
@@ -53,18 +53,35 @@ def desktop_entry_launch(desktop_file, binary, fixtures, env, log):
                 number = display.stdout.readline().strip()
                 if not number.isdecimal():
                     raise ValueError('Isolated X11 server did not return a display number')
-                environment = dict(env, DISPLAY=':' + number, LC_ALL='C.UTF-8')
+                environment = dict(env, DISPLAY=':' + number, LC_ALL='C.UTF-8',
+                                   XDG_DATA_DIRS='/usr/local/share:/usr/share')
+                mime = 'text/markdown'
+                mime_config = Path(environment['XDG_CONFIG_HOME']) / 'mimeapps.list'
+                run(['/usr/bin/gio', 'mime', mime, desktop_file.name], log, env=environment)
+                default = run(['/usr/bin/gio', 'mime', mime], log, env=environment).stdout.splitlines()[0]
+                if not default.endswith(': ' + desktop_file.name) or not mime_config.is_file():
+                    raise ValueError('GIO did not save the Markdown handler in the private XDG configuration')
                 pids = []
-                for fixture in fixtures:
-                    launch = subprocess.Popen(['/usr/bin/gio', 'launch', desktop_file, fixture],
+                for fixture, command in zip(fixtures, (
+                        ['/usr/bin/gio', 'open'],
+                        ['/usr/bin/gio', 'launch', desktop_file],
+                        ['/usr/bin/gio', 'open'],
+                ), strict=True):
+                    content = run(['/usr/bin/gio', 'info', '-a', 'standard::content-type', fixture],
+                                  log, env=environment).stdout
+                    if f'standard::content-type: {mime}' not in map(str.strip, content.splitlines()):
+                        raise ValueError('GIO did not identify the Markdown fixture')
+                    launch = subprocess.Popen([*command, fixture],
                                               env=environment, stdout=output, stderr=output, start_new_session=True)
                     launchers.append(launch)
                     if launch.wait(timeout=8):
                         raise ValueError(f'GIO failed to activate the installed desktop entry for {fixture.name}')
                     pids.append(window_pid(fixture, environment))
-                if pids[0] != pids[1]:
+                if len(set(pids)) != 1:
                     raise ValueError('Warm launch created another process instead of forwarding to the running instance')
-                return {'coldDocument': fixtures[0].name, 'warmDocument': fixtures[1].name, 'sameProcess': True}
+                return {'defaultHandler': desktop_file.name, 'mimeType': mime,
+                        'defaultColdDocument': fixtures[0].name, 'explicitWarmDocument': fixtures[1].name,
+                        'defaultWarmDocument': fixtures[2].name, 'sameProcess': True}
             finally:
                 # Both process groups were created by this fixture on the private display.
                 for launch in launchers:
@@ -117,7 +134,9 @@ def verify(package, metadata, apt_sources, evidence):
             fixture.write_text('# 系统包验证\n', encoding='utf-8')
             second_fixture = config / '运行中 转交.md'
             second_fixture.write_text('# 系统桌面转交验证\n', encoding='utf-8')
-            fixtures = (fixture, second_fixture)
+            third_fixture = config / '默认应用 转交.md'
+            third_fixture.write_text('# 默认应用运行中转交\n', encoding='utf-8')
+            fixtures = (fixture, second_fixture, third_fixture)
             before = [digest(item) for item in fixtures]
             env = os.environ.copy()
             env.update(HOME=directory, XDG_CONFIG_HOME=str(config / 'config'), XDG_DATA_HOME=str(config / 'data'),
@@ -145,7 +164,7 @@ def verify(package, metadata, apt_sources, evidence):
                 run(['/usr/bin/xvfb-run', '-a', launcher, '--help'], log, env=env)
                 report['checks'].append('installed launcher returned the expected build and initialized native X11 Qt')
                 report['desktopLaunch'] = desktop_entry_launch(desktop_file, binary, fixtures, env, log)
-                report['checks'].append('installed desktop entry opened a cold document and forwarded a second document')
+                report['checks'].append('installed Markdown default handler and desktop entry opened documents in one process')
             finally:
                 if query().returncode == 0:
                     run(['/usr/bin/sudo', '-n', '/usr/bin/dpkg', '--purge', 'xdnote'], log, timeout=150)
