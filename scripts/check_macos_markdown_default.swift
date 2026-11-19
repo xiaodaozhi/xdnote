@@ -9,6 +9,21 @@ private struct CheckError: LocalizedError {
     init(_ message: String) { errorDescription = message }
 }
 
+private final class Setting: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+    func complete(_ error: Error?) {
+        lock.lock()
+        value = error?.localizedDescription ?? ""
+        lock.unlock()
+    }
+    func message() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 private func require(_ value: Bool, _ message: String) throws {
     if !value { throw CheckError(message) }
 }
@@ -80,12 +95,29 @@ do {
     report["previousHandler"] = original ?? "(none)"
     report["resolvedBefore"] = baseline
     // This changes a content-type handler in Launch Services, without per-file overrides.
-    let status = LSSetDefaultRoleHandlerForContentType(markdown as CFString, role, id as CFString)
-    try require(status == noErr, "Launch Services content-type assignment returned \(status)")
+    let requestedAPI = ProcessInfo.processInfo.environment["XDNOTE_DEFAULT_API"] ?? "legacy"
+    report["api"] = requestedAPI
     changed = true
+    if requestedAPI == "workspace" {
+        let setting = Setting()
+        workspace.setDefaultApplication(at: app, toOpenContentTypeOfFileAt: md) { error in
+            setting.complete(error)
+        }
+        let message = try waitFor("the NSWorkspace default-application completion") { setting.message() }
+        try require(message.isEmpty, "NSWorkspace content-type assignment error: " + message)
+    } else {
+        let status = LSSetDefaultRoleHandlerForContentType(markdown as CFString, role, id as CFString)
+        report["assignmentStatus"] = status
+        try require(status == noErr, "Launch Services content-type assignment returned \(status)")
+    }
     _ = try waitFor("the Markdown type handler and both file extensions") {
         let current = LSCopyDefaultRoleHandlerForContentType(markdown as CFString, role)?.takeRetainedValue() as String?
-        return current == id && defaultApplication(md) == app && defaultApplication(markdownLong) == app ? true : nil
+        let resolved = [md, markdownLong].map { defaultApplication($0)?.path ?? "(none)" }
+        report["observedHandler"] = current ?? "(none)"
+        report["resolvedAfter"] = resolved
+        report["candidatePaths"] = workspace.urlsForApplications(toOpen: md).map(\.path)
+        report["selectedBundlePath"] = app.path
+        return current == id && resolved == [app.path, app.path] ? true : nil
     }
     try require(defaultApplication(txt) == unrelatedApp, "The unrelated text handler changed")
     let later = evidence.appendingPathComponent("设默认后新建.md")
