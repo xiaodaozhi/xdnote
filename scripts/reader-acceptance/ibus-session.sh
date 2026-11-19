@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${GITHUB_ACTIONS:-}" != true || "${RUNNER_ENVIRONMENT:-}" != github-hosted ||
+      -z "${DISPLAY:-}" || -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+    echo 'Run the IBus acceptance in the disposable CI desktop session' >&2
+    exit 2
+fi
 evidence="$PWD/build/evidence/ibus-x11"
 mkdir -p "$evidence/workspace" "$evidence/home"
 export HOME="$evidence/home"
@@ -62,3 +67,5 @@ ibus engine xkb:us::eng
 /usr/bin/python3 scripts/reader-acceptance/ibus-x11.py transfer
 test "$before" = "$(sha256sum "$fixture")"
 echo "PASS: IBus Pinyin composition, commit, workspace transfer, undo, redo, selection, and unchanged disk fixture"
+/usr/bin/python3 scripts/reader-acceptance/ibus-x11.py accessible-write
+test "$before" = "$(sha256sum "$fixture")"

@@ -108,5 +108,13 @@ elif phase == "transfer":
     keys("ctrl+z")
     document(ORIGINAL)
     print("Workspace editor retained selection, undo, and redo")
+elif phase == "accessible-write":
+    replacement = "# AT-SPI write acceptance\n\n独立接口写入"
+    if not document(ORIGINAL).queryEditableText().setTextContents(replacement):
+        raise ValueError("The external AT-SPI client could not replace the editable document")
+    document(replacement)
+    keys("ctrl+z")
+    document(ORIGINAL)
+    print("PASS: an external AT-SPI whole-value write was undoable in one step")
 else:
     raise SystemExit("Unknown fixture phase")
