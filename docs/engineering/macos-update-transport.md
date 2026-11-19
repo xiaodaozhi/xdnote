@@ -39,6 +39,6 @@ Apple 的 Network `proxyConfigurations`、HTTP CONNECT／SOCKS5 构造器及显�
 
 网络夹具仅绑定回环端口。直连 TLS 使用回环 IP；代理使用保留的 `.invalid` 目标名，避免系统对回环 IP 的特殊绕过。拒绝代理记录 CONNECT／SOCKS5 握手及错误；固定映射的隧道代理只连接自有 TLS 服务，确认默认系统信任处理拒绝自签证书。探针观察信任结果后始终交给默认处理，不接受证书、不添加锚点。默认本机探针只访问自有回环服务，不修改系统网络偏好。
 
-手动 `scope=sparkle-system-pac` 在一次性 GitHub 托管运行器启用仅匹配专用测试域的系统 PAC。先用相同主机名证明源站可被直接访问，再让实际 appcast 下载以及从直连 URL 到代理目标的重定向各通过同一拒绝代理。CI 要求收到代理错误且两次源站直连计数均为零。测试退出时禁用 PAC 并恢复临时 hosts 项。`directFallbackObserved` 记录是否实际直连，`policyPassed` 记录该次代理拒绝后的直连约束结果。工作流要求直连约束通过。自动发现、最低系统与正式更新候选独立验收。
+手动 `scope=sparkle-system-pac` 在一次性 GitHub 托管运行器启用仅匹配专用测试域的系统 PAC。先用相同主机名证明源站可被直接访问，再分别让实际 appcast 下载、引向代理目标的 appcast 重定向、以及由本地 appcast 触发的 Sparkle 更新包下载走同一拒绝代理。每条路径必须收到代理错误且源站直连计数为零。更新包探针要求 Sparkle 实际启动下载，收到包数据或进入解包即失败。测试退出时禁用 PAC 并恢复临时 hosts 项。`directFallbackObserved` 记录是否实际直连，`policyPassed` 记录该次代理拒绝后的直连约束结果。工作流要求直连约束通过。自动发现、最低系统与正式更新候选独立验收。
 
 输出区分实际宿主、拒绝路径、TLS 隧道和 SDK 来源。测试不代替最低支持系统、真实公网 HTTPS／代理、原生安装、helper 退出及恢复验收。手动 `scope=sparkle-macos` 执行这一范围，可用 `macos_runner` 在 macOS 15 与 macOS 26 的托管 arm64 运行器间选择，不准备 Qt、不运行完整桌面矩阵，也不发布软件。
