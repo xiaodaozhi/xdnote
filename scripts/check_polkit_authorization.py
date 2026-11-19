@@ -90,6 +90,7 @@ def authorize_at_prompt(command, password, *, cancel=False, installed_helper=Fal
     os.close(slave)
     os.close(notify)
     terminal_output = fdspawn(master, encoding='utf-8', codec_errors='replace', timeout=15)
+    authorized_install = False
     try:
         if not select.select([notified], [], [], 10)[0] or os.read(notified, 1) or agent.poll() is not None:
             raise RuntimeError('Native polkit agent did not register for this process')
@@ -129,13 +130,17 @@ def authorize_at_prompt(command, password, *, cancel=False, installed_helper=Fal
                 raise RuntimeError('The authorization agent did not disable password echo')
             terminal_output.sendline(password)
             if after_grant is not None:
+                authorized_install = True
                 after_grant(request)
         return request.wait(timeout=20)
     finally:
         os.close(notified)
         if request is not None and request.poll() is None:
-            request.kill()
-            request.wait(timeout=5)
+            if authorized_install:
+                request.wait(timeout=320)
+            else:
+                request.kill()
+                request.wait(timeout=5)
         if request is not None and request.stderr is not None:
             request.stderr.close()
         if agent.poll() is None:
@@ -177,17 +182,22 @@ def run_installed_helper(password, report):
 
         def finish_after_grant(helper):
             nonlocal proceeding
-            ready = json.loads(wait_for(job / 'ready.json', helper).read_bytes())
-            if ready != control or parent.poll() is not None:
-                raise RuntimeError('The root helper did not await the running old image')
-            write_control(job / 'proceed.json', control)
-            proceeding = True
-            time.sleep(.35)
-            if helper.poll() is not None or installed_identity() != old:
-                raise RuntimeError('The package changed before the running image exited')
-            (running / 'stop-parent').touch()
-            parent.wait(timeout=10)
-            helper.wait(timeout=150)
+            try:
+                ready = json.loads(wait_for(job / 'ready.json', helper).read_bytes())
+                if ready != control or parent.poll() is not None:
+                    raise RuntimeError('The root helper did not await the running old image')
+                write_control(job / 'proceed.json', control)
+                proceeding = True
+                time.sleep(.35)
+                if helper.poll() is not None or installed_identity() != old:
+                    raise RuntimeError('The package changed before the running image exited')
+                (running / 'stop-parent').touch()
+                parent.wait(timeout=10)
+                helper.wait(timeout=150)
+            finally:
+                if not proceeding:
+                    write_control(job / 'cancel.json', control)
+                (running / 'stop-parent').touch()
 
         try:
             wait_for(running / 'parent-ready', parent)
