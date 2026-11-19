@@ -50,6 +50,7 @@ public static class ExplorerAcceptance {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode)]
     static extern int AssocQueryString(uint flags, uint kind, string extension, string verb, StringBuilder path, ref uint size);
     public static string MarkdownHandler() {
@@ -232,10 +233,18 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe) {
         }
     }
     Press-PickerPoint $picker $app
-    $confirm = Wait-Result 'the app picker confirmation button' {
-        Read-PickerPoint $picker @('Set default','Always','OK')
+    $pickerHandle = $picker.Current.NativeWindowHandle
+    $confirm = Read-PickerPoint $picker @('Set default','Always','OK','0K')
+    if ($confirm) {
+        Press-PickerPoint $picker $confirm
+    } else {
+        if (!(Picker-IsForeground $picker)) { throw 'The picker lost its foreground' }
+        [ExplorerAcceptance]::keybd_event(13,0,0,[UIntPtr]::Zero)
+        [ExplorerAcceptance]::keybd_event(13,0,2,[UIntPtr]::Zero)
     }
-    Press-PickerPoint $picker $confirm
+    $null = Wait-Result 'the app picker to close after confirming' {
+        if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $pickerHandle) { $true }
+    }
     Press-Control (Wait-Result 'the Properties confirmation button' { Named-Control $properties 'OK' })
 }
 
