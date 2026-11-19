@@ -36,7 +36,7 @@ jobs:
             echo "Ubuntu source: $mirror"
             if sudo timeout --kill-after=10s 90s apt-get "${apt_options[@]}" update &&
                sudo timeout --kill-after=10s 235s apt-get "${apt_options[@]}" install -y --no-remove --no-install-recommends \
-                 libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 xvfb x11-utils libglib2.0-bin patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev; then
+                 libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 xvfb x11-utils libglib2.0-bin patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev age; then
               exit 0
             fi
           done
@@ -138,6 +138,22 @@ jobs:
           test "$before" = "$(sha256sum "$fixture")"
           jq -n --arg os "$PRETTY_NAME" --arg glibc "$(getconf GNU_LIBC_VERSION)" \
             '{ok:true,os:$os,glibc:$glibc,aptInstalledBeta:true,aptUpgradedToRc:true,dpkgVerified:true,nativeX11Initialized:true,userFixturePreserved:true,purged:true,productionSigned:false,published:false}' > "$evidence/upgrade.json"
+      - name: Seal the two verified Linux assets to a one-use recipient
+        if: success() && runner.environment == 'github-hosted'
+        env:
+          XDNOTE_CANDIDATE_RECIPIENT: age184ezya459c68h089nw2fa7uln8lkphj6208ndtg0qtc7gp0gt59qqhdf62
+        run: |
+          set -euo pipefail
+          release=build/linux-candidate/0.1.0-rc.1
+          tar -C "$release" -cf - xdnote-0.1.0-rc.1-linux-x86_64.tar.gz xdnote-0.1.0-rc.1-ubuntu22.04-x86_64.deb |
+            age --recipient "$XDNOTE_CANDIDATE_RECIPIENT" --output build/linux-candidate/private-linux-candidate.tar.age
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: success() && runner.environment == 'github-hosted'
+        with:
+          name: private-linux-candidate
+          path: build/linux-candidate/private-linux-candidate.tar.age
+          if-no-files-found: error
+          retention-days: 1
       - name: Preserve only verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
