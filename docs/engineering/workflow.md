@@ -34,6 +34,8 @@
 
 CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发安装验证只在 `build/` 的专用目录中操作自有部署副本和自建数据样本；Windows 原生安装专项在一次性 CI 账户中使用专用临时安装目录，允许创建并核对应用拥有的候选关联和快捷方式，不更改默认应用或 UserChoice。专项不得在个人账户中运行。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
 
+`scope=ime-linux` 在一次性 Ubuntu 22.04 X11 图形会话运行真实 IBus 智能拼音。脚本用自建 Markdown 样本核对候选与提交、独立窗口移交工作区、选区、撤销重做及磁盘摘要，并通过独立 AT-SPI 客户端检查整段写入与撤销。原始私有 IBus 会话日志随 CI 工件保留。
+
 `scope=scroll-unix` 仅在 Linux、macOS ARM64 执行[双栏段落映射](scroll-synchronization.md)与受影响的预览／接管离屏回归，使用 `test --suite scroll`；不包含完整桌面矩阵或物理滚动验收。
 
 `scope=ui-unix` 仅补验 Linux、macOS ARM64 的原生阅读与共享界面回归，使用 `test --suite ui` 的固定离屏环境；Windows 原生系统命令与动画设置以独立本机证据记录。界面截图与几何回归不替代用户要求的视觉验收，也不因定向范围新增而重复完整桌面 CI。

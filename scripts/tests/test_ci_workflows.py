@@ -40,7 +40,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn(forbidden, text)
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("if: startsWith(inputs.scope, 'updates')", text)
@@ -51,7 +51,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: inputs.scope != 'installer-windows'", text)
         self.assertIn("if: inputs.scope == 'installer-windows'", text)
         self.assertIn("uses: ./.github/workflows/windows-installer.yml", text)
-        self.assertIn("(inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux' || inputs.scope == 'reader-orca')", text)
+        self.assertIn("(inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux' || inputs.scope == 'reader-orca' || inputs.scope == 'ime-linux')", text)
         self.assertIn("if: always() && inputs.scope == 'reader-orca'", text)
         for backend in ('x11', 'wayland'):
             self.assertIn(f'bash scripts/reader-acceptance/orca-linux.sh {backend}', text)
