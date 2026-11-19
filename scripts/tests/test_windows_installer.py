@@ -86,7 +86,7 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertNotIn('push:', text)
         self.assertNotIn('scripts/desktop.py test', text)
         self.assertNotIn('matrix:', text)
-        self.assertIn('options: [fixtures, product, reader-win11]', text)
+        self.assertIn('options: [fixtures, product, reader-win11, reader-win11-replay]', text)
         self.assertIn("if: inputs.scope == 'product'", text)
         self.assertIn('test-windows-product-install.ps1', text)
         self.assertIn('scripts/distribution_audit.py', text)

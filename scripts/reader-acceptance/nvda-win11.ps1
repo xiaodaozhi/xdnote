@@ -12,6 +12,10 @@ $system = Get-CimInstance Win32_OperatingSystem
 if ($system.ProductType -ne 1 -or [int]$system.BuildNumber -lt 22000) {
     throw 'Windows 11 client is required'
 }
+$cpu = @(Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Architecture)
+if ($cpu.Count -eq 0 -or $cpu -ne 12) {
+    throw "Expected ARM64 hardware (Win32_Processor Architecture values: $($cpu -join ', '))"
+}
 $installed = Join-Path $tools 'installed-xdnote'
 $setup = Join-Path $repo 'build/reader-win11-package/xdnote-dev-setup.exe'
 $receipt = Get-Content -Raw -LiteralPath (Join-Path $repo 'build/reader-win11-package/installer-report.json') | ConvertFrom-Json
@@ -39,6 +43,8 @@ public static class ReaderInput {
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr window, int command);
@@ -54,8 +60,6 @@ public static class ReaderInput {
     public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")]
     public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
     [StructLayout(LayoutKind.Sequential)]
     public struct Point { public int X; public int Y; }
 }
@@ -100,16 +104,17 @@ try {
     $setupProcess = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru
     if ($setupProcess.ExitCode -ne 0) { throw "xdnote installation failed ($($setupProcess.ExitCode))" }
     $xdnoteInstalled = $true
+    $executable = Join-Path $installed 'xdnote.exe'
+    $image = [IO.File]::ReadAllBytes($executable)
+    $peHeader = [BitConverter]::ToInt32($image, 0x3c)
+    if ([BitConverter]::ToUInt32($image, $peHeader) -ne 0x4550 -or [BitConverter]::ToUInt16($image, ($peHeader + 4)) -ne 0x8664) {
+        throw 'Expected the installed xdnote image to be AMD64 PE'
+    }
+    "Windows client $($system.Version), native host ARM64, installed xdnote image AMD64, installer SHA256 $($receipt.sha256)" |
+        Tee-Object -FilePath (Join-Path $out 'environment.log')
     Start-Process -FilePath $nvda -ArgumentList @('--minimal', '--disable-addons', '--no-sr-flag', '--debug-logging', '-f', ('"{0}"' -f $log), '-c', ('"{0}"' -f $config))
     Start-Sleep -Seconds 3
-    $app = Start-Process -FilePath (Join-Path $installed 'xdnote.exe') -WorkingDirectory $installed -ArgumentList @(('"{0}"' -f $fixture)) -PassThru -RedirectStandardOutput (Join-Path $out 'app.log') -RedirectStandardError (Join-Path $out 'app.stderr.log')
-    [uint16]$applicationMachine = 0
-    [uint16]$hostMachine = 0
-    if (![ReaderInput]::IsWow64Process2($app.Handle, [ref]$applicationMachine, [ref]$hostMachine) -or $hostMachine -ne 0xaa64 -or $applicationMachine -ne 0x8664) {
-        throw 'Expected an AMD64 xdnote process under Windows ARM64 emulation'
-    }
-    "Windows client $($system.Version), native host ARM64, xdnote process AMD64 via emulation, installer SHA256 $($receipt.sha256)" |
-        Tee-Object -FilePath (Join-Path $out 'environment.log')
+    $app = Start-Process -FilePath $executable -WorkingDirectory $installed -ArgumentList @(('"{0}"' -f $fixture)) -PassThru -RedirectStandardOutput (Join-Path $out 'app.log') -RedirectStandardError (Join-Path $out 'app.stderr.log')
     $title = "Reader-Check.md $([char]0x2014) xdnote"
     $window = [IntPtr]::Zero
     for ($attempt=0; $attempt -lt 40 -and $window -eq [IntPtr]::Zero; $attempt++) {
@@ -117,6 +122,9 @@ try {
         if ($window -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 500 }
     }
     if ($window -eq [IntPtr]::Zero) { throw 'xdnote reader fixture window did not appear' }
+    [uint32]$windowProcessId = 0
+    [void][ReaderInput]::GetWindowThreadProcessId($window, [ref]$windowProcessId)
+    if ($windowProcessId -ne $app.Id) { throw 'The fixture window does not belong to the installed AMD64 image' }
     [void][ReaderInput]::ShowWindow($window, 9)
     [void][ReaderInput]::SetForegroundWindow($window)
     if ([ReaderInput]::GetForegroundWindow() -ne $window) { throw 'xdnote fixture is not foreground' }

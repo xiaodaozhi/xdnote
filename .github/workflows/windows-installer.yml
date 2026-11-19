@@ -6,7 +6,7 @@ on:
       scope:
         description: 'Run installer checks or the isolated #87 Windows 11 reader acceptance'
         type: choice
-        options: [fixtures, product, reader-win11]
+        options: [fixtures, product, reader-win11, reader-win11-replay]
         default: fixtures
   workflow_call:
     inputs:
@@ -147,17 +147,28 @@ jobs:
           retention-days: 7
           if-no-files-found: error
   reader-win11:
-    if: inputs.scope == 'reader-win11'
+    if: always() && ((inputs.scope == 'reader-win11' && needs.product-installer.result == 'success') || inputs.scope == 'reader-win11-replay')
     needs: product-installer
     runs-on: windows-11-arm
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: inputs.scope == 'reader-win11'
         with:
           name: xdnote-reader-win11-x64-${{ github.sha }}
+          path: build/reader-win11-package
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: inputs.scope == 'reader-win11-replay'
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44441048287
+          name: xdnote-reader-win11-x64-28cad8f120acab6e8510bd8b511ca7a330201f8f
           path: build/reader-win11-package
       - name: Verify x64 installation and real NVDA speech on Windows 11
         shell: pwsh
