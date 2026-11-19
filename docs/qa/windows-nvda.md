@@ -14,7 +14,7 @@ pwsh -NoProfile -File scripts/reader-acceptance/nvda-windows.ps1 `
   -NvdaExe build/reader-acceptance/nvda-portable/nvda.exe
 ```
 
-将示例路径替换为实际载荷和便携副本。出现前台提示时，切到对应的 `NVDA reader check` 窗口并保持前台直至脚本结束。默认等待 60 秒，可用 `-ForegroundTimeoutSeconds` 调整。验收期间避免切换窗口、移动指针或输入。窗口移到后台时，脚本停止发送输入并清理本次启动的进程。
+将示例路径替换为实际载荷和便携副本。出现前台提示时，切到对应的 `NVDA reader check` 窗口并保持前台直至脚本结束。默认等待 60 秒，可用 `-ForegroundTimeoutSeconds` 调整。验收期间避免切换窗口、移动指针或输入。窗口移到后台时，脚本停止发送输入，尝试正常关闭样本窗口并退出便携 NVDA。
 
 ## 核对结果
 

@@ -315,13 +315,19 @@ try {
             $quit = Start-Process -FilePath $readerExe -WindowStyle Hidden -ArgumentList '--quit' -PassThru
             $checks.nvdaStopped = $reader.WaitForExit(5000) -and $reader.ExitCode -eq 0
             [void]$quit.WaitForExit(3000)
+        } catch {
+            $report.error ??= $_.Exception.Message
         } finally {
             if (!$reader.HasExited) { $reader.Kill() }
         }
     }
-    if ($app -and !$app.HasExited) {
-        [void]$app.CloseMainWindow()
-        if (!$app.WaitForExit(5000)) { $app.Kill() }
+    if ($app -and !$app.HasExited -and $window -ne [IntPtr]::Zero) {
+        $app.Refresh()
+        # Single-instance routing can receive another document during the run.
+        # Close only the fixture through its normal window-close path.
+        if ($app.MainWindowHandle -eq $window) {
+            [void]$app.CloseMainWindow()
+        }
     }
     if (Test-Path -LiteralPath $fixture -PathType Leaf) {
         $report.fixtureSha256After = (Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash.ToLowerInvariant()

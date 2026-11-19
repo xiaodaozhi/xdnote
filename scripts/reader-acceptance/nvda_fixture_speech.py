@@ -1,5 +1,6 @@
 """Record only known fixture markers from speech passed to NVDA's synthesizer."""
 
+import re
 from pathlib import Path
 
 import api
@@ -11,7 +12,6 @@ ROOT = Path(__file__).resolve().parents[2]
 MARKERS = {
     "opening": "opening heading",
     "body": "opening reading marker",
-    "selected": "selected",
     "link": "jump to the distant target",
     "target": "distant target heading",
     "continuation": "the destination paragraph is now being read",
@@ -36,6 +36,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             return
         text = " ".join(part for part in speechSequence if isinstance(part, str)).casefold()
         markers = [name for name, phrase in MARKERS.items() if phrase in text]
+        if re.search(r"\bselected\b", text) and not re.search(r"\bnot selected\b", text):
+            markers.append("selected")
         if not markers:
             return
         phase = (ROOT / "current-phase.txt").read_text(encoding="ascii").strip()
