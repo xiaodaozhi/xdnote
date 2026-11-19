@@ -34,13 +34,15 @@
 
 CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发安装验证只在 `build/` 的专用目录中操作自有部署副本和自建数据样本；Windows 原生安装专项在一次性 CI 账户中使用专用临时安装目录，允许创建并核对应用拥有的候选关联和快捷方式，不更改默认应用或 UserChoice。专项不得在个人账户中运行。产品最低系统目标独立于构建主机，见[平台目标](platform-support.md)。设计原稿、提示词、可编辑素材和试验源码保留；导出 ZIP、运行截图、报告、缓存及各层级 `dist/` 不进入源码。进度和单次验证结果记录在 Issue 或 PR。
 
+`scope=ime-linux` 在一次性 Ubuntu 22.04 X11 图形会话运行真实 IBus 智能拼音。脚本用自建 Markdown 样本核对候选与提交、独立窗口移交工作区、选区、撤销重做及磁盘摘要，并通过独立 AT-SPI 客户端检查整段写入与撤销。原始私有 IBus 会话日志随 CI 工件保留。
+
 `scope=scroll-unix` 仅在 Linux、macOS ARM64 执行[双栏段落映射](scroll-synchronization.md)与受影响的预览／接管离屏回归，使用 `test --suite scroll`；不包含完整桌面矩阵或物理滚动验收。
 
 `scope=ui-unix` 仅补验 Linux、macOS ARM64 的原生阅读与共享界面回归，使用 `test --suite ui` 的固定离屏环境；Windows 原生系统命令与动画设置以独立本机证据记录。界面截图与几何回归不替代用户要求的视觉验收，也不因定向范围新增而重复完整桌面 CI。
 
 `scope=settings-unix` 仅补验 Linux、macOS ARM64 的[设置、偏好及自动保存](settings-window.md)受影响路径，使用 `test --suite settings` 固定离屏运行；不执行真实文件选择器、原生辅助技术或完整桌面矩阵。新设置窗口的人工视觉验收另行记录，未验收时不宣称通过。
 
-`scope=deployment-unix` 仅在 Linux、macOS ARM64 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 复用同一 Linux 开发包，在一次性 GitHub 托管 Ubuntu 22.04 运行器中通过 apt 安装并以 dpkg 核对版本、文件归属与卸载。GIO 在私有 XDG 配置中验证原生启动器及显式、默认入口转交。另起私有 X11、D-Bus 和 XDG 会话，驱动实际 Nautilus 的「打开方式」「属性 → 打开方式 → 设为默认」和双击，分别核对一次性打开、默认应用持久化、运行中转交与冷启动。GNOME Wayland、其他桌面与发行验收单独记录。
+`scope=deployment-unix` 仅在 Linux、macOS ARM64 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 复用同一 Linux 开发包，在一次性 GitHub 托管 Ubuntu 22.04 运行器中通过 apt 安装并以 dpkg 核对版本、文件归属与卸载。GIO 在私有 XDG 配置中验证原生启动器及显式、默认入口转交。另起私有 X11、D-Bus 和 XDG 会话，驱动实际 Nautilus 的「打开方式」「属性 → 打开方式 → 设为默认」和双击，分别核对一次性打开、默认应用持久化、运行中转交与冷启动。另在嵌套 GNOME Shell 和私有 Wayland 套接字中，通过文件属性选择默认应用，再用 Nautilus 文件项的打开动作验证冷启动和运行中转交，并核对实际加载的 Qt Wayland 插件。两套桌面复用同一次包安装，分别保留报告；其他桌面与发行继续分项验收。
 
 桌面工作流的 Ubuntu 22.04 依赖准备使用显式 jammy／updates／security 源与 Ubuntu 归档密钥；主站域名解析失败时改用 [Linux Kernel Archives 的 Ubuntu 镜像](https://mirrors.kernel.org/)，实际地址写入日志，签名与有效期检查保持启用。APT 配置只对该命令生效，不沿用宿主预设的镜像优先级。DNS 探测、索引更新、包下载及整个准备步骤均有时限；网络故障作为基础设施失败记录，不无限等待或计为产品测试结果。
 

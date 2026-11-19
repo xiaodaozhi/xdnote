@@ -1,5 +1,5 @@
 name: Desktop admission
-run-name: ${{ inputs.scope == 'reader-orca' && 'Orca acceptance (X11 / Wayland)' || inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'installer-windows' && 'Windows installer verification' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
+run-name: ${{ inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance (X11 / Wayland)' || inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'installer-windows' && 'Windows installer verification' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux]
       evidence_run:
         description: 'Source product run for delivery-review only'
         type: string
@@ -104,7 +104,7 @@ jobs:
           retention-days: 7
   desktop:
     if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'sparkle-system-pac' && inputs.scope != 'update-helpers' && inputs.scope != 'update-products' && inputs.scope != 'qt-replacement' && inputs.scope != 'delivery-review' && inputs.scope != 'network-flow'
-    name: ${{ inputs.scope == 'reader-orca' && 'Orca acceptance' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }})
+    name: ${{ inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }})
     runs-on: ${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.os }}
     timeout-minutes: 50
     strategy:
@@ -113,7 +113,7 @@ jobs:
         include: >-
           ${{ fromJSON(inputs.scope == 'updates' &&
           '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
-          (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux' || inputs.scope == 'reader-orca') &&
+          (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux' || inputs.scope == 'reader-orca' || inputs.scope == 'ime-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
           (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos' || inputs.scope == 'deployment-macos' || inputs.scope == 'updates-macos') &&
           '[{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
@@ -203,6 +203,25 @@ jobs:
             build/reader-acceptance/orca-*/*/build-identity.json
           if-no-files-found: ignore
           retention-days: 7
+      - name: Prepare isolated Linux IBus session
+        if: inputs.scope == 'ime-linux'
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::https::Timeout=20)
+          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends ibus ibus-libpinyin python3-pyatspi dbus-x11 openbox xdotool xauth
+      - name: Run real IBus Pinyin, workspace transfer, and undo
+        if: inputs.scope == 'ime-linux'
+        timeout-minutes: 5
+        run: xvfb-run -a -s '-screen 0 1440x1080x24' dbus-run-session -- bash scripts/reader-acceptance/ibus-session.sh
+      - name: Preserve IBus and AT-SPI acceptance evidence
+        if: always() && inputs.scope == 'ime-linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ibus-x11-ubuntu-22.04
+          path: build/evidence/ibus-x11/*.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Test explicit update checks and settings
         if: startsWith(inputs.scope, 'updates')
         run: python scripts/desktop.py test --suite updates
@@ -257,8 +276,8 @@ jobs:
         if: inputs.scope == 'deployment-linux' && runner.environment == 'github-hosted'
         timeout-minutes: 10
         run: |
-          sudo apt-get -o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=1 -o Acquire::https::Timeout=20 -y --no-remove --no-install-recommends install x11-utils libglib2.0-bin nautilus openbox xdotool python3-pyatspi at-spi2-core libatk-adaptor
-          python scripts/check_linux_package_install.py --package build/cycle-112-deployment/xdnote-dev.deb --metadata build/cycle-112-deployment/staging-evidence/debian-package.json --apt-sources build/ci-apt/ubuntu.list --evidence build/cycle-112-deployment/native-package-evidence
+          sudo apt-get -o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=1 -o Acquire::https::Timeout=20 -y --no-remove --no-install-recommends install x11-utils libglib2.0-bin nautilus openbox xdotool python3-pyatspi at-spi2-core libatk-adaptor gnome-shell gnome-settings-daemon xwayland
+          python scripts/check_linux_package_install.py --package build/cycle-112-deployment/xdnote-dev.deb --metadata build/cycle-112-deployment/staging-evidence/debian-package.json --apt-sources build/ci-apt/ubuntu.list --evidence build/cycle-112-deployment/native-package-evidence --wayland
       - name: Test document tools, recovery and shortcuts on Unix
         if: startsWith(inputs.scope, 'tools-')
         run: python scripts/desktop.py test --suite tools
@@ -345,7 +364,7 @@ jobs:
           retention-days: 7
 
   aggregate:
-    name: ${{ inputs.scope == 'reader-orca' && 'Orca acceptance (Linux)' || inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
+    name: ${{ inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance (Linux)' || inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop, installer, sparkle, update-helpers, update-products, qt-replacement, delivery-review, network-flow]
     if: always()
     runs-on: ubuntu-24.04
