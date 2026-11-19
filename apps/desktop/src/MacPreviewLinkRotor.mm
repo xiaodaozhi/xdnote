@@ -8,6 +8,17 @@
 #include <QWindow>
 
 namespace {
+NSWindow *previewWindow(xdnote::NativePreviewView *preview)
+{
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa"))
+        return nil;
+    QWindow *handle = preview->window()->windowHandle();
+    if (!handle)
+        return nil;
+    auto *nativeView = (__bridge NSView *)reinterpret_cast<void *>(handle->winId());
+    return nativeView.window;
+}
+
 id<NSAccessibility> findPreview(id<NSAccessibility> element)
 {
     if ([element respondsToSelector:@selector(accessibilityIdentifier)]
@@ -105,13 +116,7 @@ QAccessible::Id currentLinkId(NSAccessibilityCustomRotorItemResult *current)
 namespace xdnote {
 void setMacPreviewLinkRotor(NativePreviewView *preview, bool visible)
 {
-    if (QGuiApplication::platformName() != QStringLiteral("cocoa"))
-        return;
-    QWindow *handle = preview->window()->windowHandle();
-    if (!handle)
-        return;
-    auto *nativeView = (__bridge NSView *)reinterpret_cast<void *>(handle->winId());
-    NSWindow *window = nativeView.window;
+    NSWindow *window = previewWindow(preview);
     if (!window)
         return;
 
@@ -137,5 +142,21 @@ void setMacPreviewLinkRotor(NativePreviewView *preview, bool visible)
         objc_setAssociatedObject(window, &association, delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     delegate->preview = preview;
+}
+
+void notifyMacPreviewNavigation(NativePreviewView *preview)
+{
+    if (!NSWorkspace.sharedWorkspace.voiceOverEnabled)
+        return;
+    NSWindow *window = previewWindow(preview);
+    if (!window.isKeyWindow)
+        return;
+    id<NSAccessibility> reader = findPreview(window);
+    id<NSAccessibility> body = [(id)reader accessibilityFocusedUIElement];
+    if (!body.isAccessibilityFocused)
+        return;
+    // VoiceOver can retain the source link as its reading cursor after a Qt focus event.
+    NSAccessibilityPostNotificationWithUserInfo(reader, NSAccessibilityLayoutChangedNotification,
+                                               @{NSAccessibilityUIElementsKey: @[body]});
 }
 }

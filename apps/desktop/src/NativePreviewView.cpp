@@ -50,7 +50,7 @@ using Content = NativePreviewContent;
 constexpr int FragmentCharacters = 4096;
 constexpr int CacheKiB = 8 * 1024, MaximumDocuments = 48;
 constexpr qsizetype MaximumDecodedPerDocument = 16 * 1024 * 1024;
-bool boundary(const QString &text, int at) {
+bool boundary(QStringView text, int at) {
     return at >= 0 && at <= text.size() && !(at > 0 && at < text.size() && text[at - 1].isHighSurrogate() && text[at].isLowSurrogate());
 }
 bool separator(QChar ch) { return ch == '\n' || ch == QChar(0x2028) || ch == QChar(0x2029); }
@@ -154,6 +154,9 @@ struct NativePreviewView::State {
     QHash<int, QScrollBar *> scrollbars;
     QString error;
     int anchor = 0, cursor = 0, pressedAction = -1, focusedAction = -1;
+#ifdef Q_OS_MACOS
+    int accessibleReadingStart = 0;
+#endif
     bool dragging = false, keyboardOutline = false;
     bool localDocumentsAdmitted = false;
     bool scrollMapped = false;
@@ -622,31 +625,46 @@ public:
 class AccessiblePreviewText : public QAccessibleTextInterface {
 protected:
     virtual NativePreviewView *view() const = 0;
-    QString contents() const { return view() && view()->content() ? view()->content()->text : QString(); }
+    virtual int startOffset() const { return 0; }
+    QStringView contents() const {
+        return view() && view()->content() ? QStringView(view()->content()->text).sliced(startOffset()) : QStringView();
+    }
 
 public:
     int characterCount() const override { return int(contents().size()); }
     QString text(int start, int end) const override {
         const auto value = contents(); if (end == -1) end = int(value.size());
-        return start <= end && boundary(value, start) && boundary(value, end) ? value.mid(start, end - start) : QString();
+        return start <= end && boundary(value, start) && boundary(value, end) ? value.sliced(start, end - start).toString() : QString();
     }
-    int selectionCount() const override { return view() && view()->selection().first != view()->selection().second ? 1 : 0; }
+    int selectionCount() const override {
+        if (!view()) return 0;
+        const auto value = view()->selection();
+        return qMax(startOffset(), value.first) != qMax(startOffset(), value.second) ? 1 : 0;
+    }
     void selection(int index, int *start, int *end) const override {
         *start = *end = -1; if (index != 0 || !view()) return;
-        const auto value = view()->selection(); *start = qMin(value.first, value.second); *end = qMax(value.first, value.second);
+        const auto value = view()->selection();
+        *start = qMax(startOffset(), qMin(value.first, value.second)) - startOffset();
+        *end = qMax(startOffset(), qMax(value.first, value.second)) - startOffset();
     }
     void addSelection(int start, int end) override { setSelection(0, start, end); }
-    void setSelection(int index, int start, int end) override { if (index == 0 && view()) view()->setSelection(start, end); }
-    void removeSelection(int index) override { if (index == 0 && view()) view()->setSelection(cursorPosition(), cursorPosition()); }
-    int cursorPosition() const override { return view() ? view()->selection().second : -1; }
-    void setCursorPosition(int position) override { if (view()) view()->setSelection(position, position); }
-    QRect characterRect(int offset) const override { return view() ? view()->characterRect(offset) : QRect(); }
+    void setSelection(int index, int start, int end) override {
+        if (index == 0 && view() && start >= 0 && end >= 0 && qMax(start, end) <= characterCount())
+            view()->setSelection(startOffset() + start, startOffset() + end);
+    }
+    void removeSelection(int index) override { setSelection(index, cursorPosition(), cursorPosition()); }
+    int cursorPosition() const override { return view() ? qMax(0, view()->selection().second - startOffset()) : -1; }
+    void setCursorPosition(int position) override { setSelection(0, position, position); }
+    QRect characterRect(int offset) const override {
+        return view() && offset >= 0 && offset <= characterCount() ? view()->characterRect(startOffset() + offset) : QRect();
+    }
     int offsetAtPoint(const QPoint &point) const override {
         if (!view() || !view()->viewport()->rect().contains(view()->viewport()->mapFromGlobal(point))) return -1;
-        return view()->offsetAtPoint(view()->viewport()->mapFromGlobal(point));
+        const int offset = view()->offsetAtPoint(view()->viewport()->mapFromGlobal(point));
+        return offset < startOffset() ? -1 : offset - startOffset();
     }
     void scrollToSubstring(int start, int end) override {
-        const auto value = contents(); if (view() && boundary(value, start) && boundary(value, end) && start <= end) view()->scrollToText(start, true);
+        const auto value = contents(); if (view() && boundary(value, start) && boundary(value, end) && start <= end) view()->scrollToText(startOffset() + start, true);
     }
     QString attributes(int offset, int *start, int *end) const override {
         if (!boundary(contents(), offset)) { *start = *end = -1; return {}; }
@@ -658,18 +676,25 @@ public:
 // Cocoa treats static text as a leaf in VoiceOver navigation. Keep the
 // navigable body and its focusable actions as siblings within the reader.
 class AccessiblePreviewBody final : public AccessiblePreviewChild, public AccessiblePreviewText, public QAccessibleActionInterface {
-    NativePreviewView *view() const override { return m_view; }
+    const int m_start;
+    const NativePreviewStamp m_stamp;
+    NativePreviewView *view() const override { return isValid() ? m_view.data() : nullptr; }
+    int startOffset() const override { return m_start; }
 
 public:
-    explicit AccessiblePreviewBody(NativePreviewView *view) : AccessiblePreviewChild(view) {}
+    explicit AccessiblePreviewBody(NativePreviewView *view, int start = 0)
+        : AccessiblePreviewChild(view), m_start(start), m_stamp(view->displayedStamp()) {}
+    bool isValid() const override {
+        return m_view && (!m_start || (m_stamp == m_view->displayedStamp() && m_start == m_view->d->accessibleReadingStart));
+    }
     QString text(QAccessible::Text type) const override {
         // Qt maps the Name of static text to AXValue.
         if (type == QAccessible::Name || type == QAccessible::Value)
-            return contents();
+            return contents().toString();
         if (type == QAccessible::Help)
             return QStringLiteral("只读正文。可逐行阅读或选择文本。");
         if (type == QAccessible::Description && view())
-            return view()->error().isEmpty() ? view()->accessibleName() : view()->error();
+            return view()->error().isEmpty() ? (m_start ? QStringLiteral("从链接目标继续阅读") : view()->accessibleName()) : view()->error();
         return {};
     }
     QRect rect() const override {
@@ -710,6 +735,8 @@ class AccessibleNativePreview final : public QAccessibleWidget
 #ifdef Q_OS_MACOS
     static constexpr int actionOffset = 1;
     mutable QAccessible::Id bodyId = 0;
+    mutable QAccessible::Id continuationId = 0;
+    mutable int continuationStart = 0;
 #else
     static constexpr int actionOffset = 0;
 #endif
@@ -717,6 +744,14 @@ class AccessibleNativePreview final : public QAccessibleWidget
     mutable NativePreviewStamp stamp;
 
     void synchronize() const {
+#ifdef Q_OS_MACOS
+        const int start = view() ? view()->d->accessibleReadingStart : 0;
+        if (continuationId && (!view() || start != continuationStart || view()->displayedStamp() != stamp)) {
+            QAccessible::deleteAccessibleInterface(continuationId);
+            continuationId = 0;
+        }
+        continuationStart = start;
+#endif
         if (view() && stamp == view()->displayedStamp()) return;
         for (auto id : actions) QAccessible::deleteAccessibleInterface(id);
         actions.clear(); stamp = view() ? view()->displayedStamp() : NativePreviewStamp{};
@@ -737,6 +772,7 @@ public:
     ~AccessibleNativePreview() override {
 #ifdef Q_OS_MACOS
         if (bodyId) QAccessible::deleteAccessibleInterface(bodyId);
+        if (continuationId) QAccessible::deleteAccessibleInterface(continuationId);
 #endif
         for (auto id : actions) QAccessible::deleteAccessibleInterface(id);
     }
@@ -751,12 +787,26 @@ public:
     }
     int childCount() const override {
         synchronize();
-        return view() ? actionOffset + (view()->content() ? int(view()->content()->actions.size()) : 0) : 0;
+        return view() ? firstActionIndex() + (view()->content() ? int(view()->content()->actions.size()) : 0) : 0;
+    }
+    int firstActionIndex() const {
+#ifdef Q_OS_MACOS
+        return actionOffset + (continuationStart > 0);
+#else
+        return actionOffset;
+#endif
     }
     QAccessibleInterface *child(int index) const override {
         if (index < 0 || index >= childCount()) return nullptr;
         if (index < actionOffset) return body();
-        const int action = index - actionOffset;
+#ifdef Q_OS_MACOS
+        if (index < firstActionIndex()) {
+            if (!continuationId)
+                continuationId = QAccessible::registerAccessibleInterface(new AccessiblePreviewBody(view(), continuationStart));
+            return QAccessible::accessibleInterface(continuationId);
+        }
+#endif
+        const int action = index - firstActionIndex();
         if (!actions.contains(action))
             actions.insert(action, QAccessible::registerAccessibleInterface(new AccessiblePreviewAction(view(), action)));
         return QAccessible::accessibleInterface(actions.value(action));
@@ -764,21 +814,29 @@ public:
     int indexOfChild(const QAccessibleInterface *value) const override {
         if (actionOffset && value && value == body()) return 0;
         synchronize();
+#ifdef Q_OS_MACOS
+        if (continuationId && QAccessible::accessibleInterface(continuationId) == value) return 1;
+#endif
         for (auto it = actions.cbegin(); it != actions.cend(); ++it)
-            if (QAccessible::accessibleInterface(it.value()) == value) return it.key() + actionOffset;
+            if (QAccessible::accessibleInterface(it.value()) == value) return it.key() + firstActionIndex();
         return -1;
     }
     QAccessibleInterface *childAt(int x, int y) const override {
         if (!view()) return nullptr;
+        synchronize();
         const int action = view()->actionAtPoint(view()->viewport()->mapFromGlobal(QPoint(x, y)));
-        if (action >= 0) return child(action + actionOffset);
+        if (action >= 0) return child(action + firstActionIndex());
         if (actionOffset && body()->rect().contains(x, y)) return body();
         return nullptr;
     }
     QAccessibleInterface *focusChild() const override {
         if (!view() || !view()->hasFocus()) return nullptr;
+        synchronize();
         const int action = view()->d->focusedAction;
-        if (action >= 0) return child(action + actionOffset);
+        if (action >= 0) return child(action + firstActionIndex());
+#ifdef Q_OS_MACOS
+        if (continuationStart > 0) return child(actionOffset);
+#endif
         return actionOffset ? body() : nullptr;
     }
 #ifdef Q_OS_MACOS
@@ -796,7 +854,7 @@ public:
         value.multiLine = true; value.selectableText = true; value.focusable = true; return value;
     }
     QString text(QAccessible::Text type) const override {
-        if (type == QAccessible::Value) return contents();
+        if (type == QAccessible::Value) return view()->content() ? view()->content()->text : QString();
         if (type == QAccessible::Description && view()) return view()->error();
         return QAccessibleWidget::text(type);
     }
@@ -855,6 +913,9 @@ void NativePreviewView::expect(const NativePreviewStamp &stamp) {
     d->expected = stamp; d->content.reset(); d->clearCache(); d->png.clear(); d->imageInfo.clear();
     d->geometry.clear(); d->chunks.clear(); d->groups.clear(); d->horizontal.clear(); d->error.clear(); d->totalHeight = 0;
     d->anchor = d->cursor = 0; d->focusedAction = -1; d->keyboardOutline = false;
+#ifdef Q_OS_MACOS
+    d->accessibleReadingStart = 0;
+#endif
     d->dragging = false; d->pressedAction = -1;
     d->shown = {}; d->stats = {};
     d->localDocumentsAdmitted = false;
@@ -879,6 +940,9 @@ bool NativePreviewView::present(NativePreviewStamp stamp, std::shared_ptr<const 
     d->stats = {}; d->stats.retainedContentBytes = d->content->estimatedBytes();
     d->localDocumentsAdmitted = localDocumentsAdmitted;
     d->anchor = d->cursor = 0; d->focusedAction = -1; d->keyboardOutline = false; d->horizontal.clear();
+#ifdef Q_OS_MACOS
+    d->accessibleReadingStart = 0;
+#endif
     d->dragging = false; d->pressedAction = -1;
     const QPointer<NativePreviewView> alive(this);
     rebuild(false); return alive && d->error.isEmpty();
@@ -1272,6 +1336,9 @@ QString NativePreviewView::selectedText() const {
 void NativePreviewView::setSelection(int anchor, int cursor) {
     if (!d->content || !boundary(d->content->text, anchor) || !boundary(d->content->text, cursor)) return;
     const auto selectable=[&](int position){auto it=std::upper_bound(d->content->flows.cbegin(),d->content->flows.cend(),position,[](int p,const Content::Flow&f){return p<f.start;});if(it!=d->content->flows.cbegin()){--it;if(position<it->start+it->markerLength)position=it->start+it->markerLength;}return position;};anchor=selectable(anchor);cursor=selectable(cursor);
+#ifdef Q_OS_MACOS
+    if (cursor < d->accessibleReadingStart) d->accessibleReadingStart = 0;
+#endif
     if (anchor == d->anchor && cursor == d->cursor) return;
     d->anchor = anchor; d->cursor = cursor;
     const QPointer<NativePreviewView> alive(this); const auto snapshot = d->shown;
@@ -1285,6 +1352,16 @@ void NativePreviewView::setSelection(int anchor, int cursor) {
     QAccessibleTextSelectionEvent event(this, qMin(anchor, cursor), qMax(anchor, cursor));
 #endif
     QAccessible::updateAccessibility(&event);
+#ifdef Q_OS_MACOS
+    if (!alive || d->shown != snapshot || !d->accessibleReadingStart)
+        return;
+    if (auto *focused = accessible->focusChild(); focused && focused->textInterface()) {
+        const int start = d->accessibleReadingStart;
+        QAccessibleTextSelectionEvent selection(focused, qMax(0, qMin(anchor, cursor) - start),
+                                                 qMax(anchor, cursor) - start);
+        QAccessible::updateAccessibility(&selection);
+    }
+#endif
 }
 QPair<int, int> NativePreviewView::selection() const { return {d->anchor, d->cursor}; }
 void NativePreviewView::copy() { if (d->current() && d->anchor != d->cursor) emit copyTextRequested(selectedText()); }
@@ -1323,11 +1400,22 @@ bool NativePreviewView::navigateToHeading(const QString &fragment, const NativeP
             if (!alive || d->shown != snapshot) return true;
             if (followFocus) {
                 d->focusedAction = -1;
+#ifdef Q_OS_MACOS
+                d->accessibleReadingStart = position;
+#endif
                 setSelection(position, position);
                 if (!alive || d->shown != snapshot) return true;
                 setFocus(Qt::OtherFocusReason);
                 if (!alive || d->shown != snapshot) return true;
                 notifyAccessibleFocus();
+#ifdef Q_OS_MACOS
+                if (!alive || d->shown != snapshot) return true;
+                QTimer::singleShot(0, this, [this, snapshot, position] {
+                    if (d->shown == snapshot && d->cursor == position && d->focusedAction < 0
+                        && isVisible() && hasFocus())
+                        notifyMacPreviewNavigation(this);
+                });
+#endif
             }
             if (alive && d->shown == snapshot) emit fragmentNavigated(requested);
             return true;
@@ -1486,6 +1574,7 @@ void NativePreviewView::showEvent(QShowEvent *event) {
 void NativePreviewView::hideEvent(QHideEvent *event) {
     QAbstractScrollArea::hideEvent(event);
 #ifdef Q_OS_MACOS
+    d->accessibleReadingStart = 0;
     setMacPreviewLinkRotor(this, false);
 #endif
     if (d->asynchronous) rebuild(true);
@@ -1495,6 +1584,9 @@ void NativePreviewView::scrollContentsBy(int, int) { updateControls(); viewport(
 void NativePreviewView::mousePressEvent(QMouseEvent *event) {
     d->keyboardOutline = false; InputModality::forApplication()->clear();
     if (event->button() != Qt::LeftButton || !d->current()) { QAbstractScrollArea::mousePressEvent(event); return; }
+#ifdef Q_OS_MACOS
+    d->accessibleReadingStart = 0;
+#endif
     setFocus(Qt::MouseFocusReason); const int offset = offsetAtPoint(event->position().toPoint());
     d->pressedAction = actionAtPoint(event->position().toPoint());
     d->dragging = true;
@@ -1601,7 +1693,14 @@ void NativePreviewView::keyPressEvent(QKeyEvent *event) {
     const QPointer<NativePreviewView> alive(this);
     setSelection(shift ? d->anchor : position, position); if (alive) scrollToText(position, true); event->accept();
 }
-void NativePreviewView::focusOutEvent(QFocusEvent *event) { d->keyboardOutline = false; d->dragging = false; d->pressedAction = -1; viewport()->update(); QAbstractScrollArea::focusOutEvent(event); }
+void NativePreviewView::focusOutEvent(QFocusEvent *event) {
+    d->keyboardOutline = false; d->dragging = false; d->pressedAction = -1;
+#ifdef Q_OS_MACOS
+    d->accessibleReadingStart = 0;
+#endif
+    viewport()->update();
+    QAbstractScrollArea::focusOutEvent(event);
+}
 void NativePreviewView::wheelEvent(QWheelEvent *event) {
     d->keyboardOutline = false; InputModality::forApplication()->clear();
     if (d->current() && !d->geometry.isEmpty() && ((event->modifiers() & Qt::ShiftModifier) || event->angleDelta().x() != 0 || event->pixelDelta().x() != 0)) {

@@ -85,6 +85,9 @@ protected:
 private:
     friend class AccessibleNativePreview;
     friend class AccessiblePreviewAction;
+#ifdef Q_OS_MACOS
+    friend class AccessiblePreviewBody;
+#endif
     struct State;
     std::unique_ptr<State> d;
     void rebuild(bool keepPosition);
