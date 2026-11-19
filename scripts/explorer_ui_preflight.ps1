@@ -8,6 +8,14 @@ $folder = Join-Path $env:RUNNER_TEMP ('xdnote GUI probe ' + $env:GITHUB_RUN_ID)
 New-Item -ItemType Directory -Path $folder | Out-Null
 $file = Join-Path $folder 'xdnote Explorer preflight.md'
 [IO.File]::WriteAllText($file, '# Preflight')
+$notepad = Join-Path $env:SystemRoot 'System32\notepad.exe'
+if (!(Test-Path -LiteralPath $notepad)) { throw 'Stock Notepad unavailable' }
+$registration = 'HKCU:\Software\Classes\xdnote.Acceptance.Notepad\shell\open\command'
+$candidates = 'HKCU:\Software\Classes\.md\OpenWithProgids'
+New-Item -Path $registration -Force | Out-Null
+Set-Item -Path $registration -Value ('"' + $notepad + '" "%1"')
+New-Item -Path $candidates -Force | Out-Null
+New-ItemProperty -Path $candidates -Name 'xdnote.Acceptance.Notepad' -PropertyType String -Value '' -Force | Out-Null
 $shell = New-Object -ComObject Shell.Application
 try {
     $shell.Explore($folder)
