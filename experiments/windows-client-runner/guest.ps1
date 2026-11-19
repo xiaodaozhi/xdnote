@@ -38,7 +38,9 @@ try {
     $env:GITHUB_RUN_ID = (Get-Content -LiteralPath (Join-Path $media 'run-id.txt') -Raw).Trim()
     $env:GITHUB_SHA = (Get-Content -LiteralPath (Join-Path $media 'source.txt') -Raw).Trim()
     $env:RUNNER_TEMP = "$root\temp"
-    & "$root\scripts\check_windows_file_manager.ps1" -Package (Join-Path $media 'xdnote-dev-setup.exe') `
+    $installer = Join-Path "$root\temp" 'xdnote-dev-setup.exe'
+    Copy-Item -LiteralPath (Join-Path $media 'xdnote-dev-setup.exe') -Destination $installer
+    & "$root\scripts\check_windows_file_manager.ps1" -Package $installer `
         -Audit (Join-Path $media 'payload-inventory.json') -PackageReport (Join-Path $media 'installer-report.json') `
         -EvidenceDirectory "$root\build\evidence"
     $result.ok = $true

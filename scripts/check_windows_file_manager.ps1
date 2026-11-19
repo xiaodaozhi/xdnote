@@ -234,14 +234,28 @@ function Select-SetupMarkdownTask($Wizard) {
 function Install-ThroughWizard($Result) {
     $arguments = @('/NORESTART','/LANG=english',('/DIR="' + $root + '"'),
         ('/LOG="' + (Join-Path $output 'setup.log') + '"'))
+    $before = Foreground
+    if ($before -and $before.Current.Name -eq 'Search' -and
+        (Get-Process -Id $before.Current.ProcessId -ErrorAction SilentlyContinue).ProcessName -eq 'SearchHost') {
+        [ExplorerAcceptance]::keybd_event(27,0,0,[UIntPtr]::Zero)
+        [ExplorerAcceptance]::keybd_event(27,0,2,[UIntPtr]::Zero)
+    }
     $setup = Start-Process -FilePath $Package -ArgumentList $arguments -PassThru
     try {
+        $activator = New-Object -ComObject WScript.Shell
+        $wizardClass = [Windows.Automation.PropertyCondition]::new(
+            [Windows.Automation.AutomationElement]::ClassNameProperty, 'TWizardForm')
         $wizard = Wait-Result 'the visible xdnote Setup Wizard' {
-            $window = Foreground
-            if ($window -and $window.Current.ClassName -eq 'TWizardForm' -and $window.Current.Name -eq 'Setup - xdnote') {
+            if ($setup.HasExited) { throw "Setup exited before displaying the wizard ($($setup.ExitCode))" }
+            $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll(
+                [Windows.Automation.TreeScope]::Children, $wizardClass)
+            foreach ($window in $windows) {
+                if ($window.Current.Name -ne 'Setup - xdnote' -or $window.Current.IsOffscreen) { continue }
                 $owner = $window.Current.ProcessId
                 if ($owner -eq $setup.Id -or (Get-CimInstance Win32_Process -Filter "ProcessId = $owner").ParentProcessId -eq $setup.Id) {
-                    $window
+                    $Result.setupWindowDiscovered = $true
+                    if (Picker-IsForeground $window) { return $window }
+                    $null = $activator.AppActivate($owner)
                 }
             }
         }
@@ -271,6 +285,10 @@ function Install-ThroughWizard($Result) {
         if ($command -ne ('"' + $exe + '" -- "%1"')) { throw 'The wizard did not register the selected Markdown candidate' }
         $Result.wizardMarkdownCandidate = 'selected in the wizard'
     } catch {
+        $Result.setupProcessExited = $setup.HasExited
+        if ($setup.HasExited) { $Result.setupExitCode = $setup.ExitCode }
+        $log = Join-Path $output 'setup.log'
+        if (Test-Path -LiteralPath $log) { $Result.setupLogTail = @(Get-Content -LiteralPath $log -Tail 12) }
         if ($wizard -and (Picker-IsForeground $wizard)) {
             $Result.wizardControls = @($wizard.FindAll([Windows.Automation.TreeScope]::Descendants,
                 [Windows.Automation.Condition]::TrueCondition) | Where-Object { !$_.Current.IsOffscreen } |

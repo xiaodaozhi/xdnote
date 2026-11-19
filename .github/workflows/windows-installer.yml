@@ -156,6 +156,7 @@ jobs:
           age --decrypt --identity "$XDNOTE_GUEST/guest.key" --output "$XDNOTE_GUEST/payload.zip" "$XDNOTE_GUEST/incoming/payload.age"
           rm -- "$XDNOTE_GUEST/guest.key"
           unzip -q "$XDNOTE_GUEST/payload.zip" -d "$XDNOTE_GUEST/payload"
+          cp scripts/check_windows_file_manager.ps1 "$XDNOTE_GUEST/payload/check_windows_file_manager.ps1"
           xorriso -as mkisofs -R -J -V XDNOTE_TESTS -o "$XDNOTE_GUEST/transfer.iso" "$XDNOTE_GUEST/payload"
           sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" attach
       - name: Verify the visible installer, file selector and cold and warm Explorer entry
