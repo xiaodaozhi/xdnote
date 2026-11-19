@@ -23,26 +23,27 @@ def run(command, log, *, env=None, timeout=60, check=True):
     return result
 
 
+def window_pid(fixture, binary, environment=None):
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        tree = subprocess.run(['/usr/bin/xwininfo', '-root', '-tree'], env=environment,
+                              capture_output=True, text=True, check=True, timeout=3).stdout
+        for window in re.findall(r'^ +((?:0x)[0-9a-f]+) ', tree, re.MULTILINE):
+            properties = subprocess.run(['/usr/bin/xprop', '-id', window, '-notype', '_NET_WM_NAME', '_NET_WM_PID'],
+                                        env=environment, capture_output=True, text=True, timeout=3).stdout
+            if fixture.name in properties:
+                match = re.search(r'^_NET_WM_PID = (\d+)$', properties, re.MULTILINE)
+                if match:
+                    pid = int(match[1])
+                    if Path(f'/proc/{pid}/exe').resolve(strict=True) != binary:
+                        raise ValueError('The opened window is not owned by the installed product')
+                    return pid
+        time.sleep(0.2)
+    raise ValueError(f'No installed X11 document window for {fixture.name}')
+
+
 def desktop_entry_launch(desktop_file, binary, fixtures, env, log):
     """Use GIO to exercise the installed entry and MIME handler on a private X11 server."""
-    def window_pid(fixture, environment):
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            tree = subprocess.run(['/usr/bin/xwininfo', '-root', '-tree'], env=environment,
-                                  capture_output=True, text=True, check=True, timeout=3).stdout
-            for window in re.findall(r'^ +((?:0x)[0-9a-f]+) ', tree, re.MULTILINE):
-                properties = subprocess.run(['/usr/bin/xprop', '-id', window, '-notype', '_NET_WM_NAME', '_NET_WM_PID'],
-                                            env=environment, capture_output=True, text=True, timeout=3).stdout
-                if fixture.name in properties:
-                    match = re.search(r'^_NET_WM_PID = (\d+)$', properties, re.MULTILINE)
-                    if match:
-                        pid = int(match[1])
-                        if Path(f'/proc/{pid}/exe').resolve(strict=True) != binary:
-                            raise ValueError('The opened window is not owned by the installed product')
-                        return pid
-            time.sleep(0.2)
-        raise ValueError(f'No installed X11 document window for {fixture.name}')
-
     with log.open('ab') as output:
         with subprocess.Popen(['/usr/bin/Xvfb', '-displayfd', '1', '-nolisten', 'tcp', '-screen', '0', '1280x960x24'],
                               stdout=subprocess.PIPE, stderr=output, text=True) as display:
@@ -76,7 +77,7 @@ def desktop_entry_launch(desktop_file, binary, fixtures, env, log):
                     launchers.append(launch)
                     if launch.wait(timeout=8):
                         raise ValueError(f'GIO failed to activate the installed desktop entry for {fixture.name}')
-                    pids.append(window_pid(fixture, environment))
+                    pids.append(window_pid(fixture, binary, environment))
                 if len(set(pids)) != 1:
                     raise ValueError('Warm launch created another process instead of forwarding to the running instance')
                 return {'defaultHandler': desktop_file.name, 'mimeType': mime,
@@ -165,6 +166,27 @@ def verify(package, metadata, apt_sources, evidence):
                 report['checks'].append('installed launcher returned the expected build and initialized native X11 Qt')
                 report['desktopLaunch'] = desktop_entry_launch(desktop_file, binary, fixtures, env, log)
                 report['checks'].append('installed Markdown default handler and desktop entry opened documents in one process')
+                with (tempfile.TemporaryDirectory(prefix='nautilus-', dir=evidence) as isolated,
+                      tempfile.TemporaryDirectory(prefix='xdnote-runtime-') as runtime_dir):
+                    home = Path(isolated)
+                    files = home / 'File manager acceptance'
+                    files.mkdir()
+                    samples = [files / fixture.name for fixture in fixtures]
+                    for source, target in zip(fixtures, samples, strict=True):
+                        target.write_bytes(source.read_bytes())
+                    desktop_env = dict(env, HOME=isolated, XDG_RUNTIME_DIR=runtime_dir,
+                                       XDG_CONFIG_HOME=str(home / 'config'), XDG_DATA_HOME=str(home / 'data'),
+                                       XDG_CACHE_HOME=str(home / 'cache'), XDG_DATA_DIRS='/usr/local/share:/usr/share',
+                                       GDK_BACKEND='x11', GSETTINGS_BACKEND='memory', NO_AT_BRIDGE='0',
+                                       GTK_MODULES='atk-bridge', LC_ALL='C.UTF-8')
+                    command = ['/usr/bin/dbus-run-session', '--', '/usr/bin/xvfb-run', '-a',
+                               '/usr/bin/python3', Path(__file__).with_name('check_nautilus_open.py'),
+                               binary, evidence, *samples]
+                    run(command, log, env=desktop_env, timeout=150)
+                    if [digest(item) for item in samples] != before:
+                        raise ValueError('File-manager acceptance modified a user fixture')
+                report['nautilus'] = json.loads((evidence / 'nautilus.json').read_bytes())
+                report['checks'].append('Nautilus opened a file once, changed the Markdown default, and used that default')
             finally:
                 if query().returncode == 0:
                     run(['/usr/bin/sudo', '-n', '/usr/bin/dpkg', '--purge', 'xdnote'], log, timeout=150)
