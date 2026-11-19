@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-wayland]
       evidence_run:
         description: 'Source product run for delivery-review only'
         type: string
@@ -111,7 +111,9 @@ jobs:
       fail-fast: false
       matrix:
         include: >-
-          ${{ fromJSON(inputs.scope == 'updates' &&
+          ${{ fromJSON(inputs.scope == 'reader-wayland' &&
+          '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
+          inputs.scope == 'updates' &&
           '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
           (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux') &&
           '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
@@ -174,6 +176,22 @@ jobs:
       - name: Build desktop admission (Unix)
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
+      - name: Run genuine Orca in an isolated GNOME Wayland session
+        if: inputs.scope == 'reader-wayland'
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=' -o Acquire::Retries=1 -o Acquire::http::Timeout=20)
+          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends gnome-shell gnome-settings-daemon xwayland wayland-utils x11-utils dbus-x11 orca speech-dispatcher-espeak-ng openbox xdotool xauth pulseaudio
+          xvfb-run -a -s '-screen 0 1440x1080x24 +extension GLX' dbus-run-session -- bash scripts/reader-acceptance/orca-wayland.sh
+      - name: Preserve GNOME Wayland reader evidence
+        if: always() && inputs.scope == 'reader-wayland'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reader-gnome-wayland-evidence
+          path: build/evidence/reader-wayland/*.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Test explicit update checks and settings
         if: startsWith(inputs.scope, 'updates')
         run: python scripts/desktop.py test --suite updates
