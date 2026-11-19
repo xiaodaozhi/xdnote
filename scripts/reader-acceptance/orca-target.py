@@ -1,6 +1,7 @@
 import sys
 import time
 import pyatspi
+from gi.repository import Atspi
 
 def descendants(obj):
     yield obj
@@ -9,9 +10,10 @@ def descendants(obj):
             yield from descendants(child)
 
 desktop = pyatspi.Registry.getDesktop(0)
+Atspi.set_timeout(2500, 8000)
 if sys.argv[1] == "closed":
     for _ in range(30):
-        if not any(node.name.startswith("Reader-Check.md") for app in desktop
+        if not any((node.name or "").startswith("Reader-Check.md") for app in desktop
                    if app is not None and app.name.lower() == "xdnote"
                    for node in descendants(app)):
             print("Owned reader window disappeared from AT-SPI")
@@ -19,12 +21,22 @@ if sys.argv[1] == "closed":
         time.sleep(0.2)
     raise SystemExit("Owned reader window still present after close")
 
-app = next((entry for entry in desktop if entry.name.lower() == "xdnote"), None)
-if app is None:
-    raise SystemExit("xdnote missing from AT-SPI desktop")
-nodes = list(descendants(app))
-reader = next((node for node in nodes if node.name == "Markdown 阅读内容"), None)
+reader = None
+nodes = []
+for _ in range(20):
+    desktop.clear_cache()
+    apps = [entry for entry in desktop if entry is not None and entry.name.lower() == "xdnote"]
+    for app in apps:
+        app.clear_cache()
+    nodes = [node for app in apps for node in descendants(app)]
+    reader = next((node for node in nodes if node.name == "Markdown 阅读内容"), None)
+    if reader is not None:
+        break
+    time.sleep(0.35)
 if reader is None:
+    print(f"xdnote AT-SPI applications={len(apps)} nodes={len(nodes)}")
+    for node in nodes[:60]:
+        print(f"{node.getRoleName()}: {node.name!r}, children={node.childCount}")
     raise SystemExit("Markdown reader missing from AT-SPI")
 text = reader.queryText()
 marker = "Amber target reading sample"

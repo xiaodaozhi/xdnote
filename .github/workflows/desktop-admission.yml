@@ -184,6 +184,19 @@ jobs:
       - name: Build desktop admission (Unix)
         if: runner.os != 'Windows'
         run: python scripts/desktop.py build
+      - name: Preserve the verified disposable Linux package for read tests
+        if: inputs.scope == 'reader-wayland'
+        run: |
+          python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/gcc_64 --destination build/reader-linux-payload
+          tar -C build/reader-linux-payload -czf build/reader-linux-payload.tar.gz .
+      - name: Upload the same-source Linux package for bounded replay
+        if: inputs.scope == 'reader-wayland'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: xdnote-reader-wayland-payload
+          path: build/reader-linux-payload.tar.gz
+          if-no-files-found: error
+          retention-days: 2
       - name: Run genuine Orca in an isolated GNOME Wayland session
         if: inputs.scope == 'reader-wayland'
         shell: bash

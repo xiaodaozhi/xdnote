@@ -83,9 +83,14 @@ for attempt in {1..30}; do
 done
 grep -Em 2 'xdg_wm_base.*get_xdg_surface|xdg_surface.*get_toplevel' "$evidence/app.log"
 xdotool windowactivate --sync "$window"
-xdotool mousemove --window "$window" 345 280 click 1
-xdotool key --clearmodifiers ctrl+Home
+xdotool mousemove --sync --window "$window" 345 280
+sleep 0.8
+xdotool click 1
+sleep 0.5
+xdotool click 1
 sleep 0.7
+xdotool key --clearmodifiers ctrl+Home
+sleep 0.5
 /usr/bin/python3 scripts/reader-acceptance/orca-target.py hidden
 
 speech_start() { wc -c < "$evidence/orca.log"; }
