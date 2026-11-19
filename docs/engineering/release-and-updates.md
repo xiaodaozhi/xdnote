@@ -69,7 +69,7 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 feed 只暴露已选定的同一候选。部署显式启用 `SURequireSignedFeed`、`SUVerifyUpdateBeforeExtraction` 并将 `SUSignedFeedFailureExpirationInterval` 设为 0；不接受 feed 验签被跳过、失败或超时降级。由 Sparkle 原生验证 feed／归档并处理实际替换，不声称 Sparkle 执行了额外 SHA-256。只读 DMG、App Translocation、未登记 `.app` 或缺少公钥使用手动入口。DMG 与 app.zip 应来自同一个已部署、完整性签名及核验的 `.app`，解包后另做重定位验证。
 
-系统／直连／无凭据 HTTP CONNECT／SOCKS5 策略在实例启动前固定，feed 与归档共享同一会话；直连显式关闭系统代理、PAC 和自动发现，不以空字典冒充关闭。自定义代理失败不回退直连。Framework、XPC 和 helper 保留各自参数及 entitlements，不套用通用递归重签规则。
+系统／直连／无凭据 HTTP CONNECT／SOCKS5 策略在实例启动前固定，feed 与归档共享同一会话；直连显式关闭系统代理、PAC 和自动发现，不以空字典冒充关闭。自定义代理及系统 PAC 选中的代理失败时均报告下载错误。系统 PAC 按每个请求及重定向目标重新解析。Framework、XPC 和 helper 保留各自参数及 entitlements，不套用通用递归重签规则。
 
 ## 文档保护、交接与恢复
 

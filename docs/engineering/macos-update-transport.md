@@ -4,7 +4,7 @@
 
 ## 固定依赖与构建
 
-[sparkle-dependency.json](../../tools/sparkle-dependency.json)固定 Sparkle 2.10.0 官方 SDK、源码、许可原文和本项目[网络补丁](../../patches/sparkle/2.10.0-download-proxy.patch)的 SHA-256。原始输入和本机构建均在本项目 `build/Sparkle/2.10.0-xdnote-proxy.2/`；不读取其他项目的 SDK 或工具，不执行上游 Xcode shell 构建阶段。准备器保留框架必需的内部链接，拒绝路径逃逸、链接入口、不明目录和改变的文件清单。
+[sparkle-dependency.json](../../tools/sparkle-dependency.json)固定 Sparkle 2.10.0 官方 SDK、源码、许可原文和本项目[网络补丁](../../patches/sparkle/2.10.0-download-proxy.patch)的 SHA-256。原始输入和本机构建均在本项目 `build/Sparkle/2.10.0-xdnote-proxy.3/`；不读取其他项目的 SDK 或工具，不执行上游 Xcode shell 构建阶段。准备器保留框架必需的内部链接，拒绝路径逃逸、链接入口、不明目录和改变的文件清单。
 
 ```text
 python scripts/sparkle.py prepare --download
@@ -24,19 +24,21 @@ Apple 的 Network `proxyConfigurations`、HTTP CONNECT／SOCKS5 构造器及显�
 
 | 路径 | 准入实现 | 尚需证明 |
 | --- | --- | --- |
-| 系统代理／直连 | 共享会话工厂；系统保留原生策略，直连明确关闭 HTTP、HTTPS、SOCKS、FTP、PAC 和自动发现 | 最低支持系统的实际配置、PAC／自动发现及完整原生更新 |
-| macOS 14+ 的 Network API | 启动前配置固定；无凭据 HTTP CONNECT／SOCKS5，显式禁止代理 failover，非系统模式不使用未适配的 Downloader XPC | 同一候选的 feed／归档、取消、安装和恢复 |
+| 系统代理／直连 | 系统模式使用 CFNetwork 为请求和重定向解析配置的 PAC，并固定首条可识别的返回路径；直连模式明确关闭 HTTP、HTTPS、SOCKS、FTP、PAC 和自动发现 | 最低支持系统的实际配置、PAC／自动发现及完整原生更新 |
+| macOS 14+ 的 Network API | 启动前配置固定；无凭据 HTTP CONNECT／SOCKS5，显式禁止代理 failover，下载使用进程内会话 | 同一候选的 feed／归档、取消、安装和恢复 |
 
 不为旧系统另建自定义代理下载路径，不引入本地中转协议、TLS 解密或系统代理修改。库内的 Network 自定义代理入口保留可用性守卫；探针拒绝在 macOS 14 以下执行原生更新准入。最低系统运行、完整安装及恢复仍须在实际支持范围内分别验收，不能从 API 可用或新宿主结果推断。
+
+配置的 PAC 由 CFNetwork 在后台限时执行。首条指令为 `DIRECT` 时使用直连，为支持的代理时创建禁用直连回退的会话，解析错误或不支持的路由会报告下载错误。每次重定向在发往新目标前重新解析。代理失败结束本次请求。
 
 ## 会话与探针边界
 
 共享工厂使用临时 session，关闭 Cookie、凭据和 URL 缓存，保留系统 TLS 验证及 TLS 1.2 下限；不接收信任根、TLS 绕过或代理凭据。`SPUUpdater` 的策略仅能在主线程、启动前设置，供 feed 与归档的同一 downloader 使用。产品提供方沿用同一工厂，当前生产公钥为空；缺钥时不会开放自动安装。
 
-[原生探针](../../experiments/sparkle-admission/probe.m)验证配置、非法输入、线程与启动状态；只在自有临时 bundle 中同步启动已禁用自动检查的实例，立即退出，不执行排队的更新周期。公开测试向量密钥只存在于该临时探针 plist，不能成为产品信任根。
+[原生探针](../../experiments/sparkle-admission/probe.m)验证配置、非法输入、线程与启动状态；在自有临时 bundle 中禁用自动检查，并通过公开的更新信息入口驱动真实 appcast 下载。公开测试向量密钥只存在于该临时探针 plist，不能成为产品信任根。
 
 网络夹具仅绑定回环端口。直连 TLS 使用回环 IP；代理使用保留的 `.invalid` 目标名，避免系统对回环 IP 的特殊绕过。拒绝代理记录 CONNECT／SOCKS5 握手及错误；固定映射的隧道代理只连接自有 TLS 服务，确认默认系统信任处理拒绝自签证书。探针观察信任结果后始终交给默认处理，不接受证书、不添加锚点。默认本机探针只访问自有回环服务，不修改系统网络偏好。
 
-手动 `scope=sparkle-system-pac` 在一次性 GitHub 托管运行器启用仅匹配专用测试域的系统 PAC。先用相同主机名证明源站可被直接访问，再记录 CFNetwork 看到的 PAC、PAC 下载、代理 CONNECT、代理拒绝和直连源站计数。测试退出时禁用 PAC 并恢复临时 hosts 项。`directFallbackObserved` 记录是否实际直连，`policyPassed` 记录该次代理拒绝后的直连约束结果。工作流成功表示诊断数据完整。自动发现、最低系统与正式更新候选独立验收。
+手动 `scope=sparkle-system-pac` 在一次性 GitHub 托管运行器启用仅匹配专用测试域的系统 PAC。先用相同主机名证明源站可被直接访问，再让实际 appcast 下载以及从直连 URL 到代理目标的重定向各通过同一拒绝代理。CI 要求收到代理错误且两次源站直连计数均为零。测试退出时禁用 PAC 并恢复临时 hosts 项。`directFallbackObserved` 记录是否实际直连，`policyPassed` 记录该次代理拒绝后的直连约束结果。工作流要求直连约束通过。自动发现、最低系统与正式更新候选独立验收。
 
 输出区分实际宿主、拒绝路径、TLS 隧道和 SDK 来源。测试不代替最低支持系统、真实公网 HTTPS／代理、原生安装、helper 退出及恢复验收。手动 `scope=sparkle-macos` 执行这一范围，可用 `macos_runner` 在 macOS 15 与 macOS 26 的托管 arm64 运行器间选择，不准备 Qt、不运行完整桌面矩阵，也不发布软件。

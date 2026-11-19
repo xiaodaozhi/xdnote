@@ -25,6 +25,22 @@ static NSMutableArray<NSString *> *checks;
     completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
 }
 @end
+@interface ProbeUpdaterObserver : NSObject <SPUUpdaterDelegate>
+@property (nonatomic, copy) NSURL *feed;
+@end
+@implementation ProbeUpdaterObserver
+- (NSString *)feedURLStringForUpdater:(SPUUpdater *)__unused updater {
+    return self.feed.absoluteString;
+}
+- (void)updater:(SPUUpdater *)__unused updater didFinishUpdateCycleForUpdateCheck:(SPUUpdateCheck)__unused checkType error:(NSError *)error {
+    NSMutableArray *chain = [NSMutableArray array];
+    for (NSError *failure = error; failure != nil && chain.count < 8; failure = failure.userInfo[NSUnderlyingErrorKey]) {
+        [chain addObject:@{@"code": @(failure.code), @"domain": failure.domain}];
+    }
+    report(@{@"error": @(error.code), @"errorChain": chain}, 0);
+}
+@end
+
 static void check(BOOL valid, NSString *name) {
     if (!valid) report(@{@"ok": @NO, @"failed": name}, 2);
     [checks addObject:name];
@@ -81,6 +97,25 @@ int main(int argc, const char **argv) {
             check([updater startUpdater:&error], @"start-with-auto-checks-disabled");
             check(![updater xdnote_setDownloadProxyMode:SPUXdnoteDownloadProxySystem proxyURL:nil error:nil], @"immutable-after-start");
             report(@{@"ok": @YES, @"scope": @"native configuration only; no update check or installation", @"checks": checks}, 0);
+        }
+        if (argc == 3 && strcmp(argv[1], "appcast") == 0) {
+            NSURL *url = [NSURL URLWithString:@(argv[2])];
+            check(url.port.intValue > 0 &&
+                  (([url.host isEqualToString:@"xdnote-sparkle-fixture.invalid"] && [url.scheme isEqualToString:@"https"]) ||
+                   ([url.host isEqualToString:@"127.0.0.1"] &&
+                    ([url.scheme isEqualToString:@"http"] || [url.scheme isEqualToString:@"https"]))), @"owned-appcast-fixture");
+            ProbeUpdaterObserver *observer = [ProbeUpdaterObserver new];
+            observer.feed = url;
+            SPUUpdater *updater = [[SPUUpdater alloc] initWithHostBundle:NSBundle.mainBundle applicationBundle:NSBundle.mainBundle userDriver:(id<SPUUserDriver>)[NSObject new] delegate:observer];
+            check([updater xdnote_setDownloadProxyMode:SPUXdnoteDownloadProxySystem proxyURL:nil error:nil], @"system-download-mode");
+            check([updater startUpdater:nil], @"start-isolated-updater");
+            [updater checkForUpdateInformation];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                (void)observer.feed;
+                (void)updater.sessionInProgress;
+                report(@{@"failed": @"appcast-timeout"}, 2);
+            });
+            [[NSRunLoop mainRunLoop] run];
         }
         if (argc == 3 && strcmp(argv[1], "system-pac") == 0) {
             NSDictionary *proxies = CFBridgingRelease(CFNetworkCopySystemProxySettings());
