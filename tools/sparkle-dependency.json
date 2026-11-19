@@ -16,9 +16,9 @@
     "sha256": "cf43af1f26a921a8dc0be80834b9c3038bea5fd645708d26375126cbc57c316b"
   },
   "framework_build": {
-    "variant": "2.10.0-xdnote-proxy.2",
+    "variant": "2.10.0-xdnote-proxy.3",
     "patch": "patches/sparkle/2.10.0-download-proxy.patch",
-    "patch_sha256": "6da0e6c4ad6ebec2e649c73e7b4108d194bdb7da1c945e22277a8c1845120989",
+    "patch_sha256": "b8c104a0a456d18569a370efbffc35b9efd5346900b77580bafb97584ad02778",
     "method": "Native ARM64 framework library and Ed25519 from pinned source; resources, installer helpers and tools from pinned official SDK"
   }
 }

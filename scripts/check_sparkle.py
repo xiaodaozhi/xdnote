@@ -1,4 +1,4 @@
-"""Native shared-session policy and loopback admission, without a product updater."""
+"""Verify native Sparkle configuration and appcast routing with loopback fixtures."""
 import argparse
 from contextlib import contextmanager
 import http.server
@@ -31,7 +31,7 @@ def execute(arguments, log, *, log_stdout=True, **options):
 
 
 @contextmanager
-def listener(kind, tls=None, forward_port=None):
+def listener(kind, tls=None, forward_port=None, location=None):
     events = []
 
     class Handler(socketserver.BaseRequestHandler):
@@ -57,7 +57,7 @@ def listener(kind, tls=None, forward_port=None):
                             stream.recv(1024)
                     except ssl.SSLError as error:
                         events.append('tls-refused:' + str(error.reason))
-                elif kind == 'http':
+                elif kind in ('http', 'redirect'):
                     request = b''
                     while b'\r\n\r\n' not in request and len(request) < 8192:
                         block = self.request.recv(1024)
@@ -65,7 +65,9 @@ def listener(kind, tls=None, forward_port=None):
                             break
                         request += block
                     events.append(request.split(b'\r\n')[0].decode('ascii', errors='replace'))
-                    if forward_port is None:
+                    if kind == 'redirect':
+                        self.request.sendall(f'HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.encode('ascii'))
+                    elif forward_port is None:
                         self.request.sendall(b'HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
                     else:
                         if not request.startswith(f'CONNECT xdnote-sparkle-fixture.invalid:{forward_port} '.encode()):
@@ -224,17 +226,30 @@ def check_system_pac(executable, environment, tls, log, result):
                     raise ValueError('CFNetwork did not observe the enabled fixture PAC')
                 time.sleep(0.25)
             pac['systemConfigurationObserved'] = True
-            before = origin.count('connection')
-            response = json.loads(execute([executable, 'request', 'system', target], log, env=environment))
-            pac.update(pacRequests=len(hits), proxy=list(proxy), response=response,
-                       unexpectedOriginConnections=origin.count('connection') - before)
+            cases = {}
+            pac['cases'] = cases
             expected = f'CONNECT {PAC_HOST}:{port} '
-            if not hits or not any(event.startswith(expected) for event in proxy):
-                raise ValueError('System PAC did not route the request through the selected proxy')
-            if response['error'] == 0 or response['receivedBytes'] != 0:
-                raise ValueError('PAC rejection fixture unexpectedly returned a successful response')
+            with listener('redirect', location=target) as (redirect_port, redirects):
+                for name, url in (('appcast', target), ('redirected-appcast', f'http://127.0.0.1:{redirect_port}/redirect')):
+                    before = origin.count('connection')
+                    previous = len(proxy)
+                    response = json.loads(execute([executable, 'appcast', url], log, env=environment))
+                    case = {'response': response, 'proxy': proxy[previous:],
+                            'originConnections': origin.count('connection') - before}
+                    cases[name] = case
+                    if not any(event.startswith(expected) for event in case['proxy']):
+                        raise ValueError(f'System PAC did not route {name} through the selected proxy')
+                    network_errors = [entry['code'] for entry in response['errorChain'] if entry['domain'] == 'NSURLErrorDomain']
+                    if response['error'] == 0 or not network_errors or any(code in (-1200, -1202) for code in network_errors):
+                        raise ValueError(f'Sparkle did not report a proxy transport failure for {name}')
+                if not any(event.startswith('GET /redirect ') for event in redirects):
+                    raise ValueError('The PAC DIRECT redirect fixture did not receive its expected request')
+            pac['pacRequests'] = len(hits)
+            pac['unexpectedOriginConnections'] = sum(item['originConnections'] for item in cases.values())
             pac['directFallbackObserved'] = pac['unexpectedOriginConnections'] > 0
             pac['policyPassed'] = not pac['directFallbackObserved']
+            if not hits or not pac['policyPassed']:
+                raise ValueError('System PAC proxy rejection permitted a direct connection to the origin')
     pac['temporarySettingsDisabled'] = True
 
 
@@ -316,6 +331,7 @@ def check(work, evidence, *, system_pac_enabled=False):
                     'SUPublicEDKey': '11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=',
                     'SUEnableAutomaticChecks': False, 'SUAutomaticallyUpdate': False,
                     'SUEnableInstallerLauncherService': False, 'SUEnableDownloaderService': False,
+                    'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True},
                     'SUFeedURL': 'https://127.0.0.1:1/never-requested'}
             (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
             execute(['/usr/bin/xcrun', 'clang', '-fobjc-arc', '-fblocks', '-Wall', '-Wextra', '-Werror',
@@ -339,6 +355,12 @@ def check(work, evidence, *, system_pac_enabled=False):
                 if direct.get('error') not in (-1200, -1202) or not direct.get('sawUntrustedServerTrust') or not origin:
                     raise ValueError('Loopback untrusted TLS was not rejected')
                 result['routes']['direct'] = {'response': direct, 'origin': list(origin)}
+                before = origin.count('connection')
+                appcast = json.loads(execute([executable, 'appcast', url], log, env=environment))
+                if origin.count('connection') <= before or not any(
+                        entry['domain'] == 'NSURLErrorDomain' and entry['code'] in (-1200, -1202) for entry in appcast['errorChain']):
+                    raise ValueError('Sparkle appcast downloader did not reject the untrusted origin')
+                result['appcastTlsRejected'] = appcast
                 # macOS may bypass proxies for loopback IP literals. Use the
                 # reserved .invalid fixture name for CONNECT/SOCKS instead;
                 # the rejecting local proxy never resolves or contacts it.
