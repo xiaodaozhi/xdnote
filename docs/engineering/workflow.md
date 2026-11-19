@@ -40,7 +40,7 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 `scope=settings-unix` 仅补验 Linux、macOS ARM64 的[设置、偏好及自动保存](settings-window.md)受影响路径，使用 `test --suite settings` 固定离屏运行；不执行真实文件选择器、原生辅助技术或完整桌面矩阵。新设置窗口的人工视觉验收另行记录，未验收时不宣称通过。
 
-`scope=deployment-unix` 仅在 Linux、macOS ARM64 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 复用同一 Linux 开发包，在一次性 GitHub 托管 Ubuntu 22.04 运行器中通过 apt 安装并以 dpkg 核对版本、文件归属与卸载。系统启动器在虚拟 X11 上验证原生加载。GIO 在私有 XDG 配置内选择已安装的 Markdown 默认处理器，以默认入口冷启动并转交文档，同时验证显式桌面入口的转交，三个带中文文件名的文档均由同一进程打开。可见会话、文件管理器、用户通过桌面设置选择默认应用及发行验收单独记录。
+`scope=deployment-unix` 仅在 Linux、macOS ARM64 执行[纯产品部署](deployment.md)：独立收集实际应用与资源助手依赖，拒绝测试／Quick／QML 内容，封存文件、逐项 SDK／SPDX 和代码节证据；由目录外的无 Qt Test 探针验证明暗阅读、图片、编辑撤销保存和会话接管，再在 `build/` 中完成[安装／升级／卸载与文件保护](user-installation.md)，保留证据而不发布软件。`scope=deployment-linux` 复用同一 Linux 开发包，在一次性 GitHub 托管 Ubuntu 22.04 运行器中通过 apt 安装并以 dpkg 核对版本、文件归属与卸载。GIO 在私有 XDG 配置中验证原生启动器及显式、默认入口转交。另起私有 X11、D-Bus 和 XDG 会话，驱动实际 Nautilus 的「打开方式」「属性 → 打开方式 → 设为默认」和双击，分别核对一次性打开、默认应用持久化、运行中转交与冷启动。GNOME Wayland、其他桌面与发行验收单独记录。
 
 桌面工作流的 Ubuntu 22.04 依赖准备使用显式 jammy／updates／security 源与 Ubuntu 归档密钥；主站域名解析失败时改用 [Linux Kernel Archives 的 Ubuntu 镜像](https://mirrors.kernel.org/)，实际地址写入日志，签名与有效期检查保持启用。APT 配置只对该命令生效，不沿用宿主预设的镜像优先级。DNS 探测、索引更新、包下载及整个准备步骤均有时限；网络故障作为基础设施失败记录，不无限等待或计为产品测试结果。
 
