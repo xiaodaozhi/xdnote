@@ -25,24 +25,22 @@ jobs:
           toolchain: '1.99.0'
       - run: python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
       - name: Prepare Linux desktop libraries
-        timeout-minutes: 10
+        timeout-minutes: 12
         run: |
+          set -euo pipefail
           mkdir -p build/ci-apt
-          xdnote_apt_archive=https://archive.ubuntu.com/ubuntu
-          xdnote_apt_security=https://security.ubuntu.com/ubuntu
-          if ! timeout 10s getent ahosts archive.ubuntu.com > /dev/null || ! timeout 10s getent ahosts security.ubuntu.com > /dev/null; then
-            xdnote_apt_archive=https://mirrors.kernel.org/ubuntu
-            xdnote_apt_security=$xdnote_apt_archive
-          fi
-          echo "Ubuntu archive: $xdnote_apt_archive; security: $xdnote_apt_security (Ubuntu archive key verification enabled)"
-          cat > build/ci-apt/ubuntu.list <<EOF
-          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_archive jammy main universe restricted multiverse
-          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_archive jammy-updates main universe restricted multiverse
-          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $xdnote_apt_security jammy-security main universe restricted multiverse
-          EOF
-          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
-          timeout 180s sudo apt-get "${xdnote_apt_options[@]}" update
-          timeout 360s sudo apt-get "${xdnote_apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 fonts-noto-cjk fonts-noto-color-emoji xvfb gdb patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev
+          apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=0 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
+          for mirror in https://mirrors.kernel.org/ubuntu https://archive.ubuntu.com/ubuntu; do
+            printf 'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] %s %s main universe restricted multiverse\n' \
+              "$mirror" jammy "$mirror" jammy-updates "$mirror" jammy-security > build/ci-apt/ubuntu.list
+            echo "Ubuntu source: $mirror"
+            if sudo timeout --kill-after=10s 90s apt-get "${apt_options[@]}" update &&
+               sudo timeout --kill-after=10s 235s apt-get "${apt_options[@]}" install -y --no-remove --no-install-recommends \
+                 libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 xvfb x11-utils libglib2.0-bin patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev; then
+              exit 0
+            fi
+          done
+          exit 1
       - name: Prepare pinned Qt and platform sources
         run: |
           python scripts/prepare_qt.py --download --host linux --arch linux_gcc_64
@@ -118,6 +116,23 @@ jobs:
             QT_QPA_PLATFORM=xcb xvfb-run -a /usr/bin/xdnote --help >> "$evidence/native-launch.log"
             test "$before" = "$(sha256sum "$fixture")"
           done
+          export XDNOTE_CANDIDATE_REPORT="$evidence"
+          PYTHONPATH="$PWD/scripts" python - <<'PYPROBE'
+          import json
+          import os
+          from pathlib import Path
+          from check_linux_package_install import desktop_entry_launch
+
+          output = Path(os.environ['XDNOTE_CANDIDATE_REPORT'])
+          identity = json.loads((output / '0.1.0-rc.1-debian.json').read_bytes())
+          binary = Path('/opt/xdnote/versions') / identity['runtimeId'] / 'bin/xdnote'
+          files = tuple(Path(os.environ['XDG_DATA_HOME']) / f'候选交接 {index}.md' for index in range(3))
+          for document in files:
+              document.write_text('# Candidate desktop handoff\n', encoding='utf-8')
+          report = desktop_entry_launch(Path('/usr/share/applications/xdnote.desktop'), binary, files,
+                                        os.environ.copy(), output / 'candidate-native-open.log')
+          (output / 'candidate-native-open.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
+          PYPROBE
           sudo -n dpkg --purge xdnote
           ! dpkg-query -W xdnote >/dev/null 2>&1
           test "$before" = "$(sha256sum "$fixture")"
