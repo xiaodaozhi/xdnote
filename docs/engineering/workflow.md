@@ -56,13 +56,15 @@ CI 使用只读仓库权限和固定依赖，不签名或发布。普通开发�
 
 独立 `update-helper.yml` 仅手动触发，在一次性 Windows／Ubuntu 22.04 账户运行[原生事务夹具](../../experiments/native-update-fixture/README.md)。它使用临时信任根和独立进程映像实际执行 helper 与安装器，覆盖取消、并行门、验签／摘要拒绝、父进程等待、安装后身份和重启；不编译 Qt 桌面、不发布，也不替代可见向导、polkit 对话框或产品完整更新验收。Linux 系统包操作仅用于一次性 GitHub 托管 CI 的原生事务和 Linux 部署专项。
 
+直接手动选择 `update-helper.yml` 的 `scope=polkit` 时，Ubuntu 22.04 在一次性本地虚拟控制台登录中运行系统终端认证代理。测试用固定策略和已安装助手先撤回授权，再用临时管理员账户通过 PAM 认证。前一轮保留旧包，后一轮校验签名、等待旧进程退出，实际安装并核对重启身份。工件记录席位、事务回执和两版包摘要。图形认证代理、正式信任与桌面应用交互另行验收。
+
 `scope=update-products` 另调用其 product 范围，在相同的一次性环境编译两个私有产品版本，验证真实文档保存／取消、原生包升级、回执与重启。临时信任根、文件回复及静默安装／授权限定于私有 worktree；正常产品构建和信任文件不修改。该范围仍不包含最低系统、公开发行、真实授权对话框或人工桌面验收。
 
 `scope=qt-replacement` 只调用手动 `qt-replacement.yml`：Windows、Ubuntu 22.04、macOS arm64 各构建一份实际产品和源码修改的 Qt Core，在自有安装副本中完成加载、文档行为及维护保护验证。原 SDK／产品不覆盖，不执行系统注册或发布，不上传 Qt 源码和二进制。许可声明与全部对应源码义务仍由最终交付核验决定，见[替换说明](qt-library-replacement.md)。
 
 `scope=sparkle-macos` 只运行 macOS ARM64 的[原生更新网络准入](macos-update-transport.md)：显式准备固定 Sparkle 输入、编译主库并执行回环代理／TLS 探针，不准备 Qt 或执行桌面产品。报告与原始构建／许可回执保留七天，汇总要求所选架构成功；该范围不执行安装、生产签名、公开更新或 最低支持系统验收。
 
-`windows-installer.yml` 手动选择 `scope=fixtures` 时，使用不可执行的自建文件验证 Windows 原生安装引擎、升级／卸载和候选关联保护；选择 `scope=product` 时，只运行一个 Windows 产品任务，构建实际载荷、核对逐文件许可材料并执行真实安装包的安装／升级／卸载和安装目录运行。同一封存安装包另在托管 Windows Server 2022 桌面通过 Explorer 属性选择显式默认应用，并验证文件冷启动和同进程转交。工件记录自建文档、构建身份与包摘要。可见安装向导和客户端系统继续分项验收。`desktop-admission.yml` 的 `scope=installer-windows` 仅转调默认夹具模式，并跳过整个桌面矩阵，供新工作流首次合并前验证；日常提交和 main 合并仍仅触发材料 CI。
+`windows-installer.yml` 手动选择 `scope=fixtures` 时，使用不可执行的自建文件验证 Windows 原生安装引擎、升级／卸载和候选关联保护；选择 `scope=product` 时，只运行一个 Windows 产品任务，构建实际载荷、核对逐文件许可材料并执行真实安装包的安装／升级／卸载和安装目录运行。同一封存安装包另在托管 Windows Server 2022 桌面通过英文图形向导安装，随后通过 Explorer 属性选择显式默认应用，并验证文件冷启动和同进程转交。工件记录向导页序、自建文档、构建身份与包摘要。客户端系统继续分项验收。`desktop-admission.yml` 的 `scope=installer-windows` 仅转调默认夹具模式，并跳过整个桌面矩阵，供新工作流首次合并前验证；日常提交和 main 合并仍仅触发材料 CI。
 
 项目专用 SDK、虚拟环境、构建工具和缓存归本项目所有，放在 `build/`；禁止从其他项目目录执行、导入或链接工具、SDK、库及产物，也不复制其他项目的虚拟环境充作独立安装。系统安装的 Python、Rust、Node 和编译器可以使用。同项目 worktree 可共享主工作区的 `build/toolchain/` 与 Qt；共享前核对真实路径与 Git 共同目录，不能借此访问其他项目的工具。工具缺失时使用系统运行时在本项目显式准备，不跨项目回退。迁移后重新配置活动构建目录，检查 CMake、Ninja 和 Python 路径，旧缓存不能继续指向其他项目。
 

@@ -1,4 +1,4 @@
-# Explorer and the system association picker on a disposable Windows desktop.
+# Visible setup, Explorer and the association picker on a disposable Windows desktop.
 param(
     [Parameter(Mandatory=$true)][string]$Package,
     [Parameter(Mandatory=$true)][string]$Audit,
@@ -196,6 +196,97 @@ function Press-PickerPoint($Picker, $Point) {
     [ExplorerAcceptance]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
 }
 
+function Visible-SetupPage($Wizard, [string]$Title) {
+    if (!(Picker-IsForeground $Wizard)) { return }
+    $heading = Named-Control $Wizard $Title
+    if ($heading -and !$heading.Current.IsOffscreen) { return $true }
+    if (Read-PickerPoint $Wizard @($Title)) { return $true }
+}
+
+function Press-SetupAccelerator($Wizard, [byte]$Key) {
+    if (!(Picker-IsForeground $Wizard)) { throw 'The setup wizard lost the foreground' }
+    [ExplorerAcceptance]::keybd_event(0x12,0,0,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::keybd_event($Key,0,0,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::keybd_event($Key,0,2,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::keybd_event(0x12,0,2,[UIntPtr]::Zero)
+}
+
+function Select-SetupMarkdownTask($Wizard) {
+    $taskLabel = 'Offer xdnote in Open with (does not change your default app)'
+    $task = Named-Control $Wizard $taskLabel
+    $toggle = $null
+    if ($task -and !$task.Current.IsOffscreen -and (Picker-IsForeground $Wizard) -and
+        $task.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$toggle)) {
+        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'The Markdown candidate was selected by default' }
+        $toggle.Toggle()
+        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'The Markdown candidate was not selected' }
+        return
+    }
+    if ($task -and !$task.Current.IsOffscreen -and (Picker-IsForeground $Wizard)) {
+        Click-Control $task
+        return
+    }
+    $point = Wait-Result 'the visible Markdown candidate' { Read-PickerPoint $Wizard @('Offer xdnote in Open with') }
+    Press-PickerPoint $Wizard $point
+    # A changed registry candidate after installation confirms the option switched on.
+}
+
+function Install-ThroughWizard($Result) {
+    $arguments = @('/NORESTART','/LANG=english',('/DIR="' + $root + '"'),
+        ('/LOG="' + (Join-Path $output 'setup.log') + '"'))
+    $setup = Start-Process -FilePath $Package -ArgumentList $arguments -PassThru
+    try {
+        $wizard = Wait-Result 'the visible xdnote Setup Wizard' {
+            $window = Foreground
+            if ($window -and $window.Current.ClassName -eq 'TWizardForm' -and $window.Current.Name -eq 'Setup - xdnote') {
+                $owner = $window.Current.ProcessId
+                if ($owner -eq $setup.Id -or (Get-CimInstance Win32_Process -Filter "ProcessId = $owner").ParentProcessId -eq $setup.Id) {
+                    $window
+                }
+            }
+        }
+        $Result.wizardPages = @()
+        $pages = @('Welcome to the xdnote Setup Wizard', 'License Agreement', 'Information',
+            'Select Destination Location', 'Select Additional Tasks')
+        foreach ($page in $pages) {
+            $null = Wait-Result "the setup page $page" { Visible-SetupPage $wizard $page }
+            $Result.wizardPages += $page
+            if ($page -eq 'License Agreement') {
+                $notice = 'This agreement covers only the bundled Microsoft VC++ runtime. Other components retain their own licenses.'
+                $null = Wait-Result 'the runtime license scope' { Visible-SetupPage $wizard $notice }
+                $Result.wizardLicenseScope = $notice
+                Press-SetupAccelerator $wizard 0x41 # Alt+A, Accept
+            }
+            if ($page -eq 'Select Additional Tasks') { Select-SetupMarkdownTask $wizard }
+            Press-SetupAccelerator $wizard 0x4E # Alt+N, Next
+        }
+        $null = Wait-Result 'the ready-to-install page' { Visible-SetupPage $wizard 'Ready to Install' }
+        $Result.wizardPages += 'Ready to Install'
+        Press-SetupAccelerator $wizard 0x49 # Alt+I, Install
+        $null = Wait-Result 'the visible installation completion page' { Visible-SetupPage $wizard 'Completing the xdnote Setup Wizard' }
+        $Result.wizardPages += 'Completing the xdnote Setup Wizard'
+        Press-SetupAccelerator $wizard 0x46 # Alt+F, Finish
+        if (!$setup.WaitForExit(20000) -or $setup.ExitCode -ne 0) { throw 'The visible installer did not exit successfully' }
+        $command = (Get-Item -LiteralPath 'HKCU:\Software\Classes\xdnote.Markdown\shell\open\command').GetValue('')
+        if ($command -ne ('"' + $exe + '" -- "%1"')) { throw 'The wizard did not register the selected Markdown candidate' }
+        $Result.wizardMarkdownCandidate = 'selected in the wizard'
+    } catch {
+        if ($wizard -and (Picker-IsForeground $wizard)) {
+            $Result.wizardControls = @($wizard.FindAll([Windows.Automation.TreeScope]::Descendants,
+                [Windows.Automation.Condition]::TrueCondition) | Where-Object { !$_.Current.IsOffscreen } |
+                Select-Object -First 60 | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
+        }
+        throw
+    } finally {
+        # A failed diagnostic must release its private setup window before package cleanup.
+        if (!$setup.HasExited) {
+            $ownedChildren = Get-CimInstance Win32_Process -Filter "ParentProcessId = $($setup.Id)"
+            foreach ($child in $ownedChildren) { Stop-Process -Id $child.ProcessId -ErrorAction SilentlyContinue }
+            if (!$setup.HasExited) { $setup.Kill(); $null = $setup.WaitForExit(3000) }
+        }
+    }
+}
+
 function Choose-Executable($Picker, $Browse, [string]$Path) {
     $owner = $Picker.Current.NativeWindowHandle
     Press-PickerPoint $Picker $Browse
@@ -335,14 +426,11 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe, [
 }
 
 $result = [ordered]@{ok=$false; buildIdentity=$metadata.buildIdentity; installerSha256=$identity.sha256;
-    scope='Explorer item verbs and the visible Windows default application picker in a disposable desktop'}
-$installed = $false
+    scope='Visible setup, Explorer item verbs and the Windows default application picker in a disposable desktop'}
+$uninstaller = Join-Path $root 'unins000.exe'
 try {
     $originalChoice = Read-MdUserChoice
-    $arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LANG=english','/TASKS=markdown',('/DIR="' + $root + '"'))
-    $setup = Start-Process -FilePath $Package -ArgumentList $arguments -Wait -PassThru
-    if ($setup.ExitCode -ne 0) { throw "Explorer fixture install failed: $($setup.ExitCode)" }
-    $installed = $true
+    Install-ThroughWizard $result
     $controlFile = $metadata.files | Where-Object { $_.path -eq 'xdnote.exe' }
     if (!$controlFile -or (Get-FileHash -LiteralPath $exe).Hash.ToLowerInvariant() -ne $controlFile.sha256) {
         throw 'Installed executable differs from the sealed payload'
@@ -351,6 +439,7 @@ try {
     # The preceding installer roundtrip enforces default-preservation. Explorer
     # can infer an executable from the new candidate list with no UserChoice.
     $result.installerPreservedExplicitChoice = ((Read-MdUserChoice) -eq $originalChoice)
+    if (!$result.installerPreservedExplicitChoice) { throw 'The visible installer changed the explicit default app' }
     $result.inferredHandlerAfterInstall = ($effectiveAfterInstall -eq $exe)
 
     if ($effectiveAfterInstall -eq $exe) {
@@ -418,8 +507,8 @@ try {
 } finally {
     foreach ($process in @(Owned-Processes)) { Stop-Process -Id $process.Id }
     try {
-        if ($installed) {
-            $uninstall = Start-Process -FilePath (Join-Path $root 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+        if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
+            $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
             if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $exe)) { throw 'Explorer fixture uninstall failed' }
         }
         foreach ($name in $samples) {
