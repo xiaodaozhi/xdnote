@@ -55,6 +55,13 @@ try {
             throw 'Second explicit default was not selected'
         }
         Write-Host 'Explorer Properties selected a second explicit default through the picker'
+        $choice = Read-MdUserChoice
+        Select-DefaultInProperties $item 'UnlistedStockFixture' 'unlisted.exe' $notepad
+        if ([IO.Path]::GetFileName([ExplorerAcceptance]::MarkdownHandler()) -ne 'notepad.exe' -or (Read-MdUserChoice) -eq $choice) {
+            throw 'Browse did not select the third explicit default'
+        }
+        Write-Host 'Explorer Properties browsed to the Notepad executable and set it as the default'
+
     }
 } catch {
     $window = Foreground

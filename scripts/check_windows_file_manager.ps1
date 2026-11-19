@@ -41,7 +41,7 @@ foreach ($name in $samples) {
     $hashes[$name] = (Get-FileHash -LiteralPath $path).Hash
 }
 
-Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing,System.Runtime.WindowsRuntime
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing,System.Runtime.WindowsRuntime,System.Windows.Forms
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -52,6 +52,7 @@ public static class ExplorerAcceptance {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("shell32.dll")] public static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
+    public static void ScrollDown() { mouse_event(0x0800, 0, 0, unchecked((uint)-720), UIntPtr.Zero); }
     [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode)]
     static extern int AssocQueryString(uint flags, uint kind, string extension, string verb, StringBuilder path, ref uint size);
     public static string MarkdownHandler() {
@@ -182,6 +183,30 @@ function Press-PickerPoint($Picker, $Point) {
     [ExplorerAcceptance]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
 }
 
+function Choose-Executable($Picker, $Browse, [string]$Path) {
+    $owner = $Picker.Current.NativeWindowHandle
+    Press-PickerPoint $Picker $Browse
+    $dialog = Wait-Result 'the Windows executable browser' {
+        $foreground = Foreground
+        if ($foreground -and $foreground.Current.NativeWindowHandle -ne $owner -and
+            $foreground.Current.ClassName -eq '#32770' -and $foreground.Current.Name -match 'Open|Browse') { $foreground }
+    }
+    $handle = $dialog.Current.NativeWindowHandle
+    if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $handle) { throw 'Executable browser lost its foreground' }
+    [Windows.Forms.SendKeys]::SendWait('%n')
+    $name = Wait-Result 'the focused File name field' {
+        $focused = [Windows.Automation.AutomationElement]::FocusedElement
+        if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -eq $handle -and $focused -and
+            $focused.Current.ControlType -eq [Windows.Automation.ControlType]::Edit) { $focused }
+    }
+    $value = $name.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+    $value.SetValue($Path)
+    Press-Control (Wait-Result 'the executable browser Open button' { Named-Control $dialog 'Open' })
+    $null = Wait-Result 'the executable browser to close' {
+        if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $handle) { $true }
+    }
+}
+
 function Owned-Processes {
     Get-Process -Name xdnote -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }
 }
@@ -223,7 +248,7 @@ function Read-MdUserChoice {
     return ''
 }
 
-function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe) {
+function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe, [string]$ExecutablePath='') {
     $stem = [IO.Path]::GetFileNameWithoutExtension($Item.Path)
     $Item.InvokeVerb('properties')
     $properties = Wait-Result 'the owned Markdown Properties dialog' {
@@ -256,24 +281,40 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe) {
         }
     }
     # The server's Shell_Flyout is drawn but exposes no accessible children.
-    $app = Wait-Result "$Name or More apps in the Windows picker" {
-        Read-PickerPoint $picker @($Name,$DisplayExe,'More apps')
+    $browseLabel = 'Look for another app on this PC'
+    $app = Wait-Result "$Name or an alternate selection in the Windows picker" {
+        Read-PickerPoint $picker @($Name,$DisplayExe,'More apps',$browseLabel)
     }
     if ($app.Label -eq 'More apps') {
         Press-PickerPoint $picker $app
-        $app = Wait-Result "$Name in the expanded Windows picker" {
-            Read-PickerPoint $picker @($Name,$DisplayExe)
+        $app = Wait-Result "$Name or Browse in the expanded Windows picker" {
+            $choice = Read-PickerPoint $picker @($Name,$DisplayExe,$browseLabel)
+            if ($choice) { return $choice }
+            if (Picker-IsForeground $picker) {
+                $r = $picker.Current.BoundingRectangle
+                $null = [ExplorerAcceptance]::SetCursorPos([int]($r.X+$r.Width*0.8),[int]($r.Y+$r.Height*0.6))
+                [ExplorerAcceptance]::ScrollDown()
+            }
         }
     }
-    Press-PickerPoint $picker $app
     $pickerHandle = $picker.Current.NativeWindowHandle
-    $confirm = Read-PickerPoint $picker @('Set default','Always','OK','0K')
-    if ($confirm) {
-        Press-PickerPoint $picker $confirm
+    if ($app.Label -eq $browseLabel) {
+        if (!$ExecutablePath -or !(Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
+            throw 'No verified installed path for Browse'
+        }
+        Choose-Executable $picker $app $ExecutablePath
+        Write-Host "Picker ($Name) received the verified executable path"
     } else {
-        if (!(Picker-IsForeground $picker)) { throw 'The picker lost its foreground' }
-        [ExplorerAcceptance]::keybd_event(13,0,0,[UIntPtr]::Zero)
-        [ExplorerAcceptance]::keybd_event(13,0,2,[UIntPtr]::Zero)
+        Press-PickerPoint $picker $app
+    }
+    if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -eq $pickerHandle) {
+        $confirm = Read-PickerPoint $picker @('Set default','Always','OK','0K')
+        if ($confirm) { Press-PickerPoint $picker $confirm }
+        else {
+            if (!(Picker-IsForeground $picker)) { throw 'The picker lost its foreground' }
+            [ExplorerAcceptance]::keybd_event(13,0,0,[UIntPtr]::Zero)
+            [ExplorerAcceptance]::keybd_event(13,0,2,[UIntPtr]::Zero)
+        }
     }
     $null = Wait-Result 'the app picker to close after confirming' {
         if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $pickerHandle) { $true }
@@ -336,14 +377,14 @@ try {
         Stop-Process -Id $openedId
         Wait-Process -Id $openedId -Timeout 10 -ErrorAction SilentlyContinue
         $result.pickerStage = 'Notepad'
-        Select-DefaultInProperties $cold 'Notepad' 'notepad.exe'
+        Select-DefaultInProperties $cold 'Notepad' 'notepad.exe' $notepad
         $null = Wait-Result 'the selected fallback editor' {
             if ([IO.Path]::GetFileName([ExplorerAcceptance]::MarkdownHandler()) -eq 'notepad.exe') { $true }
         }
     }
     $beforeChoice = Read-MdUserChoice
     $result.pickerStage = 'xdnote'
-    Select-DefaultInProperties $cold 'xdnote' 'xdnote.exe'
+    Select-DefaultInProperties $cold 'xdnote' 'xdnote.exe' $exe
     $null = Wait-Result 'the selected default executable' {
         if ([ExplorerAcceptance]::MarkdownHandler() -eq $exe -and (Read-MdUserChoice) -ne $beforeChoice) { $true }
     }
