@@ -102,7 +102,7 @@ def wayland_document(sample, binary):
     raise ValueError(f'No installed Wayland document window for {sample.name}')
 
 
-def activate(node):
+def activate(node, names=('click', 'activate', 'press', 'switch')):
     try:
         action = node.queryAction()
     except NotImplementedError:
@@ -110,7 +110,7 @@ def activate(node):
         return
     for index in range(action.nActions):
         name = action.getName(index).casefold()
-        if name in ('click', 'activate', 'press', 'switch'):
+        if name in names:
             if not action.doAction(index):
                 raise ValueError(f'Nautilus rejected {name} on {node.name}')
             return
@@ -159,22 +159,10 @@ def verify(binary, evidence, samples, backend):
 
         def bring_forward(window):
             execute('/usr/bin/xdotool', 'windowactivate', '--sync', window)
-            if wayland and not folder_active():
-                execute('/usr/bin/xdotool', 'key', '--clearmodifiers', 'alt+Tab')
-                deadline = time.monotonic() + 8
-                while time.monotonic() < deadline:
-                    if folder_active():
-                        return
-                    time.sleep(0.15)
-                raise ValueError('The owned Wayland Nautilus window did not receive focus')
 
         def sample_node(sample):
             return lookup(sample.name, [sample.name])
 
-        def folder_active():
-            folder = lookup('the owned Nautilus window', [samples[0].parent.name], ['frame'])
-            folder.clear_cache()
-            return folder.getState().contains(pyatspi.STATE_ACTIVE)
 
         def open_sample(sample):
             if wayland:
@@ -205,14 +193,14 @@ def verify(binary, evidence, samples, backend):
             if wayland:
                 bring_forward(window)
                 select_item(item, clear=True)
-                item.parent.queryComponent().grabFocus()
-                execute('/usr/bin/xdotool', 'key', '--clearmodifiers', 'Shift+F10')
+                activate(item, ('menu',))
             else:
                 click(item, button='3')
             press(lookup('Open With Other Application', ['Open With Other Application']))
             choose = select_item if wayland else click
             choose(lookup('xdnote in Open With', ['xdnote']))
             press(lookup('Open With confirmation', ['Select', 'Open'], ['push button']))
+            print('Opened the visible one-time chooser with the selected app', file=log, flush=True)
             initial_pid = opened_document(once, binary)
             product_pids.add(initial_pid)
             if default_handler() != FALLBACK:
@@ -223,10 +211,11 @@ def verify(binary, evidence, samples, backend):
             if wayland:
                 item = sample_node(warm)
                 select_item(item, clear=True)
-                item.parent.queryComponent().grabFocus()
+                activate(item, ('menu',))
+                activate(lookup('Properties menu item', ['Properties']))
             else:
                 click(sample_node(warm))
-            execute('/usr/bin/xdotool', 'key', 'alt+Return')
+                execute('/usr/bin/xdotool', 'key', 'alt+Return')
             press(lookup('Open With tab', ['Open With'], ['page tab']))
             choose(lookup('xdnote in Properties', ['xdnote']))
             press(lookup('Set as default', ['Set as default'], ['push button']))
