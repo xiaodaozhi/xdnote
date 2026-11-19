@@ -78,10 +78,10 @@ env -u DISPLAY QT_QPA_PLATFORM=wayland WAYLAND_DEBUG=client \
     --qt-prefix build/Qt/6.8.2/gcc_64 --file "$fixture" > "$evidence/app.log" 2>&1 &
 owned_pids+=("$!")
 for attempt in {1..30}; do
-    if rg -q 'xdg_wm_base.*get_xdg_surface' "$evidence/app.log"; then break; fi
+    if grep -Eq 'xdg_wm_base.*get_xdg_surface' "$evidence/app.log"; then break; fi
     sleep 0.5
 done
-rg -m 2 'xdg_wm_base.*get_xdg_surface|xdg_surface.*get_toplevel' "$evidence/app.log"
+grep -Em 2 'xdg_wm_base.*get_xdg_surface|xdg_surface.*get_toplevel' "$evidence/app.log"
 xdotool windowactivate --sync "$window"
 xdotool mousemove --window "$window" 345 280 click 1
 xdotool key --clearmodifiers ctrl+Home
