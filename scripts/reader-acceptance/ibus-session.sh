@@ -47,16 +47,17 @@ active_engine="$(ibus engine)"
 [[ "$active_engine" == "$engine" ]] || { echo "IBus selected $active_engine instead of $engine" >&2; exit 1; }
 xdotool key --clearmodifiers ctrl+End n i h a o
 for attempt in {1..30}; do
-    grep -q 'member=UpdatePreeditText' "$evidence/ime-bus.log" && break
+    grep -Fq 'string "你好"' "$evidence/ime-bus.log" && break
     sleep 0.25
 done
-if ! grep -q 'member=UpdatePreeditText' "$evidence/ime-bus.log"; then
-    echo 'IBus did not report a preedit signal' >&2
+if ! grep -Fq 'string "你好"' "$evidence/ime-bus.log" || grep -q 'member=CommitText' "$evidence/ime-bus.log"; then
+    echo 'IBus did not expose the expected uncommitted candidate' >&2
     exit 1
 fi
 /usr/bin/python3 scripts/reader-acceptance/ibus-x11.py preedit
 xdotool key --clearmodifiers space
 /usr/bin/python3 scripts/reader-acceptance/ibus-x11.py commit
+grep -q 'member=CommitText' "$evidence/ime-bus.log"
 ibus engine xkb:us::eng
 /usr/bin/python3 scripts/reader-acceptance/ibus-x11.py transfer
 test "$before" = "$(sha256sum "$fixture")"

@@ -81,8 +81,9 @@ elif phase == "edit":
     click(document(ORIGINAL, focus=False))
     document(ORIGINAL)
 elif phase == "preedit":
-    document(ORIGINAL)
-    print("IBus preedit did not commit raw Latin text")
+    # The editor's accessible snapshot is withheld while Scintilla has tentative edits.
+    document("")
+    print("The real IBus candidate is composing and the document snapshot is withheld")
 elif phase == "commit":
     document(COMMITTED)
     print("The active editor contains the real Pinyin commit")
