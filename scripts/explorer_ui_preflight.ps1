@@ -39,6 +39,34 @@ try {
     if ($window) {
         Write-Host "Foreground: $($window.Current.Name)"
         Write-Host "Class: $($window.Current.ClassName), PID: $($window.Current.ProcessId), bounds: $($window.Current.BoundingRectangle)"
+        Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public static class WindowProbe {
+    private delegate bool Callback(IntPtr hwnd, IntPtr context);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, Callback callback, IntPtr context);
+    public static IntPtr[] Children(IntPtr window) {
+        var result = new List<IntPtr>();
+        EnumChildWindows(window, (child, context) => { result.Add(child); return true; }, IntPtr.Zero);
+        return result.ToArray();
+    }
+}
+'@
+        foreach ($child in [WindowProbe]::Children([ExplorerAcceptance]::GetForegroundWindow())) {
+            $item = [Windows.Automation.AutomationElement]::FromHandle($child)
+            if ($item) { Write-Host "Child HWND: $($item.Current.ClassName) | $($item.Current.Name)" }
+        }
+        $walker = [Windows.Automation.TreeWalker]::RawViewWalker
+        for ($item = $walker.GetFirstChild($window); $item; $item = $walker.GetNextSibling($item)) {
+            Write-Host "Raw UIA: $($item.Current.ClassName) | $($item.Current.Name)"
+        }
+        try {
+            Add-Type -AssemblyName System.Runtime.WindowsRuntime
+            $engine = [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]::TryCreateFromUserProfileLanguages()
+            if ($engine) { Write-Host "Windows OCR: $($engine.RecognizerLanguage.LanguageTag)" }
+            else { Write-Host 'Windows OCR: no installed language' }
+        } catch { Write-Host "Windows OCR unavailable: $($_.Exception.Message)" }
         if ($window.Current.Name -match 'open .md files|open this type of file') {
             try {
                 Add-Type -AssemblyName System.Drawing
