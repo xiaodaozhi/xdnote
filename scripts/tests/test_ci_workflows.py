@@ -26,6 +26,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('--release-identity build/store-candidate/release-input.json', workflow)
         self.assertIn('vars.XDNOTE_MSIX_IDENTITY_JSON', workflow)
         self.assertIn('scripts/check-store-wack.ps1', workflow)
+        self.assertIn('XDNOTE_TEST_FONT_FILE:', workflow)
+        self.assertLess(workflow.index('scripts/prepare_ci_font.py'), workflow.index('scripts/deployment_inventory.py'))
         artifact = workflow.split('actions/upload-artifact@', 1)[1]
         self.assertIn('build/store-candidate/candidate.msix.age', artifact)
         self.assertNotIn('build/store-candidate/candidate.msix\n', artifact)
