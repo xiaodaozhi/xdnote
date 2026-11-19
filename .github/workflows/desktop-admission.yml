@@ -228,6 +228,7 @@ jobs:
         if: inputs.scope == 'deployment-linux' && runner.environment == 'github-hosted'
         timeout-minutes: 10
         run: |
+          sudo apt-get -o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=1 -o Acquire::https::Timeout=20 -y --no-remove --no-install-recommends install x11-utils libglib2.0-bin
           python scripts/check_linux_package_install.py --package build/cycle-112-deployment/xdnote-dev.deb --metadata build/cycle-112-deployment/staging-evidence/debian-package.json --apt-sources build/ci-apt/ubuntu.list --evidence build/cycle-112-deployment/native-package-evidence
       - name: Test document tools, recovery and shortcuts on Unix
         if: startsWith(inputs.scope, 'tools-')
