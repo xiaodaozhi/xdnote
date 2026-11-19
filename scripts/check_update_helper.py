@@ -39,7 +39,7 @@ def wait_file(path, process=None, timeout=90):
 
 
 class Fixture:
-    def __init__(self, work, toolchain):
+    def __init__(self, work, toolchain, *, restart_receipt=None):
         self.work, self.toolchain = work, toolchain
         self.windows = platform.system() == 'Windows'
         self.suffix = '.exe' if self.windows else ''
@@ -64,7 +64,7 @@ class Fixture:
             replace(self.source / 'crates/update-helper/src/windows.rs', '.arg("/NORESTART")', '.arg("/VERYSILENT").arg("/SUPPRESSMSGBOXES").arg("/NORESTART")')
         self.cargo(['-p', 'xdnote-update-helper'], 'helper-build.log')
         self.helper = self.target / ('debug/xdnote-update-helper' + self.suffix)
-        self.restarted = work / 'restarted.json'
+        self.restarted = restart_receipt if restart_receipt is not None else work / 'restarted.json'
         self.images = work / 'images'; self.images.mkdir()
         self.identities = {}
         for label, version, build in [('old', '0.1.0-alpha.1', 200), ('new', '0.1.0-alpha.2', 201)]:
