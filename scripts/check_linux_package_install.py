@@ -108,7 +108,7 @@ def verify(package, metadata, apt_sources, evidence):
 
     evidence.mkdir(parents=True)
     report = {'ok': False, 'packageSha256': metadata['sha256'], 'buildIdentity': metadata['buildIdentity'],
-              'scope': 'Ubuntu apt/dpkg and installed X11 launcher on a disposable runner', 'checks': []}
+              'scope': 'Ubuntu apt/dpkg and installed X11 and GNOME Wayland desktop entries on a disposable runner', 'checks': []}
     log = evidence / 'package.log'
     launcher = Path('/usr/bin/xdnote')
     desktop_file = Path('/usr/share/applications/xdnote.desktop')
@@ -166,27 +166,31 @@ def verify(package, metadata, apt_sources, evidence):
                 report['checks'].append('installed launcher returned the expected build and initialized native X11 Qt')
                 report['desktopLaunch'] = desktop_entry_launch(desktop_file, binary, fixtures, env, log)
                 report['checks'].append('installed Markdown default handler and desktop entry opened documents in one process')
-                with (tempfile.TemporaryDirectory(prefix='nautilus-', dir=evidence) as isolated,
-                      tempfile.TemporaryDirectory(prefix='xdnote-runtime-') as runtime_dir):
-                    home = Path(isolated)
-                    files = home / 'File manager acceptance'
-                    files.mkdir()
-                    samples = [files / fixture.name for fixture in fixtures]
-                    for source, target in zip(fixtures, samples, strict=True):
-                        target.write_bytes(source.read_bytes())
-                    desktop_env = dict(env, HOME=isolated, XDG_RUNTIME_DIR=runtime_dir,
-                                       XDG_CONFIG_HOME=str(home / 'config'), XDG_DATA_HOME=str(home / 'data'),
-                                       XDG_CACHE_HOME=str(home / 'cache'), XDG_DATA_DIRS='/usr/local/share:/usr/share',
-                                       GDK_BACKEND='x11', GSETTINGS_BACKEND='memory', NO_AT_BRIDGE='0',
-                                       GTK_MODULES='atk-bridge', LC_ALL='C.UTF-8')
-                    command = ['/usr/bin/dbus-run-session', '--', '/usr/bin/xvfb-run', '-a',
-                               '/usr/bin/python3', Path(__file__).with_name('check_nautilus_open.py'),
-                               binary, evidence, *samples]
-                    run(command, log, env=desktop_env, timeout=150)
-                    if [digest(item) for item in samples] != before:
-                        raise ValueError('File-manager acceptance modified a user fixture')
-                report['nautilus'] = json.loads((evidence / 'nautilus.json').read_bytes())
-                report['checks'].append('Nautilus opened a file once, changed the Markdown default, and used that default')
+                for backend in ('x11', 'wayland'):
+                    result = evidence / backend
+                    result.mkdir()
+                    with (tempfile.TemporaryDirectory(prefix='nautilus-', dir=result) as isolated,
+                          tempfile.TemporaryDirectory(prefix='xdnote-runtime-') as runtime_dir):
+                        home = Path(isolated)
+                        files = home / 'File manager acceptance'
+                        files.mkdir()
+                        samples = [files / f'{phase}-{fixture.name}' for phase, fixture in
+                                   zip(('once', 'warm', 'cold'), fixtures, strict=True)]
+                        for source, target in zip(fixtures, samples, strict=True):
+                            target.write_bytes(source.read_bytes())
+                        desktop_env = dict(env, HOME=isolated, XDG_RUNTIME_DIR=runtime_dir,
+                                           XDG_CONFIG_HOME=str(home / 'config'), XDG_DATA_HOME=str(home / 'data'),
+                                           XDG_CACHE_HOME=str(home / 'cache'), XDG_DATA_DIRS='/usr/local/share:/usr/share',
+                                           GSETTINGS_BACKEND='memory', NO_AT_BRIDGE='0',
+                                           GTK_MODULES='atk-bridge', LC_ALL='C.UTF-8')
+                        command = ['/usr/bin/dbus-run-session', '--', '/usr/bin/xvfb-run', '-a',
+                                   '/usr/bin/python3', Path(__file__).with_name('check_nautilus_open.py'),
+                                   backend, binary, result, *samples]
+                        run(command, log, env=desktop_env, timeout=150)
+                        if [digest(item) for item in samples] != before:
+                            raise ValueError('File-manager acceptance modified a user fixture')
+                    report.setdefault('nautilus', {})[backend] = json.loads((result / 'nautilus.json').read_bytes())
+                    report['checks'].append(f'Nautilus on {backend} opened once, selected the Markdown default and used it')
             finally:
                 if query().returncode == 0:
                     run(['/usr/bin/sudo', '-n', '/usr/bin/dpkg', '--purge', 'xdnote'], log, timeout=150)
