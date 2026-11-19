@@ -354,6 +354,7 @@ fn desktop_environment(bytes: &[u8]) -> BTreeMap<String, String> {
             if [
                 "DISPLAY",
                 "XAUTHORITY",
+                "WAYLAND_DISPLAY",
                 "DBUS_SESSION_BUS_ADDRESS",
                 "XDG_RUNTIME_DIR",
                 "XDG_CONFIG_HOME",
@@ -363,6 +364,7 @@ fn desktop_environment(bytes: &[u8]) -> BTreeMap<String, String> {
                 "XDG_CONFIG_DIRS",
                 "XDG_DATA_DIRS",
                 "XDG_CURRENT_DESKTOP",
+                "XDG_SESSION_TYPE",
                 "LANG",
                 "LANGUAGE",
                 "LC_ALL",
@@ -636,7 +638,8 @@ mod tests {
         let environment = desktop_environment(
             b"XDG_CONFIG_HOME=/owned/config\0XDG_DATA_HOME=/owned/data\0\
               XDG_CACHE_HOME=/owned/cache\0XDG_STATE_HOME=/owned/state\0\
-              LC_ALL=zh_CN.UTF-8\0DISPLAY=:9\0LD_PRELOAD=/untrusted/loader.so\0\
+              LC_ALL=zh_CN.UTF-8\0DISPLAY=:9\0WAYLAND_DISPLAY=wayland-9\0XDG_SESSION_TYPE=wayland\0\
+              WAYLAND_SOCKET=12\0LD_PRELOAD=/untrusted/loader.so\0\
               QT_PLUGIN_PATH=/untrusted/plugins\0XDNOTE_SETTINGS_PATH=/test-only.ini\0",
         );
         assert_eq!(environment["XDG_CONFIG_HOME"], "/owned/config");
@@ -645,6 +648,9 @@ mod tests {
         assert_eq!(environment["XDG_STATE_HOME"], "/owned/state");
         assert_eq!(environment["LC_ALL"], "zh_CN.UTF-8");
         assert_eq!(environment["DISPLAY"], ":9");
+        assert_eq!(environment["WAYLAND_DISPLAY"], "wayland-9");
+        assert_eq!(environment["XDG_SESSION_TYPE"], "wayland");
+        assert!(!environment.contains_key("WAYLAND_SOCKET"));
         assert!(!environment.contains_key("LD_PRELOAD"));
         assert!(!environment.contains_key("QT_PLUGIN_PATH"));
         assert!(!environment.contains_key("XDNOTE_SETTINGS_PATH"));
