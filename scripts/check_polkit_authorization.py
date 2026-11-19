@@ -79,7 +79,7 @@ def authorize_at_prompt(command, password, *, cancel=False):
             status = request.poll()
             raise RuntimeError(f'No administrator password prompt (agent state {position}, request exit {status})')
         if cancel:
-            terminal_output.sendcontrol('c')
+            terminal_output.send('\x03')
         else:
             deadline = time.monotonic() + 2
             while termios.tcgetattr(master)[3] & termios.ECHO and time.monotonic() < deadline:
@@ -125,7 +125,7 @@ def run_probe(output):
         raise ValueError('An unprivileged disposable GitHub-hosted Linux runner is required')
     if POLICY.exists():
         raise ValueError('Preserve an existing policy or installation')
-    output.mkdir()
+    output.mkdir(parents=True)
     username = 'xdn-polkit-' + os.environ['GITHUB_RUN_ID'][-12:]
     password = secrets.token_hex(20)
     with tempfile.TemporaryDirectory(prefix='xdnote-polkit-') as directory:
