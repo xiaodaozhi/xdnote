@@ -92,7 +92,9 @@ jobs:
       - name: Prepare pinned Qt and editor inputs
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$xdnoteVs) { throw 'x64 MSVC toolchain unavailable' }
+          python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64 --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
           python scripts/desktop.py prepare --download
       - name: Build the actual product and diagnostic entry points
         shell: pwsh
