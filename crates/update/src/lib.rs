@@ -15,7 +15,7 @@ pub const MANIFEST_LIMIT: usize = 256 * 1024;
 const KEYRING_LIMIT: usize = 64 * 1024;
 pub const SIGNATURE_LIMIT: usize = 4 * 1024;
 pub const PACKAGE_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
-/// This project has no production trust key yet. Never populate from a response.
+/// Compiled production trust root. A response cannot supply this keyring.
 pub const PRODUCTION_KEYRING: &str = include_str!("../../../tools/update-trust.json");
 
 /// A complete, structurally validated candidate for one installation target.
@@ -400,6 +400,34 @@ fn valid_key_id(value: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
 }
 
+fn manifest_public_key(keyring: &Keyring, key_id: &str) -> Result<VerifyingKey, &'static str> {
+    if keyring.schema_version != 1 || keyring.keys.len() > 16 {
+        return Err("invalid_trust_keyring");
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut selected = None;
+    for key in &keyring.keys {
+        if !valid_key_id(&key.key_id) || !seen.insert(&key.key_id) {
+            return Err("invalid_trust_keyring");
+        }
+        let public = decode_hex::<32>(&key.public_key).map_err(|_| "invalid_trust_keyring")?;
+        let public = VerifyingKey::from_bytes(&public).map_err(|_| "invalid_trust_keyring")?;
+        if public.is_weak() {
+            return Err("invalid_trust_keyring");
+        }
+        if key.key_id == key_id {
+            selected = Some(public);
+        }
+    }
+    selected.ok_or("untrusted_signing_key")
+}
+
+#[cfg(feature = "release-tool")]
+pub fn production_manifest_key(key_id: &str) -> Result<VerifyingKey, &'static str> {
+    let keyring = serde_json::from_str(PRODUCTION_KEYRING).map_err(|_| "invalid_trust_keyring")?;
+    manifest_public_key(&keyring, key_id)
+}
+
 /// Authenticate the exact original manifest bytes with a locally trusted keyring.
 ///
 /// An empty return means success; all failures are stable nonempty error codes.
@@ -424,25 +452,7 @@ pub fn verify_manifest(bytes: &[u8], envelope_json: &str, keyring_json: &str) ->
         {
             return Err("unsupported_signature");
         }
-        if keyring.schema_version != 1 || keyring.keys.len() > 16 {
-            return Err("invalid_trust_keyring");
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        let mut selected = None;
-        for key in &keyring.keys {
-            if !valid_key_id(&key.key_id) || !seen.insert(&key.key_id) {
-                return Err("invalid_trust_keyring");
-            }
-            let public = decode_hex::<32>(&key.public_key).map_err(|_| "invalid_trust_keyring")?;
-            let public = VerifyingKey::from_bytes(&public).map_err(|_| "invalid_trust_keyring")?;
-            if public.is_weak() {
-                return Err("invalid_trust_keyring");
-            }
-            if key.key_id == envelope.key_id {
-                selected = Some(public);
-            }
-        }
-        let public = selected.ok_or("untrusted_signing_key")?;
+        let public = manifest_public_key(&keyring, &envelope.key_id)?;
         let signature = Signature::from_bytes(
             &decode_hex::<64>(&envelope.signature).map_err(|_| "invalid_signature")?,
         );

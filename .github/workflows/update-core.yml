@@ -28,7 +28,7 @@ jobs:
       - name: Check update core and shared Rust workspace
         run: |
           rustup run 1.99.0 cargo fmt --all -- --check
-          rustup run 1.99.0 cargo clippy --locked --offline --workspace --all-targets -- -D warnings
-          rustup run 1.99.0 cargo test --locked --offline --workspace --all-targets
+          rustup run 1.99.0 cargo clippy --locked --offline --workspace --all-targets --features xdnote-update/release-tool -- -D warnings
+          rustup run 1.99.0 cargo test --locked --offline --workspace --all-targets --features xdnote-update/release-tool
       - name: Check recorded dependency materials
         run: python scripts/check_third_party_licenses.py
