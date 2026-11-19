@@ -41,7 +41,7 @@ foreach ($name in $samples) {
     $hashes[$name] = (Get-FileHash -LiteralPath $path).Hash
 }
 
-Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing,System.Runtime.WindowsRuntime,System.Windows.Forms
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing,System.Runtime.WindowsRuntime
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -49,6 +49,18 @@ using System.Text;
 public static class ExplorerAcceptance {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string title);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr parameter, string value);
+    public static bool SetBrowseFilename(IntPtr dialog, string path) {
+        var field = FindWindowEx(dialog, IntPtr.Zero, "ComboBoxEx32", null);
+        if (field == IntPtr.Zero) return false;
+        var combo = FindWindowEx(field, IntPtr.Zero, "ComboBox", null);
+        if (combo == IntPtr.Zero) return false;
+        var edit = FindWindowEx(combo, IntPtr.Zero, "Edit", null);
+        return edit != IntPtr.Zero && SendMessage(edit, 0x000C, IntPtr.Zero, path) != IntPtr.Zero;
+    }
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
@@ -192,19 +204,14 @@ function Choose-Executable($Picker, $Browse, [string]$Path) {
         if ($foreground -and $foreground.Current.NativeWindowHandle -ne $owner -and
             $foreground.Current.ClassName -eq '#32770' -and $foreground.Current.Name -match 'Open|Browse') { $foreground }
     }
-    $handle = $dialog.Current.NativeWindowHandle
-    if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $handle) { throw 'Executable browser lost its foreground' }
-    [Windows.Forms.SendKeys]::SendWait('%n')
-    $name = Wait-Result 'the focused File name field' {
-        $focused = [Windows.Automation.AutomationElement]::FocusedElement
-        if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -eq $handle -and $focused -and
-            $focused.Current.ControlType -eq [Windows.Automation.ControlType]::Edit) { $focused }
+    $handle = [IntPtr]$dialog.Current.NativeWindowHandle
+    if ([ExplorerAcceptance]::GetForegroundWindow() -ne $handle -or
+        ![ExplorerAcceptance]::SetBrowseFilename($handle, $Path)) {
+        throw 'Could not enter the installed path in the executable browser'
     }
-    $value = $name.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
-    $value.SetValue($Path)
-    Press-Control (Wait-Result 'the executable browser Open button' { Named-Control $dialog 'Open' })
+    Click-Control (Wait-Result 'the executable browser Open button' { Named-Control $dialog 'Open' })
     $null = Wait-Result 'the executable browser to close' {
-        if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $handle) { $true }
+        if (![ExplorerAcceptance]::IsWindow($handle)) { $true }
     }
 }
 
