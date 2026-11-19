@@ -1,4 +1,5 @@
-"""Read real xdnote editor state through AT-SPI after IBus and X11 input."""
+"""Drive the owned xdnote editor and read its state through AT-SPI."""
+import os
 import subprocess
 import sys
 import time
@@ -14,6 +15,9 @@ COMMITTED = ORIGINAL + "你好"
 Atspi.set_timeout(2000, 5000)
 
 def input_event(*args):
+    outer_window = os.environ.get("XDNOTE_TEST_INPUT_WINDOW")
+    if outer_window and args[0] in ("key", "type") and input_event("getactivewindow") != outer_window:
+        raise ValueError("The nested compositor lost keyboard focus")
     return subprocess.check_output(["xdotool", *args], text=True, timeout=10).strip()
 
 def walk(node, depth=0):
@@ -48,7 +52,15 @@ def visible(node):
 def show(name):
     return wait_for(lambda item: item.name == name and visible(item), f"Not visible: {name}")
 
-def click(node):
+def activate(node, *, focus=False):
+    if os.environ.get("XDNOTE_TEST_INPUT_WINDOW"):
+        actions = node.queryAction()
+        expected = ("setfocus", "focus") if focus else ("press", "click", "activate")
+        for index in range(actions.nActions):
+            name = actions.getName(index).casefold().replace(" ", "")
+            if name in expected and actions.doAction(index):
+                return
+        raise ValueError(f"No accessible activation for {node.name}: {actions.nActions} actions")
     bounds = node.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
     if min(bounds.width, bounds.height) < 1:
         raise ValueError("The owned control has no clickable bounds")
@@ -69,7 +81,7 @@ def document(expected, focus=True):
 
 phase = sys.argv[1]
 if phase == "directory":
-    click(show("打开文件夹"))
+    activate(show("打开文件夹"))
     show("打开工作区目录")
     keys("ctrl+l")
     input_event("type", "--clearmodifiers", sys.argv[2])
@@ -77,8 +89,10 @@ if phase == "directory":
     wait_for(lambda node: visible(node) and (node.name or "").startswith("workspace — xdnote"),
              "The selected directory did not open as the active workspace")
 elif phase == "edit":
-    click(show("编辑"))
-    click(document(ORIGINAL, focus=False))
+    activate(show("编辑"))
+    editor = document(ORIGINAL, focus=False)
+    if not editor.getState().contains(pyatspi.STATE_FOCUSED):
+        activate(editor, focus=True)
     document(ORIGINAL)
 elif phase == "preedit":
     # The editor's accessible snapshot is withheld while Scintilla has tentative edits.
@@ -88,7 +102,7 @@ elif phase == "commit":
     document(COMMITTED)
     print("The active editor contains the real Pinyin commit")
 elif phase == "transfer":
-    click(show("在工作区打开"))
+    activate(show("在工作区打开"))
     editor = document(COMMITTED)
     while editor.parent:
         editor = editor.parent

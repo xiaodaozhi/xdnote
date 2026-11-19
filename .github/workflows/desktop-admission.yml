@@ -209,17 +209,22 @@ jobs:
         shell: bash
         run: |
           xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::https::Timeout=20)
-          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends ibus ibus-libpinyin python3-pyatspi dbus-x11 openbox xdotool xauth
-      - name: Run real IBus Pinyin, workspace transfer, and undo
+          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends ibus ibus-libpinyin python3-pyatspi dbus-x11 openbox xdotool xauth gnome-shell gnome-settings-daemon xwayland
+      - name: Run real IBus Pinyin, workspace transfer, and undo on X11 and GNOME Wayland
         if: inputs.scope == 'ime-linux'
-        timeout-minutes: 5
-        run: xvfb-run -a -s '-screen 0 1440x1080x24' dbus-run-session -- bash scripts/reader-acceptance/ibus-session.sh
+        timeout-minutes: 8
+        run: |
+          result=0
+          for backend in x11 wayland; do
+            xvfb-run -a -s '-screen 0 1440x1080x24' dbus-run-session -- bash scripts/reader-acceptance/ibus-session.sh "$backend" || result=1
+          done
+          exit "$result"
       - name: Preserve IBus and AT-SPI acceptance evidence
         if: always() && inputs.scope == 'ime-linux'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ibus-x11-ubuntu-22.04
-          path: build/evidence/ibus-x11/*.log
+          name: ibus-ubuntu-22.04
+          path: build/evidence/ibus-*/*.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Test explicit update checks and settings
