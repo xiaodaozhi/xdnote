@@ -21,13 +21,13 @@
 
 ## 主题与强调色
 
-`appearance.theme` 取 `light`、`dark`、`system`，暂定 `system`。跟随系统仅改变明暗，不替用户更换强调色。
+`appearance.theme` 可取 `light`、`dark`、`system`。首次启动采用 `system`（跟随系统）与 `graphite`（石墨灰）。已有偏好时分别读取保存的主题和强调色。
 
 `appearance.accent` 使用下列稳定标识，名称仅用于展示。精确色值及明暗变体以 [tokens.json](../visual/tokens.json) 为唯一来源。
 
 | 标识 | 名称 | 状态 |
 | --- | --- | --- |
-| graphite | 石墨灰 | 当前原稿展示默认值，首次启动默认值暂定 |
+| graphite | 石墨灰 | 当前原稿展示色与首次启动默认强调色 |
 | mist-blue | 雾蓝 | 可选 |
 | cobalt | 钴蓝 | 可选 |
 | mauve | 灰紫 | 可选 |

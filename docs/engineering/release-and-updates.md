@@ -1,6 +1,6 @@
 # 发行渠道、许可核验与更新
 
-发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)通过桌面 C ABI 接入关于页的主动检查与受限网络请求。当前开发副本因生产信任根为空，仍只提供手动发布页入口。工程已接入认证包下载、文档任务交接、Sparkle 原生提供方及 Windows／Linux 独立助手；生产密钥、真实安装与恢复和商店交付仍须按实际证据验收，不能将入口代码视为正式更新能力。
+发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)通过桌面 C ABI 接入关于页的主动检查与受限网络请求。清单和 Sparkle 已配置各自的生产公钥。工程已接入认证包下载、文档任务交接、Sparkle 原生提供方及 Windows／Linux 独立助手。公开受信候选、正式包的安装／恢复和商店交付仍待验收。
 
 ## 渠道与签名
 
@@ -14,6 +14,17 @@
 MSIX 的商店处理方式见[微软说明](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide)。不将 EXE／MSI 上架的证书条件套用于 MSIX，也不承诺未签名 MSIX 能直接侧载。Store 的 Identity、Publisher 与产品标识必须采用真实分配值，未取得时保留待绑定项，不编造。
 
 Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待办或发行阻碍。更新数据的签名验证独立保留：它确认候选来自本项目更新信任根，与系统发布者身份签名分别处理。依赖库原有签名按来源和完整性要求保留，不因本项目不办理证书而随意移除。
+
+## 生产更新签名
+
+发行负责人在其 Mac 的本地登录钥匙串保管两套独立的 Ed25519 私钥，并在本机离线签名。使用本项目锁定的 Sparkle 2.10.0 工具，分别指定各用途的 `--account`。版本库只登记公钥。
+
+| 用途 | 钥匙串账户 | 公钥配置 |
+| --- | --- | --- |
+| GitHub 更新清单 | `io.github.xiaodaozhi.xdnote.manifest.production.v1` | [`tools/update-trust.json`](../../tools/update-trust.json)，`key_id` 为 `xdnote-manifest-v1` |
+| Sparkle 归档与 appcast | `io.github.xiaodaozhi.xdnote.sparkle.production.v1` | [`tools/sparkle-update-key.json`](../../tools/sparkle-update-key.json)，部署时写入 `SUPublicEDKey` |
+
+清单定稿后，用清单账户执行 `sign_update --account io.github.xiaodaozhi.xdnote.manifest.production.v1 -p release.json`。将返回的 64 字节签名从 Base64 转为小写十六进制，按既有 schema-1 信封写入 `release.json.sig`，保留 `release.json` 的原始字节。macOS 用 Sparkle 账户签署最终归档，将归档签名和长度写入 appcast，再用同一账户签署最终 appcast。两套公钥分别验签。签名结果仍需按候选核验及发行授权流程处理。
 
 ## 用户主动更新契约
 
@@ -41,7 +52,7 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 版本的三个数字允许 0–65535，预发行序号和发行 build 为 1–65535。公开候选只接受 stable 或 `alpha.N`／`beta.N`／`rc.N`，不接受 build metadata 或 dev。当前开发安装器使用的 `0.1.0-dev.<12位提交号>`可作为本地比较基线，提交号不参与大小排序；开发渠道可显式传 `current_build=0` 表示尚无发行计数，正式渠道不允许零。接入产品时须读取真实构建身份，不创建虚构发行版本或将开发包改成自动安装候选。
 
-`inspect_release` 的 `valid` 仅表示结构和目标匹配。`verify_manifest` 使用调用方提供的本地可信 keyring 对原始字节认证；不得将下载得到的 keyring 传入。产品入口 `authenticate_release` 只使用编入库的 [update-trust.json](../../tools/update-trust.json)，当前为空。它仅为签名、版本及 build 均通过的新候选返回不可改写的 `AuthenticatedRelease`。该对象的 `verify_package` 逐块校验实际长度和 SHA-256，最多读到声明长度外一字节即拒绝；安装交接时仍须复验实际文件与运行身份。空生产 keyring 始终拒绝，私有签名夹具只编入单元测试，不进入生产信任材料。
+`inspect_release` 的 `valid` 仅表示结构和目标匹配。`verify_manifest` 使用调用方提供的本地可信 keyring 对原始字节认证；不得将下载得到的 keyring 传入。产品入口 `authenticate_release` 只使用编入库的 [update-trust.json](../../tools/update-trust.json)。它仅为签名、版本及 build 均通过的新候选返回不可改写的 `AuthenticatedRelease`。该对象的 `verify_package` 逐块校验实际长度和 SHA-256，最多读到声明长度外一字节即拒绝；安装交接时仍须复验实际文件与运行身份。空生产 keyring 始终拒绝，私有签名夹具只编入单元测试，不进入生产信任材料。
 
 无需 Qt SDK 即可验证核心；Rust 版本遵循 [developer-build.md](developer-build.md)，Cargo 缓存和输出放在本项目 `build/`。完成 `cargo fetch --locked` 的显式准备后，运行 `cargo fmt --all -- --check`、`cargo clippy --locked --offline --workspace --all-targets -- -D warnings`、`cargo test --locked --offline --workspace`。CI 使用手动的 [Update core](../../.github/workflows/update-core.yml)，只检查 Rust 工作区与记录的依赖材料，不运行桌面矩阵或发布产品。覆盖候选／渠道、单调 build、三平台包型／最低目标、损坏或不可信签名、空信任根、长度／摘要与流读取失败；网络 TLS、活动文档、原生安装／恢复和真实平台继续单独验收。
 
@@ -51,7 +62,7 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 `FileApplication` 持有唯一 `UpdateController`；启动、打开文档或关于页不会发出请求。用户点击后按语义版本排序公开候选，核对同一 tag 的 `release.json`、目标包的名称／URL／长度及可选 `release.json.sig`，不因最高候选损坏或缺包而回退为“已是最新”。检查中重复点击不创建并行请求；取消和销毁递增代次，旧回执不能覆盖后续结果。设置窗口重开连接同一个控制器，文档原文、撤销和保存任务不参与检查流程。
 
-桌面通过 `xdnote-services` 将 Markdown 与更新核心合为一个 Rust 运行库归档，源模块及测试继续独立。薄 C ABI 使用有界 JSON 请求／自有输出分配，清单与签名以十六进制传递原始字节，避免 Qt 字符串解码改变签名字节或 BOM。ABI 不接收运行时信任根；`authenticate` ABI 将签名、新版本／build 和平台包型一起认证；当前空生产 keyring、未签名或未知密钥候选只提供手动发布页，下载与安装按钮保持不可用。
+桌面通过 `xdnote-services` 将 Markdown 与更新核心合为一个 Rust 运行库归档，源模块及测试继续独立。薄 C ABI 使用有界 JSON 请求／自有输出分配，清单与签名以十六进制传递原始字节，避免 Qt 字符串解码改变签名字节或 BOM。ABI 不接收运行时信任根；`authenticate` ABI 将签名、新版本／build 和平台包型一起认证；当构建未配置生产 keyring，或签名缺失、密钥未知时，只提供手动发布页，下载与安装按钮保持不可用。
 
 `QNetworkAccessManager` 只用于这一个控制器，关闭 Cookie 读写及身份缓存复用，不读取 GitHub 凭据。每个请求保留 TLS 校验、15 秒无数据／30 秒总时限、5 次已核对重定向；按 64 KiB 读块执行各类响应上限，结束时仍读取末尾数据并检查。ETag 最多保留 24 条成功 HTTP 响应，304 必须有对应的成功缓存；TLS、超时、限流、损坏和缺包分别保留失败，均不显示为当前无更新。Qt 行为依据见[请求](https://doc.qt.io/qt-6.8/qnetworkrequest.html)与[回执](https://doc.qt.io/qt-6.8/qnetworkreply.html)，实际依赖仍固定 6.8.2。
 
@@ -90,15 +101,17 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 
 ## 下载、原生交接与工程包型
 
-认证候选可显式下载；检查与下载复用开始时固定的网络会话和配置，不会在失败后回退直连。包按 64 KiB 写入独立的 `job-*` 私有目录和 `QSaveFile`，精确长度、2 GiB 上限及 SHA-256 全部匹配后才提交缓存文件。下载保留 TLS 1.2+／证书验证、Cookie／身份复用关闭、五次已核对重定向、30 秒无数据和一小时总时限；HTTP 错误、尾部额外数据、截断、摘要不符、磁盘失败和取消均不能进入已下载状态。开发或身份不明副本可下载已认证包，不能自动安装；当前缺生产信任根，实际仍使用手动入口。
+认证候选可显式下载；检查与下载复用开始时固定的网络会话和配置，不会在失败后回退直连。包按 64 KiB 写入独立的 `job-*` 私有目录和 `QSaveFile`，精确长度、2 GiB 上限及 SHA-256 全部匹配后才提交缓存文件。下载保留 TLS 1.2+／证书验证、Cookie／身份复用关闭、五次已核对重定向、30 秒无数据和一小时总时限；HTTP 错误、尾部额外数据、截断、摘要不符、磁盘失败和取消均不能进入已下载状态。开发或身份不明副本可下载已认证包，不能自动安装。
 
-安装提供方只在本地身份匹配时开放：Windows 必须匹配自有 InstallId、登记路径和安装清单，Linux 必须位于 root 拥有的版本目录并经 dpkg 包归属复验，macOS 必须匹配已登记 bundle、公钥、非只读卷及受支持的 Applications 目录。`tools/sparkle-update-key.json` 的 `publicKey` 当前为空；仅后续显式提供的 32 字节 base64 公钥可写入部署 bundle，开发副本不标为可安装。MSIX 身份下拒绝独立自更新。
+安装提供方只在本地身份匹配时开放：Windows 必须匹配自有 InstallId、登记路径和安装清单，Linux 必须位于 root 拥有的版本目录并经 dpkg 包归属复验，macOS 必须匹配已登记 bundle、公钥、非只读卷及受支持的 Applications 目录。部署从 `tools/sparkle-update-key.json` 读取 32 字节 Base64 公钥并写入 bundle，开发副本不标为可安装。MSIX 身份下拒绝独立自更新。
 
 文档准备逐份复用保存／不保存／取消确认，不提前关闭窗口或清空撤销；不保存选择绑定当时 revision。取消后仍保留同一会话和撤销，已经明确完成的保存保持有效。全部确认后冻结修改、拒绝新打开和后台任务，已有保存／资源操作正常完成，再非阻塞等待全局工作池 join 并刷出恢复记录。此后才写交接记录并释放 native commit；交接失败会恢复原只读及启用状态。Sparkle 取消用 Skip，不能留下退出时安装计划；普通退出和重试继续等待原生周期及本应用准确 helper 退出。
 
 独立 `xdnote-update-helper` 不依赖 Qt。它重新认证原始清单／签名、核对当前安装身份和单调版本，持有包文件并复核长度／SHA-256；只接受固定请求格式、事务和目录内文件。Windows 运行已认证的固定安装器并保留更新事务互斥；Linux 经固定 polkit 权限入口复制到 root 私有缓存后复验，仅调用受限 apt 包安装。包助手、安装器与应用共用运行／维护门，不终止持有未保存文档的进程。尝试记录独立于偏好，重启还须核对完整提交、版本／build、运行路径及助手回执；accepted 不显示为安装成功。记录缺失或冲突进入恢复，不自动重试。
 
 工程打包入口 `scripts/build_linux_installer.py` 生成有实际归属、固定权限策略和保守维护门的 Ubuntu 22.04 amd64 开发包；`scripts/msix_package.py` 只在调用方显式提供 Identity／Publisher／PublisherDisplayName 及正确素材时调用 Windows SDK MakeAppx，生成未签名 MSIX，不签名、不安装或提交 Store。`scripts/check_msix.py` 仅在一次性 Windows CI 使用明确标记的工程身份检验 XML／资产与 MakeAppx，不能将它当作真实 Partner Center 身份。Store 偏好按实际 package family 分隔，包身份失败也与普通安装版分隔；真实并存／激活与默认应用保留仍需安装验收。
+
+正式 MSIX 的三个包身份字段按 Partner Center 的产品标识页原样记录到 JSON，键为 `name`、`publisher` 和 `publisherDisplayName`。GitHub Actions 仓库变量 `XDNOTE_MSIX_IDENTITY_JSON` 保存该配置，本地持久副本位于主工作区的 `build/release/partner-center/msix-identity.json`，用 `scripts/msix_package.py --identity` 显式传入。受控的 Actions 打包任务通过环境变量接收配置并写入其 `build/` 下的输入文件，避免将值展开到脚本或输出到日志。工程 MSIX 检查继续使用夹具身份。字段来源见[微软的产品标识说明](https://learn.microsoft.com/en-us/windows/apps/publish/view-app-identity-details)。
 
 `scripts/release_candidate.py` 只为六个实际资产生成既定 schema-1 未签名清单，要求同一 clean 发行身份及逐包摘要／长度验证记录，不创建 tag、Release 或签名。Windows 数字版本、macOS CFBundleVersion 和 Debian 包版本分别绑定生成身份；当前默认仍没有正式发行 build。所有包型继续需要各自最低系统、真实升级／恢复和最终许可核验。
 
@@ -118,4 +131,4 @@ macOS 的[私有原生演练](../../experiments/native-update-fixture/README.md)
 
 可选验签使用 `crates/update/examples/verify_release.rs`：以固定 Rust 工具链在本项目 build 的 target-dir 编译后，传入原始清单与签名信封两个文件路径。该命令只调用既有 Rust 核心和编译时生产公钥，不接受运行时 keyring、私钥或网络输入；读取先受元数据上限约束，输出清单与公钥输入摘要及稳定错误码，失败退出码为 2。生产根为空时拒绝认证。
 
-预检的 `--manifest`、`--signature`、`--verifier` 必须一起提供；工具核对它们与六资产候选、当前公钥文件及项目自有验证程序的一致性，拒绝陈旧或矛盾回执。`--require-authenticated` 可将未通过身份认证作为非零退出，但仍不代表其他发行门槛已完成。实际私钥保管／签名方式与 Store 真实身份须另行确定，此工具不会为它们生成替代值。
+预检的 `--manifest`、`--signature`、`--verifier` 必须一起提供；工具核对它们与六资产候选、当前公钥文件及项目自有验证程序的一致性，拒绝陈旧或矛盾回执。`--require-authenticated` 可将未通过身份认证作为非零退出，但仍不代表其他发行门槛已完成。清单签名与 Store 包身份按各自的发行输入提供。

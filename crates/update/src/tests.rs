@@ -421,11 +421,13 @@ fn authenticated(value: &Value) -> AuthenticatedRelease {
 
 #[test]
 fn production_root_cannot_authenticate_the_fixture() {
-    let (bytes, envelope, _) = signed(&candidate());
-    assert_eq!(
-        serde_json::from_str::<Value>(PRODUCTION_KEYRING).unwrap(),
-        json!({"schema_version":1,"keys":[]})
-    );
+    let (bytes, envelope, fixture_keyring) = signed(&candidate());
+    let production: Keyring = serde_json::from_str(PRODUCTION_KEYRING).unwrap();
+    let fixture: Keyring = serde_json::from_str(&fixture_keyring).unwrap();
+    assert!(production
+        .keys
+        .iter()
+        .all(|key| key.public_key != fixture.keys[0].public_key));
     assert_eq!(
         authenticate_release(
             &bytes,
