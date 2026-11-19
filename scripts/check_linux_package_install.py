@@ -5,8 +5,11 @@ import os
 from pathlib import Path
 import platform
 import re
+import select
+import signal
 import subprocess
 import tempfile
+import time
 
 from installer_common import build_output, digest
 
@@ -18,6 +21,59 @@ def run(command, log, *, env=None, timeout=60, check=True):
     if check:
         result.check_returncode()
     return result
+
+
+def desktop_entry_launch(desktop_file, binary, fixtures, env, log):
+    """Use GIO to launch the installed desktop entry on its own native X11 server."""
+    def window_pid(fixture, environment):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            tree = subprocess.run(['/usr/bin/xwininfo', '-root', '-tree'], env=environment,
+                                  capture_output=True, text=True, check=True, timeout=3).stdout
+            for window in re.findall(r'^ +((?:0x)[0-9a-f]+) ', tree, re.MULTILINE):
+                properties = subprocess.run(['/usr/bin/xprop', '-id', window, '-notype', '_NET_WM_NAME', '_NET_WM_PID'],
+                                            env=environment, capture_output=True, text=True, timeout=3).stdout
+                if fixture.name in properties:
+                    match = re.search(r'^_NET_WM_PID = (\d+)$', properties, re.MULTILINE)
+                    if match:
+                        pid = int(match[1])
+                        if Path(f'/proc/{pid}/exe').resolve(strict=True) != binary:
+                            raise ValueError('The opened window is not owned by the installed product')
+                        return pid
+            time.sleep(0.2)
+        raise ValueError(f'No installed X11 document window for {fixture.name}')
+
+    with log.open('ab') as output:
+        with subprocess.Popen(['/usr/bin/Xvfb', '-displayfd', '1', '-nolisten', 'tcp', '-screen', '0', '1280x960x24'],
+                              stdout=subprocess.PIPE, stderr=output, text=True) as display:
+            launchers = []
+            try:
+                if not select.select([display.stdout], [], [], 10)[0]:
+                    raise ValueError('Isolated X11 server did not initialize')
+                number = display.stdout.readline().strip()
+                if not number.isdecimal():
+                    raise ValueError('Isolated X11 server did not return a display number')
+                environment = dict(env, DISPLAY=':' + number, LC_ALL='C.UTF-8')
+                pids = []
+                for fixture in fixtures:
+                    launch = subprocess.Popen(['/usr/bin/gio', 'launch', desktop_file, fixture],
+                                              env=environment, stdout=output, stderr=output, start_new_session=True)
+                    launchers.append(launch)
+                    if launch.wait(timeout=8):
+                        raise ValueError(f'GIO failed to activate the installed desktop entry for {fixture.name}')
+                    pids.append(window_pid(fixture, environment))
+                if pids[0] != pids[1]:
+                    raise ValueError('Warm launch created another process instead of forwarding to the running instance')
+                return {'coldDocument': fixtures[0].name, 'warmDocument': fixtures[1].name, 'sameProcess': True}
+            finally:
+                # Both process groups were created by this fixture on the private display.
+                for launch in launchers:
+                    try:
+                        os.killpg(launch.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                display.terminate()
+                display.wait(timeout=5)
 
 
 def verify(package, metadata, apt_sources, evidence):
@@ -59,7 +115,10 @@ def verify(package, metadata, apt_sources, evidence):
             config = Path(directory)
             fixture = config / '自建文档.md'
             fixture.write_text('# 系统包验证\n', encoding='utf-8')
-            before = digest(fixture)
+            second_fixture = config / '运行中 转交.md'
+            second_fixture.write_text('# 系统桌面转交验证\n', encoding='utf-8')
+            fixtures = (fixture, second_fixture)
+            before = [digest(item) for item in fixtures]
             env = os.environ.copy()
             env.update(HOME=directory, XDG_CONFIG_HOME=str(config / 'config'), XDG_DATA_HOME=str(config / 'data'),
                        XDG_CACHE_HOME=str(config / 'cache'), QT_QPA_PLATFORM='xcb')
@@ -85,12 +144,14 @@ def verify(package, metadata, apt_sources, evidence):
                     raise ValueError('Installed launcher reported a different build')
                 run(['/usr/bin/xvfb-run', '-a', launcher, '--help'], log, env=env)
                 report['checks'].append('installed launcher returned the expected build and initialized native X11 Qt')
+                report['desktopLaunch'] = desktop_entry_launch(desktop_file, binary, fixtures, env, log)
+                report['checks'].append('installed desktop entry opened a cold document and forwarded a second document')
             finally:
                 if query().returncode == 0:
                     run(['/usr/bin/sudo', '-n', '/usr/bin/dpkg', '--purge', 'xdnote'], log, timeout=150)
             if query().returncode == 0 or any(p.exists() or p.is_symlink() for p in owned):
                 raise ValueError('Package or owned installed files survived purge')
-            if Path('/run/xdnote/installing').exists() or digest(fixture) != before:
+            if Path('/run/xdnote/installing').exists() or [digest(item) for item in fixtures] != before:
                 raise ValueError('Purge retained the maintenance marker or modified the user fixture')
             report['checks'].append('dpkg purge removed owned installation and preserved the user fixture')
             report['ok'] = True
