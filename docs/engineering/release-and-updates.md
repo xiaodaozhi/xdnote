@@ -17,14 +17,25 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 ## 生产更新签名
 
-发行负责人在其 Mac 的本地登录钥匙串保管两套独立的 Ed25519 私钥，并在本机离线签名。使用本项目锁定的 Sparkle 2.10.0 工具，分别指定各用途的 `--account`。版本库只登记公钥。
+发行负责人保管两套独立的 Ed25519 私钥，在 Mac 上离线签名。初始登录钥匙串账户见下表。换机时可直接使用本地保存的签名 TXT。版本库只登记公钥。
 
 | 用途 | 钥匙串账户 | 公钥配置 |
 | --- | --- | --- |
 | GitHub 更新清单 | `io.github.xiaodaozhi.xdnote.manifest.production.v1` | [`tools/update-trust.json`](../../tools/update-trust.json)，`key_id` 为 `xdnote-manifest-v1` |
 | Sparkle 归档与 appcast | `io.github.xiaodaozhi.xdnote.sparkle.production.v1` | [`tools/sparkle-update-key.json`](../../tools/sparkle-update-key.json)，部署时写入 `SUPublicEDKey` |
 
-清单定稿后，用清单账户执行 `sign_update --account io.github.xiaodaozhi.xdnote.manifest.production.v1 -p release.json`。将返回的 64 字节签名从 Base64 转为小写十六进制，按既有 schema-1 信封写入 `release.json.sig`，保留 `release.json` 的原始字节。macOS 用 Sparkle 账户签署最终归档，将归档签名和长度写入 appcast，再用同一账户签署最终 appcast。两套公钥分别验签。签名结果仍需按候选核验及发行授权流程处理。
+完成六个资产的封存与核验后，使用下列入口一次生成 `release.json`、`release.json.sig` 和签名后的 `appcast.xml`。`--identity` 和 `--verification` 使用[候选清单入口](../../scripts/release_candidate.py)的同一份构建身份和逐资产核验记录。签名机应已准备本项目锁定的 Sparkle SDK，以及支持 Ed25519 的 OpenSSL。
+
+```bash
+python scripts/sign_release_offline.py \
+  --keys /path/to/xdnote-update-keys-v1.txt \
+  --identity build/release/identity.json \
+  --assets build/release/assets \
+  --verification build/release/verification.json \
+  --output build/release/signed-metadata
+```
+
+签名 TXT 包含 `XDNOTE_UPDATE_KEY_ID`、`XDNOTE_UPDATE_SIGNING_KEY_HEX` 和 `XDNOTE_SPARKLE_SIGNING_KEY_HEX`。脚本先核对两套密钥与已配置公钥，再通过标准输入交给本机签名进程，无需导入钥匙串。Sparkle 归档的签名和长度自动进入 appcast。归档、appcast 与清单均通过验签后才写入最终目录。签名结果仍需按候选核验及发行授权流程处理。
 
 ## 用户主动更新契约
 
