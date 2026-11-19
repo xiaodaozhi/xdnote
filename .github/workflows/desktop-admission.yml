@@ -1,128 +1,21 @@
-name: Desktop admission
-run-name: ${{ inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance (X11 / Wayland)' || inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || inputs.scope == 'installer-windows' && 'Windows installer verification' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview - Unix only' || inputs.scope == 'resources-linux' && 'Workspace resources - Linux only' || inputs.scope == 'resources-macos' && 'Workspace resources - macOS only' || inputs.scope == 'resources-unix' && 'Workspace resources - Unix only' || inputs.scope == 'workspace-linux' && 'Workspace references - Linux only' || 'Desktop admission - full matrix' }}
-
+name: Private Linux candidate packaging
 on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
-        default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux]
-      evidence_run:
-        description: 'Source product run for delivery-review only'
-        type: string
-        default: ''
-      macos_runner:
-        description: 'Native arm64 macOS host; product minimum remains macOS 14'
-        type: choice
-        options: [macos-15, macos-26]
-        default: macos-15
-
+        options: [deployment-linux]
+        default: deployment-linux
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  network-flow:
-    if: inputs.scope == 'network-flow'
-    uses: ./.github/workflows/qt-network-flow.yml
-  delivery-review:
-    if: inputs.scope == 'delivery-review'
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/delivery-review.yml
-    with:
-      evidence_run: ${{ inputs.evidence_run }}
-  qt-replacement:
-    if: inputs.scope == 'qt-replacement'
-    uses: ./.github/workflows/qt-replacement.yml
-  update-products:
-    if: inputs.scope == 'update-products'
-    uses: ./.github/workflows/update-helper.yml
-    with:
-      scope: product
-  update-helpers:
-    if: inputs.scope == 'update-helpers'
-    uses: ./.github/workflows/update-helper.yml
-  installer:
-    if: inputs.scope == 'installer-windows'
-    uses: ./.github/workflows/windows-installer.yml
-  sparkle:
-    if: inputs.scope == 'sparkle-macos' || inputs.scope == 'sparkle-system-pac'
-    name: ${{ inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC' || 'Sparkle admission' }} (${{ inputs.macos_runner }})
-    runs-on: ${{ inputs.macos_runner }}
-    timeout-minutes: 20
+  linux-candidate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - name: Check SDK and workflow guards
-        run: python -m unittest discover -s scripts/tests
-      - name: Prepare pinned Sparkle inputs explicitly
-        run: python scripts/sparkle.py prepare --download
-      - name: Build native framework library from reviewed source phases
-        run: python scripts/sparkle.py build
-      - name: Check isolated native policy and loopback routes
-        env:
-          XDNOTE_SPARKLE_SCOPE: ${{ inputs.scope }}
-        shell: bash
-        run: |
-          python scripts/cleanup_cycles.py --init cycle-161-sparkle
-          xdnote_probe_options=()
-          if [ "$XDNOTE_SPARKLE_SCOPE" = sparkle-system-pac ]; then
-            xdnote_probe_options+=(--system-pac)
-          fi
-          python scripts/check_sparkle.py --work-dir build/cycle-161-sparkle/probe --evidence build/evidence/sparkle "${xdnote_probe_options[@]}"
-      - name: Collect Sparkle input and build receipts
-        if: always()
-        run: |
-          mkdir -p build/evidence/sparkle
-          cp tools/sparkle-dependency.json LICENSES/third-party/Sparkle.txt build/evidence/sparkle/
-          xdnote_sparkle_variant=$(python -c "import json; print(json.load(open('tools/sparkle-dependency.json'))['framework_build']['variant'])")
-          xdnote_sparkle_root="build/Sparkle/$xdnote_sparkle_variant"
-          if [ -f "$xdnote_sparkle_root/$(uname -m)-build.log" ]; then
-            cp "$xdnote_sparkle_root/$(uname -m)-build.log" build/evidence/sparkle/build.log
-          fi
-          if [ -f "$xdnote_sparkle_root/$(uname -m)/xdnote-sdk.json" ]; then
-            cp "$xdnote_sparkle_root/$(uname -m)/xdnote-sdk.json" build/evidence/sparkle/sdk-receipt.json
-          fi
-      - name: Preserve Sparkle admission evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ${{ inputs.scope == 'sparkle-system-pac' && 'sparkle-system-pac' || 'sparkle-admission' }}-${{ inputs.macos_runner }}
-          path: build/evidence/sparkle/
-          if-no-files-found: ignore
-          retention-days: 7
-  desktop:
-    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'sparkle-system-pac' && inputs.scope != 'update-helpers' && inputs.scope != 'update-products' && inputs.scope != 'qt-replacement' && inputs.scope != 'delivery-review' && inputs.scope != 'network-flow'
-    name: ${{ inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }})
-    runs-on: ${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.os }}
-    timeout-minutes: 50
-    strategy:
-      fail-fast: false
-      matrix:
-        include: >-
-          ${{ fromJSON(inputs.scope == 'updates' &&
-          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
-          (inputs.scope == 'workspace-linux' || inputs.scope == 'resources-linux' || inputs.scope == 'deployment-linux' || inputs.scope == 'reader-orca' || inputs.scope == 'ime-linux') &&
-          '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"}]' ||
-          (inputs.scope == 'resources-macos' || inputs.scope == 'tools-macos' || inputs.scope == 'deployment-macos' || inputs.scope == 'updates-macos') &&
-          '[{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
-          (inputs.scope == 'resources-unix' || inputs.scope == 'preview-unix' || inputs.scope == 'background-unix' || inputs.scope == 'ui-unix' || inputs.scope == 'deployment-unix' || inputs.scope == 'scroll-unix' || inputs.scope == 'settings-unix' || inputs.scope == 'tools-unix') &&
-          '[{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"}]' ||
-          '[{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64"},{"os":"ubuntu-22.04","host":"linux","qt-arch":"linux_gcc_64"},{"os":"macos-15","host":"mac","qt-arch":"clang_64"},{"os":"windows-2022","host":"windows","qt-arch":"win64_msvc2022_64","profile":"msvc2019","label":"windows-2022-msvc2019"}]') }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
+          ref: ed6ac069a0c289f8c852bbc4641f8adb32169e3a
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -130,11 +23,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
         with:
           toolchain: '1.99.0'
-          components: rustfmt, clippy
-      - name: Prepare SDK tools explicitly
-        run: python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+      - run: python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
       - name: Prepare Linux desktop libraries
-        if: runner.os == 'Linux'
         timeout-minutes: 10
         run: |
           mkdir -p build/ci-apt
@@ -153,233 +43,91 @@ jobs:
           xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
           timeout 180s sudo apt-get "${xdnote_apt_options[@]}" update
           timeout 360s sudo apt-get "${xdnote_apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 fonts-noto-cjk fonts-noto-color-emoji xvfb gdb patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev
-      - name: Prepare pinned Qt SDK with checksums
-        run: python scripts/prepare_qt.py --download --host ${{ matrix.host }} --arch ${{ matrix.qt-arch }} --profile ${{ matrix.profile || 'default' }}
-      - name: Prepare pinned source dependencies
-        run: python scripts/desktop.py prepare --download --profile ${{ matrix.profile || 'default' }}
-      - name: Prepare native macOS updater explicitly
-        if: runner.os == 'macOS'
+      - name: Prepare pinned Qt and platform sources
         run: |
-          python scripts/sparkle.py prepare --download
-          python scripts/sparkle.py build
-      - name: Check build entry point guards
-        run: python -m unittest discover -s scripts/tests -v
-      - name: Build desktop admission (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
-          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat" --profile ${{ matrix.profile || 'default' }}
-      - name: Build desktop admission (Unix)
-        if: runner.os != 'Windows'
-        run: python scripts/desktop.py build ${{ inputs.scope == 'ime-linux' && '--parallel 4' || '' }}
-      - name: Prepare isolated Linux Orca sessions
-        if: inputs.scope == 'reader-orca'
-        timeout-minutes: 8
-        shell: bash
-        run: |
-          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::https::Timeout=20)
-          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends orca python3-pyatspi dbus-x11 openbox xdotool xauth pulseaudio speech-dispatcher-espeak-ng gnome-shell gnome-settings-daemon xwayland
-      - name: Run Orca on X11 and native GNOME Wayland
-        if: inputs.scope == 'reader-orca'
-        timeout-minutes: 10
-        shell: bash
-        run: |
-          xdnote_qt_version=$(python -c 'import json; print(json.load(open("tools/desktop-dependencies.json"))["qt"]["version"])')
-          result=0
-          bash scripts/reader-acceptance/orca-linux.sh x11 build/desktop-admission "build/Qt/$xdnote_qt_version/gcc_64" || result=1
-          bash scripts/reader-acceptance/orca-linux.sh wayland build/desktop-admission "build/Qt/$xdnote_qt_version/gcc_64" || result=1
-          exit "$result"
-      - name: Preserve Orca acceptance evidence
-        if: always() && inputs.scope == 'reader-orca'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: reader-orca-ubuntu-22.04
-          path: |
-            build/reader-acceptance/orca-*/*/*.txt
-            build/reader-acceptance/orca-*/*/*.sha256
-            build/reader-acceptance/orca-*/*/*.log
-            build/reader-acceptance/orca-*/*/build-identity.json
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Prepare isolated Linux IBus session
-        if: inputs.scope == 'ime-linux'
-        timeout-minutes: 8
-        shell: bash
-        run: |
-          xdnote_apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::https::Timeout=20)
-          timeout 380s sudo apt-get "${xdnote_apt_options[@]}" install -y --no-install-recommends ibus ibus-libpinyin python3-pyatspi dbus-x11 openbox xdotool xauth gnome-shell gnome-settings-daemon xwayland
-      - name: Run real IBus Pinyin, workspace transfer, and undo on X11 and GNOME Wayland
-        if: inputs.scope == 'ime-linux'
-        timeout-minutes: 8
-        run: |
-          result=0
-          for backend in x11 wayland; do
-            xvfb-run -a -s '-screen 0 1440x1080x24' dbus-run-session -- bash scripts/reader-acceptance/ibus-session.sh "$backend" || result=1
-          done
-          exit "$result"
-      - name: Preserve IBus and AT-SPI acceptance evidence
-        if: always() && inputs.scope == 'ime-linux'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ibus-ubuntu-22.04
-          path: build/evidence/ibus-*/*.log
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Test explicit update checks and settings
-        if: startsWith(inputs.scope, 'updates')
-        run: python scripts/desktop.py test --suite updates
-      - name: Check Windows helper handles and independent revalidation
-        if: inputs.scope == 'updates' && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $env:CARGO_HOME = "$PWD/build/cargo-home"
-          $env:CARGO_TARGET_DIR = "$PWD/build/update-helper-unit"
-          rustup run 1.99.0 cargo clippy --locked --offline --package xdnote-update-helper --all-targets -- -D warnings
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          rustup run 1.99.0 cargo test --locked --offline --package xdnote-update-helper
-      - name: Test admission on Linux virtual display
-        if: runner.os == 'Linux' && inputs.scope == 'full'
-        run: xvfb-run -a python scripts/desktop.py test
-      - name: Test desktop admission
-        if: runner.os != 'Linux' && inputs.scope == 'full'
-        env:
-          QSG_RHI_PREFER_SOFTWARE_RENDERER: ${{ runner.os == 'Windows' && '1' || '' }}
-          QSG_INFO: '1'
-        run: python scripts/desktop.py test --profile ${{ matrix.profile || 'default' }}
-      - name: Check relocated Unix deployment
-        if: startsWith(inputs.scope, 'deployment-')
-        shell: bash
-        run: |
-          xdnote_qt_arch=gcc_64
-          if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
-          python scripts/check_product_linkage.py --executable build/desktop-admission/xdnote
+          python scripts/prepare_qt.py --download --host linux --arch linux_gcc_64
+          python scripts/desktop.py prepare --download
           python scripts/prepare_ci_font.py --output build/test-fonts
-          export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
-          python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --destination build/cycle-112-deployment/staging
-          python scripts/compatibility_audit.py --root build/cycle-112-deployment/staging --report build/cycle-112-deployment/staging-evidence/compatibility.json
-      - name: Cross-check live Rust ranges in the packaged Linux executable
-        if: startsWith(inputs.scope, 'deployment-') && runner.os == 'Linux'
-        run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/cycle-112-deployment/staging/bin/xdnote --output build/cycle-112-deployment/staging-evidence/linkage.json
-      - name: Inspect native Linux package without installing system paths
-        if: startsWith(inputs.scope, 'deployment-') && runner.os == 'Linux'
-        run: |
-          python scripts/build_linux_installer.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/xdnote-dev.deb --report build/cycle-112-deployment/staging-evidence/debian-package.json
-          dpkg-deb --info build/cycle-112-deployment/xdnote-dev.deb
-          dpkg-deb --contents build/cycle-112-deployment/xdnote-dev.deb
-      - name: Select the installed macOS Markdown content-type default
-        if: inputs.scope == 'deployment-macos' && runner.environment == 'github-hosted'
-        timeout-minutes: 6
-        run: python scripts/check_macos_markdown_default.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/macos-default-evidence
-      - name: Validate installed developer payload without registration
-        if: startsWith(inputs.scope, 'deployment-')
+      - name: Build two actual versions with exact explicit identities
         shell: bash
         run: |
-          xdnote_qt_arch=gcc_64
-          if [ "${{ runner.os }}" = "macOS" ]; then xdnote_qt_arch=macos; fi
+          set -euo pipefail
           export XDNOTE_TEST_FONT_FILE="$PWD/build/test-fonts/NotoSansCJKsc-Regular.otf"
-          python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "build/Qt/6.8.2/$xdnote_qt_arch" --payload build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --destination build/cycle-112-deployment/installed-check
-          python scripts/developer_archive.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --compatibility build/cycle-112-deployment/staging-evidence/compatibility.json --output build/cycle-112-deployment/xdnote-${{ runner.os }}-${{ runner.arch }}-dev.tar.xz
-      - name: Roundtrip the sealed developer package through apt and dpkg
-        if: inputs.scope == 'deployment-linux' && runner.environment == 'github-hosted'
-        timeout-minutes: 10
+          mkdir -p build/linux-candidate/receipts
+          qt=build/Qt/6.8.2/gcc_64
+          for spec in '0.1.0-beta.1 1' '0.1.0-rc.1 2'; do
+            read -r version serial <<< "$spec"
+            release=build/linux-candidate/$version
+            mkdir "$release"
+            jq -n --arg version "$version" --argjson build "$serial" --arg revision "$(git rev-parse HEAD)" \
+              '{schemaVersion:1,product:"xdnote",version:$version,build:$build,revision:$revision,previousVersion:"0.0.0",previousBuild:0}' > "$release/identity-input.json"
+            python scripts/desktop.py build --build-dir build/linux-candidate/desktop --qt-prefix "$qt" --parallel 4 --release-identity "$release/identity-input.json"
+            python scripts/check_product_linkage.py --executable build/linux-candidate/desktop/xdnote
+            python scripts/product_deployment_unix.py --build-dir build/linux-candidate/desktop --qt-prefix "$qt" --destination "$release/staging"
+            python scripts/compatibility_audit.py --root "$release/staging" --report "$release/staging-evidence/compatibility.json"
+            python scripts/build_linux_installer.py --root "$release/staging" --audit "$release/staging-evidence/inventory.json" \
+              --output "$release/xdnote-$version-ubuntu22.04-x86_64.deb" --report "$release/debian-package.json"
+            cp "$release/debian-package.json" "build/linux-candidate/receipts/$version-debian.json"
+            cp "$release/staging-evidence/compatibility.json" "build/linux-candidate/receipts/$version-compatibility.json"
+          done
+      - name: Verify the exact Linux archive and native package pair
         run: |
-          sudo apt-get -o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=1 -o Acquire::https::Timeout=20 -y --no-remove --no-install-recommends install x11-utils libglib2.0-bin nautilus openbox xdotool python3-pyatspi at-spi2-core libatk-adaptor gnome-shell gnome-settings-daemon xwayland
-          python scripts/check_linux_package_install.py --package build/cycle-112-deployment/xdnote-dev.deb --metadata build/cycle-112-deployment/staging-evidence/debian-package.json --apt-sources build/ci-apt/ubuntu.list --evidence build/cycle-112-deployment/native-package-evidence --wayland
-      - name: Test document tools, recovery and shortcuts on Unix
-        if: startsWith(inputs.scope, 'tools-')
-        run: python scripts/desktop.py test --suite tools
-      - name: Test settings and automatic saving on Unix
-        if: inputs.scope == 'settings-unix'
-        run: python scripts/desktop.py test --suite settings
-      - name: Test semantic scroll sync on Unix
-        if: inputs.scope == 'scroll-unix'
-        run: python scripts/desktop.py test --suite scroll
-      - name: Test UI polish on Unix
-        if: inputs.scope == 'ui-unix'
-        run: python scripts/desktop.py test --suite ui
-      - name: Test background validation on Unix
-        if: inputs.scope == 'background-unix'
-        run: python scripts/desktop.py test --suite background
-      - name: Test native preview integration on Unix
-        if: inputs.scope == 'preview-unix'
+          release=build/linux-candidate/0.1.0-rc.1
+          python scripts/developer_archive.py --root "$release/staging" --audit "$release/staging-evidence/inventory.json" \
+            --compatibility "$release/staging-evidence/compatibility.json" --output "$release/xdnote-0.1.0-rc.1-linux-x86_64.tar.xz"
+          xz --decompress --stdout "$release/xdnote-0.1.0-rc.1-linux-x86_64.tar.xz" |
+            gzip -n -6 > "$release/xdnote-0.1.0-rc.1-linux-x86_64.tar.gz"
+          cmp <(xz -dc "$release/xdnote-0.1.0-rc.1-linux-x86_64.tar.xz") <(gzip -dc "$release/xdnote-0.1.0-rc.1-linux-x86_64.tar.gz")
+          cp "$release/xdnote-0.1.0-rc.1-linux-x86_64.tar.xz.manifest.json" build/linux-candidate/receipts/canonical-tar-verification.json
+          (cd "$release" && sha256sum -- *.tar.gz *.deb && wc -c -- *.tar.gz *.deb) > build/linux-candidate/receipts/candidate-assets.txt
+      - name: Install the beta and upgrade to the actual RC with apt
+        if: runner.environment == 'github-hosted'
+        timeout-minutes: 9
         shell: bash
-        env:
-          QT_QPA_PLATFORM: offscreen
-          QT_QUICK_BACKEND: software
-        run: python scripts/desktop.py test --suite preview
-      - name: Test resource changes on Unix
-        if: startsWith(inputs.scope, 'resources-')
         run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            xvfb-run -a python scripts/desktop.py test --suite resources
-          else
-            python scripts/desktop.py test --suite resources
-          fi
-      - name: Test workspace references on Linux
-        if: inputs.scope == 'workspace-linux'
-        run: |
-          xdnote_qt_version=$(python -c "import json; print(json.load(open('tools/desktop-dependencies.json'))['qt']['version'])")
-          export LD_LIBRARY_PATH="$PWD/build/Qt/$xdnote_qt_version/gcc_64/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          export QT_PLUGIN_PATH="$PWD/build/Qt/$xdnote_qt_version/gcc_64/plugins"
-          export QML_IMPORT_PATH="$PWD/build/Qt/$xdnote_qt_version/gcc_64/qml"
-          export CARGO_HOME="$PWD/build/cargo-home"
-          export CARGO_TARGET_DIR="$PWD/build/desktop-admission/cargo"
-          export RUSTUP_AUTO_INSTALL=0
-          rustup run 1.99.0 cargo fmt --all -- --check
-          rustup run 1.99.0 cargo clippy --locked --offline --workspace --all-targets -- -D warnings
-          rustup run 1.99.0 cargo test --locked --offline --workspace
-          xvfb-run -a build/desktop-admission/xdnote_file_tests -o -,txt -o build/desktop-admission/file-qtest.txt,txt
-          xvfb-run -a build/desktop-admission/xdnote_workspace_tests workspaceReferencesTrackSessionsFilesAndMenuCoverage workspaceReferencesCancelAndDiscardPreviousRoot workspaceReferencesDoNotUseDiskAliasesOfOutsideSessions documentLinksReuseDirtyTargetAndNavigateHeadings documentLinksRejectUnsafeTargetsAndStaleSource documentLinksPreviewClicksKeepStandaloneRouting -o -,txt -o build/desktop-admission/workspace-qtest.txt,txt
-          xvfb-run -a build/desktop-admission/xdnote_desktop_tests previewPendingHeadingRejectsContextAndRevisionChanges referenceIndexUsesLiveSnapshotsAndRetainsSourceVersions referenceIndexNeverFallsBackWhenCoverageOrSessionIsUncertain workspaceDirectoryEnumerationIsBoundedAndRootBound workspaceReferenceScanUsesDiskAndAuthoritativeLiveSnapshots workspaceReferenceScanRetainsGapsAndDiscardsRevokedResults workspaceResourcesRequireTheSelectedRootAndRejectLinks previewFragmentLinksNavigateOnlyTheDisplayedRevision previewFragmentLinksSupportKeyboardFocusAndActivation previewDoesNotActivateLinksWhenReferenceAnalysisMayBeIncomplete workspaceImagesUseAuthorizedSnapshotsAndStaticDecoding -o -,txt -o build/desktop-admission/desktop-qtest.txt,txt
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          for name in ('file-qtest.txt', 'workspace-qtest.txt', 'desktop-qtest.txt'):
-              report = Path('build/desktop-admission', name).read_text(encoding='utf-8', errors='replace')
-              if re.search(r'\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:', report):
-                  raise RuntimeError(f'Fatal Qt diagnostic in {name}')
-          PY
-      - name: Diagnose workspace crash on Linux
-        if: failure() && runner.os == 'Linux' && inputs.scope == 'workspace-linux'
-        run: |
-          if [ -f build/desktop-admission/xdnote_workspace_tests ]; then
-            xdnote_qt_version=$(python -c "import json; print(json.load(open('tools/desktop-dependencies.json'))['qt']['version'])")
-            xdnote_qt_root="$PWD/build/Qt/$xdnote_qt_version/gcc_64"
-            LD_LIBRARY_PATH="$xdnote_qt_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" QT_PLUGIN_PATH="$xdnote_qt_root/plugins" timeout 60s xvfb-run -a gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex run -ex 'bt 40' --args "$PWD/build/desktop-admission/xdnote_workspace_tests" -o -,txt > build/desktop-admission/workspace-crash.log 2>&1
-            cat build/desktop-admission/workspace-crash.log
-          fi
-      - name: Preserve diagnostics
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          evidence="$PWD/build/linux-candidate/receipts"
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/xdnote-candidate-config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/xdnote-candidate-data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/xdnote-candidate-cache"
+          mkdir "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+          fixture="$XDG_DATA_HOME/upgrade fixture.md"
+          printf '# User-owned candidate upgrade fixture\n' > "$fixture"
+          before=$(sha256sum "$fixture")
+          test "$(uname -m)" = x86_64
+          . /etc/os-release
+          test "$ID $VERSION_ID" = 'ubuntu 22.04'
+          ! dpkg-query -W xdnote >/dev/null 2>&1
+          test ! -e /opt/xdnote
+          test ! -e /run/xdnote
+          trap 'if dpkg-query -W xdnote >/dev/null 2>&1; then sudo -n dpkg --purge xdnote; fi' EXIT
+          apt=(sudo -n apt-get -o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=1 -o Acquire::https::Timeout=20 -y --no-remove)
+          for spec in '0.1.0-beta.1 1' '0.1.0-rc.1 2'; do
+            read -r version serial <<< "$spec"
+            release="$PWD/build/linux-candidate/$version"
+            package="$release/xdnote-$version-ubuntu22.04-x86_64.deb"
+            printf '%s  %s\n' "$(jq -r .sha256 "$release/debian-package.json")" "$package" | sha256sum -c -
+            "${apt[@]}" --no-install-recommends install "$package" | tee -a "$evidence/apt.log"
+            installed=$(dpkg-query -W -f='${Version} ${Architecture}' xdnote)
+            test "$installed" = "$(dpkg-deb -f "$package" Version) amd64"
+            test -z "$(dpkg --verify xdnote)"
+            /usr/bin/xdnote --version-json | tee "$evidence/$version-installed.json" |
+              jq -e --arg version "$version" --argjson build "$serial" --arg revision "$(git rev-parse HEAD)" \
+                '.product == "xdnote" and .version == $version and .build == $build and .revision == $revision and .dirty == false'
+            QT_QPA_PLATFORM=xcb xvfb-run -a /usr/bin/xdnote --help >> "$evidence/native-launch.log"
+            test "$before" = "$(sha256sum "$fixture")"
+          done
+          sudo -n dpkg --purge xdnote
+          ! dpkg-query -W xdnote >/dev/null 2>&1
+          test "$before" = "$(sha256sum "$fixture")"
+          jq -n --arg os "$PRETTY_NAME" --arg glibc "$(getconf GNU_LIBC_VERSION)" \
+            '{ok:true,os:$os,glibc:$glibc,aptInstalledBeta:true,aptUpgradedToRc:true,dpkgVerified:true,nativeX11Initialized:true,userFixturePreserved:true,purged:true,productionSigned:false,published:false}' > "$evidence/upgrade.json"
+      - name: Preserve only verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: desktop-admission-${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }}
-          path: |
-            build/desktop-*/*.log
-            build/desktop-*/*-qtest.txt
-            build/desktop-*/Testing/Temporary/LastTest.log
-            build/desktop-*/build-identity.json
-            build/desktop-*/native-toolchain.json
-            build/desktop-*/evidence/
-            build/cycle-112-deployment/staging-evidence/
-            build/cycle-112-deployment/installed-check-evidence/
-            build/cycle-112-deployment/native-package-evidence/
-            build/cycle-112-deployment/macos-default-evidence/*.json
-            build/cycle-112-deployment/*.manifest.json
-            build/cycle-112-deployment/*.sha256
-            build/test-fonts/receipt.json
-            build/test-fonts/Noto-OFL.txt
-          if-no-files-found: ignore
+          name: linux-candidate-packaging-evidence
+          path: build/linux-candidate/receipts/
+          if-no-files-found: warn
           retention-days: 7
-
-  aggregate:
-    name: ${{ inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance (Linux)' || inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
-    needs: [desktop, installer, sparkle, update-helpers, update-products, qt-replacement, delivery-review, network-flow]
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Require every selected matrix result
-        env:
-          XDNOTE_DESKTOP_RESULT: ${{ inputs.scope == 'network-flow' && needs.network-flow.result || inputs.scope == 'delivery-review' && needs.delivery-review.result || inputs.scope == 'qt-replacement' && needs.qt-replacement.result || inputs.scope == 'update-products' && needs.update-products.result || inputs.scope == 'update-helpers' && needs.update-helpers.result || (inputs.scope == 'sparkle-macos' || inputs.scope == 'sparkle-system-pac') && needs.sparkle.result || inputs.scope == 'installer-windows' && needs.installer.result || needs.desktop.result }}
-        run: test "$XDNOTE_DESKTOP_RESULT" = success
