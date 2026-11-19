@@ -383,32 +383,44 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe, [
     if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $properties.Current.NativeWindowHandle) {
         throw 'File Properties lost the foreground before Change'
     }
-    Click-Control $change
+    Press-Control $change
+    Send-GuestStage "request-picker: $Name"
     $observed = [Collections.Generic.List[string]]::new()
-    $picker = Wait-Result 'the Windows app picker' {
+    $findPicker = {
         $window = Foreground
         if ($window) {
             $caption = $window.Current.ClassName + ': ' + $window.Current.Name
             if (!$observed.Contains($caption)) {
                 $observed.Add($caption)
-                Write-Host "Picker ($Name) foreground: $caption"
+                Send-GuestStage "picker ($Name) foreground: $caption"
             }
+            $owner = Get-Process -Id $window.Current.ProcessId -ErrorAction SilentlyContinue
+            $openWith = $owner -and $owner.ProcessName -eq 'OpenWith' -and
+                $owner.Path -and $owner.Path.StartsWith($env:SystemRoot + '\', [StringComparison]::OrdinalIgnoreCase)
             if ($window.Current.NativeWindowHandle -ne $properties.Current.NativeWindowHandle -and
                 ($window.Current.ClassName -eq 'Open With' -or
+                 $openWith -or
                  ($window.Current.ClassName -eq 'Shell_Flyout' -and $window.Current.Name -match 'How do you want to open'))) {
-                $window
+                return $window
             }
         }
     }
+    try {
+        $picker = Wait-Result 'the Windows app picker' $findPicker
+    } catch {
+        if (!(Picker-IsForeground $properties)) { throw }
+        Click-Control $change
+        $picker = Wait-Result 'the Windows app picker after clicking Change' $findPicker
+    }
     # The server's Shell_Flyout is drawn but exposes no accessible children.
-    $browseLabel = 'Look for another app on this PC'
+    $browseLabels = @('Look for another app on this PC','Choose an app on your PC','Browse apps')
     $app = Wait-Result "$Name or an alternate selection in the Windows picker" {
-        Read-PickerPoint $picker @($Name,$DisplayExe,'More apps',$browseLabel)
+        Read-PickerPoint $picker (@($Name,$DisplayExe,'More apps') + $browseLabels)
     }
     if ($app.Label -eq 'More apps') {
         Press-PickerPoint $picker $app
         $app = Wait-Result "$Name or Browse in the expanded Windows picker" {
-            $choice = Read-PickerPoint $picker @($Name,$DisplayExe,$browseLabel)
+            $choice = Read-PickerPoint $picker (@($Name,$DisplayExe) + $browseLabels)
             if ($choice) { return $choice }
             if (Picker-IsForeground $picker) {
                 $r = $picker.Current.BoundingRectangle
@@ -418,7 +430,7 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe, [
         }
     }
     $pickerHandle = $picker.Current.NativeWindowHandle
-    if ($app.Label -eq $browseLabel) {
+    if ($app.Label -in $browseLabels) {
         if (!$ExecutablePath -or !(Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
             throw 'No verified installed path for Browse'
         }
