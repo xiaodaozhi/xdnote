@@ -13,7 +13,7 @@ if ($system.ProductType -ne 1 -or [int]$system.BuildNumber -lt 22000) {
     throw 'Windows 11 client is required'
 }
 $cpu = @(Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Architecture)
-if ($cpu.Count -eq 0 -or $cpu -ne 12) {
+if ($cpu.Count -eq 0 -or @($cpu | Where-Object { $_ -ne 12 }).Count -ne 0) {
     throw "Expected ARM64 hardware (Win32_Processor Architecture values: $($cpu -join ', '))"
 }
 $installed = Join-Path $tools 'installed-xdnote'
@@ -48,6 +48,12 @@ public static class ReaderInput {
     public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")]
+    public static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")]
     public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
     [DllImport("user32.dll")]
@@ -127,14 +133,30 @@ try {
     if ($windowProcessId -ne $app.Id) { throw 'The fixture window does not belong to the installed AMD64 image' }
     [void][ReaderInput]::ShowWindow($window, 9)
     [void][ReaderInput]::SetForegroundWindow($window)
-    if ([ReaderInput]::GetForegroundWindow() -ne $window) { throw 'xdnote fixture is not foreground' }
+    Start-Sleep -Milliseconds 350
     $point = New-Object ReaderInput+Point
     $point.X = 120
     $point.Y = 225
     if (![ReaderInput]::ClientToScreen($window, [ref]$point)) { throw 'Cannot locate document region' }
-    [void][ReaderInput]::SetCursorPos($point.X, $point.Y)
-    [ReaderInput]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
-    [ReaderInput]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    $raised = [ReaderInput]::GetForegroundWindow() -ne $window
+    try {
+        if ($raised -and ![ReaderInput]::SetWindowPos($window, [IntPtr](-1), 0, 0, 0, 0, 0x13)) {
+            throw 'Cannot raise the fixture window in the isolated desktop'
+        }
+        $underPointer = [ReaderInput]::WindowFromPoint($point)
+        if ([ReaderInput]::GetAncestor($underPointer, 2) -ne $window) {
+            throw 'Fixture document region is covered by a different window'
+        }
+        [void][ReaderInput]::SetCursorPos($point.X, $point.Y)
+        [ReaderInput]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+        [ReaderInput]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    } finally {
+        if ($raised) {
+            [void][ReaderInput]::SetWindowPos($window, [IntPtr](-2), 0, 0, 0, 0, 0x13)
+        }
+    }
+    Start-Sleep -Milliseconds 350
+    if ([ReaderInput]::GetForegroundWindow() -ne $window) { throw 'xdnote fixture did not activate after clicking its document' }
     Send-ReaderKeys $window @(0x11, 0x24)
     Send-ReaderKeys $window @(0x2D, 0x28)
     Start-Sleep -Seconds 2
