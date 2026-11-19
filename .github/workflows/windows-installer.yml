@@ -116,6 +116,11 @@ jobs:
       - name: Validate actual native package roundtrip
         shell: pwsh
         run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
+      - name: Validate File Explorer and its default application picker
+        if: runner.environment == 'github-hosted'
+        timeout-minutes: 8
+        shell: powershell
+        run: ./scripts/check_windows_file_manager.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -EvidenceDirectory "$PWD/build/product-install/explorer-evidence"
       - name: Upload product integration evidence only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -126,6 +131,7 @@ jobs:
             build/product-install/*.sha256
             build/product-install/staging-evidence/
             build/product-install/roundtrip-evidence/
+            build/product-install/explorer-evidence/
             build/product-install/msix-fixture/*.json
             build/product-install/msix-fixture/*.log
             build/desktop-admission/build-identity.json
