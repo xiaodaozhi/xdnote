@@ -28,7 +28,7 @@ def graphical_session(report):
     runtime = home / 'wayland-runtime'
     runtime.mkdir(mode=0o700)
     os.environ.update(XDG_RUNTIME_DIR=str(runtime), LC_ALL='C.UTF-8', NO_AT_BRIDGE='0')
-    command('/usr/bin/dbus-update-activation-environment', 'DISPLAY', 'XDG_RUNTIME_DIR', 'NO_AT_BRIDGE', 'LC_ALL')
+    command('/usr/bin/dbus-update-activation-environment', 'DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'NO_AT_BRIDGE', 'LC_ALL')
     command('/usr/bin/gsettings', 'set', 'org.gnome.desktop.interface', 'toolkit-accessibility', 'true')
     log_path = home / 'gnome-shell.log'
     with log_path.open('wb') as log:
@@ -108,7 +108,12 @@ def authorize(shell, window, prompts, command_line, password, *, cancel=False, i
     submitted = False
     name = 'cancel' if cancel else 'grant'
     try:
-        wait_dialog(shell, request)
+        try:
+            wait_dialog(shell, request)
+        except RuntimeError:
+            if shell.poll() is None:
+                command('/usr/bin/xwd', '-silent', '-id', window, '-out', str(Path.home() / 'prompt-diagnostic.xwd'))
+            raise
         active = command('/usr/bin/xdotool', 'getactivewindow', capture_output=True, text=True).stdout.strip()
         if active != window:
             raise RuntimeError('The isolated GNOME authentication window lost focus')

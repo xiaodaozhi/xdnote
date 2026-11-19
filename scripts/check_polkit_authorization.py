@@ -323,7 +323,7 @@ def run_probe(output, installed_update, graphical):
         worker = [sys.executable, str(candidate), '--inside-login']
         if graphical:
             shutil.copyfile(SOURCE / 'scripts/polkit_gnome_session.py', root / 'polkit_gnome_session.py')
-            worker = ['/usr/bin/dbus-run-session', '--', '/usr/bin/xvfb-run', '-a', '-s', '-screen 0 1280x900x24',
+            worker = ['/usr/bin/xvfb-run', '-a', '-s', '-screen 0 1280x900x24', '/usr/bin/dbus-run-session', '--',
                       '/usr/bin/python3', str(candidate), '--inside-login', '--graphical']
         if installed_update:
             worker.append('--installed-update')
@@ -373,7 +373,7 @@ def run_probe(output, installed_update, graphical):
                        'workerOutput': console_log.stdout.decode(errors='replace')[-1500:]}
             (output / 'console.json').write_text(json.dumps(console, indent=2) + '\n')
             if graphical:
-                for name in ('gnome-shell.log', 'prompt-cancel.xwd', 'prompt-grant.xwd'):
+                for name in ('gnome-shell.log', 'prompt-cancel.xwd', 'prompt-grant.xwd', 'prompt-diagnostic.xwd'):
                     picture = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/cat', home / name],
                                              capture_output=True, timeout=10)
                     if picture.returncode == 0:
