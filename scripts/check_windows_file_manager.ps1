@@ -48,6 +48,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 public static class ExplorerAcceptance {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
@@ -319,7 +320,11 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe, [
     $null = Wait-Result 'the app picker to close after confirming' {
         if ([ExplorerAcceptance]::GetForegroundWindow().ToInt64() -ne $pickerHandle) { $true }
     }
+    $propertiesHandle = [IntPtr]$properties.Current.NativeWindowHandle
     Press-Control (Wait-Result 'the Properties confirmation button' { Named-Control $properties 'OK' })
+    $null = Wait-Result 'the Markdown Properties dialog to close' {
+        if (![ExplorerAcceptance]::IsWindow($propertiesHandle)) { $true }
+    }
 }
 
 $result = [ordered]@{ok=$false; buildIdentity=$metadata.buildIdentity; installerSha256=$identity.sha256;
