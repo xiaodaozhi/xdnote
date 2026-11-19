@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import CoreServices
 import Foundation
@@ -103,8 +104,17 @@ do {
         workspace.setDefaultApplication(at: app, toOpenContentTypeOfFileAt: md) { error in
             setting.complete(error)
         }
-        let message = try waitFor("the NSWorkspace default-application completion") { setting.message() }
-        try require(message.isEmpty, "NSWorkspace content-type assignment error: " + message)
+        do {
+            let message = try waitFor("the NSWorkspace default-application completion") { setting.message() }
+            try require(message.isEmpty, "NSWorkspace content-type assignment error: " + message)
+        } catch {
+            report["accessibilityTrusted"] = AXIsProcessTrusted()
+            report["postingAllowed"] = CGPreflightPostEventAccess()
+            let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+            let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+            report["windowOwners"] = Array(Set(windows.compactMap { $0[kCGWindowOwnerName as String] as? String })).sorted()
+            throw error
+        }
     } else {
         let status = LSSetDefaultRoleHandlerForContentType(markdown as CFString, role, id as CFString)
         report["assignmentStatus"] = status
