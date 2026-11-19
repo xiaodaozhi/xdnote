@@ -241,7 +241,8 @@ endif()
 if(WIN32)
     enable_language(RC)
     configure_file(apps/desktop/packaging/windows/app.rc.in "${CMAKE_BINARY_DIR}/xdnote.rc" @ONLY)
-    target_sources(xdnote PRIVATE "${CMAKE_BINARY_DIR}/xdnote.rc")
+    target_sources(xdnote PRIVATE "${CMAKE_BINARY_DIR}/xdnote.rc"
+        apps/desktop/packaging/windows/xdnote.manifest)
 endif()
 
 add_executable(xdnote_admission apps/desktop/admission_main.cpp)
