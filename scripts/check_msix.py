@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 import platform
 import desktop
-from background_validation import execute
 from installer_common import ROOT, build_output
 import msix_package
 
@@ -19,8 +18,7 @@ if __name__=='__main__':
     work=build_output(a.work_dir)
     if work.exists(): p.error('Preserve existing evidence')
     work.mkdir(parents=True); assets=work/'assets'
-    env=desktop.runtime_environment(desktop.environment(None),qt)
-    execute([build/'xdnote_msix_assets.exe',ROOT/'design/assets/ui-v2/brand/app-icon.svg',assets],env,work/'assets.log',30)
+    msix_package.render_assets(build,qt,assets,work/'assets.log')
     identity={'name':'Xdnote.EngineeringFixture','publisher':'CN=Xdnote Engineering Fixture Only','publisherDisplayName':'Engineering fixture'}
     report=msix_package.build(build_output(a.payload),json.loads(a.audit.read_bytes()),identity,1,assets,work/'unsigned-fixture.msix')
     report['scope']='unsigned MakeAppx/schema/asset fixture; identity is not a Partner Center assignment; no installation, signing or Store submission'

@@ -1,0 +1,108 @@
+name: Windows Store candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Product version
+        type: string
+        required: true
+      build:
+        description: Monotonic release build
+        type: string
+        required: true
+      previous_version:
+        description: Previous public version (0.0.0 for the first release)
+        type: string
+        default: '0.0.0'
+      previous_build:
+        description: Previous release build (0 for the first release)
+        type: string
+        default: '0'
+      recipient:
+        description: Public age recipient for encrypted candidate retrieval
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    if: github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: '1.99.0'
+      - name: Record exact release inputs
+        env:
+          XDNOTE_RELEASE_VERSION: ${{ inputs.version }}
+          XDNOTE_RELEASE_BUILD: ${{ inputs.build }}
+          XDNOTE_PREVIOUS_VERSION: ${{ inputs.previous_version }}
+          XDNOTE_PREVIOUS_BUILD: ${{ inputs.previous_build }}
+          XDNOTE_AGE_RECIPIENT: ${{ inputs.recipient }}
+        run: python scripts/build_store_candidate.py identity
+      - name: Prepare the locked Windows build toolchain
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+          python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64
+          python scripts/desktop.py prepare --download
+      - name: Build and seal the x64 Release payload
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
+          python scripts/desktop.py build --profile default --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat" --release-identity build/store-candidate/release-input.json --parallel 4
+          python scripts/check_product_linkage.py --executable build/desktop-admission/xdnote.exe
+          ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
+          python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
+          python scripts/deployment_inventory.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --destination build/store-candidate/staging --redist-dir build/toolchain/windows-runtime/runtime
+          python scripts/installer_payload.py --source build/store-candidate/staging --audit build/store-candidate/staging-evidence/inventory.json --destination build/store-candidate/payload --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/store-candidate/payload-inventory.json
+          python scripts/compatibility_audit.py --root build/store-candidate/payload --audit build/store-candidate/payload-inventory.json --report build/store-candidate/compatibility.json
+      - name: Package with the configured Partner Center identity
+        id: package
+        env:
+          XDNOTE_MSIX_IDENTITY_JSON: ${{ vars.XDNOTE_MSIX_IDENTITY_JSON }}
+        run: python scripts/build_store_candidate.py package
+      - name: Run WACK on the original unsigned package
+        run: ./scripts/check-store-wack.ps1
+      - name: Encrypt the original package for retrieval
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        env:
+          XDNOTE_AGE_RECIPIENT: ${{ inputs.recipient }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $work = 'build/store-candidate'
+          Invoke-WebRequest 'https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip' -OutFile "$work/age.zip"
+          if ((Get-FileHash "$work/age.zip" -Algorithm SHA256).Hash -ne 'f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7') {
+            throw 'Unexpected age archive digest'
+          }
+          Expand-Archive "$work/age.zip" "$work/transfer"
+          $age = Get-ChildItem "$work/transfer" -Recurse -Filter 'age.exe' | Select-Object -First 1
+          & $age.FullName --encrypt --recipient $env:XDNOTE_AGE_RECIPIENT --output "$work/candidate.msix.age" "$work/candidate.msix"
+      - name: Preserve verification reports and encrypted candidate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-store-candidate
+          path: |
+            build/store-candidate/release-input.json
+            build/store-candidate/msix-report.json
+            build/store-candidate/compatibility.json
+            build/store-candidate/wack-*
+            build/store-candidate/candidate.msix.age
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error

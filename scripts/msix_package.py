@@ -8,6 +8,9 @@ import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
+
+from background_validation import execute
+import desktop
 from installer_common import ROOT, build_output, digest
 from installer_payload import verify_payload
 
@@ -51,6 +54,12 @@ def sdk_tool():
     tools = sorted(base.glob('10.*/x64/makeappx.exe'), key=lambda p: tuple(map(int, p.parent.parent.name.split('.'))), reverse=True)
     if not tools: raise ValueError('Windows SDK MakeAppx.exe is required')
     return tools[0]
+
+
+def render_assets(build, qt, output, log):
+    environment = desktop.runtime_environment(desktop.environment(None), qt)
+    execute([build / 'xdnote_msix_assets.exe', ROOT / 'design/assets/ui-v2/brand/app-icon.svg', output],
+            environment, log, 30)
 
 
 def build(payload, audit, identity, build_number, assets, output):
