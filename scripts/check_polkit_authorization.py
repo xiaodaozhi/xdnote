@@ -16,7 +16,7 @@ import tempfile
 import termios
 import time
 
-from pexpect import EOF, TIMEOUT, spawn
+from pexpect import EOF, TIMEOUT
 from pexpect.fdpexpect import fdspawn
 
 ACTION = 'org.xdnote.update'
@@ -30,10 +30,10 @@ def sudo(*args, **options):
 
 def session_properties():
     process = subprocess.run(['/usr/bin/loginctl', 'show-session', os.environ.get('XDG_SESSION_ID', 'self'),
-                              '-p', 'Active', '-p', 'Remote', '-p', 'Type', '-p', 'State'],
+                              '-p', 'Active', '-p', 'Remote', '-p', 'Type', '-p', 'State', '-p', 'Seat'],
                              check=True, capture_output=True, text=True, timeout=10)
     values = dict(line.split('=', 1) for line in process.stdout.splitlines() if '=' in line)
-    if values.get('Active') != 'yes' or values.get('Remote') != 'no':
+    if values.get('Active') != 'yes' or values.get('Remote') != 'no' or not values.get('Seat'):
         raise RuntimeError('Expected a local active login: ' + repr(values))
     return values
 
@@ -116,7 +116,7 @@ def run_worker():
         report['ok'] = report['cancelStatus'] != 0 and report['grantStatus'] == 0
     except (RuntimeError, OSError, subprocess.SubprocessError) as error:
         report['error'] = str(error)
-    print('XDNOTE_POLKIT_RESULT=' + json.dumps(report), flush=True)
+    (Path.home() / 'report.json').write_text(json.dumps(report))
 
 
 def run_probe(output):
@@ -153,24 +153,35 @@ def run_probe(output):
             sudo('/usr/bin/install', '-m', '0644',
                  SOURCE / 'apps/desktop/packaging/linux/org.xdnote.update.policy', POLICY)
             installed_policy = True
-            login = spawn('/usr/bin/sudo', ['-n', '/bin/login', '-f', '--', username],
-                          encoding='utf-8', timeout=75)
-            try:
-                state = login.expect([r'XDNOTE_POLKIT_RESULT=([^\r\n]+)', EOF, TIMEOUT])
-                if state:
-                    bounded = re.sub(r'[^\x20-\x7e\n]', '', login.before)[-900:]
-                    raise RuntimeError('The disposable login did not return a receipt: ' + bounded)
-                result = json.loads(login.match.group(1))
-                (output / 'report.json').write_text(json.dumps(result, indent=2) + '\n')
-                if not result['ok']:
-                    raise RuntimeError(result.get('error', 'Unexpected polkit authorization outcome'))
-            finally:
-                login.close(force=True)
+            if not Path('/dev/tty0').is_char_device():
+                raise RuntimeError('The hosted Linux kernel exposes no virtual console')
+            login = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/openvt', '-s', '-w', '--',
+                                    '/bin/login', '-f', '--', username],
+                                   capture_output=True, timeout=75)
+            receipt = subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/cat', home / 'report.json'],
+                                     capture_output=True, timeout=10)
+            if login.returncode or receipt.returncode:
+                raise RuntimeError('The console login did not return a receipt: ' +
+                                   login.stderr.decode(errors='replace')[-500:])
+            result = json.loads(receipt.stdout)
+            (output / 'report.json').write_text(json.dumps(result, indent=2) + '\n')
+            if not result['ok']:
+                raise RuntimeError(result.get('error', 'Unexpected polkit authorization outcome'))
         finally:
             if installed_policy:
                 sudo('/usr/bin/rm', '--', POLICY)
             if owned_user:
-                sudo('/usr/sbin/userdel', '--remove', username)
+                subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/loginctl', 'terminate-user', username],
+                               capture_output=True, timeout=10)
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    result = subprocess.run(['/usr/bin/sudo', '-n', '/usr/sbin/userdel', '--remove', username],
+                                            capture_output=True, timeout=10)
+                    if result.returncode == 0:
+                        break
+                    time.sleep(.25)
+                else:
+                    raise RuntimeError('The disposable administrator could not be removed')
 
 
 if __name__ == '__main__':
