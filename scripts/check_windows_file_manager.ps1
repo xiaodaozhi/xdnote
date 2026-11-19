@@ -211,6 +211,26 @@ function Press-SetupAccelerator($Wizard, [byte]$Key) {
     [ExplorerAcceptance]::keybd_event(0x12,0,2,[UIntPtr]::Zero)
 }
 
+function Select-SetupMarkdownTask($Wizard) {
+    $taskLabel = 'Offer xdnote in Open with (does not change your default app)'
+    $task = Named-Control $Wizard $taskLabel
+    $toggle = $null
+    if ($task -and !$task.Current.IsOffscreen -and (Picker-IsForeground $Wizard) -and
+        $task.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$toggle)) {
+        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) { throw 'The Markdown candidate was selected by default' }
+        $toggle.Toggle()
+        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::On) { throw 'The Markdown candidate was not selected' }
+        return
+    }
+    if ($task -and !$task.Current.IsOffscreen -and (Picker-IsForeground $Wizard)) {
+        Click-Control $task
+        return
+    }
+    $point = Wait-Result 'the visible Markdown candidate' { Read-PickerPoint $Wizard @('Offer xdnote in Open with') }
+    Press-PickerPoint $Wizard $point
+    # A changed registry candidate after installation confirms the option switched on.
+}
+
 function Install-ThroughWizard($Result) {
     $arguments = @('/NORESTART','/LANG=english',('/DIR="' + $root + '"'),
         ('/LOG="' + (Join-Path $output 'setup.log') + '"'))
@@ -232,24 +252,16 @@ function Install-ThroughWizard($Result) {
             $null = Wait-Result "the setup page $page" { Visible-SetupPage $wizard $page }
             $Result.wizardPages += $page
             if ($page -eq 'License Agreement') {
-                $null = Wait-Result 'the runtime license scope' { Read-PickerPoint $wizard @('This agreement covers only') }
+                $notice = 'This agreement covers only the bundled Microsoft VC++ runtime. Other components retain their own licenses.'
+                $null = Wait-Result 'the runtime license scope' { Visible-SetupPage $wizard $notice }
+                $Result.wizardLicenseScope = $notice
                 Press-SetupAccelerator $wizard 0x41 # Alt+A, Accept
             }
+            if ($page -eq 'Select Additional Tasks') { Select-SetupMarkdownTask $wizard }
             Press-SetupAccelerator $wizard 0x4E # Alt+N, Next
         }
-        $null = Wait-Result 'the initial ready-to-install page' { Visible-SetupPage $wizard 'Ready to Install' }
-        $task = 'Offer xdnote in Open with'
-        if (Read-PickerPoint $wizard @($task)) { throw 'The Markdown candidate was selected by default' }
-        Press-SetupAccelerator $wizard 0x42 # Alt+B, Back
-        $null = Wait-Result 'the setup additional tasks page' { Visible-SetupPage $wizard 'Select Additional Tasks' }
-        $option = Wait-Result 'the Markdown candidate option' { Read-PickerPoint $wizard @($task) }
-        # The Inno Setup checklist draws the checkbox immediately before the first word.
-        $option.X -= 23
-        Press-PickerPoint $wizard $option
-        Press-SetupAccelerator $wizard 0x4E # Alt+N, Next
-        $null = Wait-Result 'the explicit Markdown candidate in the installation recap' { Read-PickerPoint $wizard @($task) }
+        $null = Wait-Result 'the ready-to-install page' { Visible-SetupPage $wizard 'Ready to Install' }
         $Result.wizardPages += 'Ready to Install'
-        $Result.wizardMarkdownCandidate = 'initially unchecked, then selected in the wizard'
         Press-SetupAccelerator $wizard 0x49 # Alt+I, Install
         $null = Wait-Result 'the visible installation completion page' { Visible-SetupPage $wizard 'Completing the xdnote Setup Wizard' }
         $Result.wizardPages += 'Completing the xdnote Setup Wizard'
@@ -257,6 +269,7 @@ function Install-ThroughWizard($Result) {
         if (!$setup.WaitForExit(20000) -or $setup.ExitCode -ne 0) { throw 'The visible installer did not exit successfully' }
         $command = (Get-Item -LiteralPath 'HKCU:\Software\Classes\xdnote.Markdown\shell\open\command').GetValue('')
         if ($command -ne ('"' + $exe + '" -- "%1"')) { throw 'The wizard did not register the selected Markdown candidate' }
+        $Result.wizardMarkdownCandidate = 'selected in the wizard'
     } catch {
         if ($wizard -and (Picker-IsForeground $wizard)) {
             $Result.wizardControls = @($wizard.FindAll([Windows.Automation.TreeScope]::Descendants,
