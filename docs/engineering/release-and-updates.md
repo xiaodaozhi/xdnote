@@ -27,7 +27,7 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 [Release update signing](../../.github/workflows/release-signing.yml) 接收已核验的 `release-verified` Actions 工件。其根目录包含 `identity.json`、`verification.json` 和 `assets/`，输入契约与[候选清单入口](../../scripts/release_candidate.py)一致。签名和独立验签使用同一个工件 ID，且候选构建身份须与 `main` 上冻结的签名提交一致。候选流水线可在同一次手动运行中调用此工作流，也可指定同提交的成功候选运行。现有开发部署工作流只交付证据，完整发行候选的产出仍按原生验收及分发许可待办推进。
 
-签名前在无密钥的步骤编译锁定工具。审批后的签名步骤先核对私钥与已配置公钥，再签 Sparkle 归档并生成 `macos-update.json`。随后从同一个候选构建并签署 `appcast.xml`，对 `release.json` 的原始字节生成 `release.json.sig`。`SHA256SUMS` 覆盖六个资产和全部签名附件。独立作业下载同一候选和已签名附件，使用编入的公开信任根再次核对包、签名及校验和。
+工作流先确认签名环境已设置必需审批人，再在无密钥的步骤编译锁定工具。审批后的签名步骤先核对私钥与已配置公钥，再签 Sparkle 归档并生成 `macos-update.json`。随后从同一个候选构建并签署 `appcast.xml`，对 `release.json` 的原始字节生成 `release.json.sig`。`SHA256SUMS` 覆盖六个资产和全部签名附件。独立作业下载同一候选和已签名附件，使用编入的公开信任根再次核对包、签名及校验和。
 
 本地可用已保存的 TXT 调用同一工具。准备项目锁定的 Rust 工具链和依赖后，使用以下入口；两种路径采用相同的候选校验和签名协议。
 

@@ -23,6 +23,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})
         self.assertIn("github.ref == 'refs/heads/main'", workflow)
         self.assertIn('.head_sha == $sha', workflow)
+        self.assertIn('environments/release-signing', workflow)
+        self.assertIn('required_reviewers', workflow)
         self.assertIn('contents: read', workflow)
         self.assertIn('actions: read', workflow)
         self.assertNotIn('contents: write', workflow)

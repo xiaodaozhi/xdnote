@@ -45,6 +45,11 @@ jobs:
           set -euo pipefail
           run_id=${CANDIDATE_RUN:-$GITHUB_RUN_ID}
           [[ "$run_id" =~ ^[1-9][0-9]{0,18}$ ]]
+          if ! gh api "repos/$GITHUB_REPOSITORY/environments/release-signing" |
+            jq -e 'any(.protection_rules[]?; .type == "required_reviewers" and (.reviewers | length) > 0)' >/dev/null; then
+            echo 'Configure required reviewers on the release-signing environment before signing.' >&2
+            exit 1
+          fi
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" |
             jq -e --arg sha "$GITHUB_SHA" --arg repo "$GITHUB_REPOSITORY" --arg current "$GITHUB_RUN_ID" \
               '(.conclusion == "success" or ((.id | tostring) == $current and .status == "in_progress")) and .event == "workflow_dispatch" and .head_sha == $sha and .head_branch == "main" and .head_repository.full_name == $repo' >/dev/null
