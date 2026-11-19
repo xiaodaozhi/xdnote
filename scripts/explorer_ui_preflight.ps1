@@ -34,6 +34,14 @@ try {
     $handler = [ExplorerAcceptance]::MarkdownHandler()
     if ([IO.Path]::GetFileName($handler) -ne 'notepad.exe') { throw 'Notepad was not selected' }
     Write-Host 'Explorer Properties chose Notepad through the Windows picker'
+    $item.InvokeVerb('open')
+    $open = Wait-Result 'the owned file in Notepad' {
+        Get-Process notepad -ErrorAction SilentlyContinue | Where-Object {
+            $_.MainWindowTitle -like '*xdnote Explorer preflight*'
+        } | Select-Object -First 1
+    }
+    if (!$open.CloseMainWindow()) { throw 'Could not close the owned Notepad window' }
+    Write-Host 'Explorer used the selected handler and showed the owned document'
 } catch {
     $window = Foreground
     if ($window) {
