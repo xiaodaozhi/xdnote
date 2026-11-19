@@ -17,6 +17,7 @@ $result = [ordered]@{
     toolVersion = $null
     exitCode = $null
     reportGenerated = $false
+    validation = $null
     state = 'preparation'
     error = $null
 }
@@ -48,14 +49,20 @@ try {
         -RedirectStandardOutput (Join-Path $work 'wack-stdout.log') -RedirectStandardError (Join-Path $work 'wack-stderr.log')
     $result.exitCode = $test.ExitCode
     $result.reportGenerated = Test-Path -LiteralPath $report
-    $result.state = 'completed'
     if ((Get-FileHash -Algorithm SHA256 $package).Hash -ne $digest) { throw 'WACK input bytes changed' }
     if ($test.ExitCode -ne 0 -or !$result.reportGenerated) {
         throw "WACK did not complete successfully (exit $($test.ExitCode), report $($result.reportGenerated))"
     }
+    $result.validation = python scripts/wack_report.py $report | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or !$result.validation) { throw 'WACK XML validation failed' }
+    if (!$result.validation.passed) {
+        $result.state = 'findings'
+        throw 'WACK reported a mandatory failure or did not pass DPI awareness validation'
+    }
+    $result.state = 'completed'
 } catch {
     $result.error = $_.Exception.Message
     throw
 } finally {
-    $result | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $work 'wack-run.json')
+    $result | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 (Join-Path $work 'wack-run.json')
 }
