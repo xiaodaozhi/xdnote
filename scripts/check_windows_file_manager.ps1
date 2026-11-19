@@ -41,7 +41,7 @@ foreach ($name in $samples) {
     $hashes[$name] = (Get-FileHash -LiteralPath $path).Hash
 }
 
-Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing,System.Runtime.WindowsRuntime
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -105,6 +105,77 @@ function Press-Control($Control) {
     [ExplorerAcceptance]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
 }
 
+function Wait-WinRT($Operation, [Type]$ResultType) {
+    $method = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+        $_.Name -eq 'AsTask' -and $_.IsGenericMethodDefinition -and
+        $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    } | Select-Object -First 1
+    $task = $method.MakeGenericMethod($ResultType).Invoke($null,@($Operation))
+    if (!$task.Wait(5000)) { throw 'Windows picker OCR operation timed out' }
+    return $task.Result
+}
+
+function Picker-IsForeground($Picker) {
+    $front = Foreground
+    return $front -and $front.Current.NativeWindowHandle -eq $Picker.Current.NativeWindowHandle
+}
+
+function Read-PickerPoint($Picker, [string[]]$Labels) {
+    if (!(Picker-IsForeground $Picker)) { return }
+    $rect = $Picker.Current.BoundingRectangle
+    if ($rect.Width -le 0 -or $rect.Width -gt 1000 -or $rect.Height -le 0 -or $rect.Height -gt 900) {
+        throw 'Unexpected system picker bounds'
+    }
+    $size = [Drawing.Size]::new([int]$rect.Width, [int]$rect.Height)
+    $path = [IO.Path]::GetTempFileName()
+    $bitmap = [Drawing.Bitmap]::new($size.Width, $size.Height)
+    $canvas = [Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $canvas.CopyFromScreen([int]$rect.X,[int]$rect.Y,0,0,$size)
+        $bitmap.Save($path,[Drawing.Imaging.ImageFormat]::Png)
+        $fileType = [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
+        $file = Wait-WinRT ($fileType::GetFileFromPathAsync($path)) $fileType
+        $mode = [Windows.Storage.FileAccessMode,Windows.Storage,ContentType=WindowsRuntime]::Read
+        $stream = Wait-WinRT ($file.OpenAsync($mode)) ([Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime])
+        try {
+            $decoderType = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Foundation,ContentType=WindowsRuntime]
+            $decoder = Wait-WinRT ($decoderType::CreateAsync($stream)) $decoderType
+            $format = [Windows.Graphics.Imaging.BitmapPixelFormat,Windows.Foundation,ContentType=WindowsRuntime]::Bgra8
+            $alpha = [Windows.Graphics.Imaging.BitmapAlphaMode,Windows.Foundation,ContentType=WindowsRuntime]::Ignore
+            $image = Wait-WinRT ($decoder.GetSoftwareBitmapAsync($format,$alpha)) ([Windows.Graphics.Imaging.SoftwareBitmap,Windows.Foundation,ContentType=WindowsRuntime])
+            $ocr = [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]::TryCreateFromUserProfileLanguages()
+            if (!$ocr) { throw 'No Windows OCR language is installed' }
+            $text = Wait-WinRT ($ocr.RecognizeAsync($image)) ([Windows.Media.Ocr.OcrResult,Windows.Foundation,ContentType=WindowsRuntime])
+            foreach ($label in $Labels) {
+                foreach ($line in $text.Lines) {
+                    $words = @($line.Words)
+                    $count = @($label -split ' ').Count
+                    for ($i=0; $i -le $words.Count-$count; $i++) {
+                        $last = $i+$count-1
+                        if (($words[$i..$last].Text -join ' ').Trim() -eq $label) {
+                            $bounds = $words[$i].BoundingRect
+                            return [pscustomobject]@{X=[int]($rect.X+$bounds.X+$bounds.Width/2);
+                                Y=[int]($rect.Y+$bounds.Y+$bounds.Height/2); Label=$label}
+                        }
+                    }
+                }
+            }
+        } finally { $stream.Dispose() }
+    } finally {
+        $canvas.Dispose()
+        $bitmap.Dispose()
+        Remove-Item -LiteralPath $path
+    }
+}
+
+function Press-PickerPoint($Picker, $Point) {
+    if (!(Picker-IsForeground $Picker) -or ![ExplorerAcceptance]::SetCursorPos($Point.X,$Point.Y)) {
+        throw 'The system picker lost the foreground before selection'
+    }
+    [ExplorerAcceptance]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+}
+
 function Owned-Processes {
     Get-Process -Name xdnote -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }
 }
@@ -148,26 +219,23 @@ function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe) {
     $picker = Wait-Result 'the Windows app picker' {
         $window = Foreground
         if ($window -and $window.Current.NativeWindowHandle -ne $properties.Current.NativeWindowHandle -and
-            ($window.Current.Name -match 'open|app' -or (Named-Control $window 'More apps') -or (Named-Control $window $Name))) { $window }
+            $window.Current.ClassName -eq 'Shell_Flyout' -and $window.Current.Name -match '\.md files') { $window }
     }
-    $app = Named-Control $picker $Name
-    if (!$app -or $app.Current.IsOffscreen) {
-        $more = Named-Control $picker 'More apps'
-        if ($more) { Press-Control $more }
-        $app = Wait-Result "$Name in the Windows picker" {
-            $option = Named-Control $picker $Name
-            if (!$option) { $option = Named-Control $picker $DisplayExe }
-            if ($option -and !$option.Current.IsOffscreen) { $option }
+    # The server's Shell_Flyout is drawn but exposes no accessible children.
+    $app = Wait-Result "$Name or More apps in the Windows picker" {
+        Read-PickerPoint $picker @($Name,$DisplayExe,'More apps')
+    }
+    if ($app.Label -eq 'More apps') {
+        Press-PickerPoint $picker $app
+        $app = Wait-Result "$Name in the expanded Windows picker" {
+            Read-PickerPoint $picker @($Name,$DisplayExe)
         }
     }
-    Press-Control $app
+    Press-PickerPoint $picker $app
     $confirm = Wait-Result 'the app picker confirmation button' {
-        foreach ($label in @('Set default','Always','OK')) {
-            $button = Named-Control $picker $label
-            if ($button -and $button.Current.IsEnabled) { $button; break }
-        }
+        Read-PickerPoint $picker @('Set default','Always','OK')
     }
-    Press-Control $confirm
+    Press-PickerPoint $picker $confirm
     Press-Control (Wait-Result 'the Properties confirmation button' { Named-Control $properties 'OK' })
 }
 
