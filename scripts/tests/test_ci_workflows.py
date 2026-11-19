@@ -17,6 +17,22 @@ def events(path):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_store_candidate_uses_real_identity_and_encrypts_transfer(self):
+        path = WORKFLOWS / 'store-candidate.yml'
+        workflow = path.read_text(encoding='utf-8')
+        self.assertEqual(events(path), {'workflow_dispatch'})
+        self.assertIn("github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/main'", workflow)
+        self.assertIn('ref: ${{ github.sha }}', workflow)
+        self.assertIn('--release-identity build/store-candidate/release-input.json', workflow)
+        self.assertIn('vars.XDNOTE_MSIX_IDENTITY_JSON', workflow)
+        self.assertIn('scripts/check-store-wack.ps1', workflow)
+        artifact = workflow.split('actions/upload-artifact@', 1)[1]
+        self.assertIn('build/store-candidate/candidate.msix.age', artifact)
+        self.assertNotIn('build/store-candidate/candidate.msix\n', artifact)
+        self.assertNotIn('build/store-candidate/msix-identity.json', artifact)
+        for forbidden in ('contents: write', 'secrets.', 'gh release', 'sign-release'):
+            self.assertNotIn(forbidden, workflow)
+
     def test_release_keys_are_scoped_to_the_approved_signing_step(self):
         path = WORKFLOWS / 'release-signing.yml'
         workflow = path.read_text(encoding='utf-8')
