@@ -65,7 +65,7 @@ def authorize_at_prompt(command, password, *, cancel=False, installed_helper=Fal
     if installed_helper:
         # Register a process agent before the fixed helper can call pkexec.
         request = subprocess.Popen(['/bin/sh', '-c', 'kill -STOP $$; exec "$@"', 'xdnote-polkit', *command],
-                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and request.poll() is None:
             if re.search(r'^State:\s+T\b', Path(f'/proc/{request.pid}/status').read_text(), re.MULTILINE):
@@ -110,7 +110,9 @@ def authorize_at_prompt(command, password, *, cancel=False, installed_helper=Fal
             position = terminal_output.expect(patterns)
         if position != 0:
             status = request.poll()
-            raise RuntimeError(f'No administrator password prompt (agent state {position}, request exit {status})')
+            message = request.stderr.read(256).decode(errors='replace').strip() if status is not None and request.stderr else ''
+            banner = terminal_output.before.strip()[-350:]
+            raise RuntimeError(f'No administrator password prompt (agent state {position}, request exit {status}): {message} {banner}')
         if cancel:
             terminal_output.send('\x03')
         else:
@@ -128,6 +130,8 @@ def authorize_at_prompt(command, password, *, cancel=False, installed_helper=Fal
         if request is not None and request.poll() is None:
             request.kill()
             request.wait(timeout=5)
+        if request is not None and request.stderr is not None:
+            request.stderr.close()
         if agent.poll() is None:
             agent.terminate()
         agent.wait(timeout=5)
