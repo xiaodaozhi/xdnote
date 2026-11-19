@@ -100,6 +100,8 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 
 工程打包入口 `scripts/build_linux_installer.py` 生成有实际归属、固定权限策略和保守维护门的 Ubuntu 22.04 amd64 开发包；`scripts/msix_package.py` 只在调用方显式提供 Identity／Publisher／PublisherDisplayName 及正确素材时调用 Windows SDK MakeAppx，生成未签名 MSIX，不签名、不安装或提交 Store。`scripts/check_msix.py` 仅在一次性 Windows CI 使用明确标记的工程身份检验 XML／资产与 MakeAppx，不能将它当作真实 Partner Center 身份。Store 偏好按实际 package family 分隔，包身份失败也与普通安装版分隔；真实并存／激活与默认应用保留仍需安装验收。
 
+正式 MSIX 的三个包身份字段按 Partner Center 的产品标识页原样记录到 JSON，键为 `name`、`publisher` 和 `publisherDisplayName`。GitHub Actions 仓库变量 `XDNOTE_MSIX_IDENTITY_JSON` 保存该配置，本地持久副本位于主工作区的 `build/release/partner-center/msix-identity.json`，用 `scripts/msix_package.py --identity` 显式传入。受控的 Actions 打包任务通过环境变量接收配置并写入其 `build/` 下的输入文件，避免将值展开到脚本或输出到日志。工程 MSIX 检查继续使用夹具身份。字段来源见[微软的产品标识说明](https://learn.microsoft.com/en-us/windows/apps/publish/view-app-identity-details)。
+
 `scripts/release_candidate.py` 只为六个实际资产生成既定 schema-1 未签名清单，要求同一 clean 发行身份及逐包摘要／长度验证记录，不创建 tag、Release 或签名。Windows 数字版本、macOS CFBundleVersion 和 Debian 包版本分别绑定生成身份；当前默认仍没有正式发行 build。所有包型继续需要各自最低系统、真实升级／恢复和最终许可核验。
 
 ## 许可核验与准入
