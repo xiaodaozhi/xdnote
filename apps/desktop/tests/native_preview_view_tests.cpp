@@ -436,6 +436,24 @@ private slots:
         link->actionInterface()->doAction(QAccessibleActionInterface::pressAction());
         QCOMPARE(view.selection(), expectedSelection);
         QCOMPARE(readerText(reader)->textInterface()->cursorPosition(), position);
+#ifdef Q_OS_MACOS
+        auto *body = readerText(reader);
+        QCOMPARE(body->textInterface()->text(0, -1), data->text);
+        auto *continuation = reader->focusChild();
+        QVERIFY(continuation && continuation != body);
+        QCOMPARE(continuation->role(), QAccessible::StaticText);
+        auto *remaining = continuation->textInterface();
+        QVERIFY(remaining);
+        QCOMPARE(remaining->text(0, -1), data->text.mid(position));
+        QCOMPARE(remaining->cursorPosition(), 0);
+        remaining->setSelection(0, 0, 1);
+        QCOMPARE(view.selection(), qMakePair(position, position + 1));
+        QCOMPARE(remaining->characterRect(0), body->textInterface()->characterRect(position));
+        QCOMPARE(reader->child(readerActionOffset + 1), link);
+        view.setSelection(0, 0);
+        QCOMPARE(reader->focusChild(), body);
+        QCOMPARE(reader->child(readerActionOffset), link);
+#endif
         const auto guarded = content(QByteArray("[x] ").repeated(1000) + "\n\n[x]: " + QByteArray(2000, 'a') + "\n"); QVERIFY(guarded); QVERIFY(!guarded->model.referencesComplete());
         view.expect(stamp(2)); QVERIFY(view.present(stamp(2), guarded)); QVERIFY(!view.activateAction(0));
     }

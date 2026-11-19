@@ -12,4 +12,5 @@ inline QString macPreviewLinkId(QAccessible::Id id)
     return QString::fromLatin1(MacPreviewLinkIdPrefix) + QString::number(id);
 }
 void setMacPreviewLinkRotor(NativePreviewView *preview, bool visible);
+void notifyMacPreviewNavigation(NativePreviewView *preview);
 }
