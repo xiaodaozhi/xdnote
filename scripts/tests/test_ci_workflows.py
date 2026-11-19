@@ -84,6 +84,26 @@ class WorkflowContractTests(unittest.TestCase):
         for forbidden in ('contents: write', 'gh release', 'upload-artifact', 'release_updates.py'):
             self.assertNotIn(forbidden, workflow)
 
+    def test_linux_production_acceptance_keeps_private_packages_on_the_runner(self):
+        path = WORKFLOWS / 'production-linux-update.yml'
+        workflow = path.read_text(encoding='utf-8')
+        self.assertEqual(events(path), {'workflow_dispatch'})
+        self.assertIn("github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/main'", workflow)
+        self.assertIn('required_reviewers', workflow)
+        preparation, tail = workflow.split('      - name: Sign the bound private Linux update', 1)
+        signing, runtime = tail.split('      - name: Verify with the public key', 1)
+        self.assertIn('needs: approval-policy', preparation)
+        self.assertIn('environment: release-signing', preparation)
+        self.assertIn('runs-on: ubuntu-22.04', preparation)
+        self.assertIn('--production-phase prepare', preparation)
+        self.assertIn('--production-phase sign', signing)
+        self.assertIn('--production-phase run', runtime)
+        self.assertEqual(re.findall(r'secrets\.(\w+)', signing), ['XDNOTE_UPDATE_SIGNING_KEY_HEX'])
+        self.assertNotIn('secrets.', preparation + runtime)
+        self.assertEqual(re.findall(r'(?m)^          path: (.*)$', runtime),
+                         ['build/production-linux-update/report.json'])
+        self.assertNotIn('contents: write', workflow)
+
     def test_network_flow_is_explicit_and_does_not_upload_sources_or_keys(self):
         path = WORKFLOWS / 'qt-network-flow.yml'; text = path.read_text()
         self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})

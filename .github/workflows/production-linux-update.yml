@@ -1,0 +1,80 @@
+name: Linux production update acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  approval-policy:
+    if: github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require an environment reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/environments/release-signing" |
+            jq -e 'any(.protection_rules[]?; .type == "required_reviewers" and (.reviewers | length) > 0)' >/dev/null
+
+  linux:
+    needs: approval-policy
+    environment: release-signing
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    env:
+      CARGO_HOME: ${{ github.workspace }}/build/cargo-home
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/release-tool
+      XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Prepare signed Ubuntu repositories and runtime libraries
+        timeout-minutes: 12
+        run: |
+          mkdir -p build/ci-apt
+          apt_options=(-o "Dir::Etc::sourcelist=$PWD/build/ci-apt/ubuntu.list" -o Dir::Etc::sourceparts=- -o Acquire::Retries=0 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
+          for mirror in https://mirrors.kernel.org/ubuntu https://archive.ubuntu.com/ubuntu; do
+            printf 'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] %s %s main universe restricted multiverse\n' \
+              "$mirror" jammy "$mirror" jammy-updates "$mirror" jammy-security > build/ci-apt/ubuntu.list
+            if sudo timeout --kill-after=10s 90s apt-get "${apt_options[@]}" update &&
+               sudo timeout --kill-after=10s 235s apt-get "${apt_options[@]}" install -y --no-remove --no-install-recommends \
+                 libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 patchelf desktop-file-utils shared-mime-info zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev; then
+              exit 0
+            fi
+          done
+          exit 1
+      - name: Prepare the locked compiler and private Linux products
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup run 1.99.0 cargo fetch --locked
+          rustup run 1.99.0 cargo build --locked --offline --release -p xdnote-update --features release-tool --bin xdnote-update-tool
+          python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+          python scripts/prepare_qt.py --download --host linux --arch linux_gcc_64
+          python scripts/prepare_ci_font.py --output build/test-fonts
+          python scripts/desktop.py prepare --download
+          python scripts/check_native_product_update.py --work-dir build/production-linux-update --qt-prefix build/Qt/6.8.2/gcc_64 --production-phase prepare
+      - name: Sign the bound private Linux update
+        env:
+          XDNOTE_UPDATE_KEY_ID: ${{ vars.XDNOTE_UPDATE_KEY_ID }}
+          XDNOTE_UPDATE_SIGNING_KEY_HEX: ${{ secrets.XDNOTE_UPDATE_SIGNING_KEY_HEX }}
+        run: python scripts/check_native_product_update.py --work-dir build/production-linux-update --qt-prefix build/Qt/6.8.2/gcc_64 --production-phase sign
+      - name: Verify with the public key and exercise the installed update
+        run: python scripts/check_native_product_update.py --work-dir build/production-linux-update --qt-prefix build/Qt/6.8.2/gcc_64 --production-phase run
+      - name: Preserve only the transaction report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-production-update-evidence
+          path: build/production-linux-update/report.json
+          if-no-files-found: warn
+          retention-days: 7
