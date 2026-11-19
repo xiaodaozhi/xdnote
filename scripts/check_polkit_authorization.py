@@ -219,7 +219,8 @@ def run_installed_helper(password, report, authorize):
             if receipt.get('transaction') != transaction:
                 raise RuntimeError('The receipt refers to a different authorization request')
             if cancel:
-                if not status or receipt.get('error') not in ('authorization_cancelled', 'authorization_failed') or (job / 'ready.json').exists():
+                cancel_codes = ('authorization_cancelled',) if desktop else ('authorization_cancelled', 'authorization_failed')
+                if not status or receipt.get('error') not in cancel_codes or (job / 'ready.json').exists():
                     raise RuntimeError('The native cancellation did not leave the update unauthorized: ' + repr(receipt))
                 if installed_identity() != old or (home / 'restarted.json').exists():
                     raise RuntimeError('Cancelling authorization changed the installed package')
