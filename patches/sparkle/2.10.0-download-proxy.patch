@@ -33,8 +33,8 @@
 + startUpdater on the main thread. Only custom mode accepts a proxy URL, containing
 + a host and explicit port without credentials. Direct mode disables session
 + proxies and PAC/WPAD. Unsupported configurations fail before network traffic.
-+ The policy applies to feed and archive downloads. Non-system Downloader XPC is
-+ unsupported. No trust or TLS configuration is accepted by this API.
++ The policy applies to feed and archive downloads in the in-process downloader.
++ No trust or TLS configuration is accepted by this API.
 + */
 +- (BOOL)xdnote_setDownloadProxyMode:(SPUXdnoteDownloadProxyMode)mode proxyURL:(nullable NSURL *)proxyURL error:(NSError * _Nullable __autoreleasing * _Nullable)error;
 +
@@ -62,7 +62,7 @@
 +- (BOOL)xdnote_setDownloadProxyMode:(SPUXdnoteDownloadProxyMode)mode proxyURL:(NSURL * _Nullable)proxyURL error:(NSError * __autoreleasing *)error
 +{
 +    if (!NSThread.isMainThread || _startedUpdater ||
-+        (mode != SPUXdnoteDownloadProxySystem && SPUXPCServiceIsEnabled(SUEnableDownloaderServiceKey))) {
++        SPUXPCServiceIsEnabled(SUEnableDownloaderServiceKey)) {
 +        if (error != NULL) {
 +            *error = [NSError errorWithDomain:SUSparkleErrorDomain code:SUInvalidUpdaterError
 +                userInfo:@{NSLocalizedDescriptionKey: @"The update transport is unsupported or cannot be changed after starting the updater."}];
@@ -116,7 +116,7 @@
  
  
  #include "AppKitPrevention.h"
-@@ -26,6 +31,70 @@
+@@ -26,6 +31,189 @@
  
  @interface SPUDownloader () <NSURLSessionDownloadDelegate>
  @end
@@ -184,19 +184,140 @@
 +    }
 +    return configuration;
 +}
++
++static NSURLSessionConfiguration * _Nullable SPUPACError(NSString *reason, NSError * _Nullable cause, NSError * __autoreleasing *error)
++{
++    if (error != NULL) {
++        NSMutableDictionary *info = [@{NSLocalizedDescriptionKey: reason} mutableCopy];
++        if (cause != nil) {
++            info[NSUnderlyingErrorKey] = cause;
++        }
++        *error = [NSError errorWithDomain:SUSparkleErrorDomain code:SUDownloadError userInfo:info];
++    }
++    return nil;
++}
++
++static void SPUPACDidResolve(void *context, CFArrayRef routes, CFErrorRef error)
++{
++    void (^completion)(CFArrayRef, CFErrorRef) = (__bridge void (^)(CFArrayRef, CFErrorRef))context;
++    completion(routes, error);
++}
++
++// Called off the main thread. Keep one bounded native evaluation for each request,
++// and invalidate the source on cancellation before the downloader can start a task.
++static NSURLSessionConfiguration * _Nullable SPUResolveSystemDownloadConfiguration(NSURL *target, NSProgress *operation, NSError * __autoreleasing *error)
++{
++    NSDictionary *settings = CFBridgingRelease(CFNetworkCopySystemProxySettings());
++    BOOL enabled = [settings[(__bridge NSString *)kCFNetworkProxiesProxyAutoConfigEnable] boolValue];
++    NSString *source = nil;
++    NSURL *scriptURL = nil;
++    if (enabled) {
++        source = settings[(__bridge NSString *)kCFNetworkProxiesProxyAutoConfigJavaScript];
++        NSString *address = settings[(__bridge NSString *)kCFNetworkProxiesProxyAutoConfigURLString];
++        if ([address isKindOfClass:NSString.class]) {
++            scriptURL = [NSURL URLWithString:address];
++        }
++    } else if (settings != nil) {
++        // CFNetwork may surface a PAC route even when it isn't a global setting.
++        NSArray *entries = CFBridgingRelease(CFNetworkCopyProxiesForURL((__bridge CFURLRef)target, (__bridge CFDictionaryRef)settings));
++        NSDictionary *first = entries.firstObject;
++        NSString *type = first[(__bridge NSString *)kCFProxyTypeKey];
++        if ([type isEqual:(__bridge NSString *)kCFProxyTypeAutoConfigurationURL]) {
++            enabled = YES;
++            scriptURL = first[(__bridge NSString *)kCFProxyAutoConfigurationURLKey];
++        } else if ([type isEqual:(__bridge NSString *)kCFProxyTypeAutoConfigurationJavaScript]) {
++            enabled = YES;
++            source = first[(__bridge NSString *)kCFProxyAutoConfigurationJavaScriptKey];
++        }
++    }
++    if (!enabled) {
++        return SPUXdnoteCreateDownloadConfiguration(SPUXdnoteDownloadProxySystem, nil, error);
++    }
++
++    BOOL hasSource = [source isKindOfClass:NSString.class] && source.length > 0;
++    BOOL hasURL = [scriptURL isKindOfClass:NSURL.class] && scriptURL.scheme.length > 0;
++    if (!hasSource && !hasURL) {
++        return SPUPACError(@"System update proxy configuration has no usable PAC script.", nil, error);
++    }
++
++    __block BOOL finished = NO;
++    __block NSArray *routes = nil;
++    __block NSError *cause = nil;
++    __attribute__((objc_precise_lifetime)) void (^completion)(CFArrayRef, CFErrorRef) = ^(CFArrayRef list, CFErrorRef failure) {
++        routes = [(__bridge NSArray *)list copy];
++        cause = (__bridge NSError *)failure;
++        finished = YES;
++    };
++    CFStreamClientContext context = {0, (__bridge void *)completion, NULL, NULL, NULL};
++    CFRunLoopSourceRef runSource = hasSource
++        ? CFNetworkExecuteProxyAutoConfigurationScript((__bridge CFStringRef)source, (__bridge CFURLRef)target, SPUPACDidResolve, &context)
++        : CFNetworkExecuteProxyAutoConfigurationURL((__bridge CFURLRef)scriptURL, (__bridge CFURLRef)target, SPUPACDidResolve, &context);
++    if (runSource != NULL) {
++        CFStringRef runMode = CFSTR("org.xdnote.sparkle.pac");
++        CFRunLoopAddSource(CFRunLoopGetCurrent(), runSource, runMode);
++        NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 10.0;
++        while (!finished && !operation.cancelled) {
++            NSTimeInterval remaining = deadline - NSProcessInfo.processInfo.systemUptime;
++            if (remaining <= 0) {
++                break;
++            }
++            CFRunLoopRunInMode(runMode, MIN(remaining, 0.1), true);
++        }
++        CFRunLoopSourceInvalidate(runSource);
++        CFRelease(runSource);
++    }
++
++    NSDictionary *route = routes.firstObject;
++    if (!finished || cause != nil || ![route isKindOfClass:NSDictionary.class]) {
++        return SPUPACError(@"Could not resolve the system PAC route for the update.", cause, error);
++    }
++
++    // Use the first route actually returned by PAC. A failed proxy must not
++    // activate a second route implicitly, even if NSURLSession normally would.
++    NSString *type = route[(__bridge NSString *)kCFProxyTypeKey];
++    if ([type isEqual:(__bridge NSString *)kCFProxyTypeNone]) {
++        return SPUXdnoteCreateDownloadConfiguration(SPUXdnoteDownloadProxyDirect, nil, error);
++    }
++
++    NSString *scheme = nil;
++    // CFNetwork labels a plain PROXY directive for an HTTPS origin as HTTPS.
++    if ([type isEqual:(__bridge NSString *)kCFProxyTypeHTTP] || [type isEqual:(__bridge NSString *)kCFProxyTypeHTTPS]) {
++        scheme = @"http";
++    } else if ([type isEqual:(__bridge NSString *)kCFProxyTypeSOCKS] &&
++               [route[(__bridge NSString *)kCFStreamPropertySOCKSVersion] isEqual:(__bridge NSString *)kCFStreamSocketSOCKSVersion5]) {
++        scheme = @"socks5";
++    }
++    NSString *host = route[(__bridge NSString *)kCFProxyHostNameKey];
++    NSNumber *port = route[(__bridge NSString *)kCFProxyPortNumberKey];
++    if (scheme == nil || ![host isKindOfClass:NSString.class] || host.length == 0 ||
++        ![port isKindOfClass:NSNumber.class] || port.longLongValue <= 0 || port.longLongValue > 65535) {
++        return SPUPACError(@"The system PAC route is not a supported update proxy.", nil, error);
++    }
++    NSURLComponents *components = [NSURLComponents new];
++    components.scheme = scheme;
++    components.host = host;
++    components.port = port;
++    NSURL *proxy = components.URL;
++    if (proxy == nil) {
++        return SPUPACError(@"The system PAC returned an invalid update proxy address.", nil, error);
++    }
++    return SPUXdnoteCreateDownloadConfiguration(SPUXdnoteDownloadProxyCustom, proxy, error);
++}
  
  @implementation SPUDownloader
  {
-@@ -33,6 +102,8 @@
+@@ -33,6 +221,10 @@
      NSURLSession *_downloadSession;
      NSString *_bundleIdentifier;
      NSString *_desiredFilename;
 +    NSURL *_proxyURL;
 +    BOOL _direct;
++    NSProgress *_resolvingPAC;
++    NSUInteger _redirectCount;
      
      // Delegate is intentionally strongly referenced; see header
      id <SPUDownloaderDelegate> _delegate;
-@@ -44,10 +115,17 @@
+@@ -44,10 +236,17 @@
  }
  
  - (instancetype)initWithDelegate:(id <SPUDownloaderDelegate>)delegate
@@ -214,15 +335,43 @@
      }
      return self;
  }
-@@ -80,8 +158,15 @@
+@@ -80,8 +279,43 @@
          return;
      }
      
-+    NSError *error = nil;
-+    NSURLSessionConfiguration *configuration = SPUXdnoteCreateDownloadConfiguration(
-+        _direct ? SPUXdnoteDownloadProxyDirect : _proxyURL == nil ? SPUXdnoteDownloadProxySystem : SPUXdnoteDownloadProxyCustom, _proxyURL, &error);
++    if (_direct || _proxyURL != nil) {
++        NSError *error = nil;
++        NSURLSessionConfiguration *configuration = SPUXdnoteCreateDownloadConfiguration(
++            _direct ? SPUXdnoteDownloadProxyDirect : SPUXdnoteDownloadProxyCustom, _proxyURL, &error);
++        [self beginRequest:request configuration:configuration error:error];
++        return;
++    }
++
++    NSProgress *resolution = [NSProgress discreteProgressWithTotalUnitCount:1];
++    _resolvingPAC = resolution;
++    __weak __typeof__(self) weakSelf = self;
++    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
++        if (resolution.cancelled) {
++            return;
++        }
++        NSError *error = nil;
++        NSURLSessionConfiguration *configuration = SPUResolveSystemDownloadConfiguration(request.URL, resolution, &error);
++        dispatch_async(dispatch_get_main_queue(), ^{
++            __typeof__(self) downloader = weakSelf;
++            if (downloader == nil || downloader->_resolvingPAC != resolution) {
++                return;
++            }
++            downloader->_resolvingPAC = nil;
++            [downloader beginRequest:request configuration:configuration error:error];
++        });
++    });
++}
++
++- (void)beginRequest:(NSURLRequest *)request configuration:(NSURLSessionConfiguration * _Nullable)configuration error:(NSError * _Nullable)error SPU_OBJC_DIRECT
++{
 +    if (configuration == nil) {
-+        [_delegate downloaderDidFailWithError:error];
++        assert(error != nil);
++        [_delegate downloaderDidFailWithError:(NSError * _Nonnull)error];
 +        return;
 +    }
      _downloadSession = [NSURLSession
@@ -231,6 +380,114 @@
          delegate:self
          delegateQueue:[NSOperationQueue mainQueue]];
      
+@@ -91,8 +325,12 @@
+             break;
+         case SPUDownloadModeTemporary: {
+             __weak __typeof__(self) weakSelf = self;
+-            _sessionTask = [_downloadSession dataTaskWithRequest:request completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+-                [weakSelf temporaryDownloadDidFinishWithData:data response:response error:error];
++            NSURLSession *session = _downloadSession;
++            _sessionTask = [session dataTaskWithRequest:request completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
++                __typeof__(self) downloader = weakSelf;
++                if (downloader != nil && downloader->_downloadSession == session) {
++                    [downloader temporaryDownloadDidFinishWithData:data response:response error:error];
++                }
+             }];
+             break;
+         }
+@@ -106,7 +344,7 @@
+ - (void)startPersistentDownloadWithRequest:(NSURLRequest *)request bundleIdentifier:(NSString *)bundleIdentifier desiredFilename:(NSString *)desiredFilename
+ {
+     dispatch_async(dispatch_get_main_queue(), ^{
+-        if (self->_sessionTask == nil && self->_delegate != nil) {
++        if (self->_sessionTask == nil && self->_resolvingPAC == nil && self->_delegate != nil) {
+             // Prevent service from automatically terminating while downloading the update asynchronously without any reply blocks
+             [[NSProcessInfo processInfo] disableAutomaticTermination:SUDownloadingReason];
+             self->_disabledAutomaticTermination = YES;
+@@ -123,7 +361,7 @@
+ - (void)startTemporaryDownloadWithRequest:(NSURLRequest *)request
+ {
+     dispatch_async(dispatch_get_main_queue(), ^{
+-        if (self->_sessionTask == nil && self->_delegate != nil) {
++        if (self->_sessionTask == nil && self->_resolvingPAC == nil && self->_delegate != nil) {
+             // Prevent service from automatically terminating while downloading the update asynchronously without any reply blocks
+             [[NSProcessInfo processInfo] disableAutomaticTermination:SUDownloadingReason];
+             self->_disabledAutomaticTermination = YES;
+@@ -170,6 +408,8 @@
+ - (void)_cleanup SPU_OBJC_DIRECT
+ {
+     [self enableAutomaticTermination];
++    [_resolvingPAC cancel];
++    _resolvingPAC = nil;
+     [_sessionTask cancel];
+     [_downloadSession finishTasksAndInvalidate];
+     _sessionTask = nil;
+@@ -241,8 +481,36 @@
+     [self _cleanup];
+ }
+ 
+-- (void)URLSession:(NSURLSession *)__unused session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location
+-{
++- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task willPerformHTTPRedirection:(NSHTTPURLResponse *)__unused response newRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLRequest * _Nullable))completionHandler
++{
++    if (session != _downloadSession || task != _sessionTask) {
++        completionHandler(nil);
++        return;
++    }
++    if (_direct || _proxyURL != nil) {
++        completionHandler(request);
++        return;
++    }
++
++    // Never let a redirect reuse the previous URL's PAC route. Ignore the
++    // retired session's eventual cancellation and use NSURLSession's new request.
++    _downloadSession = nil;
++    _sessionTask = nil;
++    completionHandler(nil);
++    [session invalidateAndCancel];
++    if (++_redirectCount > 20) {
++        NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorHTTPTooManyRedirects userInfo:nil];
++        [_delegate downloaderDidFailWithError:error];
++        return;
++    }
++    [self startDownloadWithRequest:request];
++}
++
++- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location
++{
++    if (session != _downloadSession || downloadTask != _sessionTask) {
++        return;
++    }
+     if (!SPUValidateStatusCodeAndFailIfInvalid(downloadTask.response, downloadTask.originalRequest.URL, _delegate)) {
+         return;
+     }
+@@ -306,9 +574,9 @@
+     }
+ }
+ 
+-- (void)URLSession:(NSURLSession *)__unused session downloadTask:(NSURLSessionDownloadTask *)__unused downloadTask didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)__unused totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite
+-{
+-    if (_mode != SPUDownloadModePersistent) {
++- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)__unused totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite
++{
++    if (session != _downloadSession || downloadTask != _sessionTask || _mode != SPUDownloadModePersistent) {
+         return;
+     }
+     
+@@ -322,8 +590,11 @@
+     }
+ }
+ 
+-- (void)URLSession:(NSURLSession *)__unused session task:(NSURLSessionTask *)__unused task didCompleteWithError:(NSError *)error
+-{
++- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error
++{
++    if (session != _downloadSession || task != _sessionTask || _mode != SPUDownloadModePersistent) {
++        return;
++    }
+     _sessionTask = nil;
+     if (error != nil) {
+         [_delegate downloaderDidFailWithError:error];
 --- a/Sparkle/SPUNoUpdateFoundInfo.m
 +++ b/Sparkle/SPUNoUpdateFoundInfo.m
 @@ -10,7 +10,7 @@
