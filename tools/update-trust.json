@@ -1,4 +1,9 @@
 {
   "schema_version": 1,
-  "keys": []
+  "keys": [
+    {
+      "key_id": "xdnote-manifest-v1",
+      "public_key": "d44aa06114d28818d593739360321c3eff829d62bf7ab5b27ffeae55a8889534"
+    }
+  ]
 }

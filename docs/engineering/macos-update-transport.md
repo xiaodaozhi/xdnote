@@ -33,7 +33,7 @@ Apple 的 Network `proxyConfigurations`、HTTP CONNECT／SOCKS5 构造器及显�
 
 ## 会话与探针边界
 
-共享工厂使用临时 session，关闭 Cookie、凭据和 URL 缓存，保留系统 TLS 验证及 TLS 1.2 下限；不接收信任根、TLS 绕过或代理凭据。`SPUUpdater` 的策略仅能在主线程、启动前设置，供 feed 与归档的同一 downloader 使用。产品提供方沿用同一工厂，当前生产公钥为空；缺钥时不会开放自动安装。
+共享工厂使用临时 session，关闭 Cookie、凭据和 URL 缓存，保留系统 TLS 验证及 TLS 1.2 下限；不接收信任根、TLS 绕过或代理凭据。`SPUUpdater` 的策略仅能在主线程、启动前设置，供 feed 与归档的同一 downloader 使用。产品提供方沿用同一工厂。生产公钥随部署写入 `SUPublicEDKey`，安装仍受应用身份和运行位置约束。
 
 [原生探针](../../experiments/sparkle-admission/probe.m)验证配置、非法输入、线程与启动状态；在自有临时 bundle 中禁用自动检查，并通过公开的更新信息入口驱动真实 appcast 下载。公开测试向量密钥只存在于该临时探针 plist，不能成为产品信任根。
 
