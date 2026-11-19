@@ -1,4 +1,4 @@
-"""Verify native Sparkle configuration and appcast routing with loopback fixtures."""
+"""Verify native Sparkle configuration and download routing with loopback fixtures."""
 import argparse
 from contextlib import contextmanager
 import http.server
@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from xml.etree import ElementTree
 
 import sparkle
 
@@ -31,7 +32,7 @@ def execute(arguments, log, *, log_stdout=True, **options):
 
 
 @contextmanager
-def listener(kind, tls=None, forward_port=None, location=None):
+def listener(kind, tls=None, forward_port=None, location=None, appcast=None):
     events = []
 
     class Handler(socketserver.BaseRequestHandler):
@@ -57,7 +58,7 @@ def listener(kind, tls=None, forward_port=None, location=None):
                             stream.recv(1024)
                     except ssl.SSLError as error:
                         events.append('tls-refused:' + str(error.reason))
-                elif kind in ('http', 'redirect'):
+                elif kind in ('http', 'redirect', 'appcast'):
                     request = b''
                     while b'\r\n\r\n' not in request and len(request) < 8192:
                         block = self.request.recv(1024)
@@ -67,6 +68,9 @@ def listener(kind, tls=None, forward_port=None, location=None):
                     events.append(request.split(b'\r\n')[0].decode('ascii', errors='replace'))
                     if kind == 'redirect':
                         self.request.sendall(f'HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.encode('ascii'))
+                    elif kind == 'appcast':
+                        length = len(appcast)
+                        self.request.sendall(f'HTTP/1.1 200 OK\r\nContent-Type: application/rss+xml\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n'.encode('ascii') + appcast)
                     elif forward_port is None:
                         self.request.sendall(b'HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
                     else:
@@ -229,21 +233,31 @@ def check_system_pac(executable, environment, tls, log, result):
             cases = {}
             pac['cases'] = cases
             expected = f'CONNECT {PAC_HOST}:{port} '
-            with listener('redirect', location=target) as (redirect_port, redirects):
-                for name, url in (('appcast', target), ('redirected-appcast', f'http://127.0.0.1:{redirect_port}/redirect')):
+            archive_url = f'https://{PAC_HOST}:{port}/archive.zip'
+            with (listener('redirect', location=target) as (redirect_port, redirects),
+                  listener('appcast', appcast=archive_appcast(archive_url)) as (feed_port, feeds)):
+                routes = (
+                    ('appcast', 'appcast', target),
+                    ('redirected-appcast', 'appcast', f'http://127.0.0.1:{redirect_port}/redirect'),
+                    ('archive', 'archive', f'http://127.0.0.1:{feed_port}/appcast.xml'),
+                )
+                for name, command, url in routes:
                     before = origin.count('connection')
                     previous = len(proxy)
-                    response = json.loads(execute([executable, 'appcast', url], log, env=environment))
+                    response = json.loads(execute([executable, command, url], log, env=environment))
                     case = {'response': response, 'proxy': proxy[previous:],
                             'originConnections': origin.count('connection') - before}
                     cases[name] = case
                     if not any(event.startswith(expected) for event in case['proxy']):
                         raise ValueError(f'System PAC did not route {name} through the selected proxy')
                     network_errors = [entry['code'] for entry in response['errorChain'] if entry['domain'] == 'NSURLErrorDomain']
-                    if response['error'] == 0 or not network_errors or any(code in (-1200, -1202) for code in network_errors):
+                    if (response['archiveStarted'] != (command == 'archive') or response['error'] == 0 or
+                            not network_errors or any(code in (-1200, -1202) for code in network_errors)):
                         raise ValueError(f'Sparkle did not report a proxy transport failure for {name}')
                 if not any(event.startswith('GET /redirect ') for event in redirects):
                     raise ValueError('The PAC DIRECT redirect fixture did not receive its expected request')
+                if not any(event.startswith('GET /appcast.xml ') for event in feeds):
+                    raise ValueError('The PAC DIRECT appcast did not start the archive fixture')
             pac['pacRequests'] = len(hits)
             pac['unexpectedOriginConnections'] = sum(item['originConnections'] for item in cases.values())
             pac['directFallbackObserved'] = pac['unexpectedOriginConnections'] > 0
@@ -251,6 +265,20 @@ def check_system_pac(executable, environment, tls, log, result):
             if not hits or not pac['policyPassed']:
                 raise ValueError('System PAC proxy rejection permitted a direct connection to the origin')
     pac['temporarySettingsDisabled'] = True
+
+
+def archive_appcast(url):
+    namespace = 'http://www.andymatuschak.org/xml-namespaces/sparkle'
+    rss = ElementTree.Element('rss', {'version': '2.0', 'xmlns:sparkle': namespace})
+    channel = ElementTree.SubElement(rss, 'channel')
+    ElementTree.SubElement(channel, 'title').text = 'xdnote isolated archive fixture'
+    item = ElementTree.SubElement(channel, 'item')
+    ElementTree.SubElement(item, 'title').text = 'Test update'
+    ElementTree.SubElement(item, 'sparkle:version').text = '2'
+    ElementTree.SubElement(item, 'enclosure', {
+        'url': url, 'length': '1', 'type': 'application/octet-stream',
+    })
+    return ElementTree.tostring(rss, encoding='utf-8', xml_declaration=True)
 
 
 def native_metadata(sdk, log):
@@ -361,6 +389,15 @@ def check(work, evidence, *, system_pac_enabled=False):
                         entry['domain'] == 'NSURLErrorDomain' and entry['code'] in (-1200, -1202) for entry in appcast['errorChain']):
                     raise ValueError('Sparkle appcast downloader did not reject the untrusted origin')
                 result['appcastTlsRejected'] = appcast
+                before = origin.count('connection')
+                archive_url = f'https://127.0.0.1:{port}/archive.zip'
+                with listener('appcast', appcast=archive_appcast(archive_url)) as (feed_port, _):
+                    archive = json.loads(execute([executable, 'archive', f'http://127.0.0.1:{feed_port}/appcast.xml'],
+                                                 log, env=environment))
+                if (not archive['archiveStarted'] or origin.count('connection') <= before or not any(
+                        entry['domain'] == 'NSURLErrorDomain' and entry['code'] in (-1200, -1202) for entry in archive['errorChain'])):
+                    raise ValueError('Sparkle archive downloader did not reject the untrusted origin')
+                result['archiveTlsRejected'] = archive
                 # macOS may bypass proxies for loopback IP literals. Use the
                 # reserved .invalid fixture name for CONNECT/SOCKS instead;
                 # the rejecting local proxy never resolves or contacts it.

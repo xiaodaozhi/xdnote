@@ -27,18 +27,74 @@ static NSMutableArray<NSString *> *checks;
 @end
 @interface ProbeUpdaterObserver : NSObject <SPUUpdaterDelegate>
 @property (nonatomic, copy) NSURL *feed;
+@property (nonatomic) BOOL archiveStarted;
 @end
 @implementation ProbeUpdaterObserver
 - (NSString *)feedURLStringForUpdater:(SPUUpdater *)__unused updater {
     return self.feed.absoluteString;
+}
+- (BOOL)updater:(SPUUpdater *)__unused updater shouldProceedWithUpdate:(SUAppcastItem *)item updateCheck:(SPUUpdateCheck)__unused type error:(NSError **)__unused error {
+    NSURL *archive = item.fileURL;
+    return archive.port.intValue > 0 && [archive.path isEqualToString:@"/archive.zip"] &&
+        [archive.scheme isEqualToString:@"https"] &&
+        ([archive.host isEqualToString:@"127.0.0.1"] ||
+         [archive.host isEqualToString:@"xdnote-sparkle-fixture.invalid"]);
+}
+- (void)updater:(SPUUpdater *)__unused updater willDownloadUpdate:(SUAppcastItem *)__unused item withRequest:(NSMutableURLRequest *)__unused request {
+    self.archiveStarted = YES;
 }
 - (void)updater:(SPUUpdater *)__unused updater didFinishUpdateCycleForUpdateCheck:(SPUUpdateCheck)__unused checkType error:(NSError *)error {
     NSMutableArray *chain = [NSMutableArray array];
     for (NSError *failure = error; failure != nil && chain.count < 8; failure = failure.userInfo[NSUnderlyingErrorKey]) {
         [chain addObject:@{@"code": @(failure.code), @"domain": failure.domain}];
     }
-    report(@{@"error": @(error.code), @"errorChain": chain}, 0);
+    report(@{@"error": @(error.code), @"errorChain": chain, @"archiveStarted": @(self.archiveStarted)}, 0);
 }
+@end
+
+// Start the persistent downloader through Sparkle's public update flow. The
+// fixture must fail on the network, before receiving data or extracting it.
+@interface ProbeArchiveDriver : NSObject <SPUUserDriver>
+@end
+@implementation ProbeArchiveDriver
+- (void)showUpdatePermissionRequest:(SPUUpdatePermissionRequest *)__unused request reply:(void (^)(SUUpdatePermissionResponse *))reply {
+    reply([[SUUpdatePermissionResponse alloc] initWithAutomaticUpdateChecks:NO sendSystemProfile:NO]);
+}
+- (void)showUserInitiatedUpdateCheckWithCancellation:(void (^)(void))cancellation {
+    (void)cancellation;
+}
+- (void)showUpdateFoundWithAppcastItem:(SUAppcastItem *)__unused item state:(SPUUserUpdateState *)__unused state reply:(void (^)(SPUUserUpdateChoice))reply {
+    reply(SPUUserUpdateChoiceInstall);
+}
+- (void)showDownloadInitiatedWithCancellation:(void (^)(void))cancellation {
+    (void)cancellation;
+}
+- (void)showDownloadDidReceiveExpectedContentLength:(uint64_t)__unused length {}
+- (void)showDownloadDidReceiveDataOfLength:(uint64_t)__unused length {
+    report(@{@"failed": @"unexpected-archive-data"}, 2);
+}
+- (void)showDownloadDidStartExtractingUpdate {
+    report(@{@"failed": @"unexpected-extraction"}, 2);
+}
+- (void)showExtractionReceivedProgress:(double)__unused progress {}
+- (void)showReadyToInstallAndRelaunch:(void (^ __unused)(SPUUserUpdateChoice))reply {
+    report(@{@"failed": @"unexpected-installation"}, 2);
+}
+- (void)showInstallingUpdateWithApplicationTerminated:(BOOL)__unused terminated retryTerminatingApplication:(void (^ __unused)(void))retry {
+    report(@{@"failed": @"unexpected-installation"}, 2);
+}
+- (void)showUpdateInstalledAndRelaunched:(BOOL)__unused relaunched acknowledgement:(void (^ __unused)(void))acknowledgement {
+    report(@{@"failed": @"unexpected-installation"}, 2);
+}
+- (void)dismissUpdateInstallation {}
+- (void)showUpdateNotFoundWithError:(NSError *)__unused error acknowledgement:(void (^)(void))acknowledgement {
+    acknowledgement();
+}
+- (void)showUpdaterError:(NSError *)__unused error acknowledgement:(void (^)(void))acknowledgement {
+    acknowledgement();
+}
+- (void)showUpdateReleaseNotesWithDownloadData:(SPUDownloadData *)__unused data {}
+- (void)showUpdateReleaseNotesFailedToDownloadWithError:(NSError *)__unused error {}
 @end
 
 static void check(BOOL valid, NSString *name) {
@@ -98,22 +154,30 @@ int main(int argc, const char **argv) {
             check(![updater xdnote_setDownloadProxyMode:SPUXdnoteDownloadProxySystem proxyURL:nil error:nil], @"immutable-after-start");
             report(@{@"ok": @YES, @"scope": @"native configuration only; no update check or installation", @"checks": checks}, 0);
         }
-        if (argc == 3 && strcmp(argv[1], "appcast") == 0) {
+        if (argc == 3 && (strcmp(argv[1], "appcast") == 0 || strcmp(argv[1], "archive") == 0)) {
+            BOOL archive = strcmp(argv[1], "archive") == 0;
             NSURL *url = [NSURL URLWithString:@(argv[2])];
-            check(url.port.intValue > 0 &&
-                  (([url.host isEqualToString:@"xdnote-sparkle-fixture.invalid"] && [url.scheme isEqualToString:@"https"]) ||
-                   ([url.host isEqualToString:@"127.0.0.1"] &&
-                    ([url.scheme isEqualToString:@"http"] || [url.scheme isEqualToString:@"https"]))), @"owned-appcast-fixture");
+            BOOL loopback = [url.host isEqualToString:@"127.0.0.1"];
+            BOOL fixtureHost = [url.host isEqualToString:@"xdnote-sparkle-fixture.invalid"];
+            BOOL https = [url.scheme isEqualToString:@"https"];
+            check(url.port.intValue > 0 && (archive ? loopback && [url.scheme isEqualToString:@"http"] :
+                  (loopback && [url.scheme isEqualToString:@"http"]) || (https && (loopback || fixtureHost))),
+                  @"owned-appcast-fixture");
             ProbeUpdaterObserver *observer = [ProbeUpdaterObserver new];
             observer.feed = url;
-            SPUUpdater *updater = [[SPUUpdater alloc] initWithHostBundle:NSBundle.mainBundle applicationBundle:NSBundle.mainBundle userDriver:(id<SPUUserDriver>)[NSObject new] delegate:observer];
+            id userDriver = archive ? [ProbeArchiveDriver new] : [NSObject new];
+            SPUUpdater *updater = [[SPUUpdater alloc] initWithHostBundle:NSBundle.mainBundle applicationBundle:NSBundle.mainBundle userDriver:userDriver delegate:observer];
             check([updater xdnote_setDownloadProxyMode:SPUXdnoteDownloadProxySystem proxyURL:nil error:nil], @"system-download-mode");
             check([updater startUpdater:nil], @"start-isolated-updater");
-            [updater checkForUpdateInformation];
+            if (archive) {
+                [updater checkForUpdates];
+            } else {
+                [updater checkForUpdateInformation];
+            }
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 (void)observer.feed;
                 (void)updater.sessionInProgress;
-                report(@{@"failed": @"appcast-timeout"}, 2);
+                report(@{@"failed": @"sparkle-download-timeout"}, 2);
             });
             [[NSRunLoop mainRunLoop] run];
         }
