@@ -87,7 +87,7 @@ python scripts/cleanup_cycles.py --stale-days 30 --apply --yes
 
 脚本只处理 `build/` 下直接创建且带标记的 `cycle-*` 目录；不接管已有目录，不处理共享 SDK、缓存或未标记的旧文件。活动 Git worktree、路径链接及内部链接或 Windows 重解析点会被拒绝；年龄扫描按目录内最新修改时间筛选。脚本不能识别所有运行进程或证据价值，执行者须先检查；不要在并发修改目录时运行，不得递归删除整个 `build/`。托管 CI 无法清理开发者本机，兜底由本机手动执行。
 
-项目尚无发行工作流。[发行渠道与主动更新](release-and-updates.md)已确定未签名 Windows、后续 Store MSIX 及 macOS ad-hoc／无 Developer ID／无 Apple 公证的方案，不能继续把这些不采用的身份服务列为办理门槛。接入时沿用既定协议与验证方法，适配本项目身份和平台范围，不另建替代协议。将版本、源码提交、验证记录和工件绑定，同一候选在一次受控运行中尽可能复用产物，避免标签、草稿和手动触发造成重复构建；不同提交、输入或平台的结果不能混用。Qt 源码不得进入本项目 Release 附件、安装包或产品归档，源码获取与替换要求按[分发边界](distribution-audit.md)独立落实；正式发布仍需完成适用材料与运行验收并取得具体授权。
+[更新签名工作流](../../.github/workflows/release-signing.yml)在 `main` 上使用受保护的环境，为同提交的已核验候选生成签名附件。独立验签作业重新下载该候选与附件，核对全部摘要和签名。完整发行候选生产和正式发布继续跟踪。[发行渠道与主动更新](release-and-updates.md)已确定未签名 Windows、后续 Store MSIX 及 macOS ad-hoc／无 Developer ID／无 Apple 公证的方案。将版本、源码提交、验证记录和工件绑定，同一候选在一次受控运行中尽可能复用产物。Qt 源码不得进入本项目 Release 附件、安装包或产品归档，源码获取与替换要求按[分发边界](distribution-audit.md)独立落实；正式发布仍需完成适用材料与运行验收并取得具体授权。
 
 `scope=tools-unix` 只在 Linux、macOS ARM64 执行文档查找搜索、恢复副本、快捷键与受影响设置／文件的固定离屏验证，使用 `test --suite tools`。它不执行真实系统关联、不安装用户目录，也不扩大为完整桌面矩阵；工作流仍只允许手动触发。
 
