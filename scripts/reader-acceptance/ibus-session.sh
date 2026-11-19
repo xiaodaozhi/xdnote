@@ -36,6 +36,7 @@ openbox --sm-disable > "$evidence/openbox.log" 2>&1 & owned+=("$!")
 
 launch=(python scripts/desktop.py run --profile default --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/gcc_64)
 if [[ "$backend" == wayland ]]; then
+    unset IBUS_ADDRESS IBUS_ADDRESS_FILE
     gsettings set org.gnome.desktop.interface toolkit-accessibility true
     gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'us'), ('ibus', 'libpinyin')]"
     gsettings set org.gnome.desktop.wm.keybindings switch-input-source "['<Super>space']"
@@ -73,12 +74,12 @@ for attempt in {1..30}; do
     sleep 0.3
 done
 [[ "$IBUS_ADDRESS" == unix:* ]]
-export IBUS_ADDRESS
 ibus version
 engine=libpinyin
 ibus list-engine > "$evidence/engines.log"
 grep -F "  $engine - " "$evidence/engines.log"
 if [[ "$backend" == x11 ]]; then
+    export IBUS_ADDRESS
     bus_files=("$XDG_CONFIG_HOME"/ibus/bus/*)
     [[ ${#bus_files[@]} -eq 1 && -f "${bus_files[0]}" ]]
     export IBUS_ADDRESS_FILE="${bus_files[0]}"
@@ -87,6 +88,8 @@ if [[ "$backend" == x11 ]]; then
     candidate='string "你好"'
     commit='member=CommitText'
 else
+    # GNOME can replace the IBus daemon when Xwayland starts. Resolve its current address on each query.
+    unset IBUS_ADDRESS
     trace="$evidence/app.log"
     candidate='zwp_text_input_v3.*preedit_string\("你好"'
     commit='zwp_text_input_v3.*commit_string\("你好"'

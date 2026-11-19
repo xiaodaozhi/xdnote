@@ -173,7 +173,7 @@ jobs:
           python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat" --profile ${{ matrix.profile || 'default' }}
       - name: Build desktop admission (Unix)
         if: runner.os != 'Windows'
-        run: python scripts/desktop.py build
+        run: python scripts/desktop.py build ${{ inputs.scope == 'ime-linux' && '--parallel 4' || '' }}
       - name: Prepare isolated Linux Orca sessions
         if: inputs.scope == 'reader-orca'
         timeout-minutes: 8
