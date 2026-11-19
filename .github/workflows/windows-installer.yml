@@ -141,7 +141,11 @@ jobs:
           if-no-files-found: warn
   explorer-ui-preflight:
     if: inputs.scope == 'fixtures'
-    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -150,3 +154,9 @@ jobs:
       - name: Probe Explorer with an owned file and Notepad
         shell: powershell
         run: ./scripts/explorer_ui_preflight.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: explorer-ui-preflight-${{ matrix.os }}
+          path: build/preflight/selector.png
+          retention-days: 7

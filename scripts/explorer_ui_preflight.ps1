@@ -38,6 +38,24 @@ try {
     $window = Foreground
     if ($window) {
         Write-Host "Foreground: $($window.Current.Name)"
+        Write-Host "Class: $($window.Current.ClassName), PID: $($window.Current.ProcessId), bounds: $($window.Current.BoundingRectangle)"
+        if ($window.Current.Name -match 'open .md files|open this type of file') {
+            try {
+                Add-Type -AssemblyName System.Drawing
+                $r = $window.Current.BoundingRectangle
+                $width = [int]$r.Width
+                $height = [int]$r.Height
+                if ($width -gt 0 -and $height -gt 0 -and $width -le 1000 -and $height -le 900) {
+                    New-Item -ItemType Directory -Path 'build/preflight' -Force | Out-Null
+                    $bitmap = [Drawing.Bitmap]::new($width,$height)
+                    $canvas = [Drawing.Graphics]::FromImage($bitmap)
+                    try {
+                        $canvas.CopyFromScreen([int]$r.X,[int]$r.Y,0,0,[Drawing.Size]::new($width,$height))
+                        $bitmap.Save((Join-Path $PWD 'build/preflight/selector.png'),[Drawing.Imaging.ImageFormat]::Png)
+                    } finally { $canvas.Dispose(); $bitmap.Dispose() }
+                }
+            } catch { Write-Host "Picker capture error: $($_.Exception.Message)" }
+        }
         foreach ($control in $window.FindAll([Windows.Automation.TreeScope]::Descendants,
             [Windows.Automation.Condition]::TrueCondition) | Select-Object -First 100) {
             if ($control.Current.Name) {
