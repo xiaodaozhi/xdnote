@@ -51,4 +51,4 @@ python scripts/build-windows-installer.py --root <产品载荷目录> --audit <�
 
 一次性 GitHub 托管 Windows Server 2022 桌面另用同一个封存安装包驱动英文图形向导。脚本逐页确认许可说明、目的目录、附加任务和完成页，从附加任务选择 Markdown 候选，并核对安装前后的显式默认项。随后从测试文件的属性打开 Windows 应用选择器，选择 xdnote 并读取系统解析出的默认可执行文件。Explorer 从相同文件夹冷启动及转交两个自建文件，工件记录实际安装身份、向导页序与窗口结果。桌面 Windows 客户端版本、最低系统和正式发行单独验收。
 
-macOS 的类型级 Markdown 默认应用可在一次性 GitHub 托管 macOS 15 账户随 `deployment-macos` 专项验证。脚本使用系统的 NSWorkspace 内容类型设置，核对 `.md`、`.markdown` 和新建文档解析，实际打开两份样本并检查同进程转交，最后读回原处理器。需要在桌面确认变更的系统版本继续按原生系统交互验收。
+macOS 的类型级 Markdown 默认应用可在一次性 GitHub 托管 macOS 账户随 `deployment-macos` 专项验证。脚本使用系统的 NSWorkspace 内容类型设置，核对 `.md`、`.markdown` 和新建文档解析，实际打开两份样本并检查同进程转交，最后读回原处理器。系统要求确认时，脚本仅操作同时列出两种 Markdown 扩展名和指定应用的原生确认框。

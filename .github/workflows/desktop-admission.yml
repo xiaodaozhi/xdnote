@@ -269,7 +269,7 @@ jobs:
           dpkg-deb --info build/cycle-112-deployment/xdnote-dev.deb
           dpkg-deb --contents build/cycle-112-deployment/xdnote-dev.deb
       - name: Select the installed macOS Markdown content-type default
-        if: inputs.scope == 'deployment-macos' && inputs.macos_runner == 'macos-15' && runner.environment == 'github-hosted'
+        if: inputs.scope == 'deployment-macos' && runner.environment == 'github-hosted'
         timeout-minutes: 6
         run: python scripts/check_macos_markdown_default.py --root build/cycle-112-deployment/staging --audit build/cycle-112-deployment/staging-evidence/inventory.json --output build/cycle-112-deployment/macos-default-evidence
       - name: Validate installed developer payload without registration

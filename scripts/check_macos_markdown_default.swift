@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import CoreServices
 import Foundation
@@ -37,13 +38,61 @@ private func waitFor<T>(_ description: String, _ probe: () -> T?) throws -> T {
     throw CheckError("Timed out waiting for " + description)
 }
 
-private func setTypeDefault(_ application: URL, for file: URL) throws {
+private func axValue(_ item: AXUIElement, _ attribute: String) -> CFTypeRef? {
+    var value: CFTypeRef?
+    return AXUIElementCopyAttributeValue(item, attribute as CFString, &value) == .success ? value : nil
+}
+
+private func markdownConfirmationButton(for application: URL) -> AXUIElement? {
+    guard AXIsProcessTrusted(), let bundle = Bundle(url: application) else { return nil }
+    let names = ["CFBundleDisplayName", "CFBundleName"].compactMap {
+        bundle.object(forInfoDictionaryKey: $0) as? String
+    } + [application.deletingPathExtension().lastPathComponent]
+    let captions = Set(names.map { "Use “" + $0 + "”" })
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+    let pids = Set(windows.compactMap { window -> Int32? in
+        guard window[kCGWindowOwnerName as String] as? String == "CoreServicesUIAgent" else { return nil }
+        return window[kCGWindowOwnerPID as String] as? Int32
+    })
+    var choices: [AXUIElement] = []
+    for pid in pids {
+        let agent = AXUIElementCreateApplication(pid)
+        let alerts = (axValue(agent, "AXWindows") as? [AXUIElement]) ?? []
+        for alert in alerts {
+            let children = (axValue(alert, "AXChildren") as? [AXUIElement]) ?? []
+            let messageMatches = children.contains { node in
+                guard (axValue(node, "AXRole") as? String) == "AXStaticText",
+                      let message = axValue(node, "AXValue") as? String else { return false }
+                return message.contains("all documents with the extensions “.md” and “.markdown”")
+                    && names.contains(where: { message.contains("to open with “" + $0 + "”") })
+            }
+            if messageMatches {
+                choices += children.filter {
+                    (axValue($0, "AXRole") as? String) == "AXButton"
+                        && captions.contains(axValue($0, "AXTitle") as? String ?? "")
+                }
+            }
+        }
+    }
+    return choices.count == 1 ? choices.first : nil
+}
+
+@discardableResult private func setTypeDefault(_ application: URL, for file: URL) throws -> Bool {
     let result = Setting()
     NSWorkspace.shared.setDefaultApplication(at: application, toOpenContentTypeOfFileAt: file) { error in
         result.complete(error)
     }
-    let message = try waitFor("the NSWorkspace file-type setting") { result.message() }
+    var confirmed = false
+    let message = try waitFor("the NSWorkspace file-type setting") {
+        if let message = result.message() { return message }
+        if !confirmed, let button = markdownConfirmationButton(for: application) {
+            confirmed = AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
+        }
+        return nil
+    }
     try require(message.isEmpty, "NSWorkspace file-type setting failed: " + message)
+    return confirmed
 }
 
 private func defaultApplication(_ file: URL) -> URL? {
@@ -108,7 +157,7 @@ do {
     report["previousHandler"] = original ?? "(none)"
     report["resolvedBefore"] = baseline
     changed = true
-    try setTypeDefault(app, for: md)
+    report["confirmedSystemDialog"] = try setTypeDefault(app, for: md)
     _ = try waitFor("the Markdown type handler and both file extensions") {
         let current = LSCopyDefaultRoleHandlerForContentType(markdown as CFString, role)?.takeRetainedValue() as String?
         let resolved = [md, markdownLong].map { defaultApplication($0)?.path ?? "(none)" }
@@ -163,7 +212,7 @@ for process in NSRunningApplication.runningApplications(withBundleIdentifier: id
 }
 if changed, let previous = originalApplication, let file = referenceFile, previous != app {
     do {
-        try setTypeDefault(previous, for: file)
+        report["confirmedRestoreDialog"] = try setTypeDefault(previous, for: file)
         _ = try waitFor("the restored Markdown default") {
             defaultApplication(file) == previous ? true : nil
         }
