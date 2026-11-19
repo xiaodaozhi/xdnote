@@ -52,6 +52,27 @@ private func windowNumbers(_ pid: pid_t) -> Set<Int> {
     })
 }
 
+private func attribute(_ node: AXUIElement, _ name: String) -> CFTypeRef? {
+    var value: CFTypeRef?
+    return AXUIElementCopyAttributeValue(node, name as CFString, &value) == .success ? value : nil
+}
+
+private func inspectConsent(_ windows: [[String: Any]]) -> [[String]] {
+    let pids = Set(windows.compactMap { window -> Int32? in
+        guard window[kCGWindowOwnerName as String] as? String == "CoreServicesUIAgent" else { return nil }
+        return window[kCGWindowOwnerPID as String] as? Int32
+    })
+    func inspect(_ node: AXUIElement, _ depth: Int) -> [[String]] {
+        if depth > 7 { return [] }
+        let text = ["AXRole", "AXTitle", "AXValue", "AXDescription"].map { name in
+            attribute(node, name) as? String ?? ""
+        }
+        let children = attribute(node, "AXChildren") as? [AXUIElement] ?? []
+        return [text] + children.flatMap { inspect($0, depth + 1) }
+    }
+    return pids.flatMap { pid in inspect(AXUIElementCreateApplication(pid), 0) }
+}
+
 private func write(_ report: [String: Any], to url: URL) throws {
     try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: url)
 }
@@ -113,6 +134,7 @@ do {
             let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
             let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
             report["windowOwners"] = Array(Set(windows.compactMap { $0[kCGWindowOwnerName as String] as? String })).sorted()
+            report["systemConsentControls"] = inspectConsent(windows)
             throw error
         }
     } else {
