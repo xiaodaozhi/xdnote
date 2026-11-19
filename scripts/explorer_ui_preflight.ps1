@@ -1,9 +1,9 @@
 $ErrorActionPreference = 'Stop'
 if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Disposable runner only' }
-$input = Get-Content (Join-Path $PSScriptRoot 'check_windows_file_manager.ps1') -Raw -Encoding UTF8
-$begin = $input.IndexOf('Add-Type -AssemblyName')
-$end = $input.IndexOf('$result = [ordered]')
-. ([scriptblock]::Create($input.Substring($begin, $end-$begin)))
+$source = Get-Content (Join-Path $PSScriptRoot 'check_windows_file_manager.ps1') -Raw -Encoding UTF8
+$begin = $source.IndexOf('Add-Type -AssemblyName')
+$end = $source.IndexOf('$result = [ordered]')
+. ([scriptblock]::Create($source.Substring($begin, $end-$begin)))
 $folder = Join-Path $env:RUNNER_TEMP ('xdnote GUI probe ' + $env:GITHUB_RUN_ID)
 New-Item -ItemType Directory -Path $folder | Out-Null
 $file = Join-Path $folder 'xdnote Explorer preflight.md'

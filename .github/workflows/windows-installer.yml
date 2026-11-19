@@ -140,7 +140,7 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
   explorer-ui-preflight:
-    if: inputs.scope == 'fixtures' && runner.environment == 'github-hosted'
+    if: inputs.scope == 'fixtures'
     runs-on: windows-2022
     timeout-minutes: 5
     steps:
