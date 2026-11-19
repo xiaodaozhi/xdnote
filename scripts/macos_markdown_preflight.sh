@@ -51,8 +51,7 @@ SWIFT
 xcrun swiftc "$out/editor.swift" -module-cache-path "$out/cache" -o "$app/Contents/MacOS/fixture"
 /usr/bin/codesign --force --sign - "$app"
 xcrun swiftc scripts/check_macos_markdown_default.swift -module-cache-path "$out/cache" -o "$out/probe"
-for kind in legacy workspace; do
-    XDNOTE_DEFAULT_API="$kind" "$out/probe" "$app" "$out/$kind" || true
-    cat "$out/$kind/result.json"
-    sleep 3
-done
+status=0
+"$out/probe" "$app" "$out/workspace" || status=$?
+cat "$out/workspace/result.json"
+exit "$status"

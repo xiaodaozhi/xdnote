@@ -38,6 +38,63 @@ private func waitFor<T>(_ description: String, _ probe: () -> T?) throws -> T {
     throw CheckError("Timed out waiting for " + description)
 }
 
+private func axValue(_ item: AXUIElement, _ attribute: String) -> CFTypeRef? {
+    var value: CFTypeRef?
+    return AXUIElementCopyAttributeValue(item, attribute as CFString, &value) == .success ? value : nil
+}
+
+private func markdownConfirmationButton(for application: URL) -> AXUIElement? {
+    guard AXIsProcessTrusted(), let bundle = Bundle(url: application) else { return nil }
+    let names = ["CFBundleDisplayName", "CFBundleName"].compactMap {
+        bundle.object(forInfoDictionaryKey: $0) as? String
+    } + [application.deletingPathExtension().lastPathComponent]
+    let captions = Set(names.map { "Use “" + $0 + "”" })
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+    let pids = Set(windows.compactMap { window -> Int32? in
+        guard window[kCGWindowOwnerName as String] as? String == "CoreServicesUIAgent" else { return nil }
+        return window[kCGWindowOwnerPID as String] as? Int32
+    })
+    var choices: [AXUIElement] = []
+    for pid in pids {
+        let agent = AXUIElementCreateApplication(pid)
+        let alerts = (axValue(agent, "AXWindows") as? [AXUIElement]) ?? []
+        for alert in alerts {
+            let children = (axValue(alert, "AXChildren") as? [AXUIElement]) ?? []
+            let messageMatches = children.contains { node in
+                guard (axValue(node, "AXRole") as? String) == "AXStaticText",
+                      let message = axValue(node, "AXValue") as? String else { return false }
+                return message.contains("all documents with the extensions “.md” and “.markdown”")
+                    && names.contains(where: { message.contains("to open with “" + $0 + "”") })
+            }
+            if messageMatches {
+                choices += children.filter {
+                    (axValue($0, "AXRole") as? String) == "AXButton"
+                        && captions.contains(axValue($0, "AXTitle") as? String ?? "")
+                }
+            }
+        }
+    }
+    return choices.count == 1 ? choices.first : nil
+}
+
+@discardableResult private func setTypeDefault(_ application: URL, for file: URL) throws -> Bool {
+    let result = Setting()
+    NSWorkspace.shared.setDefaultApplication(at: application, toOpenContentTypeOfFileAt: file) { error in
+        result.complete(error)
+    }
+    var confirmed = false
+    let message = try waitFor("the NSWorkspace file-type setting") {
+        if let message = result.message() { return message }
+        if !confirmed, let button = markdownConfirmationButton(for: application) {
+            confirmed = AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
+        }
+        return nil
+    }
+    try require(message.isEmpty, "NSWorkspace file-type setting failed: " + message)
+    return confirmed
+}
+
 private func defaultApplication(_ file: URL) -> URL? {
     NSWorkspace.shared.urlForApplication(toOpen: file)?.resolvingSymlinksInPath()
 }
@@ -50,27 +107,6 @@ private func windowNumbers(_ pid: pid_t) -> Set<Int> {
               window[kCGWindowLayer as String] as? Int == 0 else { return nil }
         return window[kCGWindowNumber as String] as? Int
     })
-}
-
-private func attribute(_ node: AXUIElement, _ name: String) -> CFTypeRef? {
-    var value: CFTypeRef?
-    return AXUIElementCopyAttributeValue(node, name as CFString, &value) == .success ? value : nil
-}
-
-private func inspectConsent(_ windows: [[String: Any]]) -> [[String]] {
-    let pids = Set(windows.compactMap { window -> Int32? in
-        guard window[kCGWindowOwnerName as String] as? String == "CoreServicesUIAgent" else { return nil }
-        return window[kCGWindowOwnerPID as String] as? Int32
-    })
-    func inspect(_ node: AXUIElement, _ depth: Int) -> [[String]] {
-        if depth > 7 { return [] }
-        let text = ["AXRole", "AXTitle", "AXValue", "AXDescription"].map { name in
-            attribute(node, name) as? String ?? ""
-        }
-        let children = attribute(node, "AXChildren") as? [AXUIElement] ?? []
-        return [text] + children.flatMap { inspect($0, depth + 1) }
-    }
-    return pids.flatMap { pid in inspect(AXUIElementCreateApplication(pid), 0) }
 }
 
 private func write(_ report: [String: Any], to url: URL) throws {
@@ -93,6 +129,8 @@ let role = LSRolesMask.all
 let id = Bundle(url: app)?.bundleIdentifier ?? ""
 var report: [String: Any] = ["ok": false, "contentType": markdown, "bundleIdentifier": id]
 var original: String?
+var originalApplication: URL?
+var referenceFile: URL?
 var changed = false
 var failure = false
 
@@ -107,6 +145,8 @@ do {
     for input in inputs { try source.write(to: input, options: [.withoutOverwriting]) }
 
     original = LSCopyDefaultRoleHandlerForContentType(markdown as CFString, role)?.takeRetainedValue() as String?
+    originalApplication = defaultApplication(md)
+    referenceFile = md
     let unrelatedApp = defaultApplication(txt)
     try require(LSRegisterURL(app as CFURL, true) == noErr, "Launch Services could not register xdnote")
     for file in [md, markdownLong] {
@@ -116,39 +156,13 @@ do {
     let baseline = [md, markdownLong].map { defaultApplication($0)?.path ?? "(none)" }
     report["previousHandler"] = original ?? "(none)"
     report["resolvedBefore"] = baseline
-    // This changes a content-type handler in Launch Services, without per-file overrides.
-    let requestedAPI = ProcessInfo.processInfo.environment["XDNOTE_DEFAULT_API"] ?? "legacy"
-    report["api"] = requestedAPI
     changed = true
-    if requestedAPI == "workspace" {
-        let setting = Setting()
-        workspace.setDefaultApplication(at: app, toOpenContentTypeOfFileAt: md) { error in
-            setting.complete(error)
-        }
-        do {
-            let message = try waitFor("the NSWorkspace default-application completion") { setting.message() }
-            try require(message.isEmpty, "NSWorkspace content-type assignment error: " + message)
-        } catch {
-            report["accessibilityTrusted"] = AXIsProcessTrusted()
-            report["postingAllowed"] = CGPreflightPostEventAccess()
-            let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-            let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
-            report["windowOwners"] = Array(Set(windows.compactMap { $0[kCGWindowOwnerName as String] as? String })).sorted()
-            report["systemConsentControls"] = inspectConsent(windows)
-            throw error
-        }
-    } else {
-        let status = LSSetDefaultRoleHandlerForContentType(markdown as CFString, role, id as CFString)
-        report["assignmentStatus"] = status
-        try require(status == noErr, "Launch Services content-type assignment returned \(status)")
-    }
+    report["confirmedSystemDialog"] = try setTypeDefault(app, for: md)
     _ = try waitFor("the Markdown type handler and both file extensions") {
         let current = LSCopyDefaultRoleHandlerForContentType(markdown as CFString, role)?.takeRetainedValue() as String?
         let resolved = [md, markdownLong].map { defaultApplication($0)?.path ?? "(none)" }
         report["observedHandler"] = current ?? "(none)"
         report["resolvedAfter"] = resolved
-        report["candidatePaths"] = workspace.urlsForApplications(toOpen: md).map(\.path)
-        report["selectedBundlePath"] = app.path
         return current == id && resolved == [app.path, app.path] ? true : nil
     }
     try require(defaultApplication(txt) == unrelatedApp, "The unrelated text handler changed")
@@ -196,10 +210,18 @@ for process in NSRunningApplication.runningApplications(withBundleIdentifier: id
     where process.bundleURL?.resolvingSymlinksInPath() == app {
     _ = process.terminate()
 }
-if changed, let previous = original, previous != id {
-    let status = LSSetDefaultRoleHandlerForContentType(markdown as CFString, role, previous as CFString)
-    report["restoredPreviousHandler"] = status == noErr
-    if status != noErr { failure = true }
+if changed, let previous = originalApplication, let file = referenceFile, previous != app {
+    do {
+        report["confirmedRestoreDialog"] = try setTypeDefault(previous, for: file)
+        _ = try waitFor("the restored Markdown default") {
+            defaultApplication(file) == previous ? true : nil
+        }
+        report["restoredPreviousHandler"] = true
+    } catch {
+        report["restoredPreviousHandler"] = false
+        report["cleanupError"] = error.localizedDescription
+        failure = true
+    }
 }
 if failure { report["ok"] = false }
 try write(report, to: result)
