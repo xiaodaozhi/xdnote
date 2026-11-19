@@ -12,7 +12,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 import release_candidate
-import sparkle_bundle
+import sparkle
 from installer_common import ROOT, build_output, digest
 
 
@@ -155,7 +155,9 @@ def main():
         openssl = shutil.which('openssl')
         if not openssl:
             raise ValueError('OpenSSL with Ed25519 support is required')
-        tool = sparkle_bundle.sdk() / 'bin/sign_update'
+        upstream = sparkle.BASE / 'upstream'
+        sparkle.verify(upstream)
+        tool = upstream / 'sdk/bin/sign_update'
         sign_release(json.loads(args.identity.read_bytes()), build_output(args.assets),
                      json.loads(args.verification.read_bytes()), args.keys, build_output(args.output),
                      tool=tool, openssl=openssl)

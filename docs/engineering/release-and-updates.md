@@ -24,7 +24,7 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 | GitHub 更新清单 | `io.github.xiaodaozhi.xdnote.manifest.production.v1` | [`tools/update-trust.json`](../../tools/update-trust.json)，`key_id` 为 `xdnote-manifest-v1` |
 | Sparkle 归档与 appcast | `io.github.xiaodaozhi.xdnote.sparkle.production.v1` | [`tools/sparkle-update-key.json`](../../tools/sparkle-update-key.json)，部署时写入 `SUPublicEDKey` |
 
-完成六个资产的封存与核验后，使用下列入口一次生成 `release.json`、`release.json.sig` 和签名后的 `appcast.xml`。`--identity` 和 `--verification` 使用[候选清单入口](../../scripts/release_candidate.py)的同一份构建身份和逐资产核验记录。签名机应已准备本项目锁定的 Sparkle SDK，以及支持 Ed25519 的 OpenSSL。
+完成六个资产的封存与核验后，使用下列入口一次生成 `release.json`、`release.json.sig` 和签名后的 `appcast.xml`。`--identity` 和 `--verification` 使用[候选清单入口](../../scripts/release_candidate.py)的同一份构建身份和逐资产核验记录。签名机应已准备本项目锁定的 Sparkle SDK（`python scripts/sparkle.py prepare --download`）和支持 Ed25519 的 OpenSSL。签名入口只使用 SDK 的 `sign_update`。
 
 ```bash
 python scripts/sign_release_offline.py \
