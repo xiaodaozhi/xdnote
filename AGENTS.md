@@ -20,7 +20,7 @@
 - 启动本机构建必须使用 `python scripts/desktop.py run` 并指定对应的 `--build-dir`、`--qt-prefix` 和配置，使用该入口临时设置 DLL、插件和 QML 路径；禁止直接裸启动构建目录的 exe，也不为启动修改系统 PATH 或反复尝试启动。入口检查失败先修复构建或运行环境。
 - 工作区图片默认集中在 `assets/images/`，正文使用相对当前文档的标准 Markdown 链接；导入、引用索引、移动与重命名遵循 `docs/product/workspace-resources.md`，不自动删除图片或绕过会话改写正文。
 - 提交及推送前按改动风险完成本地验证；文档变更检查链接、JSON、图片引用及材料摘要，产品实现验证受影响路径。源码或配置变化影响结论时重新验证；功能、视觉、平台集成及未执行项分别记录，见 `docs/engineering/workflow.md`。
-- 验收优先使用能在目标环境提供所需证据的脚本。脚本覆盖不到的界面操作再用 Computer Use 或人工实机核对。Windows 读屏复验见 `docs/qa/windows-nvda.md`。
+- 验收优先使用能在目标环境提供所需证据的脚本。脚本覆盖不到的界面操作再用 Computer Use 或人工实机核对。Windows 与 Linux 读屏复验见 `docs/qa/windows-nvda.md` 和 `docs/qa/linux-orca.md`。
 - 需求、Bug、设计和研究使用 GitHub Issue 跟踪；从最新 main 创建带 Issue 编号的短期分支，PR 关联 Issue。当前 head 的适用 CI、必要审查和验收完成后合并 main；仅完整满足 Issue 验收时关闭，部分交付保持开放。安全清理本次已合并的临时分支和临时数据，详见 `docs/engineering/workflow.md`。
 - 已授权的实施任务默认推进至提交、推送、PR 和满足门槛后的合并；用户指定暂不合并、仅设计或验收未通过时遵守该边界。不要删除无关改动、他人工作或未合并分支。
 - 项目专用 SDK、Python 虚拟环境、构建工具与缓存放在本项目 `build/`，优先复用 `build/Qt/6.8.2/` 和 `build/toolchain/desktop-tools/`。禁止执行或依赖其他项目目录中的工具、虚拟环境、SDK、库及构建产物；缺失时在本项目显式准备，不跨项目兜底。系统安装的 Python、Rust、Node 和编译器可复用；同项目 worktree 可共享主工作区的工具，须核对真实路径、归属与版本，不用链接掩盖跨项目依赖。
