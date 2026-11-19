@@ -27,6 +27,8 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 配置或更换 Secret 后，在 `main` 手动启动 [Check production update keys](../../.github/workflows/release-key-check.yml)。`release-signing` 审批通过后，两个步骤分别派生公钥并与编入工具的配置比较。步骤状态给出各自的结果，日志只提供固定错误代码，工作流不生成签名或发行工件。
 
+[Linux production update acceptance](../../.github/workflows/production-linux-update.yml) 在 `main` 上单独验收 Ubuntu 22.04 的生产信任更新。`release-signing` 审批后，使用编入生产公钥的两版私有产品，复用真实桌面、独立助手和 apt 的升级夹具。签名步骤限定为与当前源码、两版构建身份和包摘要绑定的本轮私有清单。之后用公开信任根复验，执行恢复、损坏拒绝、取消、保留设置与文档的安装和重启。工件仅保留回执。该专项使用本地文件回复和受控的系统包授权，图形 polkit 及公开发布源另行验收。
+
 [Release update signing](../../.github/workflows/release-signing.yml) 接收已核验的 `release-verified` Actions 工件。其根目录包含 `identity.json`、`verification.json` 和 `assets/`，输入契约与[候选清单入口](../../scripts/release_candidate.py)一致。签名和独立验签使用同一个工件 ID，且候选构建身份须与 `main` 上冻结的签名提交一致。候选流水线可在同一次手动运行中调用此工作流，也可指定同提交的成功候选运行。现有开发部署工作流只交付证据，完整发行候选的产出仍按原生验收及分发许可待办推进。
 
 工作流先确认签名环境已设置必需审批人，再在无密钥的步骤编译锁定工具。审批后的签名步骤先核对私钥与已配置公钥，再签 Sparkle 归档并生成 `macos-update.json`。随后从同一个候选构建并签署 `appcast.xml`，对 `release.json` 的原始字节生成 `release.json.sig`。`SHA256SUMS` 覆盖六个资产和全部签名附件。独立作业下载同一候选和已签名附件，使用编入的公开信任根再次核对包、签名及校验和。

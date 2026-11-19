@@ -22,17 +22,27 @@ from check_native_update import replace, dump, checked
 from check_update_helper import guard, command, wait_file
 from installer_common import ROOT, build_output, digest
 from release_candidate import TARGETS
+from release_updates import KEY_ID, MANIFEST_KEY, SIGNING_VARIABLES, bounded, run_tool
 
 TEMPLATES = ROOT / 'experiments/native-update-fixture'
+REGRESSION_VERSIONS = ('0.0.0', '0.1.0-alpha.1', '0.1.0-alpha.2')
+PRODUCTION_VERSIONS = ('0.0.0-alpha.199', '0.0.0-alpha.200', '0.0.0-alpha.201')
 
 
 class Product:
-    def __init__(self, work, qt, toolchain, runtime, vcvars):
+    def __init__(self, work, qt, toolchain, runtime, vcvars, production_phase=None):
         self.work, self.qt, self.windows = work, qt, platform.system() == 'Windows'
+        self.production = production_phase is not None
+        self.versions = PRODUCTION_VERSIONS if self.production else REGRESSION_VERSIONS
         self.env = desktop.environment(vcvars); self.env['CARGO_NET_OFFLINE'] = 'true'
         self.source = work / 'source'; self.run = self.source / 'build/native-run'
         if command(['git', '-C', ROOT, 'status', '--porcelain']).stdout.strip(): raise ValueError('Commit fixture inputs first')
         self.revision = command(['git', '-C', ROOT, 'rev-parse', 'HEAD']).stdout.decode().strip()
+        if self.production and self.revision != os.environ.get('GITHUB_SHA'):
+            raise ValueError('Production fixture must use the exact workflow revision')
+        if production_phase in ('sign', 'run'):
+            self.restore_production()
+            return
         checked(['git', '-C', ROOT, 'worktree', 'add', '--detach', self.source, self.revision], log=work / 'worktree.log')
         self.run.mkdir(parents=True)
         if desktop.repository_owner(self.source)[1] != desktop.repository_owner(ROOT)[1]: raise ValueError('Different project identity')
@@ -63,28 +73,71 @@ class Product:
             replace(handoff, 'arguments = {QStringLiteral("--authorize"), requestFile};', 'arguments = {QStringLiteral("-n"), QStringLiteral("env"), QStringLiteral("PKEXEC_UID=' + str(os.getuid()) + '"), QStringLiteral("/usr/libexec/xdnote-update-helper"), QStringLiteral("--request"), requestFile};')
             replace(self.source / 'crates/update-helper/src/linux.rs', '                "DISPLAY",', '                "QT_QPA_PLATFORM",\n                "QT_QPA_PLATFORM_PLUGIN_PATH",\n                "DISPLAY",')
         self.patch_launcher()
-        examples = self.source / 'crates/update/examples'; examples.mkdir(exist_ok=True)
-        shutil.copy2(TEMPLATES / 'fixture_sign.rs.in', examples / 'fixture_sign.rs')
-        self.seed = self.run / 'private-seed'; self.seed.write_bytes(os.urandom(32)); self.seed.chmod(0o600)
-        signer_target = work / 'signer'
-        checked(['rustup', 'run', '1.99.0', 'cargo', 'build', '--locked', '--offline', '--manifest-path', self.source / 'Cargo.toml', '-p', 'xdnote-update', '--example', 'fixture_sign', '--target-dir', signer_target], env=self.env, log=work / 'signer.log')
-        self.signer = signer_target / ('debug/examples/fixture_sign.exe' if self.windows else 'debug/examples/fixture_sign')
-        public = checked([self.signer, 'public', self.seed]).stdout.decode().strip()
-        dump(self.source / 'tools/update-trust.json', {'schema_version': 1, 'keys': [{'key_id': 'isolated-native-fixture', 'public_key': public}]})
-        checked(['git', '-C', self.source, 'add', 'CMakeLists.txt', 'apps/desktop', 'crates/update-helper', 'crates/update/examples', 'experiments/native-update-fixture', 'scripts/desktop.py', 'tools/update-trust.json'])
+        if not self.production:
+            self.prepare_fixture_signer()
+        paths = ['CMakeLists.txt', 'apps/desktop', 'crates/update-helper', 'crates/update',
+                 'experiments/native-update-fixture', 'scripts/desktop.py', 'tools/update-trust.json']
+        checked(['git', '-C', self.source, 'add', *paths])
         checked(['git', '-C', self.source, '-c', 'user.name=xdnote CI Fixture', '-c', 'user.email=fixture@invalid.example', '-c', 'commit.gpgsign=false', 'commit', '-m', 'test: isolate real product update fixture'])
+        previous, old, new = self.versions
         self.identities, self.packages = {}, {}
-        for label, version, build, previous, previous_build in [('old', '0.1.0-alpha.1', 200, '0.0.0', 0), ('new', '0.1.0-alpha.2', 201, '0.1.0-alpha.1', 200)]:
+        for label, version, build, baseline, previous_build in [('old', old, 200, previous, 0), ('new', new, 201, old, 200)]:
             if label == 'new': checked(['git', '-C', self.source, '-c', 'user.name=xdnote CI Fixture', '-c', 'user.email=fixture@invalid.example', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'test: identify private product target 201'])
             revision = checked(['git', '-C', self.source, 'rev-parse', 'HEAD']).stdout.decode().strip()
             identity = self.source / ('build/' + label + '-identity.json')
-            dump(identity, {'schemaVersion': 1, 'product': 'xdnote', 'version': version, 'build': build, 'revision': revision, 'previousVersion': previous, 'previousBuild': previous_build})
+            dump(identity, {'schemaVersion': 1, 'product': 'xdnote', 'version': version, 'build': build, 'revision': revision, 'previousVersion': baseline, 'previousBuild': previous_build})
             args = [sys.executable, self.source / 'scripts/desktop.py', 'build', '--profile', 'default', '--build-dir', self.source / 'build/desktop', '--qt-prefix', qt, '--release-identity', identity, '--parallel', '4']
             if vcvars: args += ['--vcvars', vcvars]
             checked(args, env=self.env, log=work / (label + '-build.log'))
             self.identities[label] = json.loads((self.source / 'build/desktop/generated/build-version.json').read_bytes())
             self.packages[label] = self.package(label)
-        self.candidate(); self.seed.unlink()
+        self.candidate()
+        if not self.production:
+            checked([self.signer, 'sign', self.seed, self.run / 'release.json', self.run / 'release.json.sig'])
+            self.seed.unlink()
+
+    def prepare_fixture_signer(self):
+        examples = self.source / 'crates/update/examples'; examples.mkdir(exist_ok=True)
+        shutil.copy2(TEMPLATES / 'fixture_sign.rs.in', examples / 'fixture_sign.rs')
+        self.seed = self.run / 'private-seed'; self.seed.write_bytes(os.urandom(32)); self.seed.chmod(0o600)
+        signer_target = self.work / 'signer'
+        checked(['rustup', 'run', '1.99.0', 'cargo', 'build', '--locked', '--offline', '--manifest-path', self.source / 'Cargo.toml', '-p', 'xdnote-update', '--example', 'fixture_sign', '--target-dir', signer_target], env=self.env, log=self.work / 'signer.log')
+        self.signer = signer_target / ('debug/examples/fixture_sign.exe' if self.windows else 'debug/examples/fixture_sign')
+        public = checked([self.signer, 'public', self.seed]).stdout.decode().strip()
+        dump(self.source / 'tools/update-trust.json', {'schema_version': 1, 'keys': [{'key_id': 'isolated-native-fixture', 'public_key': public}]})
+
+    def restore_production(self):
+        def git(*args):
+            return command(['git', '-C', self.source, *args]).stdout.decode().strip()
+
+        if git('rev-parse', 'HEAD^^') != self.revision or git('status', '--porcelain'):
+            raise ValueError('The prepared fixture is not bound to this workflow revision')
+        if (git('rev-parse', 'HEAD^{tree}') != git('rev-parse', 'HEAD^^{tree}') or
+                digest(self.source / 'tools/update-trust.json') != digest(ROOT / 'tools/update-trust.json')):
+            raise ValueError('Prepared source does not retain the production trust root')
+        self.identities, self.packages = {}, {}
+        for label, revision, version, build in [('old', git('rev-parse', 'HEAD^'), self.versions[1], 200),
+                                               ('new', git('rev-parse', 'HEAD'), self.versions[2], 201)]:
+            base = build_output(self.source / ('build/' + label))
+            package = build_output(base.with_suffix('.deb'))
+            report = json.loads(bounded(base.with_suffix('.json'), 256 * 1024))
+            identity = {'schemaVersion': 1, 'product': 'xdnote', 'version': version, 'channel': 'alpha',
+                        'build': build, 'revision': revision, 'dirty': False, 'configuration': 'Release'}
+            if (report['ok'] is not True or report['buildIdentity']['buildVersion'] != identity or
+                    report['file'] != package.name or not package.is_file() or package.stat().st_nlink != 1 or
+                    not 0 < package.stat().st_size <= 2 * 1024**3 or
+                    report['sha256'] != digest(package)):
+                raise ValueError('The prepared Linux package differs from its build report')
+            expected_version = '1:' + version.replace('-', '~', 1) + '+git' + revision
+            package_fields = command(['dpkg-deb', '-f', package, 'Package', 'Architecture', 'Version']).stdout.decode()
+            if set(package_fields.splitlines()) != {'Package: xdnote', 'Architecture: amd64',
+                                                    'Version: ' + expected_version}:
+                raise ValueError('The prepared Linux package identity differs')
+            self.identities[label], self.packages[label] = identity, package
+        manifest = self.candidate_manifest()
+        expected = (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()
+        if bounded(self.run / 'release.json', 256 * 1024) != expected:
+            raise ValueError('The private manifest differs from the prepared fixture')
 
     def patch_launcher(self):
         launcher = self.source / 'scripts/desktop.py'
@@ -120,16 +173,34 @@ class Product:
             self.tool('build_linux_installer.py', ['--root', payload, '--audit', str(payload) + '-evidence/inventory.json', '--output', package, '--report', base.with_suffix('.json')], label + '-package.log')
         return package
 
-    def candidate(self):
+    def candidate_manifest(self):
         identity = self.identities['new']; version = identity['version']; package = self.packages['new']
         suffix = 'windows-x86_64-setup.exe' if self.windows else 'ubuntu22.04-x86_64.deb'
         self.filename = 'xdnote-' + version + '-' + suffix
         base = 'https://github.com/xiaodaozhi/xdnote/releases/download/v' + version + '/'
         self.routes = {'https://api.github.com/repos/xiaodaozhi/xdnote/releases?per_page=100&page=1': 'listing.json', base + 'release.json': 'release.json', base + 'release.json.sig': 'release.json.sig', base + self.filename: self.filename}
-        assets = [{'filename': 'xdnote-' + version + '-' + suffix, 'platform': system, 'architecture': arch, 'package_type': kind, 'minimum_system': minimum, 'bytes': package.stat().st_size, 'sha256': digest(package), 'url': base + 'xdnote-' + version + '-' + suffix} for system, arch, kind, suffix, minimum in TARGETS]
-        dump(self.run / 'release.json', {'schema_version': 1, 'product': 'xdnote', 'version': version, 'channel': 'alpha', 'build': 201, 'tag': 'v' + version, 'commit': identity['revision'], 'repository': 'xiaodaozhi/xdnote', 'assets': assets, 'macos_appcast_url': base + 'appcast.xml'})
-        checked([self.signer, 'sign', self.seed, self.run / 'release.json', self.run / 'release.json.sig'])
-        dump(self.run / 'listing.json', [{'tag_name': 'v' + version, 'draft': False, 'assets': [{'name': self.filename, 'size': package.stat().st_size, 'browser_download_url': base + self.filename}] + [{'name': name, 'browser_download_url': base + name} for name in ['release.json', 'release.json.sig']]}])
+        size, sha256 = package.stat().st_size, digest(package)
+        assets = []
+        for system, arch, kind, target, minimum in TARGETS:
+            name = 'xdnote-' + version + '-' + target
+            # The public schema requires all roles. Only the private .deb is served.
+            length, sha = (1, '0' * 64) if self.production and name != self.filename else (size, sha256)
+            assets.append({'filename': name, 'platform': system, 'architecture': arch, 'package_type': kind,
+                           'minimum_system': minimum, 'bytes': length, 'sha256': sha, 'url': base + name})
+        manifest = {'schema_version': 1, 'product': 'xdnote', 'version': version, 'channel': 'alpha', 'build': 201,
+                    'tag': 'v' + version, 'commit': identity['revision'], 'repository': 'xiaodaozhi/xdnote', 'assets': assets}
+        if not self.production:
+            manifest['macos_appcast_url'] = base + 'appcast.xml'
+        return manifest
+
+    def candidate(self):
+        manifest = self.candidate_manifest()
+        dump(self.run / 'release.json', manifest)
+        offered = next(asset for asset in manifest['assets'] if asset['filename'] == self.filename)
+        base = offered['url'].removesuffix(self.filename)
+        dump(self.run / 'listing.json', [{'tag_name': manifest['tag'], 'draft': False,
+             'assets': [{'name': self.filename, 'size': offered['bytes'], 'browser_download_url': offered['url']}] +
+                       [{'name': name, 'browser_download_url': base + name} for name in ['release.json', 'release.json.sig']]}])
 
     def install_old(self):
         if self.windows:
@@ -160,7 +231,7 @@ class Product:
         if origin: origin.disconnect_archive = mode == 'network'
         start = len(origin.requests) if origin else 0; proxy_start = len(proxy.records) if proxy else 0
         attempt = self.run / 'attempt.json'
-        if mode == 'recovery': dump(attempt, {'schema_version': 1, 'transaction': 'a' * 32, 'phase': 'committed', 'version': '0.1.0-alpha.2', 'build': 201, 'commit': self.identities['new']['revision'], 'root': str(self.root), 'executable': str(self.image)})
+        if mode == 'recovery': dump(attempt, {'schema_version': 1, 'transaction': 'a' * 32, 'phase': 'committed', 'version': self.identities['new']['version'], 'build': 201, 'commit': self.identities['new']['revision'], 'root': str(self.root), 'executable': str(self.image)})
         else: attempt.unlink(missing_ok=True)
         target = self.run / self.filename; shutil.copy2(self.packages['new'], target)
         if mode == 'corrupt':
@@ -209,22 +280,53 @@ class Product:
         self.uninstall(); return result
 
 
-if __name__ == '__main__':
+def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ['work-dir', 'qt-prefix']: p.add_argument('--' + name, type=Path, required=True)
     for name in ['toolchain', 'runtime', 'vcvars']: p.add_argument('--' + name, type=Path)
     p.add_argument('--proxy-matrix', action='store_true')
+    p.add_argument('--production-phase', choices=('prepare', 'sign', 'run'))
+    credentials = {name: os.environ.pop(name) for name in SIGNING_VARIABLES if name in os.environ}
     a = p.parse_args(); guard(); work = build_output(a.work_dir); qt = desktop.checked_tool_path(a.qt_prefix, 'Qt SDK', sdk=True)
-    if work.exists(): p.error('Preserve existing evidence')
-    work.mkdir(); trust = digest(ROOT / 'tools/update-trust.json'); opt_mode = None
+    phase = a.production_phase
+    if phase and (work != ROOT / 'build/production-linux-update' or os.environ.get('GITHUB_REF') != 'refs/heads/main' or
+                  os.environ.get('GITHUB_REPOSITORY') != 'xiaodaozhi/xdnote' or
+                  os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or platform.system() != 'Linux' or
+                  platform.machine() != 'x86_64' or platform.freedesktop_os_release().get('VERSION_ID') != '22.04' or
+                  platform.freedesktop_os_release().get('ID') != 'ubuntu' or a.proxy_matrix):
+        p.error('Use the dedicated hosted Ubuntu 22.04 main workflow')
+    if (phase == 'sign' and set(credentials) != {KEY_ID, MANIFEST_KEY}) or (phase != 'sign' and credentials):
+        p.error('Only the protected signature step may receive the manifest signing key')
+    tool = ROOT / 'build/release-tool/release/xdnote-update-tool'
+    if phase in ('sign', 'run'):
+        fixture = Product(work, qt, None, None, None, phase)
+        manifest, signature = (build_output(fixture.run / name) for name in ('release.json', 'release.json.sig'))
+        operation = 'sign' if phase == 'sign' else 'verify'
+        run_tool(build_output(tool), operation, manifest, signature, credentials=credentials)
+        if phase == 'sign':
+            return
+    else:
+        if work.exists(): p.error('Preserve existing evidence')
+        work.mkdir()
+        fixture = None
+    trust = digest(ROOT / 'tools/update-trust.json'); opt_mode = None
     result = {'ok': False, 'scenarios': {}, 'releaseReady': False, 'scope': 'real private product versions, document save/cancel, native package installation and receipt/restart; owned metadata replies, optional controlled HTTP proxy package streams and temporary trust; no production TLS network, minimum OS, visible wizard or polkit prompt acceptance'}
     try:
-        if platform.system() == 'Linux':
+        if platform.system() == 'Linux' and phase != 'prepare':
             metadata = Path('/opt').stat()
             if metadata.st_uid != 0 or Path('/opt').is_symlink(): raise ValueError('Unexpected CI /opt')
             opt_mode = stat.S_IMODE(metadata.st_mode); command(['sudo', '-n', 'chmod', '0755', '/opt'])
-        fixture = Product(work, qt, build_output(a.toolchain) if a.toolchain else None, build_output(a.runtime) if a.runtime else None, a.vcvars)
-        result.update(sourceRevision=fixture.revision, fixtureIdentities=fixture.identities, privateSeedRemoved=not fixture.seed.exists())
+        if fixture is None:
+            fixture = Product(work, qt, build_output(a.toolchain) if a.toolchain else None,
+                              build_output(a.runtime) if a.runtime else None, a.vcvars, phase)
+        result.update(sourceRevision=fixture.revision, fixtureIdentities=fixture.identities,
+                      privateSeedRemoved=not (fixture.run / 'private-seed').exists())
+        if phase:
+            result.update(scope='private Linux product transactions using the compiled production public key and local file replies',
+                          productionSignatureVerified=phase == 'run', productionTrustSha256=trust,
+                          packageSha256=digest(fixture.packages['new']), prepared=True)
+        if phase == 'prepare':
+            return
         for mode in ['recovery', 'corrupt', 'cancel', 'install', 'discard']:
             result['scenarios'][mode] = fixture.scenario(mode); dump(work / 'report.json', result); print(mode + ' passed', flush=True)
         if a.proxy_matrix:
@@ -244,3 +346,7 @@ if __name__ == '__main__':
         (work / 'source/build/native-run/private-seed').unlink(missing_ok=True)
         if opt_mode is not None: command(['sudo', '-n', 'chmod', format(opt_mode, 'o'), '/opt'])
         dump(work / 'report.json', result)
+
+
+if __name__ == '__main__':
+    main()
