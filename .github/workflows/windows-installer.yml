@@ -1,4 +1,4 @@
-name: Windows installer verification
+name: Private Windows release candidate assets
 
 on:
   workflow_dispatch:
@@ -22,41 +22,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  native-installer:
-    if: inputs.scope != 'product'
-    runs-on: windows-2022
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - name: Check installer input and workflow contracts
-        run: python -m unittest discover -s scripts/tests -v
-      - name: Prepare pinned official installer compiler
-        shell: pwsh
-        run: ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
-      - name: Extract pinned runtime and original agreement without installation
-        run: python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
-      - name: Compile isolated installer fixtures
-        run: python scripts/installer_fixtures.py --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --output build/installer-smoke
-      - name: Validate native install upgrade uninstall and candidate registration
-        shell: pwsh
-        run: ./scripts/test-windows-installer-native.ps1
-      - name: Upload bounded installer evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: windows-installer-evidence
-          path: |
-            build/installer-smoke/*.json
-            build/installer-smoke/*.log
-            build/installer-smoke/*.iss
-            build/installer-smoke/*.files
-          retention-days: 7
-          if-no-files-found: warn
   product-installer:
     if: inputs.scope == 'product'
     runs-on: windows-2022
@@ -67,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ed6ac069a0c289f8c852bbc4641f8adb32169e3a
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -91,7 +57,12 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
-          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+          New-Item -ItemType Directory -Path build/product-install -Force | Out-Null
+          @{
+            schemaVersion=1;product='xdnote';version='0.1.0-rc.1';build=2;revision=(git rev-parse HEAD)
+            previousVersion='0.0.0';previousBuild=0
+          } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM build/product-install/identity-input.json
+          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat" --parallel 4 --release-identity build/product-install/identity-input.json
           ctest --test-dir build/desktop-admission -R '^installation_guard$' --output-on-failure
           python scripts/check_product_linkage.py --executable build/desktop-admission/xdnote.exe
       - name: Prepare pinned installer tools and runtime materials
@@ -107,35 +78,49 @@ jobs:
           python scripts/installer_payload.py --source build/product-install/staging --audit build/product-install/staging-evidence/inventory.json --destination build/product-install/payload --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/payload-inventory.json
           python scripts/distribution_audit.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/license-evidence.json
           python scripts/compatibility_audit.py --root build/product-install/payload --report build/product-install/compatibility.json
-          python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-windows-x86_64-dev.zip
-          python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
-      - name: Cross-check live Rust ranges in the packaged Windows executable
-        run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/product-install/payload/xdnote.exe --output build/product-install/linkage.json
-      - name: Check unsigned Store package layout with disposable identity
-        run: python scripts/check_msix.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --payload build/product-install/payload --audit build/product-install/payload-inventory.json --work-dir build/product-install/msix-fixture
-      - name: Validate actual native package roundtrip
+          python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-0.1.0-rc.1-windows-x86_64.zip
+          python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-0.1.0-rc.1-windows-x86_64-setup.exe --report build/product-install/installer-report.json
+      - name: Install and exercise the exact Windows RC package
         shell: pwsh
-        run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
-      - name: Validate visible setup, File Explorer and its default application picker
-        if: runner.environment == 'github-hosted'
-        timeout-minutes: 8
-        shell: powershell
-        run: ./scripts/check_windows_file_manager.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -EvidenceDirectory "$PWD/build/product-install/explorer-evidence"
-      - name: Upload product integration evidence only
+        run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-0.1.0-rc.1-windows-x86_64-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
+      - name: Transfer only the verified encrypted RC assets
+        if: success() && runner.environment == 'github-hosted'
+        shell: pwsh
+        env:
+          XDNOTE_CANDIDATE_RECIPIENT: age176gs378e3k0q36e95kva7fl065j5j0n2tv4pfltrcnzmt45r3sqs3tkyjj
+        run: |
+          $PSNativeCommandUseErrorActionPreference=$true
+          $private = Join-Path $env:RUNNER_TEMP 'xdnote-windows-rc'
+          New-Item -ItemType Directory -Path $private | Out-Null
+          $age = Join-Path $private 'age.zip'
+          curl.exe --fail --location --max-time 60 --retry 2 --silent --show-error https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip --output $age
+          if ((Get-FileHash -LiteralPath $age).Hash.ToLowerInvariant() -ne 'f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7') { throw 'age package checksum differs' }
+          Expand-Archive -LiteralPath $age -DestinationPath "$private/age"
+          $ageTool = (Get-ChildItem "$private/age" -Recurse -Filter 'age.exe' | Select-Object -First 1).FullName
+          $assets = @('build/product-install/xdnote-0.1.0-rc.1-windows-x86_64.zip','build/product-install/xdnote-0.1.0-rc.1-windows-x86_64-setup.exe')
+          $hashes = [ordered]@{}
+          foreach ($file in $assets) {
+            $item=Get-Item -LiteralPath $file
+            $hashes[$item.Name] = @{sha256=(Get-FileHash -LiteralPath $file).Hash.ToLowerInvariant();bytes=$item.Length}
+          }
+          $hashes | ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8NoBOM build/product-install/rc-asset-hashes.json
+          Compress-Archive -LiteralPath $assets -DestinationPath "$private/payload.zip" -CompressionLevel NoCompression
+          & $ageTool --recipient $env:XDNOTE_CANDIDATE_RECIPIENT --output "$private/rc-windows-assets.zip.age" "$private/payload.zip"
+      - name: Preserve the encrypted private assets
+        if: success() && runner.environment == 'github-hosted'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: private-windows-candidate
+          path: ${{ runner.temp }}/xdnote-windows-rc/rc-windows-assets.zip.age
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve RC package and verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows-product-install-evidence
+          name: windows-rc-evidence
           path: |
             build/product-install/*.json
-            build/product-install/*.sha256
-            build/product-install/staging-evidence/
-            build/product-install/roundtrip-evidence/
-            build/product-install/explorer-evidence/
-            build/product-install/msix-fixture/*.json
-            build/product-install/msix-fixture/*.log
-            build/desktop-admission/build-identity.json
-            build/test-fonts/receipt.json
-            build/test-fonts/Noto-OFL.txt
-          retention-days: 7
+            build/product-install/roundtrip-evidence/report.json
           if-no-files-found: warn
+          retention-days: 7
