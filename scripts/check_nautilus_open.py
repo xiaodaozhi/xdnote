@@ -191,11 +191,29 @@ def verify(binary, evidence, samples, backend):
                               *match)
             window = windows.splitlines()[0]
             if wayland:
-                bring_forward(window)
-                select_item(item, clear=True)
-                activate(item, ('menu',))
-            else:
-                click(item, button='3')
+                execute('/usr/bin/gdbus', 'call', '--session', '--dest', 'org.freedesktop.FileManager1',
+                        '--object-path', '/org/freedesktop/FileManager1',
+                        '--method', 'org.freedesktop.FileManager1.ShowItemProperties',
+                        '[' + repr(once.as_uri()) + ']', '')
+                print('Requested the owned Wayland file Properties', file=log, flush=True)
+                activate(lookup('Open With tab', ['Open With'], ['page tab']))
+                select_item(lookup('xdnote in Properties', ['xdnote']))
+                activate(lookup('Set as default', ['Set as default'], ['push button']))
+                deadline = time.monotonic() + 5
+                while default_handler() != DESKTOP and time.monotonic() < deadline:
+                    time.sleep(0.15)
+                if default_handler() != DESKTOP:
+                    raise ValueError('The native Properties button did not change the Markdown default')
+                result['selectedDefault'] = default_handler()
+                for sample, field in ((cold, 'defaultCold'), (warm, 'defaultWarm')):
+                    open_item(sample_node(sample))
+                    product_pids.add(wayland_document(sample, binary))
+                    result[field] = sample.name
+                if len(product_pids) != 1:
+                    raise ValueError('Nautilus did not reuse the running stock editor')
+                result.update(sameWarmProcess=True, ok=True)
+                return
+            click(item, button='3')
             press(lookup('Open With Other Application', ['Open With Other Application']))
             choose = select_item if wayland else click
             choose(lookup('xdnote in Open With', ['xdnote']))
