@@ -201,6 +201,12 @@ fn verify_manifest(bytes: &[u8], envelope: &[u8]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     match args.first().and_then(|argument| argument.to_str()) {
+        Some("check-manifest-key") if args.len() == 1 => {
+            manifest_signing_key()?;
+        }
+        Some("check-sparkle-key") if args.len() == 1 => {
+            sparkle_signing_key()?;
+        }
         Some("check-signing-keys") if args.len() == 1 => {
             let (_, manifest) = manifest_signing_key()?;
             if manifest.verifying_key() == sparkle_signing_key()?.verifying_key() {

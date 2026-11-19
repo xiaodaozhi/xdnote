@@ -41,6 +41,29 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('scripts/release_updates.py verify --revision', verify)
         self.assertNotIn('environment:', verify)
 
+    def test_production_key_check_only_derives_and_compares_after_approval(self):
+        path = WORKFLOWS / 'release-key-check.yml'
+        workflow = path.read_text(encoding='utf-8')
+        self.assertEqual(events(path), {'workflow_dispatch'})
+        self.assertIn("github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/main'", workflow)
+        self.assertIn('required_reviewers', workflow)
+        preparation, checks = workflow.split('      - name: Check manifest key', 1)
+        self.assertIn('needs: approval-policy', preparation)
+        self.assertIn('environment: release-signing', preparation)
+        self.assertIn('cargo build --locked --offline', preparation)
+        self.assertNotIn('secrets.', preparation)
+        manifest, sparkle = checks.split('      - name: Check Sparkle key', 1)
+        self.assertEqual(re.findall(r'secrets\.(\w+)', manifest), ['XDNOTE_UPDATE_SIGNING_KEY_HEX'])
+        self.assertEqual(re.findall(r'secrets\.(\w+)', sparkle), ['XDNOTE_SPARKLE_SIGNING_KEY_HEX'])
+        self.assertIn('vars.XDNOTE_UPDATE_KEY_ID', manifest)
+        self.assertIn("!cancelled() && steps.build.outcome == 'success'", sparkle)
+        self.assertEqual(re.findall(r'(?m)^        run: (.*)$', checks), [
+            'build/release-tool/release/xdnote-update-tool check-manifest-key',
+            'build/release-tool/release/xdnote-update-tool check-sparkle-key',
+        ])
+        for forbidden in ('contents: write', 'gh release', 'upload-artifact', 'release_updates.py'):
+            self.assertNotIn(forbidden, workflow)
+
     def test_network_flow_is_explicit_and_does_not_upload_sources_or_keys(self):
         path = WORKFLOWS / 'qt-network-flow.yml'; text = path.read_text()
         self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})
