@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   native-installer:
-    if: inputs.scope != 'product'
+    if: inputs.scope == 'diagnostic-fixture-disabled'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -139,3 +139,14 @@ jobs:
             build/test-fonts/Noto-OFL.txt
           retention-days: 7
           if-no-files-found: warn
+  explorer-ui-preflight:
+    if: inputs.scope == 'fixtures' && runner.environment == 'github-hosted'
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Probe Explorer with an owned file and Notepad
+        shell: powershell
+        run: ./scripts/explorer_ui_preflight.ps1
