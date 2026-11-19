@@ -17,6 +17,30 @@ def events(path):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_release_keys_are_scoped_to_the_approved_signing_step(self):
+        path = WORKFLOWS / 'release-signing.yml'
+        workflow = path.read_text(encoding='utf-8')
+        self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})
+        self.assertIn("github.ref == 'refs/heads/main'", workflow)
+        self.assertIn('.head_sha == $sha', workflow)
+        self.assertIn('environments/release-signing', workflow)
+        self.assertIn('required_reviewers', workflow)
+        self.assertIn('contents: read', workflow)
+        self.assertIn('actions: read', workflow)
+        self.assertNotIn('contents: write', workflow)
+        approval, verify = workflow.split('  verify:', 1)
+        before, signing = approval.split('      - name: Sign the verified candidate', 1)
+        self.assertIn('environment: release-signing', before)
+        self.assertIn('cargo build --locked --offline', before)
+        for secret in ('XDNOTE_UPDATE_SIGNING_KEY_HEX', 'XDNOTE_SPARKLE_SIGNING_KEY_HEX'):
+            self.assertIn(f'secrets.{secret}', signing)
+            self.assertNotIn(secret, before)
+            self.assertNotIn(secret, verify)
+        for job in (approval, verify):
+            self.assertIn('artifact-ids: ${{ needs.candidate.outputs.artifact }}', job)
+        self.assertIn('scripts/release_updates.py verify --revision', verify)
+        self.assertNotIn('environment:', verify)
+
     def test_network_flow_is_explicit_and_does_not_upload_sources_or_keys(self):
         path = WORKFLOWS / 'qt-network-flow.yml'; text = path.read_text()
         self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})
@@ -144,7 +168,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('build/cargo-home', text)
         self.assertIn('cargo fetch --locked', text)
         self.assertIn('cargo test --locked --offline --workspace', text)
-        self.assertIn('cargo clippy --locked --offline --workspace --all-targets -- -D warnings', text)
+        self.assertIn('cargo clippy --locked --offline --workspace --all-targets --features xdnote-update/release-tool -- -D warnings', text)
         self.assertIn('python scripts/check_third_party_licenses.py', text)
         for forbidden in ('desktop.py', 'prepare_qt', 'matrix:', 'contents: write', 'secrets.', 'gh release'):
             self.assertNotIn(forbidden, text)

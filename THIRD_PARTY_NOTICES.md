@@ -18,7 +18,7 @@ Markdown 服务使用以下第三方包；`pulldown-cmark` 为直接依赖，其
 
 ## Rust 更新核心及工作区构建依赖
 
-无 Qt 的 `xdnote-update` 直接依赖 `ed25519-dalek`、`semver`、`serde`、`serde_json` 和 `sha2`；通过 `xdnote-services` 与 Markdown 服务共同组成桌面 C ABI 静态库。以下新增记录覆盖完整 Cargo 锁文件，包括传递、构建、目标条件及锁定的可选依赖；不能将锁文件中所有包都当作实际编入桌面产品。最终静态组件仍按真实构建核对。
+无 Qt 的 `xdnote-update` 直接依赖 `ed25519-dalek`、`semver`、`serde`、`serde_json` 和 `sha2`；通过 `xdnote-services` 与 Markdown 服务共同组成桌面 C ABI 静态库。独立发行签名工具启用 `release-tool`，使用已记录的 `base64ct` 和 `zeroize`。以下记录覆盖完整 Cargo 锁文件，包括传递、构建、目标条件及锁定的可选依赖；最终静态组件以实际构建核对。
 
 | 包 | 版本 | 上游声明／本项目保留方案 | 原始文本 |
 | --- | --- | --- | --- |

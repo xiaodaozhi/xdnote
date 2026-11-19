@@ -1,8 +1,9 @@
-"""The offline signer binds both keys and the one verified candidate."""
+"""Signed attachments bind to one candidate and are verifiable without private keys."""
 
 import base64
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -10,30 +11,17 @@ from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import sign_release_offline as signing
+import release_updates as signing
 
 
-class OfflineSigningTests(unittest.TestCase):
+class ReleaseSigningTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        self.fields = {signing.KEY_ID: 'fixture', signing.MANIFEST_KEY: '01' * 32, signing.SPARKLE_KEY: '02' * 32}
         self.keys = self.root / 'offline.txt'
-        self.manifest_seed = b'\x01' * 32
-        self.sparkle_seed = b'\x02' * 32
-        self.keys.write_text(f'# fixture\nXDNOTE_UPDATE_KEY_ID=fixture\n'
-                             f'XDNOTE_UPDATE_SIGNING_KEY_HEX={self.manifest_seed.hex()}\n'
-                             f'XDNOTE_SPARKLE_SIGNING_KEY_HEX={self.sparkle_seed.hex()}\n')
-        tools = self.root / 'tools'
-        tools.mkdir()
-        self.manifest_public = b'\x03' * 32
-        self.sparkle_public = b'\x04' * 32
-        (tools / 'update-trust.json').write_text(json.dumps({'keys': [
-            {'key_id': 'fixture', 'public_key': self.manifest_public.hex()},
-        ]}))
-        (tools / 'sparkle-update-key.json').write_text(json.dumps({
-            'publicKey': base64.b64encode(self.sparkle_public).decode('ascii'),
-        }))
+        self.keys.write_text(''.join(f'{name}={value}\n' for name, value in self.fields.items()))
         self.identity = dict(product='xdnote', version='0.2.0-rc.1', build=12, revision='a' * 40,
                              dirty=False, channel='rc', configuration='Release')
         self.assets = self.root / 'assets'
@@ -47,55 +35,66 @@ class OfflineSigningTests(unittest.TestCase):
         self.output = self.root / 'signed'
         self.operations = []
 
-    def checked(self, arguments, operation, *, data):
+    def run_tool(self, tool, operation, *arguments, credentials=None):
         self.operations.append(operation)
-        if arguments[0] == 'openssl':
-            public_key = {self.manifest_seed: self.manifest_public, self.sparkle_seed: self.sparkle_public}
-            return signing.PUBLIC_DER + public_key.get(data[len(signing.PRIVATE_DER):], b'')
-        self.assertEqual(arguments[:3], ['sign_update', '--ed-key-file', '-'])
-        key = base64.b64decode(data)
-        using_manifest = any(isinstance(argument, Path) and argument.name == 'release.json' for argument in arguments)
-        self.assertEqual(key, self.manifest_seed if using_manifest else self.sparkle_seed)
-        return base64.b64encode(b's' * 64) if operation == 'Ed25519 signing' else b''
+        expected = {'check-signing-keys': self.fields, 'sign-archive': {signing.SPARKLE_KEY: self.fields[signing.SPARKLE_KEY]},
+                    'sign-appcast': {signing.SPARKLE_KEY: self.fields[signing.SPARKLE_KEY]},
+                    'sign': {name: self.fields[name] for name in (signing.KEY_ID, signing.MANIFEST_KEY)}}
+        self.assertEqual(credentials, expected.get(operation))
+        if operation == 'sign-archive':
+            archive, version, build, output = arguments
+            output.write_text(json.dumps({'schema_version': 1, 'version': version, 'build': int(build),
+                                          'filename': archive.name, 'bytes': archive.stat().st_size,
+                                          'sha256': signing.digest(archive), 'ed_signature': base64.b64encode(b's' * 64).decode()}))
+        elif operation == 'sign-appcast':
+            arguments[1].write_bytes(arguments[0].read_bytes() + b'<!-- sparkle-signatures:\nfixture\n-->\n')
+        elif operation == 'sign':
+            arguments[1].write_text('{}')
 
-    def run_signer(self, checked):
-        with patch.object(signing, 'ROOT', self.root), patch.object(signing, 'checked', side_effect=checked):
-            signing.sign_release(self.identity, self.assets, self.verification, self.keys, self.output,
-                                 tool='sign_update', openssl='openssl')
+    def test_signed_contents_and_public_reverification(self):
+        with patch.object(signing, 'run_tool', side_effect=self.run_tool):
+            signing.sign_release(self.identity, self.assets, self.verification, self.keys, self.output, tool='tool')
+            manifest = json.loads((self.output / 'release.json').read_bytes())
+            self.assertEqual(manifest, signing.release_candidate.manifest(self.identity, self.assets, self.verification))
+            archive = signing.sparkle_archive(manifest)
+            item = ET.parse(self.output / 'appcast.xml').find('channel/item')
+            self.assertEqual(item.findtext(f'{{{signing.SPARKLE_NS}}}version'), '12')
+            self.assertEqual(item.findtext(f'{{{signing.SPARKLE_NS}}}channel'), 'rc')
+            self.assertEqual(item.find('enclosure').get('url'), archive['url'])
+            self.assertEqual(item.find('enclosure').get('length'), str(archive['bytes']))
+            self.assertEqual(set(path.name for path in self.output.iterdir()), {*signing.ATTACHMENTS, 'SHA256SUMS'})
+            self.assertIn(f"{archive['sha256']}  {archive['filename']}", (self.output / 'SHA256SUMS').read_text())
+            self.assertEqual(self.operations[:4], ['check-signing-keys', 'sign-archive', 'sign-appcast', 'sign'])
+            self.operations.clear()
+            signing.verify_release(self.identity, self.assets, self.verification, self.output, 'tool')
+            self.assertEqual(self.operations, ['verify-archive', 'verify-appcast', 'verify'])
+            (self.output / 'SHA256SUMS').write_text('wrong')
+            with self.assertRaisesRegex(ValueError, 'SHA256SUMS differs'):
+                signing.verify_release(self.identity, self.assets, self.verification, self.output, 'tool')
+            with self.assertRaisesRegex(ValueError, 'existing output'):
+                signing.sign_release(self.identity, self.assets, self.verification, self.keys, self.output, tool='tool')
 
-    def test_outputs_contain_one_verified_candidate(self):
-        self.run_signer(self.checked)
-        manifest = json.loads((self.output / 'release.json').read_bytes())
-        self.assertEqual(manifest, signing.release_candidate.manifest(self.identity, self.assets, self.verification))
-        archive = next(asset for asset in manifest['assets'] if asset['package_type'] == 'app.zip')
-        item = ET.parse(self.output / 'appcast.xml').find('channel/item')
-        self.assertEqual(item.findtext(f'{{{signing.SPARKLE_NS}}}version'), '12')
-        self.assertEqual(item.findtext(f'{{{signing.SPARKLE_NS}}}channel'), 'rc')
-        self.assertEqual(item.find('enclosure').get('url'), archive['url'])
-        self.assertEqual(item.find('enclosure').get('length'), str(archive['bytes']))
-        envelope = json.loads((self.output / 'release.json.sig').read_bytes())
-        self.assertEqual(envelope, {'schema_version': 1, 'algorithm': 'ed25519', 'key_id': 'fixture',
-                                    'signature': (b's' * 64).hex()})
-        self.assertEqual(self.operations.count('Ed25519 verification'), 2)
-        self.assertIn('Appcast verification', self.operations)
-        with self.assertRaisesRegex(ValueError, 'existing output'):
-            self.run_signer(self.checked)
-
-    def test_failed_key_binding_or_feed_verification_does_not_publish_outputs(self):
-        original = self.keys.read_text()
-        self.keys.write_text(original.replace(self.sparkle_seed.hex(), (b'\x07' * 32).hex()))
-        with self.assertRaisesRegex(ValueError, 'Sparkle signing key does not match'):
-            self.run_signer(self.checked)
-        self.assertFalse(self.output.exists())
-        self.assertNotIn('Ed25519 signing', self.operations)
-        self.keys.write_text(original)
-
-        def fail_verify(arguments, operation, *, data):
-            if operation == 'Appcast verification':
+    def test_failed_verification_leaves_no_output(self):
+        def fail_verify(tool, operation, *arguments, credentials=None):
+            if operation == 'verify-appcast':
                 raise ValueError('Appcast verification failed')
-            return self.checked(arguments, operation, data=data)
+            return self.run_tool(tool, operation, *arguments, credentials=credentials)
 
-        with self.assertRaisesRegex(ValueError, 'Appcast verification failed'):
-            self.run_signer(fail_verify)
+        with patch.object(signing, 'run_tool', side_effect=fail_verify):
+            with self.assertRaisesRegex(ValueError, 'Appcast verification failed'):
+                signing.sign_release(self.identity, self.assets, self.verification, self.keys, self.output, tool='tool')
         self.assertFalse(self.output.exists())
         self.assertEqual(list(self.root.glob('.sign-release-*')), [])
+
+    def test_environment_isolation_and_diagnostic_redaction(self):
+        with patch.dict(signing.os.environ, self.fields), patch.object(signing.subprocess, 'run') as run:
+            self.assertEqual(signing.signing_inputs(None), self.fields)
+            run.return_value = subprocess.CompletedProcess([], 2, b'', self.fields[signing.SPARKLE_KEY].encode())
+            with self.assertRaisesRegex(ValueError, '^Release signing tool: verify-appcast failed$'):
+                signing.run_tool('tool', 'verify-appcast', self.output / 'appcast.xml')
+            self.assertTrue(set(self.fields).isdisjoint(run.call_args.kwargs['env']))
+            run.return_value = subprocess.CompletedProcess([], 0, b'', b'')
+            signing.run_tool('tool', 'sign', 'release.json', 'release.json.sig',
+                             credentials={name: self.fields[name] for name in (signing.KEY_ID, signing.MANIFEST_KEY)})
+            self.assertNotIn(signing.SPARKLE_KEY, run.call_args.kwargs['env'])
+            self.assertNotIn(self.fields[signing.MANIFEST_KEY], run.call_args.args[0])

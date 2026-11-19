@@ -17,14 +17,19 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 ## 生产更新签名
 
-发行负责人保管两套独立的 Ed25519 私钥，在 Mac 上离线签名。初始登录钥匙串账户见下表。换机时可直接使用本地保存的签名 TXT。版本库只登记公钥。
+发行负责人在受保护的 `release-signing` GitHub Actions 环境配置两套独立的 Ed25519 私钥。公开 Key ID 使用环境变量。两份公钥随源码编入客户端与签名工具。
 
-| 用途 | 钥匙串账户 | 公钥配置 |
+| 环境配置 | 类型 | 用途 |
 | --- | --- | --- |
-| GitHub 更新清单 | `io.github.xiaodaozhi.xdnote.manifest.production.v1` | [`tools/update-trust.json`](../../tools/update-trust.json)，`key_id` 为 `xdnote-manifest-v1` |
-| Sparkle 归档与 appcast | `io.github.xiaodaozhi.xdnote.sparkle.production.v1` | [`tools/sparkle-update-key.json`](../../tools/sparkle-update-key.json)，部署时写入 `SUPublicEDKey` |
+| `XDNOTE_UPDATE_KEY_ID` | Variable | `xdnote-manifest-v1`，应在[清单公钥集](../../tools/update-trust.json)中匹配一把公钥 |
+| `XDNOTE_UPDATE_SIGNING_KEY_HEX` | Secret | 清单 Ed25519 私钥，64 个小写十六进制字符 |
+| `XDNOTE_SPARKLE_SIGNING_KEY_HEX` | Secret | 归档及 appcast Ed25519 私钥，64 个小写十六进制字符，对应 [Sparkle 公钥](../../tools/sparkle-update-key.json) |
 
-完成六个资产的封存与核验后，使用下列入口一次生成 `release.json`、`release.json.sig` 和签名后的 `appcast.xml`。`--identity` 和 `--verification` 使用[候选清单入口](../../scripts/release_candidate.py)的同一份构建身份和逐资产核验记录。签名机应已准备本项目锁定的 Sparkle SDK（`python scripts/sparkle.py prepare --download`）和支持 Ed25519 的 OpenSSL。签名入口只使用 SDK 的 `sign_update`。
+[Release update signing](../../.github/workflows/release-signing.yml) 接收已核验的 `release-verified` Actions 工件。其根目录包含 `identity.json`、`verification.json` 和 `assets/`，输入契约与[候选清单入口](../../scripts/release_candidate.py)一致。签名和独立验签使用同一个工件 ID，且候选构建身份须与 `main` 上冻结的签名提交一致。候选流水线可在同一次手动运行中调用此工作流，也可指定同提交的成功候选运行。现有开发部署工作流只交付证据，完整发行候选的产出仍按原生验收及分发许可待办推进。
+
+工作流先确认签名环境已设置必需审批人，再在无密钥的步骤编译锁定工具。审批后的签名步骤先核对私钥与已配置公钥，再签 Sparkle 归档并生成 `macos-update.json`。随后从同一个候选构建并签署 `appcast.xml`，对 `release.json` 的原始字节生成 `release.json.sig`。`SHA256SUMS` 覆盖六个资产和全部签名附件。独立作业下载同一候选和已签名附件，使用编入的公开信任根再次核对包、签名及校验和。
+
+本地可用已保存的 TXT 调用同一工具。准备项目锁定的 Rust 工具链和依赖后，使用以下入口；两种路径采用相同的候选校验和签名协议。
 
 ```bash
 python scripts/sign_release_offline.py \
@@ -35,7 +40,7 @@ python scripts/sign_release_offline.py \
   --output build/release/signed-metadata
 ```
 
-签名 TXT 包含 `XDNOTE_UPDATE_KEY_ID`、`XDNOTE_UPDATE_SIGNING_KEY_HEX` 和 `XDNOTE_SPARKLE_SIGNING_KEY_HEX`。脚本先核对两套密钥与已配置公钥，再通过标准输入交给本机签名进程，无需导入钥匙串。Sparkle 归档的签名和长度自动进入 appcast。归档、appcast 与清单均通过验签后才写入最终目录。签名结果仍需按候选核验及发行授权流程处理。
+本地独立验签使用 `python scripts/release_updates.py verify`，传入同一组 `--identity`、`--assets`、`--verification` 和 `--output`。签名结果仍需按适用的原生验收、许可及发行授权流程处理。
 
 ## 用户主动更新契约
 
