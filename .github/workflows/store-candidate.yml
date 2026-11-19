@@ -73,7 +73,7 @@ jobs:
           python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
           python scripts/deployment_inventory.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --destination build/store-candidate/staging --redist-dir build/toolchain/windows-runtime/runtime
           python scripts/installer_payload.py --source build/store-candidate/staging --audit build/store-candidate/staging-evidence/inventory.json --destination build/store-candidate/payload --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/store-candidate/payload-inventory.json
-          python scripts/compatibility_audit.py --root build/store-candidate/payload --audit build/store-candidate/payload-inventory.json --report build/store-candidate/compatibility.json
+          python scripts/compatibility_audit.py --root build/store-candidate/payload --report build/store-candidate/compatibility.json
       - name: Package with the configured Partner Center identity
         id: package
         env:
