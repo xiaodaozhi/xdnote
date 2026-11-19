@@ -13,6 +13,11 @@ from installer_common import ROOT, build_output, digest
 import msix_package
 
 
+def write_json(path, data):
+    content = json.dumps(data, ensure_ascii=False, indent=2) + '\n'
+    build_version.write_changed(path, content.encode('utf-8'))
+
+
 def prepare_identity(work):
     work.mkdir(parents=True)
     if not re.fullmatch(r'age1[023456789acdefghjklmnpqrstuvwxyz]{58}', os.environ['XDNOTE_AGE_RECIPIENT']):
@@ -27,7 +32,7 @@ def prepare_identity(work):
         'previousBuild': int(os.environ['XDNOTE_PREVIOUS_BUILD']),
     }
     build_version.identity(ROOT, '0.1.0', 'Release', proposed)
-    build_version.write_changed(work / 'release-input.json', json.dumps(proposed, indent=2) + '\n')
+    write_json(work / 'release-input.json', proposed)
 
 
 def package(work):
@@ -39,7 +44,7 @@ def package(work):
     recorded = json.loads(os.environ['XDNOTE_MSIX_IDENTITY_JSON'])
     msix_package.manifest(recorded, expected['build'])
     identity_path = work / 'msix-identity.json'
-    build_version.write_changed(identity_path, json.dumps(recorded, ensure_ascii=False) + '\n')
+    write_json(identity_path, recorded)
     build = desktop.build_path(Path('build/desktop-admission'))
     qt = desktop.checked_tool_path(ROOT / 'build/Qt/6.8.2/msvc2022_64', 'Qt SDK', sdk=True)
     desktop.verify_build_identity(build, 'default', qt)
@@ -49,7 +54,7 @@ def package(work):
     del report['identity']
     report.update(releaseIdentity=expected, packageVersion=f'1.0.{expected["build"]}.0',
                   identitySource='XDNOTE_MSIX_IDENTITY_JSON', identityInputSha256=digest(identity_path))
-    build_version.write_changed(work / 'msix-report.json', json.dumps(report, indent=2) + '\n')
+    write_json(work / 'msix-report.json', report)
 
 
 if __name__ == '__main__':
