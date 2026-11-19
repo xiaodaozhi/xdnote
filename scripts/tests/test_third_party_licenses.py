@@ -6,12 +6,16 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_third_party_licenses import validate_inventory, validate_deployment_notices, license_choices, source_license_texts
+from check_third_party_licenses import (
+    DEPLOYMENT_NOTICE_PATHS, license_choices, source_license_texts, validate_deployment_notices, validate_inventory,
+)
 
 
 class ThirdPartyLicenseInventoryTests(unittest.TestCase):
     def test_qt_notice_version_digest_and_path_must_match(self):
-        notices = {"schemaVersion": 1, "qtVersion": "6.8.2", "texts": [{"path": "LICENSES/third-party/Qt-" + name + "-3.0-only.txt", "sha256": hashlib.sha256(b"text").hexdigest()} for name in ("LGPL", "GPL")]}
+        digest = hashlib.sha256(b"text").hexdigest()
+        notices = {"schemaVersion": 1, "qtVersion": "6.8.2",
+                   "texts": [{"path": path, "sha256": digest} for path in sorted(DEPLOYMENT_NOTICE_PATHS)]}
         dependencies = {"qt": {"version": "6.8.2"}}
         self.assertEqual(validate_deployment_notices(notices, dependencies, lambda _: b"text"), [])
         self.assertTrue(validate_deployment_notices(notices, {"qt": {"version": "changed"}}, lambda _: b"text"))

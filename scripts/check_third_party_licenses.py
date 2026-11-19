@@ -11,6 +11,15 @@ import tomllib
 import re
 
 
+DEPLOYMENT_NOTICE_PATHS = frozenset({
+    "LICENSES/third-party/Qt-LGPL-3.0-only.txt",
+    "LICENSES/third-party/Qt-GPL-3.0-only.txt",
+    "LICENSES/third-party/Qt-PSL-MPL-2.0.txt",
+    "LICENSES/third-party/Qt-Tika-NOTICE.txt",
+    "LICENSES/third-party/Qt-Tika-OGL-UK-3.0.txt",
+})
+
+
 def license_choices(expression):
     """Expand the recorded SPDX AND/OR choices; reject unsupported syntax.
 
@@ -192,9 +201,9 @@ def validate_deployment_notices(notices, dependencies, read_license):
     if notices.get("schemaVersion") != 1 or notices.get("qtVersion") != dependencies.get("qt", {}).get("version"):
         errors.append("Qt notice version differs from locked Qt SDK")
     records = notices.get("texts", [])
-    required = {"LICENSES/third-party/Qt-LGPL-3.0-only.txt", "LICENSES/third-party/Qt-GPL-3.0-only.txt"}
-    if not isinstance(records, list) or {record.get("path") for record in records if isinstance(record, dict)} != required or len(records) != 2:
-        errors.append("Qt LGPL and referenced GPL text inputs are missing or duplicated")
+    if (not isinstance(records, list) or len(records) != len(DEPLOYMENT_NOTICE_PATHS)
+            or {record.get("path") for record in records if isinstance(record, dict)} != DEPLOYMENT_NOTICE_PATHS):
+        errors.append("Qt distribution notice inputs are missing, unknown, or duplicated")
         return errors
     for record in records:
         path = record.get("path", "")
