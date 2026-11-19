@@ -45,6 +45,10 @@
 
 #include <memory>
 
+#if defined(Q_OS_MACOS) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
+void verifyGuardedCocoaAccessibility(QQuickWindow &window, GuardedFixtureTextEdit &editor);
+#endif
+
 #ifdef Q_OS_WIN
 #  define NOMINMAX
 #  include <windows.h>
@@ -244,6 +248,9 @@ private slots:
     void guardedAccessibilityPreservesReadOnlyAndUndo();
     void guardedEditorLifetimeAndRejections();
     void guardedReplacementRejectsReentry();
+#if defined(Q_OS_MACOS) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
+    void guardedCocoaAccessibility();
+#endif
     void singleEditorReparentPreservesAccessibilityAndUndo_data();
     void singleEditorReparentPreservesAccessibilityAndUndo();
     void previewParsesMarkdownAndBlocksResources();
@@ -616,6 +623,26 @@ void QtDocumentSpikeTests::guardedAccessibilityPreservesReadOnlyAndUndo()
     QVERIFY(!editor->property("inputMethodComposing").toBool());
 #endif
 }
+
+#if defined(Q_OS_MACOS) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
+void QtDocumentSpikeTests::guardedCocoaAccessibility()
+{
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa"))
+        QSKIP("The Cocoa accessibility bridge requires the native Cocoa platform.");
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.setFlag(Qt::WindowDoesNotAcceptFocus);
+    window.setOpacity(0.0);
+    window.resize(400, 240);
+    auto *editor = qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true));
+    QVERIFY(editor);
+    window.show();
+    QTRY_VERIFY(window.isExposed());
+    verifyGuardedCocoaAccessibility(window, *editor);
+}
+#endif
 
 void QtDocumentSpikeTests::guardedEditorLifetimeAndRejections()
 {

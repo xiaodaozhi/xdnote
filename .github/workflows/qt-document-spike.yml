@@ -55,6 +55,12 @@ jobs:
       - name: Run offscreen experiment tests
         id: qt_tests
         run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error
+      - name: Run the guarded Quick editor through the Cocoa accessibility bridge
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: cocoa
+          QT_QUICK_BACKEND: software
+        run: build/qt-document-spike/qt_document_spike_tests guardedCocoaAccessibility
       - name: Report first Qt document test run
         if: ${{ always() && steps.qt_tests.outcome != 'skipped' && steps.qt_tests.outcome != '' }}
         shell: python
