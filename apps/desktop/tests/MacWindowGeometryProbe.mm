@@ -39,10 +39,20 @@ void verifyHeader(QWidget &window, const QSize &logicalSize) {
     for (NSWindowButton kind : {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton}) {
         NSButton *button = [native standardWindowButton:kind];
         QVERIFY(button && !button.hiddenOrHasHiddenAncestor);
+        const auto verticalCenter = [&] {
+            const qreal y = NSMidY([button convertRect:button.bounds toView:view]);
+            return view.flipped ? y - NSMinY(view.bounds) : NSMaxY(view.bounds) - y;
+        };
+        QTRY_VERIFY(qAbs(verticalCenter() - header->height() / 2.0) <= 0.5);
         const NSRect rect = [button convertRect:button.bounds toView:view];
-        const qreal bottom = view.flipped ? NSMaxY(rect) : NSMaxY(view.bounds) - NSMinY(rect);
-        QVERIFY(bottom <= header->height());
         QTRY_VERIFY(header->layout()->contentsMargins().left() >= NSMaxX(rect));
+        auto *frame = view.superview;
+        QVERIFY(frame);
+        for (const qreal y : {NSMinY(rect) + 1.0, NSMidY(rect), NSMaxY(rect) - 1.0}) {
+            const NSPoint point = [view convertPoint:NSMakePoint(NSMidX(rect), y) toView:frame.superview];
+            NSView *hit = [frame hitTest:point];
+            QVERIFY(hit && [hit isDescendantOf:button]);
+        }
     }
 }
 }
@@ -85,6 +95,10 @@ void verifyMacApplicationTitlebars() {
         const auto size = window->size();
         window->show();
         verifyHeader(*window, size);
+        const auto larger = size + QSize(32, 24);
+        window->resize(larger);
+        verifyHeader(*window, larger);
+        window->resize(size);
         window->hide();
         window->show();
         verifyHeader(*window, size);
@@ -134,6 +148,7 @@ void verifyMacApplicationTitlebars() {
     QVERIFY(appearance.dark());
     QTRY_COMPARE(QString::fromNSString(nativeView(&document).window.appearance.name),
                  QString::fromNSString(NSAppearanceNameDarkAqua));
+    verifyHeader(document, normalSize);
     document.setEditing(true);
     auto *session = file->session();
     QCOMPARE(session->replace(0, 0, "unsaved", session->revision()), EditResult::Applied);

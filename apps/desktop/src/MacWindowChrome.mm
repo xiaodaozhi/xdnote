@@ -29,12 +29,36 @@ void reserveControls(NSView *view, NSView *content, const NSRect &header, QMargi
         reserveControls(child, content, header, insets);
 }
 
-QMargins nativeInsets(NSView *content, int rowTop, int rowHeight) {
-    // Measure the controls in the frame outside the Qt content view,
-    // including system accessories, without relying on AppKit class names.
+NSRect headerRect(NSView *content, int rowTop, int rowHeight) {
     const NSRect bounds = content.bounds;
     const CGFloat top = content.flipped ? NSMinY(bounds) + rowTop : NSMaxY(bounds) - rowTop - rowHeight;
-    const NSRect header = NSMakeRect(NSMinX(bounds), top, NSWidth(bounds), rowHeight);
+    return NSMakeRect(NSMinX(bounds), top, NSWidth(bounds), rowHeight);
+}
+
+void alignWindowButtons(NSView *content, const NSRect &header) {
+    NSButton *anchor = [content.window standardWindowButton:NSWindowCloseButton];
+    NSView *frame = content.superview;
+    if (!frame || !anchor || anchor.hiddenOrHasHiddenAncestor) return;
+
+    // Move the window's native titlebar overlay with its original controls.
+    // Moving only the buttons can push part of their hit area out of a short titlebar.
+    NSView *overlay = anchor;
+    while (overlay.superview && overlay.superview != frame)
+        overlay = overlay.superview;
+    if (overlay == content || overlay.superview != frame) return;
+
+    const NSRect button = [anchor convertRect:anchor.bounds toView:frame];
+    const CGFloat center = [content convertPoint:NSMakePoint(NSMidX(header), NSMidY(header)) toView:frame].y;
+    const CGFloat offset = center - NSMidY(button);
+    if (qAbs(offset) < 0.01) return;
+    NSPoint origin = overlay.frame.origin;
+    origin.y += offset;
+    [overlay setFrameOrigin:origin];
+}
+
+QMargins nativeInsets(NSView *content, const NSRect &header) {
+    // Measure the controls in the frame outside the Qt content view,
+    // including system accessories, without relying on AppKit class names.
     QMargins result;
     for (NSView *view in content.superview.subviews)
         reserveControls(view, content, header, result);
@@ -53,7 +77,10 @@ void updateHeader(QWidget *window, WindowTitleBar *header, NSView *content) {
         header->layout()->invalidate();
         window->layout()->activate();
     }
-    header->setNativeInsets(nativeInsets(content, header->mapTo(window, QPoint()).y(), header->height()));
+    const NSRect row = headerRect(content, header->mapTo(window, QPoint()).y(), header->height());
+    if (!useSafeArea)
+        alignWindowButtons(content, row);
+    header->setNativeInsets(nativeInsets(content, row));
 }
 
 class TitlebarObserver final : public QObject {
