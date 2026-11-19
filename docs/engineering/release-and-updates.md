@@ -123,7 +123,7 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 
 文档准备逐份复用保存／不保存／取消确认，不提前关闭窗口或清空撤销；不保存选择绑定当时 revision。取消后仍保留同一会话和撤销，已经明确完成的保存保持有效。全部确认后冻结修改、拒绝新打开和后台任务，已有保存／资源操作正常完成，再非阻塞等待全局工作池 join 并刷出恢复记录。此后才写交接记录并释放 native commit；交接失败会恢复原只读及启用状态。Sparkle 取消用 Skip，不能留下退出时安装计划；普通退出和重试继续等待原生周期及本应用准确 helper 退出。
 
-独立 `xdnote-update-helper` 不依赖 Qt。它重新认证原始清单／签名、核对当前安装身份和单调版本，持有包文件并复核长度／SHA-256；只接受固定请求格式、事务和目录内文件。Windows 运行已认证的固定安装器并保留更新事务互斥；Linux 经固定 polkit 权限入口复制到 root 私有缓存后复验，仅调用受限 apt 包安装。包助手、安装器与应用共用运行／维护门，不终止持有未保存文档的进程。尝试记录独立于偏好，重启还须核对完整提交、版本／build、运行路径及助手回执；accepted 不显示为安装成功。记录缺失或冲突进入恢复，不自动重试。
+独立 `xdnote-update-helper` 不依赖 Qt。它重新认证原始清单／签名、核对当前安装身份和单调版本，持有包文件并复核长度／SHA-256；只接受固定请求格式、事务和目录内文件。Windows 运行已认证的固定安装器并保留更新事务互斥；Linux 经固定 polkit 权限入口复制到 root 私有缓存后复验，仅调用受限 apt 包安装。Linux 重启以原用户身份执行并保留原进程的桌面会话变量，包括 Wayland 套接字名和会话类型。包助手、安装器与应用共用运行／维护门，不终止持有未保存文档的进程。尝试记录独立于偏好，重启还须核对完整提交、版本／build、运行路径及助手回执；accepted 不显示为安装成功。记录缺失或冲突进入恢复，不自动重试。
 
 工程打包入口 `scripts/build_linux_installer.py` 生成有实际归属、固定权限策略和保守维护门的 Ubuntu 22.04 amd64 开发包；`scripts/msix_package.py` 只在调用方显式提供 Identity／Publisher／PublisherDisplayName 及正确素材时调用 Windows SDK MakeAppx，生成未签名 MSIX，不签名、不安装或提交 Store。`scripts/check_msix.py` 仅在一次性 Windows CI 使用明确标记的工程身份检验 XML／资产与 MakeAppx，不能将它当作真实 Partner Center 身份。Store 偏好按实际 package family 分隔，包身份失败也与普通安装版分隔；真实并存／激活与默认应用保留仍需安装验收。
 

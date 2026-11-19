@@ -20,10 +20,26 @@ fn usage_gate() -> *mut std::ffi::c_void {
     assert!(!handle.is_null());
     handle
 }
+
+#[cfg(target_os = "linux")]
+fn record_wayland_restart() {
+    use std::{env, os::unix::net::UnixStream};
+    if env::var("XDG_SESSION_TYPE").as_deref() != Ok("wayland") || env::var_os("DISPLAY").is_some() { return; }
+    let (Some(runtime), Some(display)) = (env::var_os("XDG_RUNTIME_DIR"), env::var_os("WAYLAND_DISPLAY")) else { return; };
+    if UnixStream::connect(Path::new(&runtime).join(&display)).is_ok() {
+        fs::write(Path::new(RESTARTED).with_file_name("restarted-wayland.txt"), display.as_encoded_bytes()).unwrap();
+    }
+}
+
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--version-json") { println!("{IDENTITY}"); return; }
-    if args.get(1).map(String::as_str) != Some("--wait") { fs::write(RESTARTED, IDENTITY).unwrap(); return; }
+    if args.get(1).map(String::as_str) != Some("--wait") {
+        #[cfg(target_os = "linux")]
+        record_wayland_restart();
+        fs::write(RESTARTED, IDENTITY).unwrap();
+        return;
+    }
     let directory = Path::new(&args[2]);
     let _gate = usage_gate();
     fs::write(directory.join("parent-ready"), std::process::id().to_string()).unwrap();
