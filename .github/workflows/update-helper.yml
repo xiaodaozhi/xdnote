@@ -44,8 +44,10 @@ jobs:
       - name: Prepare the pinned native helper inputs
         if: '!inputs.polkit_probe'
         run: |
-          rustup toolchain install 1.99.0 --profile minimal
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt
           rustup run 1.99.0 cargo fetch --locked
+          rustup run 1.99.0 cargo fmt --all --check
+          rustup run 1.99.0 cargo test --locked --offline --package xdnote-update-helper --target-dir build/polkit-helper-tests
       - name: Prepare the native authentication probe driver
         if: inputs.scope == 'polkit'
         run: python -m pip install pexpect==4.9.0

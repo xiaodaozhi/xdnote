@@ -162,6 +162,12 @@ def run_installed_helper(password, report, authorize):
     old = config['old']
     new = config['new']
     install_root = Path(Path(LAUNCHER).read_text().split('"')[1]).parent.parent
+    parent_env = os.environ.copy()
+    desktop = report.get('graphicalAgent')
+    if desktop:
+        parent_env.pop('DISPLAY', None)
+        parent_env.pop('XAUTHORITY', None)
+        parent_env.update(WAYLAND_DISPLAY=desktop['waylandSocket'], XDG_SESSION_TYPE='wayland', XDG_CURRENT_DESKTOP='GNOME')
 
     def installed_identity():
         return json.loads(subprocess.check_output([LAUNCHER, '--version-json'], timeout=10))
@@ -176,7 +182,8 @@ def run_installed_helper(password, report, authorize):
         job.mkdir(mode=0o700)
         for name in (PACKAGE, 'release.json', 'release.json.sig'):
             shutil.copyfile(home / name, job / name)
-        parent = subprocess.Popen([LAUNCHER, '--wait', running], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        parent = subprocess.Popen([LAUNCHER, '--wait', running], env=parent_env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         transaction = secrets.token_hex(16)
         control = {'transaction': transaction}
         proceeding = False
@@ -225,6 +232,11 @@ def run_installed_helper(password, report, authorize):
                     time.sleep(.05)
                 if json.loads(restart.read_bytes()) != new:
                     raise RuntimeError('The installed fixture restarted with an unexpected identity')
+                if desktop:
+                    restart_socket = home / 'restarted-wayland.txt'
+                    if not restart_socket.is_file() or restart_socket.read_text() != desktop['waylandSocket']:
+                        raise RuntimeError('The restarted installation did not reconnect to its original Wayland socket')
+                    report['restartWaylandDisplay'] = restart_socket.read_text()
             report[mode] = {'receipt': receipt, 'exitStatus': status, 'identity': installed_identity()}
         finally:
             if not proceeding:
