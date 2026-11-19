@@ -4,7 +4,7 @@
 
 ## Linux／macOS 纯产品入口
 
-`scripts/product_deployment_unix.py` 从实际应用和资源助手重新收集产品依赖，不从含测试程序的诊断目录删减猜测。Linux 保留所需 xcb／Wayland、图形集成、输入法、图片、TLS 与系统主题插件；macOS 不扫描准入 QML，仅部署产品 `.app` 的 framework／插件，保留内部相对链接、目录内加载路径和 ad-hoc 完整性封印。Quick／QML、主题、调试工具、Qt Test、测试程序或 offscreen 插件进入产品目录时失败。此处禁止的主题指 QML 主题，原生系统样式仍按实际依赖保留。
+`scripts/product_deployment_unix.py` 从实际应用和资源助手重新收集产品依赖，不从含测试程序的诊断目录删减猜测。Linux 保留所需 xcb／Wayland、图形集成、输入法、图片、TLS 与系统主题插件。Wayland 平台插件与 `xdg-shell` 集成来自同一固定 Qt SDK，两者均须进入载荷。macOS 不扫描准入 QML，仅部署产品 `.app` 的 framework／插件，保留内部相对链接、目录内加载路径和 ad-hoc 完整性封印。Quick／QML、主题、调试工具、Qt Test、测试程序或 offscreen 插件进入产品目录时失败。此处禁止的主题指 QML 主题，原生系统样式仍按实际依赖保留。
 
 ```text
 python scripts/product_deployment_unix.py --build-dir <成功构建目录> --qt-prefix <本项目 Qt 6.8.2 目录> --destination <build 下的新产品目录>

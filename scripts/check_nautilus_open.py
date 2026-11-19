@@ -95,8 +95,11 @@ def wayland_document(sample, binary):
                     if Path(f'/proc/{pid}/exe').resolve(strict=True) != binary:
                         raise ValueError('The document window belongs to a different executable')
                     maps = Path(f'/proc/{pid}/maps').read_text()
-                    if not re.search(r'/platforms/libqwayland[^/\n ]*\.so', maps):
-                        raise ValueError('The installed application did not load a Wayland platform plugin')
+                    plugins = binary.parent.parent / 'plugins'
+                    platform = re.escape(str(plugins / 'platforms' / 'libqwayland'))
+                    shell = plugins / 'wayland-shell-integration' / 'libxdg-shell.so'
+                    if not re.search(platform + r'[^/\n ]*\.so', maps) or str(shell) not in maps:
+                        raise ValueError('The installed application did not load its Wayland platform and xdg-shell plugins')
                     return pid
         time.sleep(0.2)
     raise ValueError(f'No installed Wayland document window for {sample.name}')
@@ -170,7 +173,7 @@ def verify_wayland_default(binary, samples, result, product_pids):
         result[key] = sample.name
     if len(product_pids) != 1:
         raise ValueError('Nautilus default opening did not forward to the running instance')
-    result.update(sameWarmProcess=True, ok=True)
+    result.update(sameWarmProcess=True, installedWaylandPlugins=True, ok=True)
 
 
 def verify(binary, evidence, samples, backend):

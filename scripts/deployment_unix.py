@@ -104,14 +104,15 @@ def linux_stage(build, qt, destination, evidence, product=False):
     # Keep the native platform candidates and the diagnostic plugin. Other
     # device backends are outside this prototype's delivery scope.
     wanted = ("platforms/libqoffscreen.so", "platforms/libqxcb.so", "platforms/libqwayland-generic.so", "platforms/libqwayland-egl.so",
+              "wayland-shell-integration/libxdg-shell.so",
               "imageformats/libqjpeg.so", "imageformats/libqsvg.so", "iconengines/libqsvgicon.so")
     if product:
         wanted = tuple(name for name in wanted if "offscreen" not in name)
     for relative in wanted:
         source = qt / "plugins" / relative
         if not source.is_file():
-            if relative.startswith("platforms/"):
-                raise ValueError("Missing pinned platform plugin: " + relative)
+            if relative.startswith(("platforms/", "wayland-shell-integration/")):
+                raise ValueError("Missing required Qt display plugin: " + relative)
             continue
         target = plugins / relative
         target.parent.mkdir(parents=True, exist_ok=True)
