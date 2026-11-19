@@ -7,14 +7,15 @@ import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('directory', type=Path)
-parser.add_argument('operation', choices=('ready', 'attach', 'result', 'screenshot', 'quit'))
+parser.add_argument('operation', choices=('ready', 'attach', 'result', 'screenshot', 'quit', 'boot'))
 args = parser.parse_args()
 root = args.directory
-if args.operation in ('attach', 'screenshot', 'quit'):
+if args.operation in ('attach', 'screenshot', 'quit', 'boot'):
     command = {
         'attach': f'change transfer {root}/transfer.iso',
         'screenshot': f'screendump {root}/evidence/screen.ppm',
         'quit': 'quit',
+        'boot': 'sendkey ret',
     }[args.operation]
     with socket.socket(socket.AF_UNIX) as monitor:
         monitor.settimeout(2)
@@ -26,7 +27,7 @@ if args.operation in ('attach', 'screenshot', 'quit'):
             print(monitor.recv(4096).decode('ascii', errors='replace')[-650:])
 else:
     marker = {'ready':'XDNOTE_VM_READY ', 'result':'XDNOTE_VM_RESULT '}[args.operation]
-    deadline = time.monotonic() + (960 if args.operation == 'ready' else 540)
+    deadline = time.monotonic() + (1500 if args.operation == 'ready' else 540)
     while time.monotonic() < deadline:
         for line in (root / 'serial.log').read_text(errors='replace').splitlines():
             if line.startswith(marker):

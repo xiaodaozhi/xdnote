@@ -1,4 +1,4 @@
-name: Minimum Windows client acceptance
+name: Windows 11 x64 client acceptance
 
 on:
   workflow_dispatch:
@@ -113,10 +113,10 @@ jobs:
   minimum-client:
     if: inputs.scope == 'product'
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 65
     env:
       GH_TOKEN: ${{ github.token }}
-      XDNOTE_GUEST: ${{ github.workspace }}/build/xdnote-1809
+      XDNOTE_GUEST: ${{ github.workspace }}/build/xdnote-win11-x64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -124,7 +124,7 @@ jobs:
       - name: Set up disposable x64 KVM and one-use package encryption
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends age qemu-system-x86 qemu-utils xorriso mtools dosfstools
+          sudo apt-get install -y --no-install-recommends age qemu-system-x86 qemu-utils xorriso mtools dosfstools ovmf swtpm
           test -c /dev/kvm
           mkdir -p "$XDNOTE_GUEST/recipient"
           umask 077
@@ -133,11 +133,11 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-guest-recipient
-          path: ${{ github.workspace }}/build/xdnote-1809/recipient/public-key.txt
+          path: ${{ github.workspace }}/build/xdnote-win11-x64/recipient/public-key.txt
           if-no-files-found: error
           retention-days: 1
-      - name: Install Microsoft Windows 10 1809 x64 evaluation media in a networkless guest
-        timeout-minutes: 23
+      - name: Install Microsoft Windows 11 LTSC x64 evaluation media in a networkless guest
+        timeout-minutes: 35
         run: |
           bash experiments/windows-client-runner/boot.sh "$XDNOTE_GUEST"
           sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" ready
@@ -172,13 +172,16 @@ jobs:
           if test -d "$XDNOTE_GUEST/evidence"; then
             sudo chown -R "$(id -u):$(id -g)" "$XDNOTE_GUEST/evidence"
           fi
+          if test -f "$XDNOTE_GUEST/tpm.pid"; then
+            kill "$(cat "$XDNOTE_GUEST/tpm.pid")" || true
+          fi
           rm -f -- "$XDNOTE_GUEST/guest.key" "$XDNOTE_GUEST/payload.zip"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: windows-1809-client-evidence
+          name: windows-11-x64-client-evidence
           path: |
-            ${{ github.workspace }}/build/xdnote-1809/evidence/
-            ${{ github.workspace }}/build/xdnote-1809/serial.log
+            ${{ github.workspace }}/build/xdnote-win11-x64/evidence/
+            ${{ github.workspace }}/build/xdnote-win11-x64/serial.log
           if-no-files-found: warn
           retention-days: 7

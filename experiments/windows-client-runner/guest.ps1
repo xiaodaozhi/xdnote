@@ -12,13 +12,15 @@ $result = [ordered]@{ok=$false}
 try {
     $os = Get-CimInstance Win32_OperatingSystem
     $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+    $tpm = Get-Tpm
     $result.host = [ordered]@{
         caption=$os.Caption; version=$os.Version; build=$os.BuildNumber
         productType=$os.ProductType; architecture=$cpu.Architecture
-        session=(Get-Process -Id $PID).SessionId
+        session=(Get-Process -Id $PID).SessionId; secureBoot=(Confirm-SecureBootUEFI)
+        tpmPresent=$tpm.TpmPresent
     }
-    if ($os.ProductType -ne 1 -or $os.BuildNumber -ne '17763' -or $cpu.Architecture -ne 9 -or !$result.host.session) {
-        throw 'Expected an interactive x64 Windows 10 build 17763 client'
+    if ($os.ProductType -ne 1 -or $os.BuildNumber -ne '26100' -or $cpu.Architecture -ne 9 -or !$result.host.session -or !$result.host.secureBoot -or !$result.host.tpmPresent) {
+        throw 'Expected an interactive x64 Windows 11 build 26100 client with UEFI Secure Boot and TPM'
     }
     Send-Result 'XDNOTE_VM_READY' $result.host
     $deadline = [DateTime]::UtcNow.AddMinutes(25)
