@@ -19,6 +19,15 @@ DEPLOYMENT_NOTICE_PATHS = frozenset({
     "LICENSES/third-party/Qt-Tika-OGL-UK-3.0.txt",
     "LICENSES/third-party/QtGui-QIMAGETRANSFORM-LICENSE.txt",
     "LICENSES/third-party/QtSvg-XSVG-LICENSE.txt",
+    "LICENSES/third-party/QtGui-LibJPEG-turbo-LICENSE.txt",
+    "LICENSES/third-party/QtGui-LibJPEG-turbo-IJG.txt",
+    "LICENSES/third-party/QtGui-LibJPEG-turbo-COPYRIGHT.txt",
+    "LICENSES/third-party/QtGui-LibPNG-LICENSE.txt",
+    "LICENSES/third-party/QtGui-HarfBuzz-LICENSE.txt",
+    "LICENSES/third-party/QtGui-FreeType-LICENSE.txt",
+    "LICENSES/third-party/QtGui-FreeType-BDF-LICENSE.txt",
+    "LICENSES/third-party/QtGui-FreeType-PCF-LICENSE.txt",
+    "LICENSES/third-party/QtGui-FreeType-ZLIB-LICENSE.txt",
 })
 
 
