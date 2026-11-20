@@ -17,6 +17,8 @@ DEPLOYMENT_NOTICE_PATHS = frozenset({
     "LICENSES/third-party/Qt-PSL-MPL-2.0.txt",
     "LICENSES/third-party/Qt-Tika-NOTICE.txt",
     "LICENSES/third-party/Qt-Tika-OGL-UK-3.0.txt",
+    "LICENSES/third-party/QtGui-QIMAGETRANSFORM-LICENSE.txt",
+    "LICENSES/third-party/QtSvg-XSVG-LICENSE.txt",
 })
 
 
