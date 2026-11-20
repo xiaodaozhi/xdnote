@@ -25,6 +25,8 @@ using System.Runtime.InteropServices;
 public static class CandidateShell {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("shlwapi.dll", CharSet=CharSet.Unicode)]
     static extern int AssocQueryString(int flags, int query, string association, string verb, StringBuilder value, ref uint size);
     [DllImport("shell32.dll")] public static extern void SHChangeNotify(uint eventId, uint flags, IntPtr first, IntPtr second);
@@ -49,6 +51,11 @@ public static class CandidateShell {
         if (!ShellExecuteEx(ref request))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
     }
+    public static void Click(int x, int y) {
+        if (!SetCursorPos(x, y)) throw new InvalidOperationException("Cannot position pointer");
+        mouse_event(2, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(4, 0, 0, 0, UIntPtr.Zero);
+    }
 }
 '@
 
@@ -68,6 +75,13 @@ function Control($window, [string]$id, [string]$label) {
         if ($matches -and $element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
             return $element
         }
+    }
+}
+function Named-Control($window, [string]$id) {
+    $elements = $window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+    foreach ($element in $elements) {
+        $automationId = [string]$element.Current.AutomationId
+        if ($automationId -eq $id -or $automationId.EndsWith(".$id")) { return $element }
     }
 }
 function Invoke-Button($control) {
@@ -202,8 +216,17 @@ try {
     Use-Window $firstWindow
     [Windows.Forms.SendKeys]::SendWait('^,')
     $settings = Wait-For 'xdnote settings' { Window $app.Id (Characters @(0x8bbe,0x7f6e)) }
-    $registerLabel = 'Markdown ' + (Characters @(0x6253,0x5f00,0x65b9,0x5f0f))
-    Invoke-Button (Wait-For 'Register this copy' { Control $settings 'settingsRegisterTypes' $registerLabel })
+    Use-Window $settings
+    $register = Wait-For 'Register this copy' { Named-Control $settings 'settingsRegisterTypes' }
+    if ($register.Current.IsOffscreen -or !$register.Current.IsEnabled) { throw 'Registration button is outside the visible controls' }
+    $bounds = $register.Current.BoundingRectangle
+    $x = [int]($bounds.Left + $bounds.Width / 2)
+    $y = [int]($bounds.Top + $bounds.Height / 2)
+    $hit = [Windows.Automation.AutomationElement]::FromPoint([Windows.Point]::new($x, $y))
+    if ($hit.Current.ProcessId -ne $app.Id) {
+        throw 'Another window is covering the xdnote registration button'
+    }
+    [CandidateShell]::Click($x, $y)
     $registry = 'Registry::HKEY_CURRENT_USER\Software\Classes'
     $entry = Wait-For 'xdnote Markdown shell command' {
         $value = Get-Item -LiteralPath "$registry\xdnote.Markdown\shell\open\command" -ErrorAction SilentlyContinue
