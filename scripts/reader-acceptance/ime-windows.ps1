@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/capture-windows.ps1"
 if ($env:XDNOTE_DISPOSABLE_WINDOWS_GUEST -ne '1' -or
     (Get-Process -Id $PID).SessionId -eq 0) {
     throw 'This check requires the isolated interactive Windows client fixture.'
@@ -77,6 +78,7 @@ $report = [ordered]@{
 $log = Join-Path $evidence 'qt-input.log'
 $stdout = Join-Path $evidence 'xdnote-stdout.log'
 $app = $null
+$capture = $null
 
 function Find-Window([string]$prefix) {
     $condition = [System.Windows.Automation.PropertyCondition]::new(
@@ -185,8 +187,8 @@ function Wait-Value($editor, [string]$expected) {
 }
 
 function Read-InputLog {
-    if (!(Test-Path -LiteralPath $log)) { return '' }
-    return [IO.File]::ReadAllText($log, [Text.Encoding]::UTF8)
+    if (!$capture) { return '' }
+    return $capture.InputLog()
 }
 
 function Wait-InputLog([string]$pattern, [int]$offset) {
@@ -214,8 +216,8 @@ try {
     $env:APPDATA = "$evidence\profile\roaming"
     $env:LOCALAPPDATA = "$evidence\profile\local"
     New-Item -ItemType Directory -Path $env:APPDATA,$env:LOCALAPPDATA -Force | Out-Null
-    $app = Start-Process -FilePath $exe -WorkingDirectory $payload -PassThru `
-        -RedirectStandardError $log -RedirectStandardOutput $stdout
+    $capture = [XdnoteCapturedProcess]::Start($exe, '', $payload, $log, $stdout)
+    $app = $capture.Process
     $report.phase = 'workspace'
     $workspace = Wait-Window 'xdnote'
     Click-Control $workspace ([regex]::Unescape('\u6253\u5f00\u6587\u4ef6\u5939'))
@@ -307,13 +309,23 @@ try {
 } catch {
     $report.error = $_.Exception.Message
 } finally {
-    if ($app -and !$app.HasExited) {
-        [void]$app.CloseMainWindow()
-        if (!$app.WaitForExit(8000)) { Stop-Process -Id $app.Id -Force }
+    try {
+        if ($app -and !$app.HasExited) {
+            [void]$app.CloseMainWindow()
+            if (!$app.WaitForExit(8000)) { $app.Kill() }
+        }
+        if ($app) { $app.WaitForExit() }
+        $report.nativeInputEvents = @((Read-InputLog) -split "`r?`n" |
+            Where-Object { $_ -match 'composition.*(?:COMPSTR|RESULTSTR)|sending markup=' } |
+            Select-Object -First 80)
+    } catch {
+        $report.passed = $false
+        $cleanupError = $_.Exception.Message
+        if ($report.error) { $report.error += "; cleanup: $cleanupError" }
+        else { $report.error = "Cleanup or log capture failed: $cleanupError" }
+    } finally {
+        if ($capture) { $capture.Dispose() }
+        $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $evidence 'results.json') -Encoding UTF8
     }
-    $report.nativeInputEvents = @((Read-InputLog) -split "`r?`n" |
-        Where-Object { $_ -match 'composition.*(?:COMPSTR|RESULTSTR)|sending markup=' } |
-        Select-Object -First 80)
-    $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $evidence 'results.json') -Encoding UTF8
 }
 if (!$report.passed) { throw $report.error }

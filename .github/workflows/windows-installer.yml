@@ -144,16 +144,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Parse Windows IME acceptance scripts
+      - name: Check Windows IME acceptance scripts and live log capture
         if: inputs.scope == 'ime'
         shell: pwsh
         run: |
-          foreach ($path in @('experiments/windows-ime-acceptance/guest.ps1', 'scripts/reader-acceptance/ime-windows.ps1')) {
+          foreach ($path in @('experiments/windows-ime-acceptance/guest.ps1', 'scripts/reader-acceptance/ime-windows.ps1', 'scripts/reader-acceptance/capture-windows.ps1', 'scripts/reader-acceptance/test-capture-windows.ps1')) {
             $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors)
             if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; throw "Invalid PowerShell: $path" }
           }
+          ./scripts/reader-acceptance/test-capture-windows.ps1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -219,7 +220,7 @@ jobs:
           if ((Get-FileHash -LiteralPath $age).Hash.ToLowerInvariant() -ne 'f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7') { throw 'age package checksum differs' }
           Expand-Archive -LiteralPath $age -DestinationPath "$transfer/age"
           Compress-Archive -Path 'build/product-install/payload/*' -DestinationPath "$transfer/input/product.zip"
-          Copy-Item build/product-install/payload-inventory.json,scripts/reader-acceptance/ime-windows.ps1 -Destination "$transfer/input"
+          Copy-Item build/product-install/payload-inventory.json,scripts/reader-acceptance/ime-windows.ps1,scripts/reader-acceptance/capture-windows.ps1 -Destination "$transfer/input"
           git rev-parse HEAD | Set-Content -Encoding ascii "$transfer/input/source.txt"
           Compress-Archive -Path "$transfer/input/*" -DestinationPath "$transfer/payload.zip"
           $ageTool = (Get-ChildItem "$transfer/age" -Recurse -Filter 'age.exe' | Select-Object -First 1).FullName

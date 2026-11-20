@@ -53,7 +53,7 @@ try {
     $media = $volume.DeviceID + '\'
     New-Item -ItemType Directory -Path $root, "$root\scripts", "$root\build" | Out-Null
     Copy-Item -LiteralPath (Join-Path $media 'product.zip') -Destination "$root\product.zip"
-    Copy-Item -LiteralPath (Join-Path $media 'ime-windows.ps1') -Destination "$root\scripts"
+    Copy-Item -LiteralPath (Join-Path $media 'ime-windows.ps1'),(Join-Path $media 'capture-windows.ps1') -Destination "$root\scripts"
     Expand-Archive -LiteralPath "$root\product.zip" -DestinationPath "$root\payload"
     $audit = Get-Content -LiteralPath (Join-Path $media 'payload-inventory.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $source = (Get-Content -LiteralPath (Join-Path $media 'source.txt') -Raw).Trim()
