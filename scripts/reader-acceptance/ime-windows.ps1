@@ -75,6 +75,7 @@ $report = [ordered]@{
         undo=$false; redo=$false; selection=$false; diskUnchanged=$false
     }
     fixtureSha256Before=$before; fixtureSha256After=$null; nativeInputEvents=@()
+    inputModeAdjustment=$null
     windowsDuringFailure=@(); error=$null
 }
 $log = Join-Path $evidence 'qt-input.log'
@@ -220,8 +221,8 @@ function Read-InputLog {
     return $capture.InputLog()
 }
 
-function Wait-InputLog([string]$pattern, [int]$offset) {
-    $deadline = [DateTime]::UtcNow.AddSeconds(12)
+function Wait-InputLog([string]$pattern, [int]$offset, [int]$seconds = 12) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($seconds)
     do {
         $content = Read-InputLog
         if ($content.Length -ge $offset -and $content.Substring($offset) -match $pattern) { return }
@@ -299,6 +300,26 @@ try {
     Send-Keys $windowHandle @(0x11,0x23)
     $inputOffset = (Read-InputLog).Length
     foreach ($key in @(0x4e,0x49,0x48,0x41,0x4f)) { Send-Keys $windowHandle @($key) }
+    try { Wait-InputLog 'composition.*COMPSTR' $inputOffset 3 } catch {
+        $value = $editor.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
+        if ($value -cne ($original + 'nihao')) { throw }
+        # A registered Pinyin profile may still be in English mode. Undo only the
+        # observed literal probe, switch modes with Shift,
+        # and require native composition events for the actual acceptance.
+        for ($attempt = 0; $attempt -lt 5 -and $value -cne $original; ++$attempt) {
+            if (!$value.StartsWith($original, [StringComparison]::Ordinal) -or
+                !('nihao'.StartsWith($value.Substring($original.Length), [StringComparison]::Ordinal))) {
+                throw 'The English-mode probe did not undo within its owned text.'
+            }
+            Send-Keys $windowHandle @(0x11,0x5a)
+            $value = $editor.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
+        }
+        if ($value -cne $original) { throw 'The English-mode probe was not fully undone.' }
+        $report.inputModeAdjustment = 'undid literal nihao and pressed Shift'
+        Send-Keys $windowHandle @(0x10)
+        $inputOffset = (Read-InputLog).Length
+        foreach ($key in @(0x4e,0x49,0x48,0x41,0x4f)) { Send-Keys $windowHandle @($key) }
+    }
     Wait-InputLog 'composition.*COMPSTR' $inputOffset
     if ((Read-InputLog).Substring($inputOffset) -match 'composition.*RESULTSTR') {
         throw 'The input method committed before the explicit confirmation.'
