@@ -61,7 +61,7 @@ jobs:
   ime-client:
     if: inputs.scope == 'ime'
     runs-on: ubuntu-24.04
-    timeout-minutes: 70
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
       XDNOTE_GUEST: ${{ github.workspace }}/build/windows-ime-client
@@ -88,6 +88,9 @@ jobs:
         run: |
           bash experiments/windows-ime-acceptance/boot.sh "$XDNOTE_GUEST"
           sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" ready
+      - name: Install basic Chinese input and disconnect the guest
+        timeout-minutes: 20
+        run: sudo python3 experiments/windows-ime-acceptance/provision.py "$XDNOTE_GUEST"
       - name: Transfer the same-run product into the networkless client
         timeout-minutes: 25
         run: |

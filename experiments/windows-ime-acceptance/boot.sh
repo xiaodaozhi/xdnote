@@ -26,7 +26,10 @@ sudo qemu-system-x86_64 -daemonize -machine q35,accel=kvm,smm=on -cpu host -smp 
   -drive "if=pflash,format=raw,file=$case_dir/uefi-vars.fd" \
   -chardev "socket,id=tpm,path=$case_dir/tpm.sock" -tpmdev emulator,id=emulated-tpm,chardev=tpm \
   -device tpm-tis,tpmdev=emulated-tpm \
-  -vga std -display none -nic none -boot order=c,once=d \
+  -vga std -display none -boot order=c,once=d \
+  -device pcie-root-port,id=provision-port,chassis=7 \
+  -netdev user,id=provision-net \
+  -device e1000e,netdev=provision-net,bus=provision-port,id=provision-nic \
   -drive "file=$case_dir/windows.qcow2,format=qcow2,if=ide,index=0" \
   -drive "file=$case_dir/windows.iso,format=raw,media=cdrom,if=ide,index=1" \
   -drive "if=ide,index=2,media=cdrom,id=transfer" \

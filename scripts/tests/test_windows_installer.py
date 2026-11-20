@@ -91,6 +91,8 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertIn("if: inputs.scope == 'ime'", text)
         self.assertIn('windows-ime-encrypted-product', text)
         self.assertIn('windows-ime-client-evidence', text)
+        self.assertLess(text.index('provision.py "$XDNOTE_GUEST"'),
+                        text.index('Transfer the same-run product into the networkless client'))
         self.assertNotIn('contents: write', text)
         self.assertIn('test-windows-product-install.ps1', text)
         self.assertIn('scripts/distribution_audit.py', text)

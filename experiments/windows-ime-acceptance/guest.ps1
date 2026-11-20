@@ -25,6 +25,49 @@ try {
     }
     Send-Result 'XDNOTE_VM_READY' $hostInfo
     $result.host = $hostInfo
+    $result.phase = 'language-provisioning'
+    $capabilityName = 'Language.Basic~~~zh-CN~0.0.1.0'
+    $capability = Get-WindowsCapability -Online -Name $capabilityName
+    if ($capability.State.ToString() -ne 'Installed') {
+        $job = Start-Job -ScriptBlock {
+            Add-WindowsCapability -Online -Name 'Language.Basic~~~zh-CN~0.0.1.0' -ErrorAction Stop
+        }
+        try {
+            if (!(Wait-Job -Job $job -Timeout 900)) {
+                Stop-Job -Job $job
+                throw 'Timed out preparing the Chinese basic input capability.'
+            }
+            $installed = Receive-Job -Job $job -ErrorAction Stop
+            if ($installed.RestartNeeded) { throw 'The Chinese input capability requires a guest restart.' }
+        } finally {
+            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $capability = Get-WindowsCapability -Online -Name $capabilityName
+    if ($capability.State.ToString() -ne 'Installed') {
+        throw 'The Chinese basic input capability was not installed.'
+    }
+    $result.languageCapability = [ordered]@{
+        name=$capability.Name; state=$capability.State.ToString()
+        packages=@(Get-WindowsPackage -Online |
+            Where-Object { $_.PackageName -like 'Microsoft-Windows-LanguageFeatures-Basic-zh-cn-Package*' } |
+            ForEach-Object { [ordered]@{name=$_.PackageName; state=$_.PackageState.ToString()} })
+    }
+    $serial.WriteLine('XDNOTE_VM_STAGE detach-provisioning-network')
+    $deadline = [DateTime]::UtcNow.AddMinutes(3)
+    do {
+        $activeAdapters = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
+            Where-Object { $_.Status -eq 'Up' })
+        if (!$activeAdapters.Count) { break }
+        Start-Sleep -Seconds 2
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if ($activeAdapters.Count) { throw 'The provisioning network adapter is still active.' }
+    $result.networkless = [ordered]@{
+        activePhysicalAdapters=$activeAdapters.Count
+        languageCapability=$capability.State.ToString()
+    }
+    Send-Result 'XDNOTE_VM_OFFLINE' $result.networkless
+    $result.phase = 'language-preflight'
     $languages = New-WinUserLanguageList -Language 'en-US'
     $languages.Add('zh-CN')
     Set-WinUserLanguageList -LanguageList $languages -Force
@@ -55,6 +98,10 @@ try {
         Start-Sleep -Seconds 2
     } while ([DateTime]::UtcNow -lt $deadline)
     if (!$volume) { throw 'The read-only product transfer did not arrive.' }
+    if (@(Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
+        Where-Object { $_.Status -eq 'Up' }).Count) {
+        throw 'A physical network adapter became active before product transfer.'
+    }
     $media = $volume.DeviceID + '\'
     New-Item -ItemType Directory -Path $root, "$root\scripts", "$root\build" | Out-Null
     Copy-Item -LiteralPath (Join-Path $media 'product.zip') -Destination "$root\product.zip"
