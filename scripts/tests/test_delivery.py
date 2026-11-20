@@ -59,12 +59,21 @@ class DeliveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); base=root/'toolchain/share/doc/rust'; base.mkdir(parents=True)
             (base/'COPYRIGHT-library.html').write_bytes(b'original copyright')
-            config={'version':'fixture','compilerCommit':'abc','files':[{'path':'COPYRIGHT-library.html','sha256':hashlib.sha256(b'original copyright').hexdigest()}]}
+            crate = root / 'LICENSES/rust-runtime/example-1.0/LICENSE-MIT'
+            crate.parent.mkdir(parents=True)
+            crate.write_bytes(b'crate license')
+            config={'version':'fixture','compilerCommit':'abc','files':[{'path':'COPYRIGHT-library.html','sha256':hashlib.sha256(b'original copyright').hexdigest()}],
+                    'crateNotices':[{'files':[{'path':'example-1.0/LICENSE-MIT','sha256':hashlib.sha256(b'crate license').hexdigest()}]}]}
             def command(args,**kwargs): return str(root/'toolchain') if '--print' in args else 'commit-hash: abc\n'
-            with patch.object(runtime,'config',return_value=config),patch.object(runtime.subprocess,'check_output',side_effect=command):
+            with patch.object(runtime,'config',return_value=config),patch.object(runtime,'ROOT',root),patch.object(runtime.subprocess,'check_output',side_effect=command):
                 runtime.collect(root/'notices'); runtime.verify(root/'notices')
                 (root/'notices/COPYRIGHT-library.html').write_bytes(b'changed')
-                with self.assertRaisesRegex(ValueError,'digest'): runtime.verify(root/'notices')
+                with self.assertRaisesRegex(ValueError,'COPYRIGHT-library.html'): runtime.verify(root/'notices')
+                (root/'notices/COPYRIGHT-library.html').write_bytes(b'original copyright')
+                (root/'notices/crates/example-1.0/LICENSE-MIT').write_bytes(b'changed')
+                with self.assertRaisesRegex(ValueError,'LICENSE-MIT'): runtime.verify(root/'notices')
+                crate.write_bytes(b'changed at source')
+                with self.assertRaisesRegex(ValueError,'missing or changed'): runtime.collect(root/'new-notices')
 
     def fixture(self,root):
         payload=root/'payload'; payload.mkdir(); (payload/'xdnote.exe').write_bytes(pe()); (payload/'notice.txt').write_text('license')
