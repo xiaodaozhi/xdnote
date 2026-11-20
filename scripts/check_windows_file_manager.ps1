@@ -346,7 +346,7 @@ function Open-DocumentProcess([string]$Filename) {
     }
 }
 
-function Verify-ExplorerDocuments($Items) {
+function Verify-ExplorerDocuments($Items, $Result) {
     if (Owned-Processes) { throw 'An xdnote process was already running before the Explorer cold launch' }
     $processIds = @()
     foreach ($item in $Items) {
@@ -355,6 +355,13 @@ function Verify-ExplorerDocuments($Items) {
             Open-DocumentProcess ([IO.Path]::GetFileName($item.Path))
         }
         $processIds += $opened.Id
+        if ($Result) {
+            $Result.explorerOpens = @($Result.explorerOpens) + @(@{
+                document = [IO.Path]::GetFileName($item.Path)
+                processId = $opened.Id
+            })
+            Send-GuestStage ('Explorer document opened in installed process ' + $opened.Id)
+        }
     }
     if ($processIds[0] -ne $processIds[1]) { throw 'File Explorer warm opening did not reuse the installed process' }
     return $processIds[0]
@@ -429,7 +436,15 @@ function Select-DefaultInSettings($Result) {
     }
     if (!(Picker-IsForeground $row.Window)) { throw 'Settings lost the foreground before the .md selection' }
     $Result.settingsTypeRow = $row.Control.Current.Name
-    Activate-FocusedSettingsControl $row.Window $row.Control
+    # Invoke the XAML button directly when the native provider supports it.
+    # Only use a key after Windows reports focus on the exact control.
+    $invoke = $null
+    if ($row.Control.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
+        $invoke.Invoke()
+        Send-GuestStage ('Windows Settings row invoked: ' + $Result.settingsTypeRow)
+    } else {
+        Activate-FocusedSettingsControl $row.Window $row.Control
+    }
     $chooser = Wait-Result 'the Settings default-app chooser with a confirmation control' { Settings-Chooser }
     Send-GuestStage ('Settings chooser visible: ' + $chooser.Confirm.Current.Name)
     $Result.settingsChooserWindow = $chooser.Window.Current.Name
@@ -461,6 +476,18 @@ function Select-DefaultInSettings($Result) {
     Activate-FocusedSettingsControl $confirm.Window $confirm.Confirm
     $Result.defaultSelectionSurface = 'Windows Settings Default apps, registeredAppUser=xdnote'
     Send-GuestStage 'Settings default-app confirmation clicked'
+}
+
+function Confirm-XdnoteDefault([string]$BeforeChoice, $Result) {
+    $progId = Wait-Result 'the selected default executable and explicit ProgID' {
+        $current = Read-MdUserChoice
+        if ($current -and $current -ne $BeforeChoice -and [ExplorerAcceptance]::MarkdownHandler() -eq $exe) {
+            return $current
+        }
+    }
+    $Result.selectedDefault = 'xdnote.exe'
+    $Result.selectedProgId = $progId
+    Send-GuestStage ('Windows explicit default read back: ' + $progId)
 }
 
 function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe, [string]$ExecutablePath='') {
@@ -602,6 +629,15 @@ try {
         [ExplorerAcceptance]::SHChangeNotify(0x08000000,0,[IntPtr]::Zero,[IntPtr]::Zero)
     }
 
+    if ($PickerOnly) {
+        # Let Settings complete its own activation and chooser before creating
+        # an Explorer window that could take the foreground from Settings.
+        $beforeChoice = Read-MdUserChoice
+        $result.pickerStage = 'xdnote'
+        Select-DefaultInSettings $result
+        Confirm-XdnoteDefault $beforeChoice $result
+    }
+
     $shell = New-Object -ComObject Shell.Application
     $shell.Explore($files)
     $explorer = Wait-Result 'the owned File Explorer folder' {
@@ -618,29 +654,26 @@ try {
     if ($cold.Path -ne (Join-Path $files $samples[0]) -or $warm.Path -ne (Join-Path $files $samples[1])) {
         throw 'File Explorer did not resolve both owned document items'
     }
-    if ([ExplorerAcceptance]::MarkdownHandler() -eq $exe) {
-        $openedId = Verify-ExplorerDocuments @($cold,$warm)
-        $result.inferredHandlerDocuments = $samples
-        $result.inferredHandlerSameProcess = $true
-        Stop-Process -Id $openedId
-        Wait-Process -Id $openedId -Timeout 10 -ErrorAction SilentlyContinue
-        if (!$PickerOnly) {
+    if (!$PickerOnly) {
+        if ([ExplorerAcceptance]::MarkdownHandler() -eq $exe) {
+            $openedId = Verify-ExplorerDocuments @($cold,$warm)
+            $result.inferredHandlerDocuments = $samples
+            $result.inferredHandlerSameProcess = $true
+            Stop-Process -Id $openedId
+            Wait-Process -Id $openedId -Timeout 10 -ErrorAction SilentlyContinue
             $result.pickerStage = 'Notepad'
             Select-DefaultInProperties $cold 'Notepad' 'notepad.exe' $notepad
             $null = Wait-Result 'the selected fallback editor' {
                 if ([IO.Path]::GetFileName([ExplorerAcceptance]::MarkdownHandler()) -eq 'notepad.exe') { $true }
             }
         }
+        $beforeChoice = Read-MdUserChoice
+        $result.pickerStage = 'xdnote'
+        Select-DefaultInProperties $cold 'xdnote' 'xdnote.exe' $exe
+        Confirm-XdnoteDefault $beforeChoice $result
     }
-    $beforeChoice = Read-MdUserChoice
-    $result.pickerStage = 'xdnote'
-    if ($PickerOnly) { Select-DefaultInSettings $result }
-    else { Select-DefaultInProperties $cold 'xdnote' 'xdnote.exe' $exe }
-    $null = Wait-Result 'the selected default executable' {
-        if ([ExplorerAcceptance]::MarkdownHandler() -eq $exe -and (Read-MdUserChoice) -ne $beforeChoice) { $true }
-    }
-    $result.selectedDefault = 'xdnote.exe'
-    $null = Verify-ExplorerDocuments @($cold,$warm)
+    $result.explorerOpens = @()
+    $null = Verify-ExplorerDocuments @($cold,$warm) $result
     $result.documents = $samples
     $result.sameProcess = $true
     $result.ok = $true
