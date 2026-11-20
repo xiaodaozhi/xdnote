@@ -75,7 +75,7 @@ $report = [ordered]@{
         undo=$false; redo=$false; selection=$false; diskUnchanged=$false
     }
     fixtureSha256Before=$before; fixtureSha256After=$null; nativeInputEvents=@()
-    inputModeAdjustment=$null
+    inputModeAdjustment=$null; nativeControl=$null
     windowsDuringFailure=@(); error=$null
 }
 $log = Join-Path $evidence 'qt-input.log'
@@ -231,6 +231,75 @@ function Wait-InputLog([string]$pattern, [int]$offset, [int]$seconds = 12) {
     throw "The native Qt input log did not contain $pattern."
 }
 
+function Pump-Control([int]$milliseconds) {
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($milliseconds)
+    do {
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 50
+    } while ([DateTime]::UtcNow -lt $deadline)
+}
+
+function Test-NativePinyinControl {
+    # Independent standard Windows edit control: this diagnoses the guest, not xdnote.
+    $form = [System.Windows.Forms.Form]::new()
+    $form.Text = 'xdnote IME environment probe'
+    $form.Width = 520
+    $form.Height = 180
+    $form.TopMost = $true
+    $field = [System.Windows.Forms.TextBox]::new()
+    $field.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $field.Multiline = $true
+    $form.Controls.Add($field)
+    try {
+        $form.Show()
+        Pump-Control 400
+        $element = [System.Windows.Automation.AutomationElement]::FromHandle($form.Handle)
+        $handle = Activate-Window $element
+        [void]$field.Focus()
+        Pump-Control 250
+        if (!$field.Focused -or [XdnoteImeInput]::GetForegroundWindow() -ne $handle) {
+            throw 'The independent native text control did not receive focus.'
+        }
+        [uint32]$owner = 0
+        $thread = [XdnoteImeInput]::GetWindowThreadProcessId($handle, [ref]$owner)
+        if ($owner -ne $PID) { throw 'The native control is not owned by the fixture.' }
+        for ($attempt = 0; $attempt -lt 3; ++$attempt) {
+            $hkl = [XdnoteImeInput]::GetKeyboardLayout($thread).ToInt64()
+            if (($hkl -band 0xffff) -eq 0x0804) { break }
+            Send-Keys $handle @(0x5b,0x20)
+            Pump-Control 600
+        }
+        if (($hkl -band 0xffff) -ne 0x0804) { throw 'The native control did not switch to Chinese.' }
+        $observations = @()
+        for ($attempt = 0; $attempt -lt 2; ++$attempt) {
+            if ($attempt) {
+                $field.Clear()
+                & $FocusSignal 'pinyin-shift'
+                Pump-Control 800
+            }
+            if (!$field.Focused -or [XdnoteImeInput]::GetForegroundWindow() -ne $handle) {
+                throw 'The native control lost focus during the comparison.'
+            }
+            & $FocusSignal 'pinyin-nihao'
+            Pump-Control 2500
+            & $FocusSignal 'pinyin-commit'
+            Pump-Control 1800
+            $observations += $field.Text
+            if ($field.Text -match '[\u3400-\u9fff]') { break }
+        }
+        & $FocusSignal 'snapshot'
+        Pump-Control 1000
+        return [ordered]@{
+            keyboardLayout=('0x{0:X}' -f $hkl); values=$observations
+            convertedToChinese=($field.Text -match '[\u3400-\u9fff]')
+        }
+    } finally {
+        $form.Close()
+        $form.Dispose()
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+}
+
 try {
     $tips = @(foreach ($language in (Get-WinUserLanguageList)) {
         if ($language.LanguageTag -match '^zh-(Hans-)?CN$') { $language.InputMethodTips }
@@ -379,6 +448,10 @@ try {
     if ($app -and !$app.HasExited) {
         try { $report.windowsDuringFailure = @(Read-WindowDiagnostics) } catch { }
         try { & $FocusSignal 'snapshot'; Start-Sleep -Milliseconds 1000 } catch { }
+    }
+    if ($report.phase -eq 'microsoft-pinyin' -and $report.error -match 'composition\.\*COMPSTR') {
+        try { $report.nativeControl = Test-NativePinyinControl }
+        catch { $report.nativeControl = [ordered]@{error=$_.Exception.Message} }
     }
 } finally {
     try {

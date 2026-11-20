@@ -34,10 +34,9 @@ try {
     $result.capabilities = @(Get-WindowsCapability -Online |
         Where-Object { $_.Name -like 'Language.Basic~~~zh-CN~*' } |
         ForEach-Object { [ordered]@{name=$_.Name; state=$_.State.ToString()} })
-    $service = Get-CimInstance Win32_Service -Filter "Name='TabletInputService'"
-    $result.textInputService = if ($service) {
-        [ordered]@{name=$service.Name; startMode=$service.StartMode; state=$service.State}
-    } else { $null }
+    $result.textInputServices = @(Get-CimInstance Win32_Service |
+        Where-Object { $_.Name -in @('TabletInputService', 'TextInputManagementService') } |
+        ForEach-Object { [ordered]@{name=$_.Name; startMode=$_.StartMode; state=$_.State} })
     $result.ctfmonInSession = @(Get-Process ctfmon -ErrorAction SilentlyContinue |
         Where-Object { $_.SessionId -eq $hostInfo.session }).Count -gt 0
     $tips = @($result.languages | Where-Object { $_.tag -match '^zh-(Hans-)?CN$' } |
