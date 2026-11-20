@@ -1,0 +1,5 @@
+name: Encrypted candidate input
+description: Reserve and finalize a scoped Actions artifact for a single sealed candidate.
+runs:
+  using: node24
+  main: index.js

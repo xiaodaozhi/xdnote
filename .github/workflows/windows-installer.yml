@@ -1,141 +1,111 @@
-name: Windows installer verification
-
+name: Exact MSIX client acceptance
 on:
   workflow_dispatch:
     inputs:
-      scope:
-        description: 'fixtures checks engine guards; product builds and tests the actual installer payload'
-        type: choice
-        options: [fixtures, product]
-        default: fixtures
-  workflow_call:
-    inputs:
-      scope:
+      recipient:
+        description: Public recipient for the encrypted upload receipt
         type: string
-        default: fixtures
+        required: true
+      transfer_size:
+        description: Exact byte length of the encrypted ZIP transfer
+        type: string
+        required: true
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  actions: read
 
 jobs:
-  native-installer:
-    if: inputs.scope != 'product'
-    runs-on: windows-2022
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - name: Check installer input and workflow contracts
-        run: python -m unittest discover -s scripts/tests -v
-      - name: Prepare pinned official installer compiler
-        shell: pwsh
-        run: ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
-      - name: Extract pinned runtime and original agreement without installation
-        run: python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
-      - name: Compile isolated installer fixtures
-        run: python scripts/installer_fixtures.py --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --output build/installer-smoke
-      - name: Validate native install upgrade uninstall and candidate registration
-        shell: pwsh
-        run: ./scripts/test-windows-installer-native.ps1
-      - name: Upload bounded installer evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: windows-installer-evidence
-          path: |
-            build/installer-smoke/*.json
-            build/installer-smoke/*.log
-            build/installer-smoke/*.iss
-            build/installer-smoke/*.files
-          retention-days: 7
-          if-no-files-found: warn
-  product-installer:
-    if: inputs.scope == 'product'
-    runs-on: windows-2022
-    timeout-minutes: 40
+  client:
+    if: github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/codex/issue-156-client-build1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        client: ['1809', '26100']
     env:
-      PYTHONUTF8: '1'
-      XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf
+      GH_TOKEN: ${{ github.token }}
+      CLIENT: ${{ matrix.client }}
+      CASE_DIR: ${{ github.workspace }}/build/client
+      RECEIPT_RECIPIENT: ${{ inputs.recipient }}
+      TRANSFER_SIZE: ${{ inputs.transfer_size }}
+      MSIX_SHA: 2bb2b3da8ef8597a6a1f030572fbcc6908e4af280a8d32507899b49f69da5f00
+      PRODUCT_COMMIT: 75a4872eb5aae6c059b6787041119cb2fb849489
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Prepare network-isolated x64 guest tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age qemu-system-x86 qemu-utils xorriso mtools dosfstools ovmf swtpm
+          test -c /dev/kvm
+          umask 077
+          mkdir -p "$CASE_DIR/receipt"
+          age-keygen -o "$CASE_DIR/client.key"
+          age-keygen -y "$CASE_DIR/client.key" > "$CASE_DIR/recipient.txt"
+      - name: Allocate an encrypted Actions transfer
+        uses: ./experiments/windows-client-candidate/transport
+        env:
+          TRANSFER_MODE: offer
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          python-version: '3.12'
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
-        with:
-          toolchain: '1.99.0'
-      - name: Prepare locked build tools
-        run: python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
-      - name: Check input and workflow contracts
-        run: python -m unittest discover -s scripts/tests -v
-      - name: Prepare application-local diagnostic font
-        run: python scripts/prepare_ci_font.py --output build/test-fonts
-      - name: Prepare pinned Qt and editor inputs
+          name: client-offer-${{ matrix.client }}
+          path: build/client/receipt/offer.age
+          retention-days: 1
+          if-no-files-found: error
+      - name: Boot the matching Microsoft x64 evaluation client
+        timeout-minutes: 32
         run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          python scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64
-          python scripts/desktop.py prepare --download
-      - name: Build the actual product and diagnostic entry points
-        shell: pwsh
+          root=experiments/windows-client-candidate
+          bash "$root/boot-$CLIENT.sh" "$CASE_DIR"
+          sudo python3 "$root/collect.py" "$CASE_DIR" ready
+      - name: Wait for the locally supplied sealed MSIX
+        uses: ./experiments/windows-client-candidate/transport
+        env:
+          TRANSFER_MODE: finalize
+      - name: Verify and attach the original candidate read-only
         run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
-          python scripts/desktop.py build --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
-          ctest --test-dir build/desktop-admission -R '^installation_guard$' --output-on-failure
-          python scripts/check_product_linkage.py --executable build/desktop-admission/xdnote.exe
-      - name: Prepare pinned installer tools and runtime materials
-        shell: pwsh
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
-          python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
-      - name: Seal actual product payload and bind license evidence
-        run: |
-          $PSNativeCommandUseErrorActionPreference = $true
-          python scripts/deployment_inventory.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --destination build/product-install/staging --redist-dir build/toolchain/windows-runtime/runtime
-          python scripts/installer_payload.py --source build/product-install/staging --audit build/product-install/staging-evidence/inventory.json --destination build/product-install/payload --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/payload-inventory.json
-          python scripts/distribution_audit.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --qt-prefix build/Qt/6.8.2/msvc2022_64 --report build/product-install/license-evidence.json
-          python scripts/compatibility_audit.py --root build/product-install/payload --report build/product-install/compatibility.json
-          python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-windows-x86_64-dev.zip
-          python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
-      - name: Cross-check live Rust ranges in the packaged Windows executable
-        run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/product-install/payload/xdnote.exe --output build/product-install/linkage.json
-      - name: Check unsigned Store package layout with disposable identity
-        run: python scripts/check_msix.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --payload build/product-install/payload --audit build/product-install/payload-inventory.json --work-dir build/product-install/msix-fixture
-      - name: Validate actual native package roundtrip
-        shell: pwsh
-        run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
-      - name: Validate visible setup, File Explorer and its default application picker
-        if: runner.environment == 'github-hosted'
-        timeout-minutes: 8
-        shell: powershell
-        run: ./scripts/check_windows_file_manager.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -EvidenceDirectory "$PWD/build/product-install/explorer-evidence"
-      - name: Upload product integration evidence only
+          root=experiments/windows-client-candidate
+          mkdir "$CASE_DIR/download" "$CASE_DIR/input"
+          for attempt in {1..15}; do
+            if gh run download "$GITHUB_RUN_ID" --name "client-input-$CLIENT" --dir "$CASE_DIR/download" --repo "$GITHUB_REPOSITORY" 2>/dev/null; then
+              break
+            fi
+            sleep 4
+          done
+          test -s "$CASE_DIR/download/payload.age"
+          age --decrypt --identity "$CASE_DIR/client.key" --output "$CASE_DIR/input/candidate.msix" "$CASE_DIR/download/payload.age"
+          rm -- "$CASE_DIR/client.key"
+          printf '%s  %s\n' "$MSIX_SHA" "$CASE_DIR/input/candidate.msix" | sha256sum -c
+          printf '%s\n%s\n%s\n' "$MSIX_SHA" "$PRODUCT_COMMIT" "$CLIENT" > "$CASE_DIR/input/identity.txt"
+          xorriso -as mkisofs -R -J -V XDNOTE_TESTS -o "$CASE_DIR/transfer.iso" "$CASE_DIR/input"
+          sudo python3 "$root/collect.py" "$CASE_DIR" attach
+      - name: Verify launch, save and file associations on the client
+        timeout-minutes: 10
+        run: sudo python3 experiments/windows-client-candidate/collect.py "$CASE_DIR" result
+      - name: Stop the guest and keep only evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        run: |
+          root=experiments/windows-client-candidate
+          if test -S "$CASE_DIR/monitor"; then
+            sudo python3 "$root/collect.py" "$CASE_DIR" screenshot || true
+            sudo python3 "$root/collect.py" "$CASE_DIR" quit || true
+          fi
+          if test -f "$CASE_DIR/tpm.pid"; then
+            kill "$(cat "$CASE_DIR/tpm.pid")" || true
+          fi
+          if test -d "$CASE_DIR/evidence"; then
+            sudo chown -R "$(id -u):$(id -g)" "$CASE_DIR/evidence"
+          fi
+          rm -f -- "$CASE_DIR/client.key" "$CASE_DIR/input/candidate.msix"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
         with:
-          name: windows-product-install-evidence
+          name: client-evidence-${{ matrix.client }}
           path: |
-            build/product-install/*.json
-            build/product-install/*.sha256
-            build/product-install/staging-evidence/
-            build/product-install/roundtrip-evidence/
-            build/product-install/explorer-evidence/
-            build/product-install/msix-fixture/*.json
-            build/product-install/msix-fixture/*.log
-            build/desktop-admission/build-identity.json
-            build/test-fonts/receipt.json
-            build/test-fonts/Noto-OFL.txt
+            build/client/evidence/
+            build/client/serial.log
           retention-days: 7
           if-no-files-found: warn
