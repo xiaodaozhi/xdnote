@@ -4,11 +4,14 @@ from collections import defaultdict
 import csv
 import io
 import json
+import os
 from pathlib import Path
 import re
 import socket
 import subprocess
 import time
+
+OCR_ENV = {**os.environ, "OMP_THREAD_LIMIT": "1", "OMP_NUM_THREADS": "1"}
 
 
 class Console:
@@ -62,7 +65,7 @@ def read_screen(console, path):
     if not (900 <= width <= 1920 and 650 <= height <= 1200):
         raise RuntimeError(f"Unexpected test desktop: {width}x{height}")
     tsv = subprocess.check_output(["tesseract", str(path), "stdout", "-l", "eng", "--psm", "11", "tsv"],
-                                  text=True, stderr=subprocess.DEVNULL, timeout=8)
+                                  text=True, stderr=subprocess.DEVNULL, timeout=24, env=OCR_ENV)
     rows = defaultdict(list)
     for word in csv.DictReader(io.StringIO(tsv), delimiter="\t", quoting=csv.QUOTE_NONE):
         if word["text"].strip():
@@ -136,7 +139,7 @@ def confirm_point(frame, size, heading, spans):
     if candidate:
         position, image = candidate
         label = subprocess.check_output(["tesseract", "stdin", "stdout", "-l", "eng", "--psm", "7"],
-                                        input=image, stderr=subprocess.DEVNULL, timeout=8)
+                                        input=image, stderr=subprocess.DEVNULL, timeout=18, env=OCR_ENV)
         if normalize(label.decode()) == "set default":
             return position
     return None
@@ -173,7 +176,12 @@ def run(root):
             return
         if "XDNOTE_VM_RESULT " in serial_text:
             return
-        size, spans = read_screen(console, frame)
+        try:
+            size, spans = read_screen(console, frame)
+        except subprocess.TimeoutExpired:
+            print("OCR took too long while the guest was busy; capturing a new frame", flush=True)
+            time.sleep(2)
+            continue
         if time.monotonic() - last_action < 2:
             time.sleep(0.6)
             continue
@@ -189,7 +197,12 @@ def run(root):
                     console.click(choice, size)
                     selected = choice
                 else:
-                    confirm = confirm_point(frame, size, heading, spans)
+                    try:
+                        confirm = confirm_point(frame, size, heading, spans)
+                    except subprocess.TimeoutExpired:
+                        print("Button OCR took too long; retrying on the next frame", flush=True)
+                        time.sleep(2)
+                        continue
                     if not confirm:
                         time.sleep(1)
                         continue
