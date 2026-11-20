@@ -251,6 +251,9 @@ private slots:
 #if defined(Q_OS_MACOS) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
     void guardedCocoaAccessibility();
 #endif
+#if defined(Q_OS_LINUX) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
+    void guardedAtspiAccessibility();
+#endif
     void singleEditorReparentPreservesAccessibilityAndUndo_data();
     void singleEditorReparentPreservesAccessibilityAndUndo();
     void previewParsesMarkdownAndBlocksResources();
@@ -576,6 +579,7 @@ void QtDocumentSpikeTests::guardedAccessibilityPreservesReadOnlyAndUndo()
     QCOMPARE(accessible->text(QAccessible::Value), edited);
     QVERIFY(editor->setProperty("readOnly", true));
     QVERIFY(accessible->state().readOnly);
+    QVERIFY(!accessible->editableTextInterface());
     accessible->setText(QAccessible::Value, QStringLiteral("不应写入"));
     QCOMPARE(accessible->text(QAccessible::Value), edited);
     document->undo();
@@ -612,6 +616,15 @@ void QtDocumentSpikeTests::guardedAccessibilityPreservesReadOnlyAndUndo()
     document->redo();
     QCOMPARE(accessible->text(QAccessible::Value), replacement);
 
+    auto *editing = accessible->editableTextInterface();
+    QVERIFY(editing);
+    editing->deleteText(2, 3); // Do not split the UTF-16 surrogate pair.
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+    editing->replaceText(0, 2, QStringLiteral("新"));
+    QCOMPARE(accessible->text(QAccessible::Value), QStringLiteral("新🙂\n下一行"));
+    document->undo();
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+
     editor->forceActiveFocus();
     QInputMethodEvent preedit(QStringLiteral("pin"), {});
     QCoreApplication::sendEvent(editor, &preedit);
@@ -641,6 +654,75 @@ void QtDocumentSpikeTests::guardedCocoaAccessibility()
     window.show();
     QTRY_VERIFY(window.isExposed());
     verifyGuardedCocoaAccessibility(window, *editor);
+}
+#endif
+
+#if defined(Q_OS_LINUX) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
+void QtDocumentSpikeTests::guardedAtspiAccessibility()
+{
+    if (QGuiApplication::platformName() != QStringLiteral("xcb"))
+        QSKIP("The AT-SPI probe requires a private X11 and D-Bus session.");
+    const QString clientScript = qEnvironmentVariable("XDNOTE_ATSPI_CLIENT");
+    QVERIFY(QFileInfo(clientScript).isFile());
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.setTitle(QStringLiteral("xdnote AT-SPI research fixture"));
+    window.resize(400, 240);
+    auto *editor = qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true));
+    QVERIFY(editor);
+    auto *accessible = QAccessible::queryAccessibleInterface(editor);
+    QVERIFY(accessible && isGuardedQuickAccessibility(accessible));
+    editor->setText(QStringLiteral("old document"));
+    QPointer<QTextDocument> original = quickDocument(editor)->textDocument();
+    window.show();
+    QTRY_VERIFY(window.isExposed());
+
+    QProcess client;
+    client.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    client.start(QStringLiteral("/usr/bin/python3"), {clientScript,
+        QString::number(QCoreApplication::applicationPid())});
+    QVERIFY(client.waitForStarted(5000));
+    const auto finish = qScopeGuard([&] {
+        if (client.state() != QProcess::NotRunning) {
+            client.kill();
+            client.waitForFinished(5000);
+        }
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 15000);
+    QCOMPARE(client.readLine().trimmed(), QByteArray("READY"));
+
+    auto replacement = std::make_shared<QTextDocument>();
+    replacement->setPlainText(QStringLiteral("new document"));
+    QTextCursor tail(replacement.get());
+    tail.movePosition(QTextCursor::End);
+    tail.insertText(QStringLiteral("!"));
+    QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
+    QVERIFY(original.isNull());
+    editor->select(0, 3);
+    QCOMPARE(editor->selectedText(), QStringLiteral("new"));
+    QCOMPARE(client.write("CHECK\n"), qint64(6));
+    QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 10000);
+    QCOMPARE(client.readLine().trimmed(), QByteArray("SELECTION_CHECKED"));
+
+    editor->setReadOnly(true);
+    QCOMPARE(client.write("READONLY\n"), qint64(9));
+    QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 10000);
+    QCOMPARE(client.readLine().trimmed(), QByteArray("READ_ONLY_CHECKED"));
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("new document!"));
+    QVERIFY(replacement->isUndoAvailable());
+
+    editor->setReadOnly(false);
+    QCOMPARE(client.write("WRITE\n"), qint64(6));
+    QTRY_COMPARE_WITH_TIMEOUT(client.state(), QProcess::NotRunning, 10000);
+    QCOMPARE(client.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(client.exitCode(), 0);
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("written through AT-SPI"));
+    replacement->undo();
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("new document!"));
+    replacement->undo();
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("new document"));
 }
 #endif
 
