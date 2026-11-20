@@ -1,4 +1,4 @@
-name: Windows installer verification
+name: Windows 11 x64 client acceptance
 
 on:
   workflow_dispatch:
@@ -16,47 +16,13 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  native-installer:
-    if: inputs.scope != 'product'
-    runs-on: windows-2022
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.12'
-      - name: Check installer input and workflow contracts
-        run: python -m unittest discover -s scripts/tests -v
-      - name: Prepare pinned official installer compiler
-        shell: pwsh
-        run: ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/build/toolchain/installer"
-      - name: Extract pinned runtime and original agreement without installation
-        run: python scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
-      - name: Compile isolated installer fixtures
-        run: python scripts/installer_fixtures.py --toolchain build/toolchain/installer --runtime build/toolchain/windows-runtime/runtime --output build/installer-smoke
-      - name: Validate native install upgrade uninstall and candidate registration
-        shell: pwsh
-        run: ./scripts/test-windows-installer-native.ps1
-      - name: Upload bounded installer evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: windows-installer-evidence
-          path: |
-            build/installer-smoke/*.json
-            build/installer-smoke/*.log
-            build/installer-smoke/*.iss
-            build/installer-smoke/*.files
-          retention-days: 7
-          if-no-files-found: warn
   product-installer:
     if: inputs.scope == 'product'
     runs-on: windows-2022
@@ -67,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ed6ac069a0c289f8c852bbc4641f8adb32169e3a
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -109,33 +76,114 @@ jobs:
           python scripts/compatibility_audit.py --root build/product-install/payload --report build/product-install/compatibility.json
           python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-windows-x86_64-dev.zip
           python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
-      - name: Cross-check live Rust ranges in the packaged Windows executable
-        run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/product-install/payload/xdnote.exe --output build/product-install/linkage.json
-      - name: Check unsigned Store package layout with disposable identity
-        run: python scripts/check_msix.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --payload build/product-install/payload --audit build/product-install/payload-inventory.json --work-dir build/product-install/msix-fixture
-      - name: Validate actual native package roundtrip
+      - name: Transfer the exact sealed package to the isolated x64 guest
         shell: pwsh
-        run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
-      - name: Validate visible setup, File Explorer and its default application picker
-        if: runner.environment == 'github-hosted'
-        timeout-minutes: 8
-        shell: powershell
-        run: ./scripts/check_windows_file_manager.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -EvidenceDirectory "$PWD/build/product-install/explorer-evidence"
-      - name: Upload product integration evidence only
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $transfer = Join-Path $env:RUNNER_TEMP 'xdnote-client-transfer'
+          New-Item -ItemType Directory -Path "$transfer/input","$transfer/recipient","$transfer/encrypted" | Out-Null
+          $recipient = Join-Path $transfer 'recipient/public-key.txt'
+          $PSNativeCommandUseErrorActionPreference = $false
+          for ($i = 0; $i -lt 120 -and !(Test-Path $recipient); $i++) {
+            & gh run download $env:GITHUB_RUN_ID --name windows-guest-recipient --dir "$transfer/recipient" --repo $env:GITHUB_REPOSITORY 2>$null
+            if (!(Test-Path $recipient)) { Start-Sleep -Seconds 5 }
+          }
+          $PSNativeCommandUseErrorActionPreference = $true
+          if (!(Test-Path $recipient)) { throw 'The same-run guest recipient did not arrive' }
+          $key = (Get-Content -LiteralPath $recipient -Raw).Trim()
+          if ($key -notmatch '^age1[0-9a-z]{58}$') { throw 'Unexpected guest recipient' }
+          $age = Join-Path $transfer 'age.zip'
+          curl.exe --fail --location --max-time 60 --retry 2 --silent --show-error https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip --output $age
+          if ((Get-FileHash -LiteralPath $age).Hash.ToLowerInvariant() -ne 'f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7') { throw 'age package checksum differs' }
+          Expand-Archive -LiteralPath $age -DestinationPath "$transfer/age"
+          Copy-Item build/product-install/xdnote-dev-setup.exe,build/product-install/payload-inventory.json,build/product-install/installer-report.json,scripts/check_windows_file_manager.ps1 -Destination "$transfer/input"
+          $env:GITHUB_RUN_ID | Set-Content -Encoding ascii "$transfer/input/run-id.txt"
+          git rev-parse HEAD | Set-Content -Encoding ascii "$transfer/input/source.txt"
+          Compress-Archive -Path "$transfer/input/*" -DestinationPath "$transfer/payload.zip"
+          $age_tool = (Get-ChildItem "$transfer/age" -Recurse -Filter 'age.exe' | Select-Object -First 1).FullName
+          & $age_tool --recipient $key --output "$transfer/encrypted/payload.age" "$transfer/payload.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows-product-install-evidence
+          name: windows-guest-encrypted-payload
+          path: ${{ runner.temp }}/xdnote-client-transfer/encrypted/payload.age
+          if-no-files-found: error
+          retention-days: 1
+  minimum-client:
+    if: inputs.scope == 'product'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ github.token }}
+      XDNOTE_GUEST: ${{ github.workspace }}/build/xdnote-win11-x64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up disposable x64 KVM and one-use package encryption
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age qemu-system-x86 qemu-utils xorriso mtools dosfstools ovmf swtpm
+          test -c /dev/kvm
+          mkdir -p "$XDNOTE_GUEST/recipient"
+          umask 077
+          age-keygen -o "$XDNOTE_GUEST/guest.key"
+          age-keygen -y "$XDNOTE_GUEST/guest.key" > "$XDNOTE_GUEST/recipient/public-key.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-guest-recipient
+          path: ${{ github.workspace }}/build/xdnote-win11-x64/recipient/public-key.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Install Microsoft Windows 11 LTSC x64 evaluation media in a networkless guest
+        timeout-minutes: 35
+        run: |
+          bash experiments/windows-client-runner/boot.sh "$XDNOTE_GUEST"
+          sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" ready
+      - name: Attach the exact locally decrypted installer to the Windows client
+        timeout-minutes: 17
+        run: |
+          set -euo pipefail
+          mkdir "$XDNOTE_GUEST/incoming" "$XDNOTE_GUEST/payload"
+          for delay in {1..120}; do
+            if gh run download "$GITHUB_RUN_ID" --name windows-guest-encrypted-payload --dir "$XDNOTE_GUEST/incoming" --repo "$GITHUB_REPOSITORY" 2>/dev/null; then
+              break
+            fi
+            sleep 5
+          done
+          test -s "$XDNOTE_GUEST/incoming/payload.age"
+          age --decrypt --identity "$XDNOTE_GUEST/guest.key" --output "$XDNOTE_GUEST/payload.zip" "$XDNOTE_GUEST/incoming/payload.age"
+          rm -- "$XDNOTE_GUEST/guest.key"
+          unzip -q "$XDNOTE_GUEST/payload.zip" -d "$XDNOTE_GUEST/payload"
+          cp scripts/check_windows_file_manager.ps1 "$XDNOTE_GUEST/payload/check_windows_file_manager.ps1"
+          xorriso -as mkisofs -R -J -V XDNOTE_TESTS -o "$XDNOTE_GUEST/transfer.iso" "$XDNOTE_GUEST/payload"
+          sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" attach
+      - name: Select the default app in Settings and verify cold and warm Explorer entry
+        timeout-minutes: 10
+        run: |
+          sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" result
+      - name: Stop the guest and preserve bounded diagnostics
+        if: always()
+        run: |
+          if test -S "$XDNOTE_GUEST/monitor"; then
+            sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" wake || true
+            sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" screenshot || true
+            sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" quit || true
+          fi
+          if test -d "$XDNOTE_GUEST/evidence"; then
+            sudo chown -R "$(id -u):$(id -g)" "$XDNOTE_GUEST/evidence"
+          fi
+          if test -f "$XDNOTE_GUEST/tpm.pid"; then
+            kill "$(cat "$XDNOTE_GUEST/tpm.pid")" || true
+          fi
+          rm -f -- "$XDNOTE_GUEST/guest.key" "$XDNOTE_GUEST/payload.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: windows-11-x64-client-evidence
           path: |
-            build/product-install/*.json
-            build/product-install/*.sha256
-            build/product-install/staging-evidence/
-            build/product-install/roundtrip-evidence/
-            build/product-install/explorer-evidence/
-            build/product-install/msix-fixture/*.json
-            build/product-install/msix-fixture/*.log
-            build/desktop-admission/build-identity.json
-            build/test-fonts/receipt.json
-            build/test-fonts/Noto-OFL.txt
-          retention-days: 7
+            ${{ github.workspace }}/build/xdnote-win11-x64/evidence/
+            ${{ github.workspace }}/build/xdnote-win11-x64/serial.log
           if-no-files-found: warn
+          retention-days: 7
