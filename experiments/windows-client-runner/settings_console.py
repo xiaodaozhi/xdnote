@@ -2,6 +2,7 @@
 import argparse
 from collections import defaultdict
 import csv
+import hashlib
 import io
 import json
 import os
@@ -12,6 +13,14 @@ import subprocess
 import time
 
 OCR_ENV = {**os.environ, "OMP_THREAD_LIMIT": "1", "OMP_NUM_THREADS": "1"}
+# Text masks matched in the 1280x800 Win11 26100 picker from runs
+# 44664522433, 44672323214 and 44676418431. Dark text is extracted
+# independently of its light selection background; the button text is white.
+PICKER_TEXT_MASKS = {
+    "title": ((438, 174, 735, 201), "ef693f449fd86fd347dbbb967ce91b3ea40c84d3df127440e252c75d4286fcf6"),
+    "xdnote": ((483, 476, 641, 503), "5678248edc737b6bb8a0d54410514e17bbe8919853858511424df86603f1d560"),
+    "confirm": ((707, 609, 780, 630), "0f351eca0944dffbc381480425a831eec378418967933c2f66d5c4f011ffedea"),
+}
 
 
 class Console:
@@ -56,14 +65,22 @@ def normalize(text):
     return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
-def read_screen(console, path):
-    console.call("screendump", filename=str(path))
+def load_frame(path):
     with path.open("rb") as raw:
         if raw.readline().strip() != b"P6":
             raise RuntimeError("Expected QMP PPM screenshot")
         width, height = map(int, raw.readline().split())
+        if raw.readline().strip() != b"255":
+            raise RuntimeError("Expected 8-bit QMP desktop pixels")
+        pixels = raw.read()
     if not (900 <= width <= 1920 and 650 <= height <= 1200):
         raise RuntimeError(f"Unexpected test desktop: {width}x{height}")
+    if len(pixels) != width * height * 3:
+        raise RuntimeError("Incomplete QMP screenshot")
+    return (width, height), pixels
+
+
+def read_text(path):
     tsv = subprocess.check_output(["tesseract", str(path), "stdout", "-l", "eng", "--psm", "11", "tsv"],
                                   text=True, stderr=subprocess.DEVNULL, timeout=24, env=OCR_ENV)
     rows = defaultdict(list)
@@ -81,7 +98,24 @@ def read_screen(console, path):
                 left, right = int(first["left"]), int(last["left"]) + int(last["width"])
                 y = int(first["top"]) + int(first["height"]) // 2
                 spans.append((label, ((left + right) // 2, y)))
-    return (width, height), spans
+    return spans
+
+
+def match_picker(size, pixels):
+    if size != (1280, 800):
+        return {}
+    matches = {}
+    for name, (rect, digest) in PICKER_TEXT_MASKS.items():
+        x0, y0, x1, y1 = rect
+        mask = bytearray()
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                offset = 3 * (y * size[0] + x)
+                r, g, b = pixels[offset:offset + 3]
+                mask.append(int(r > 155 and g > 190 and b > 200) if name == "confirm" else int(max(r, g, b) < 100))
+        if hashlib.sha256(mask).hexdigest() == digest:
+            matches[name] = ((x0 + x1) // 2, (y0 + y1) // 2)
+    return matches
 
 
 def point(spans, label, valid=lambda _: True):
@@ -176,14 +210,31 @@ def run(root):
             return
         if "XDNOTE_VM_RESULT " in serial_text:
             return
+        if time.monotonic() - last_action < 2:
+            time.sleep(0.6)
+            continue
+        console.call("screendump", filename=str(frame))
+        size, pixels = load_frame(frame)
+        known = match_picker(size, pixels)
+        if "title" in known and "confirm" in known and confirms < 3:
+            if selected:
+                record("set-default", known["confirm"])
+                console.click(known["confirm"], size)
+                selected = None
+                confirms += 1
+                last_action = time.monotonic()
+                continue
+            if "xdnote" in known:
+                record("select-xdnote", known["xdnote"])
+                console.click(known["xdnote"], size)
+                selected = known["xdnote"]
+                last_action = time.monotonic()
+                continue
         try:
-            size, spans = read_screen(console, frame)
+            spans = read_text(frame)
         except subprocess.TimeoutExpired:
             print("OCR took too long while the guest was busy; capturing a new frame", flush=True)
             time.sleep(2)
-            continue
-        if time.monotonic() - last_action < 2:
-            time.sleep(0.6)
             continue
         heading = point(spans, "select a default app for md files")
         if not heading:
