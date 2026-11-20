@@ -48,7 +48,11 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class ExplorerAcceptance {
+    [StructLayout(LayoutKind.Sequential)]
+    struct ScreenPoint { public int X; public int Y; }
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(ScreenPoint point);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string className, string title);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
@@ -67,10 +71,16 @@ public static class ExplorerAcceptance {
         return edit != IntPtr.Zero && SendMessage(edit, 0x000C, IntPtr.Zero, path) != IntPtr.Zero;
     }
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out ScreenPoint point);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("shell32.dll")] public static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
     public static void ScrollDown() { mouse_event(0x0800, 0, 0, unchecked((uint)-720), UIntPtr.Zero); }
+    public static bool CursorTargets(IntPtr window, int x, int y) {
+        ScreenPoint cursor;
+        return GetCursorPos(out cursor) && cursor.X == x && cursor.Y == y &&
+            GetAncestor(WindowFromPoint(cursor), 2) == window && GetForegroundWindow() == window;
+    }
     [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode)]
     static extern int AssocQueryString(uint flags, uint kind, string extension, string verb, StringBuilder path, ref uint size);
     public static string MarkdownHandler() {
@@ -193,9 +203,12 @@ function Read-PickerPoint($Picker, [string[]]$Labels) {
     }
 }
 
-function Press-PickerPoint($Picker, $Point) {
+function Press-PickerPoint($Picker, $Point, [switch]$RequireWindowAtPoint) {
     if (!(Picker-IsForeground $Picker) -or ![ExplorerAcceptance]::SetCursorPos($Point.X,$Point.Y)) {
         throw 'The system picker lost the foreground before selection'
+    }
+    if ($RequireWindowAtPoint -and ![ExplorerAcceptance]::CursorTargets([IntPtr]$Picker.Current.NativeWindowHandle, $Point.X, $Point.Y)) {
+        throw 'The foreground system picker does not own the confirmed cursor position'
     }
     [ExplorerAcceptance]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
     [ExplorerAcceptance]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
@@ -388,12 +401,26 @@ function Settings-Foreground([switch]$IncludePicker) {
 
 function Settings-Chooser {
     $window = Settings-Foreground -IncludePicker
-    if (!$window) { return }
-    foreach ($name in 'Set default','OK','Always') {
-        $control = Named-Control $window $name
-        if ($control -and !$control.Current.IsOffscreen -and !$control.Current.BoundingRectangle.IsEmpty) {
-            return [pscustomobject]@{Window=$window; Confirm=$control}
+    if ($window) {
+        foreach ($name in 'Set default','OK','Always') {
+            $control = Named-Control $window $name
+            if ($control -and !$control.Current.IsOffscreen -and !$control.Current.BoundingRectangle.IsEmpty) {
+                return [pscustomobject]@{Window=$window; Confirm=$control; Label=$name; Surface='UI Automation'}
+            }
         }
+    }
+    # The Windows 11 choice window can be unnamed and expose no UIA children.
+    $window = Foreground
+    if (!$window -or $window.Current.NativeWindowHandle -eq 0) { return }
+    $owner = Get-Process -Id $window.Current.ProcessId -ErrorAction SilentlyContinue
+    if (!$owner -or !$owner.Path -or !$owner.Path.StartsWith($env:SystemRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { return }
+    $rect = $window.Current.BoundingRectangle
+    if ($rect.Width -lt 300 -or $rect.Width -gt 700 -or $rect.Height -lt 300 -or $rect.Height -gt 800) { return }
+    $heading = Read-PickerPoint $window @('Select a default app for .md files','Select a default app for')
+    if (!$heading -or $heading.Y -gt $rect.Y + $rect.Height/3) { return }
+    $point = Read-PickerPoint $window @('Set default')
+    if ($point -and $point.Y -gt $rect.Y + $rect.Height*2/3) {
+        return [pscustomobject]@{Window=$window; ConfirmPoint=$point; Label=$point.Label; Surface='Windows OCR'}
     }
 }
 
@@ -446,8 +473,9 @@ function Select-DefaultInSettings($Result) {
         Activate-FocusedSettingsControl $row.Window $row.Control
     }
     $chooser = Wait-Result 'the Settings default-app chooser with a confirmation control' { Settings-Chooser }
-    Send-GuestStage ('Settings chooser visible: ' + $chooser.Confirm.Current.Name)
+    Send-GuestStage ('Settings chooser visible: ' + $chooser.Label + ' via ' + $chooser.Surface)
     $Result.settingsChooserWindow = $chooser.Window.Current.Name
+    $Result.settingsChooserSurface = $chooser.Surface
     $Result.settingsChooserControls = @($chooser.Window.FindAll([Windows.Automation.TreeScope]::Descendants,
         [Windows.Automation.Condition]::TrueCondition) | Where-Object { !$_.Current.IsOffscreen } |
         Select-Object -First 100 | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
@@ -466,14 +494,17 @@ function Select-DefaultInSettings($Result) {
         }
     }
     if (!(Picker-IsForeground $chooser.Window)) { throw 'Settings lost the foreground before choosing xdnote' }
-    if ($choice.Control) { Press-Control $choice.Control } else { Press-PickerPoint $chooser.Window $choice.Point }
+    if ($choice.Control) { Press-Control $choice.Control }
+    else { Press-PickerPoint $chooser.Window $choice.Point -RequireWindowAtPoint }
     Send-GuestStage 'Settings chooser xdnote item selected'
     $confirm = Wait-Result 'the enabled confirmation in Settings' {
         $current = Settings-Chooser
-        if ($current -and $current.Window.Equals($chooser.Window) -and $current.Confirm.Current.IsEnabled) { return $current }
+        if ($current -and $current.Window.Equals($chooser.Window) -and
+            ($current.ConfirmPoint -or ($current.Confirm -and $current.Confirm.Current.IsEnabled))) { return $current }
     }
     if (!(Picker-IsForeground $confirm.Window)) { throw 'Settings lost the foreground before confirmation' }
-    Activate-FocusedSettingsControl $confirm.Window $confirm.Confirm
+    if ($confirm.ConfirmPoint) { Press-PickerPoint $confirm.Window $confirm.ConfirmPoint -RequireWindowAtPoint }
+    else { Activate-FocusedSettingsControl $confirm.Window $confirm.Confirm }
     $Result.defaultSelectionSurface = 'Windows Settings Default apps, registeredAppUser=xdnote'
     Send-GuestStage 'Settings default-app confirmation clicked'
 }
