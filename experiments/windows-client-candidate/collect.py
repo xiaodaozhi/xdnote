@@ -29,7 +29,7 @@ if args.operation in ('attach', 'screenshot', 'quit', 'boot', 'wake'):
 else:
     marker = {'ready':'XDNOTE_VM_READY ', 'result':'XDNOTE_VM_RESULT '}[args.operation]
     newest_stage = None
-    deadline = time.monotonic() + (1500 if args.operation == 'ready' else 540)
+    deadline = time.monotonic() + (2700 if args.operation == 'ready' else 540)
     while time.monotonic() < deadline:
         for line in (root / 'serial.log').read_text(errors='replace').splitlines():
             if line.startswith(marker):

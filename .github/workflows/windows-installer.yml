@@ -19,7 +19,7 @@ jobs:
   client:
     if: github.repository == 'xiaodaozhi/xdnote' && github.ref == 'refs/heads/codex/issue-156-client-build1'
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
@@ -56,7 +56,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       - name: Boot the matching Microsoft x64 evaluation client
-        timeout-minutes: 32
+        timeout-minutes: 52
         run: |
           root=experiments/windows-client-candidate
           bash "$root/boot-$CLIENT.sh" "$CASE_DIR"

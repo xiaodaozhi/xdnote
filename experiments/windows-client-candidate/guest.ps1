@@ -23,6 +23,8 @@ using System;
 using System.Text;
 using System.Runtime.InteropServices;
 public static class CandidateShell {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr FindWindow(string className, string title);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
@@ -55,6 +57,9 @@ public static class CandidateShell {
         if (!SetCursorPos(x, y)) throw new InvalidOperationException("Cannot position pointer");
         mouse_event(2, 0, 0, 0, UIntPtr.Zero);
         mouse_event(4, 0, 0, 0, UIntPtr.Zero);
+    }
+    public static bool DesktopIsReady() {
+        return IsWindowVisible(FindWindow("Shell_TrayWnd", null));
     }
 }
 '@
@@ -135,6 +140,12 @@ try {
     Copy-Item -LiteralPath ($vol.DeviceID + '\candidate.msix') -Destination $package
     $result.packageSha256 = (Get-FileHash -LiteralPath $package).Hash.ToLowerInvariant()
     if ($result.packageSha256 -ne $expected[0]) { throw 'Original package digest differs' }
+    Stage 'waiting for the first-logon overlay to clear'
+    Start-Sleep -Seconds 90
+    [void](Wait-For 'the Windows desktop and taskbar' {
+        [CandidateShell]::DesktopIsReady() -and !(Get-Process -Name 'FirstLogonAnim' -ErrorAction SilentlyContinue)
+    })
+    $result.checks.desktopReady = $true
 
     # Seed a recoverable default through ordinary per-user class registration.
     # The guest has no user data and protected UserChoice is never written.
