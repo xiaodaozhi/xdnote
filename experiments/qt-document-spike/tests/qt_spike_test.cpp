@@ -660,8 +660,10 @@ void QtDocumentSpikeTests::guardedCocoaAccessibility()
 #if defined(Q_OS_LINUX) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
 void QtDocumentSpikeTests::guardedAtspiAccessibility()
 {
-    if (QGuiApplication::platformName() != QStringLiteral("xcb"))
-        QSKIP("The AT-SPI probe requires a private X11 and D-Bus session.");
+    const auto platform = QGuiApplication::platformName();
+    if (platform != QStringLiteral("xcb") && !platform.startsWith(QStringLiteral("wayland")))
+        QSKIP("The AT-SPI probe requires a private X11 or Wayland and D-Bus session.");
+    qInfo() << "AT-SPI fixture platform:" << platform;
     const QString clientScript = qEnvironmentVariable("XDNOTE_ATSPI_CLIENT");
     QVERIFY(QFileInfo(clientScript).isFile());
     QAccessible::installFactory(guardedQuickAccessibilityFactory);

@@ -59,7 +59,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get -o Acquire::Retries=2 update
-          sudo apt-get -o Acquire::Retries=2 install -y --no-install-recommends at-spi2-core python3-pyatspi dbus-x11 xauth xvfb
+          sudo apt-get -o Acquire::Retries=2 install -y --no-install-recommends at-spi2-core python3-pyatspi dbus-x11 xauth xvfb openbox gnome-shell gnome-settings-daemon xwayland
       - name: Run the guarded Quick editor through a separate AT-SPI client
         if: runner.os == 'Linux'
         env:
@@ -68,6 +68,20 @@ jobs:
           QT_LINUX_ACCESSIBILITY_ALWAYS_ON: '1'
           XDNOTE_ATSPI_CLIENT: ${{ github.workspace }}/experiments/qt-document-spike/tests/atspi_client.py
         run: dbus-run-session -- xvfb-run -a build/qt-document-spike/qt_document_spike_tests guardedAtspiAccessibility
+      - name: Run the same AT-SPI client through native GNOME Wayland
+        if: runner.os == 'Linux'
+        run: bash experiments/qt-document-spike/tests/atspi-wayland.sh
+      - name: Preserve native Wayland accessibility evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qt-document-wayland-atspi-${{ matrix.os }}
+          path: |
+            build/qt-document-spike/wayland-atspi/*.log
+            build/qt-document-spike/wayland-atspi/qtest.txt
+            build/qt-document-spike/wayland-atspi/environment.txt
+          if-no-files-found: warn
+          retention-days: 7
       - name: Run the guarded Quick editor through the Cocoa accessibility bridge
         if: runner.os == 'macOS'
         env:
