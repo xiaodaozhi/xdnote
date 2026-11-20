@@ -118,7 +118,13 @@ function Association-State {
     $state = [ordered]@{}
     foreach ($extension in '.md', '.markdown', '.txt') {
         $choice = Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\$extension\UserChoice" -ErrorAction SilentlyContinue
-        $state[$extension] = [ordered]@{ handler = [CandidateShell]::Handler($extension); userChoice = $choice.ProgId; userChoiceHash = $choice.Hash }
+        $class = Get-Item -LiteralPath "Registry::HKEY_CURRENT_USER\Software\Classes\$extension" -ErrorAction SilentlyContinue
+        $state[$extension] = [ordered]@{
+            handler = [CandidateShell]::Handler($extension)
+            userChoice = $choice.ProgId
+            userChoiceHash = $choice.Hash
+            perUserClass = $(if ($class) { $class.GetValue('') })
+        }
     }
     return $state
 }
@@ -268,11 +274,11 @@ try {
     }
     $result.associationCommand = $entry
     $result.checks.markdownAssociation = $true
+    $result.defaultImmediatelyAfter = Association-State
+    Start-Sleep -Seconds 3
     $result.defaultAfter = Association-State
-    if (($result.defaultBefore | ConvertTo-Json -Compress) -ne ($result.defaultAfter | ConvertTo-Json -Compress)) {
-        throw 'xdnote changed a pre-existing default'
-    }
-    $result.checks.defaultAppPreserved = $true
+    $result.checks.defaultAppPreserved =
+        ($result.defaultBefore | ConvertTo-Json -Compress) -eq ($result.defaultAfter | ConvertTo-Json -Compress)
 
     Stage 'opening a second Markdown file via the registered shell class'
     [CandidateShell]::OpenWithXdnote($second)
@@ -280,7 +286,8 @@ try {
     if ((Get-FileHash -LiteralPath $second).Hash -ne $secondDigest) { throw 'Opening the second sample changed its contents' }
     $result.checks.shellOpenSameProcess = $true
     $result.scope = 'original unsigned MSIX registration attempt and extracted payload on the native client'
-    $result.ok = $true
+    $result.ok = $result.checks.defaultAppPreserved
+    if (!$result.ok) { $result.error = 'Effective default association differs after candidate registration' }
 } catch {
     $result.error = $_.Exception.Message
     $result.errorLine = $_.InvocationInfo.ScriptLineNumber
