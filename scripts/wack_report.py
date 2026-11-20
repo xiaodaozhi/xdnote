@@ -17,7 +17,10 @@ def summarize(path):
         if not name or name in names or optional not in ('TRUE', 'FALSE') or not result:
             raise ValueError('Incomplete or duplicate WACK check')
         names.add(name)
-        checks.append({'name': name, 'optional': optional == 'TRUE', 'result': result})
+        check = {'name': name, 'optional': optional == 'TRUE', 'result': result}
+        if name == 'Blocked executables':
+            check['messages'] = [message.attrib['TEXT'] for message in test.findall('MESSAGES/MESSAGE')]
+        checks.append(check)
     if report.tag != 'REPORT' or not any(not check['optional'] for check in checks):
         raise ValueError('WACK report lacks mandatory checks')
 

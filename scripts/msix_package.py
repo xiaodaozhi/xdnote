@@ -62,6 +62,17 @@ def render_assets(build, qt, output, log):
             environment, log, 30)
 
 
+def verify_unsigned_archive(output, xml):
+    with zipfile.ZipFile(output) as archive:
+        names = archive.namelist()
+        if archive.read('AppxManifest.xml') != xml or 'AppxSignature.p7x' in names:
+            raise ValueError('Unsigned package identity differs')
+        executables = sorted(name for name in names if name.casefold().endswith('.exe'))
+        if executables != ['xdnote.exe']:
+            raise ValueError(f'MSIX must contain only xdnote.exe as an executable: {executables}')
+        return executables
+
+
 def build(payload, audit, identity, build_number, assets, output):
     verify_payload(payload, audit); xml = manifest(identity, build_number)
     if output.exists(): raise ValueError('Preserve an existing package')
@@ -79,10 +90,10 @@ def build(payload, audit, identity, build_number, assets, output):
         shutil.copy2(source, target / source.name)
     (stage / 'AppxManifest.xml').write_bytes(xml)
     subprocess.run([str(sdk_tool()), 'pack', '/d', str(stage), '/p', str(output), '/o'], check=True)
-    with zipfile.ZipFile(output) as archive:
-        if archive.read('AppxManifest.xml') != xml or 'AppxSignature.p7x' in archive.namelist(): raise ValueError('Unsigned package identity differs')
+    executables = verify_unsigned_archive(output, xml)
     return {'ok': True, 'signed': False, 'storeIdentityVerified': False, 'storeSubmitted': False, 'file': output.name, 'sha256': digest(output),
-            'identity': identity, 'build': build_number, 'sourceIdentity': audit.get('buildIdentity'), 'releaseReady': False}
+            'identity': identity, 'build': build_number, 'sourceIdentity': audit.get('buildIdentity'), 'releaseReady': False,
+            'executables': executables}
 
 
 if __name__ == '__main__':

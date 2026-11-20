@@ -135,7 +135,7 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 
 正式 MSIX 的三个包身份字段按 Partner Center 的产品标识页原样记录到 JSON，键为 `name`、`publisher` 和 `publisherDisplayName`。GitHub Actions 仓库变量 `XDNOTE_MSIX_IDENTITY_JSON` 保存该配置，本地持久副本位于主工作区的 `build/release/partner-center/msix-identity.json`，用 `scripts/msix_package.py --identity` 显式传入。受控的 Actions 打包任务通过环境变量接收配置并写入其 `build/` 下的输入文件，避免将值展开到脚本或输出到日志。工程 MSIX 检查继续使用夹具身份。字段来源见[微软的产品标识说明](https://learn.microsoft.com/en-us/windows/apps/publish/view-app-identity-details)。
 
-[Windows Store candidate](../../.github/workflows/store-candidate.yml) 在 `main` 上按显式发行身份封存未签名的 x64 MSIX，并将 Windows App Certification Kit 运行记录绑定到提交和原包 SHA-256。工作流读取 WACK 的 XML 结果，要求必检项无失败且 DPI 感知检查通过，保留可选检查与警告。工件只携带报告及以调用方公开 age 地址加密的包，明文在本机解密后复核摘要。商店认证、安装验收和最终许可仍分别核对。
+[Windows Store candidate](../../.github/workflows/store-candidate.yml) 在 `main` 上按显式发行身份封存未签名的 x64 MSIX，核对包内唯一的 `.exe` 为 `xdnote.exe`，并将 Windows App Certification Kit 运行记录绑定到提交和原包 SHA-256。工作流读取 WACK 的 XML 结果，要求必检项无失败且 DPI 感知检查通过，保留可选检查与警告。`Blocked executables` 的每条原始命中随结果记录，结合封存包内的 PE 导入、数据位置和实际调用入口核对。工件只携带报告及以调用方公开 age 地址加密的包，明文在本机解密后复核摘要。商店认证、安装验收和最终许可仍分别核对。
 
 `scripts/release_candidate.py` 只为六个实际资产生成既定 schema-1 未签名清单，要求同一 clean 发行身份及逐包摘要／长度验证记录，不创建 tag、Release 或签名。Windows 数字版本、macOS CFBundleVersion 和 Debian 包版本分别绑定生成身份；当前默认仍没有正式发行 build。所有包型继续需要各自最低系统、真实升级／恢复和最终许可核验。
 
