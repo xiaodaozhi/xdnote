@@ -44,7 +44,7 @@ public static class CandidateShell {
         return AssocQueryString(0, 2, extension, "open", value, ref size) == 0 ? value.ToString() : "";
     }
     public static void OpenWithXdnote(string file) {
-        var request = new ShellExecuteInfo { Mask = 1, Verb = "open", File = file, Show = 1, ClassName = "xdnote.Markdown" };
+        var request = new ShellExecuteInfo { Mask = 0x101, Verb = "open", File = file, Show = 1, ClassName = "xdnote.Markdown" };
         request.Size = Marshal.SizeOf(request);
         if (!ShellExecuteEx(ref request))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
@@ -58,12 +58,14 @@ function Window([int]$owner, [string]$title) {
     $filter = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty, $owner)
     $root.FindAll($scope, $filter) | Where-Object { $_.Current.Name -like "*$title*" -and !$_.Current.IsOffscreen } | Select-Object -First 1
 }
-function Control($window, [string]$id, [string]$label, $type) {
+function Control($window, [string]$id, [string]$label) {
     $descendants = [Windows.Automation.TreeScope]::Descendants
-    $kind = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, $type)
-    $elements = $window.FindAll($descendants, $kind)
+    $elements = $window.FindAll($descendants, [Windows.Automation.Condition]::TrueCondition)
     foreach ($element in $elements) {
-        if ($element.Current.IsEnabled -and ($element.Current.AutomationId -eq $id -or $element.Current.AutomationId.EndsWith(".$id") -or $element.Current.Name -eq $label)) {
+        $automationId = [string]$element.Current.AutomationId
+        $matches = ($automationId -eq $id -or $automationId.EndsWith(".$id") -or $element.Current.Name -eq $label)
+        $invoke = $null
+        if ($matches -and $element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
             return $element
         }
     }
@@ -174,7 +176,7 @@ try {
     $firstWindow = Wait-For 'first Markdown document window' { Window $app.Id 'Cold Open Test' }
     $result.checks.coldOpen = $true
     $editText = Characters @(0x7f16,0x8f91)
-    Invoke-Button (Wait-For 'Edit control' { Control $firstWindow 'editMode' $editText ([Windows.Automation.ControlType]::Button) })
+    Invoke-Button (Wait-For 'Edit control' { Control $firstWindow 'editMode' $editText })
     $editorLabel = 'Markdown ' + (Characters @(0x6e90,0x6587))
     $editor = Wait-For 'Markdown editor' {
         $available = $firstWindow.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
@@ -201,7 +203,7 @@ try {
     [Windows.Forms.SendKeys]::SendWait('^,')
     $settings = Wait-For 'xdnote settings' { Window $app.Id (Characters @(0x8bbe,0x7f6e)) }
     $registerLabel = 'Markdown ' + (Characters @(0x6253,0x5f00,0x65b9,0x5f0f))
-    Invoke-Button (Wait-For 'Register this copy' { Control $settings 'settingsRegisterTypes' $registerLabel ([Windows.Automation.ControlType]::Button) })
+    Invoke-Button (Wait-For 'Register this copy' { Control $settings 'settingsRegisterTypes' $registerLabel })
     $registry = 'Registry::HKEY_CURRENT_USER\Software\Classes'
     $entry = Wait-For 'xdnote Markdown shell command' {
         $value = Get-Item -LiteralPath "$registry\xdnote.Markdown\shell\open\command" -ErrorAction SilentlyContinue
@@ -230,6 +232,15 @@ try {
 } catch {
     $result.error = $_.Exception.Message
     $result.errorLine = $_.InvocationInfo.ScriptLineNumber
+    try {
+        $observedWindow = if ($settings) { $settings } else { $firstWindow }
+        if ($observedWindow) {
+            $result.controls = @($observedWindow.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
+                Select-Object -First 100 | ForEach-Object {
+                    [ordered]@{name=$_.Current.Name; id=$_.Current.AutomationId; type=$_.Current.ControlType.ProgrammaticName}
+                })
+        }
+    } catch { $result.controlObservationError = $_.Exception.Message }
 } finally {
     Send-Record 'XDNOTE_VM_RESULT' $result
     $serial.Close()
