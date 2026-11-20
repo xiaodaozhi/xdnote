@@ -55,6 +55,19 @@ jobs:
       - name: Run offscreen experiment tests
         id: qt_tests
         run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error
+      - name: Prepare the Linux accessibility bridge
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get -o Acquire::Retries=2 update
+          sudo apt-get -o Acquire::Retries=2 install -y --no-install-recommends at-spi2-core python3-pyatspi dbus-x11 xauth xvfb
+      - name: Run the guarded Quick editor through a separate AT-SPI client
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: xcb
+          QT_QUICK_BACKEND: software
+          QT_LINUX_ACCESSIBILITY_ALWAYS_ON: '1'
+          XDNOTE_ATSPI_CLIENT: ${{ github.workspace }}/experiments/qt-document-spike/tests/atspi_client.py
+        run: dbus-run-session -- xvfb-run -a build/qt-document-spike/qt_document_spike_tests guardedAtspiAccessibility
       - name: Run the guarded Quick editor through the Cocoa accessibility bridge
         if: runner.os == 'macOS'
         env:
