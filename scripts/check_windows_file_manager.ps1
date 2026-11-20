@@ -390,6 +390,26 @@ function Settings-Chooser {
     }
 }
 
+function Activate-FocusedSettingsControl($Window, $Control) {
+    if (!(Picker-IsForeground $Window)) { throw 'Settings lost the foreground before activation' }
+    if (!$Control.Current.IsKeyboardFocusable) {
+        $invoke = $null
+        if (!$Control.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
+            throw 'The verified Settings control has no keyboard focus or Invoke action'
+        }
+        $invoke.Invoke()
+        return
+    }
+    $Control.SetFocus()
+    $null = Wait-Result 'confirmed keyboard focus on the owned Settings control' {
+        $focused = [Windows.Automation.AutomationElement]::FocusedElement
+        if ($focused -and $focused.Equals($Control) -and (Picker-IsForeground $Window)) { $true }
+    }
+    Send-GuestStage ('Windows Settings keyboard focus: ' + $Control.Current.Name)
+    [ExplorerAcceptance]::keybd_event(13,0,0,[UIntPtr]::Zero)
+    [ExplorerAcceptance]::keybd_event(13,0,2,[UIntPtr]::Zero)
+}
+
 function Select-DefaultInSettings($Result) {
     $registration = Get-ItemPropertyValue 'HKCU:\Software\RegisteredApplications' -Name 'xdnote'
     if ($registration -ne 'Software\xdnote\Capabilities') { throw 'xdnote has no current-user Settings registration' }
@@ -402,14 +422,14 @@ function Select-DefaultInSettings($Result) {
             [Windows.Automation.Condition]::TrueCondition) | Where-Object {
             !$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^\.md,\s.+' -and
                 !$_.Current.BoundingRectangle.IsEmpty
-        } | Sort-Object -Property @{Expression={
-            $_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height
-        }; Descending=$true} | Select-Object -First 1
+        } | Sort-Object -Property @{Expression={$_.Current.IsKeyboardFocusable}; Descending=$true},
+            @{Expression={$_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height}; Descending=$true} |
+            Select-Object -First 1
         if ($control) { [pscustomobject]@{Window=$window; Control=$control} }
     }
     if (!(Picker-IsForeground $row.Window)) { throw 'Settings lost the foreground before the .md selection' }
     $Result.settingsTypeRow = $row.Control.Current.Name
-    Click-Control $row.Control
+    Activate-FocusedSettingsControl $row.Window $row.Control
     $chooser = Wait-Result 'the Settings default-app chooser with a confirmation control' { Settings-Chooser }
     Send-GuestStage ('Settings chooser visible: ' + $chooser.Confirm.Current.Name)
     $Result.settingsChooserWindow = $chooser.Window.Current.Name
@@ -431,14 +451,14 @@ function Select-DefaultInSettings($Result) {
         }
     }
     if (!(Picker-IsForeground $chooser.Window)) { throw 'Settings lost the foreground before choosing xdnote' }
-    if ($choice.Control) { Click-Control $choice.Control } else { Press-PickerPoint $chooser.Window $choice.Point }
+    if ($choice.Control) { Press-Control $choice.Control } else { Press-PickerPoint $chooser.Window $choice.Point }
     Send-GuestStage 'Settings chooser xdnote item selected'
     $confirm = Wait-Result 'the enabled confirmation in Settings' {
         $current = Settings-Chooser
         if ($current -and $current.Window.Equals($chooser.Window) -and $current.Confirm.Current.IsEnabled) { return $current }
     }
     if (!(Picker-IsForeground $confirm.Window)) { throw 'Settings lost the foreground before confirmation' }
-    Click-Control $confirm.Confirm
+    Activate-FocusedSettingsControl $confirm.Window $confirm.Confirm
     $Result.defaultSelectionSurface = 'Windows Settings Default apps, registeredAppUser=xdnote'
     Send-GuestStage 'Settings default-app confirmation clicked'
 }
