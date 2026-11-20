@@ -6,7 +6,7 @@ on:
       scope:
         description: 'fixtures checks engine guards; product builds and tests the actual installer payload'
         type: choice
-        options: [fixtures, product]
+        options: [fixtures, product, ime]
         default: fixtures
   workflow_call:
     inputs:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   native-installer:
-    if: inputs.scope != 'product'
+    if: inputs.scope == 'fixtures'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -57,6 +57,48 @@ jobs:
             build/installer-smoke/*.files
           retention-days: 7
           if-no-files-found: warn
+  ime-client-preflight:
+    if: inputs.scope == 'ime'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      XDNOTE_GUEST: ${{ github.workspace }}/build/windows-ime-client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare an isolated Windows client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils xorriso mtools dosfstools ovmf swtpm
+          test -c /dev/kvm
+      - name: Check Microsoft Pinyin on a disposable Windows 11 client
+        run: |
+          bash experiments/windows-ime-acceptance/boot.sh "$XDNOTE_GUEST"
+          sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" ready
+          sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" result
+      - name: Stop the guest and preserve bounded diagnostics
+        if: always()
+        run: |
+          if test -S "$XDNOTE_GUEST/monitor"; then
+            sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" screenshot || true
+            sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" quit || true
+          fi
+          if test -d "$XDNOTE_GUEST/evidence"; then
+            sudo chown -R "$(id -u):$(id -g)" "$XDNOTE_GUEST/evidence"
+          fi
+          if test -f "$XDNOTE_GUEST/tpm.pid"; then
+            kill "$(cat "$XDNOTE_GUEST/tpm.pid")" || true
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: windows-ime-preflight
+          path: |
+            ${{ github.workspace }}/build/windows-ime-client/evidence/
+            ${{ github.workspace }}/build/windows-ime-client/serial.log
+          if-no-files-found: warn
+          retention-days: 7
   product-installer:
     if: inputs.scope == 'product'
     runs-on: windows-2022
