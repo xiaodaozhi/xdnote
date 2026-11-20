@@ -579,6 +579,7 @@ void QtDocumentSpikeTests::guardedAccessibilityPreservesReadOnlyAndUndo()
     QCOMPARE(accessible->text(QAccessible::Value), edited);
     QVERIFY(editor->setProperty("readOnly", true));
     QVERIFY(accessible->state().readOnly);
+    QVERIFY(!accessible->editableTextInterface());
     accessible->setText(QAccessible::Value, QStringLiteral("不应写入"));
     QCOMPARE(accessible->text(QAccessible::Value), edited);
     document->undo();
@@ -613,6 +614,15 @@ void QtDocumentSpikeTests::guardedAccessibilityPreservesReadOnlyAndUndo()
     document->redo();
     QCOMPARE(accessible->text(QAccessible::Value), edited);
     document->redo();
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+
+    auto *editing = accessible->editableTextInterface();
+    QVERIFY(editing);
+    editing->deleteText(2, 3); // Do not split the UTF-16 surrogate pair.
+    QCOMPARE(accessible->text(QAccessible::Value), replacement);
+    editing->replaceText(0, 2, QStringLiteral("新"));
+    QCOMPARE(accessible->text(QAccessible::Value), QStringLiteral("新🙂\n下一行"));
+    document->undo();
     QCOMPARE(accessible->text(QAccessible::Value), replacement);
 
     editor->forceActiveFocus();
