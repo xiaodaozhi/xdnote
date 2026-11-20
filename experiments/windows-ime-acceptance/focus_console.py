@@ -70,6 +70,9 @@ def main(root):
             if request == ['escape']:
                 console.call('send-key', keys=[{'type': 'qcode', 'data': 'esc'}], **{'hold-time': 100})
                 history.append({'action': 'dismiss-system-menu'})
+            elif request == ['snapshot']:
+                width, height = console.screenshot_size(frame)
+                history.append({'action': 'capture-failure', 'width': width, 'height': height})
             elif len(request) == 5 and request[0] == 'click':
                 x, y, width, height = map(int, request[1:])
                 if not (900 <= width <= 1920 and 650 <= height <= 1200 and 0 <= x < width and 0 <= y < height):

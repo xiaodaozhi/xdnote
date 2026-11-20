@@ -48,6 +48,7 @@ public static class XdnoteImeInput {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr window, uint command);
     [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint thread);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Rectangle rectangle);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
@@ -73,7 +74,8 @@ $report = [ordered]@{
         nativePreedit=$false; nativeCommit=$false; workspaceTransfer=$false
         undo=$false; redo=$false; selection=$false; diskUnchanged=$false
     }
-    fixtureSha256Before=$before; fixtureSha256After=$null; nativeInputEvents=@(); error=$null
+    fixtureSha256Before=$before; fixtureSha256After=$null; nativeInputEvents=@()
+    windowsDuringFailure=@(); error=$null
 }
 $log = Join-Path $evidence 'qt-input.log'
 $stdout = Join-Path $evidence 'xdnote-stdout.log'
@@ -81,14 +83,41 @@ $app = $null
 $capture = $null
 
 function Find-Window([string]$prefix) {
-    $condition = [System.Windows.Automation.PropertyCondition]::new(
+    $processCondition = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $app.Id)
-    $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
-        [System.Windows.Automation.TreeScope]::Children, $condition)
-    foreach ($window in $windows) {
-        if (!$window.Current.IsOffscreen -and $window.Current.Name.StartsWith($prefix)) { return $window }
+    $windowCondition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Window)
+    $roots = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+        [System.Windows.Automation.TreeScope]::Children, $processCondition)
+    foreach ($root in $roots) {
+        if (!$root.Current.IsOffscreen -and $root.Current.Name.StartsWith($prefix)) { return $root }
+        foreach ($window in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $windowCondition)) {
+            if ($window.Current.ProcessId -eq $app.Id -and !$window.Current.IsOffscreen -and
+                $window.Current.Name.StartsWith($prefix)) { return $window }
+        }
     }
     return $null
+}
+
+function Read-WindowDiagnostics {
+    $foreground = [XdnoteImeInput]::GetForegroundWindow()
+    $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+        [System.Windows.Automation.TreeScope]::Children,
+        [System.Windows.Automation.Condition]::TrueCondition)
+    $items = @(foreach ($window in $windows) {
+        $current = $window.Current
+        $handle = [IntPtr]$current.NativeWindowHandle
+        if ($current.ProcessId -eq $app.Id -or $handle -eq $foreground -or
+            $current.ClassName -eq '#32770') {
+            [ordered]@{
+                name=$current.Name; className=$current.ClassName; processId=$current.ProcessId
+                handle=$handle.ToInt64(); owner=([XdnoteImeInput]::GetWindow($handle, 4)).ToInt64()
+                offscreen=$current.IsOffscreen; foreground=($handle -eq $foreground)
+            }
+        }
+    })
+    return @($items | Select-Object -First 30)
 }
 
 function Wait-Window([string]$prefix) {
@@ -221,22 +250,27 @@ try {
     $report.phase = 'workspace'
     $workspace = Wait-Window 'xdnote'
     Click-Control $workspace ([regex]::Unescape('\u6253\u5f00\u6587\u4ef6\u5939'))
-    $report.phase = 'directory-picker'
+    $report.phase = 'directory-picker-open'
     $dialog = Wait-Window ([regex]::Unescape('\u6253\u5f00\u5de5\u4f5c\u533a\u76ee\u5f55'))
     $dialogHandle = Activate-Window $dialog
+    $report.phase = 'directory-picker-path'
     [System.Windows.Forms.Clipboard]::SetText((Split-Path $fixture))
     Send-Keys $dialogHandle @(0x11,0x4c)
     Send-Keys $dialogHandle @(0x11,0x56)
     Send-Keys $dialogHandle @(0x0d)
     Start-Sleep -Milliseconds 800
-    $dialog = Wait-Window ([regex]::Unescape('\u6253\u5f00\u5de5\u4f5c\u533a\u76ee\u5f55'))
-    $buttons = @('Select Folder', [regex]::Unescape('\u9009\u62e9\u6587\u4ef6\u5939'))
-    $chosen = $false
-    foreach ($button in $buttons) {
-        try { Click-Control $dialog $button; $chosen = $true; break } catch { }
+    $report.phase = 'directory-picker-confirm'
+    $workspace = Find-Window 'workspace'
+    if (!$workspace) {
+        $dialog = Wait-Window ([regex]::Unescape('\u6253\u5f00\u5de5\u4f5c\u533a\u76ee\u5f55'))
+        $buttons = @('Select Folder', [regex]::Unescape('\u9009\u62e9\u6587\u4ef6\u5939'))
+        $chosen = $false
+        foreach ($button in $buttons) {
+            try { Click-Control $dialog $button; $chosen = $true; break } catch { }
+        }
+        if (!$chosen) { throw 'The owned native directory picker has no Select Folder button.' }
+        $workspace = Wait-Window 'workspace'
     }
-    if (!$chosen) { throw 'The owned native directory picker has no Select Folder button.' }
-    $workspace = Wait-Window 'workspace'
     $report.checks.workspaceOpened = $true
     $report.phase = 'standalone'
     $forward = Start-Process -FilePath $exe -ArgumentList @('--', ('"' + $fixture + '"')) -WorkingDirectory $payload -PassThru
@@ -308,6 +342,10 @@ try {
     $report.passed = $true
 } catch {
     $report.error = $_.Exception.Message
+    if ($app -and !$app.HasExited) {
+        try { $report.windowsDuringFailure = @(Read-WindowDiagnostics) } catch { }
+        try { & $FocusSignal 'snapshot'; Start-Sleep -Milliseconds 1000 } catch { }
+    }
 } finally {
     try {
         if ($app -and !$app.HasExited) {
