@@ -108,6 +108,7 @@ jobs:
       - name: Verify real Microsoft Pinyin and the transferred document
         timeout-minutes: 12
         run: |
+          sudo python3 experiments/windows-ime-acceptance/focus_console.py "$XDNOTE_GUEST"
           sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" result
       - name: Stop the guest and preserve bounded diagnostics
         if: always()

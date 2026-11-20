@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Payload,
-    [Parameter(Mandatory = $true)][string]$Evidence
+    [Parameter(Mandatory = $true)][string]$Evidence,
+    [Parameter(Mandatory = $true)][scriptblock]$FocusSignal
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,17 +48,20 @@ public static class XdnoteImeInput {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint thread);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Rectangle rectangle);
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [StructLayout(LayoutKind.Sequential)] public struct Point { public int X; public int Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct Rectangle { public int Left; public int Top; public int Right; public int Bottom; }
 }
 '@
 
 $report = [ordered]@{
-    passed=$false; environment=[ordered]@{
+    passed=$false; phase='setup'; environment=[ordered]@{
         windows=$os.Version; build=$os.BuildNumber; architecture='x64'
         executableSha256=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
         qtCoreSha256=(Get-FileHash -LiteralPath $core -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -109,7 +113,31 @@ function Activate-Window($window) {
     $handle = [IntPtr]$window.Current.NativeWindowHandle
     if ($handle -eq [IntPtr]::Zero) { throw 'The owned window has no native handle.' }
     [void][XdnoteImeInput]::SetForegroundWindow($handle)
-    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    if ([XdnoteImeInput]::GetForegroundWindow() -ne $handle) {
+        [uint32]$foregroundId = 0
+        [void][XdnoteImeInput]::GetWindowThreadProcessId([XdnoteImeInput]::GetForegroundWindow(), [ref]$foregroundId)
+        $foreground = Get-Process -Id $foregroundId -ErrorAction SilentlyContinue
+        if ($foreground -and $foreground.ProcessName -in @('StartMenuExperienceHost', 'SearchHost')) {
+            & $FocusSignal 'escape'
+            Start-Sleep -Milliseconds 1000
+        }
+        [void][XdnoteImeInput]::SetForegroundWindow($handle)
+    }
+    if ([XdnoteImeInput]::GetForegroundWindow() -ne $handle) {
+        $rect = [XdnoteImeInput+Rectangle]::new()
+        if (![XdnoteImeInput]::GetWindowRect($handle, [ref]$rect)) { throw 'Could not inspect the owned window.' }
+        $point = [XdnoteImeInput+Point]::new()
+        $point.X = [int](($rect.Left + $rect.Right) / 2)
+        $point.Y = $rect.Top + 12
+        $width = [XdnoteImeInput]::GetSystemMetrics(0)
+        $height = [XdnoteImeInput]::GetSystemMetrics(1)
+        if ($point.X -lt 0 -or $point.X -ge $width -or $point.Y -lt 0 -or $point.Y -ge $height -or
+            [XdnoteImeInput]::GetAncestor([XdnoteImeInput]::WindowFromPoint($point), 2) -ne $handle) {
+            throw 'The owned window title bar is obscured or outside the guest screen.'
+        }
+        & $FocusSignal ("click $($point.X) $($point.Y) $width $height")
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds(8)
     while ([XdnoteImeInput]::GetForegroundWindow() -ne $handle -and [DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 100
     }
@@ -188,8 +216,10 @@ try {
     New-Item -ItemType Directory -Path $env:APPDATA,$env:LOCALAPPDATA -Force | Out-Null
     $app = Start-Process -FilePath $exe -WorkingDirectory $payload -PassThru `
         -RedirectStandardError $log -RedirectStandardOutput $stdout
+    $report.phase = 'workspace'
     $workspace = Wait-Window 'xdnote'
     Click-Control $workspace ([regex]::Unescape('\u6253\u5f00\u6587\u4ef6\u5939'))
+    $report.phase = 'directory-picker'
     $dialog = Wait-Window ([regex]::Unescape('\u6253\u5f00\u5de5\u4f5c\u533a\u76ee\u5f55'))
     $dialogHandle = Activate-Window $dialog
     [System.Windows.Forms.Clipboard]::SetText((Split-Path $fixture))
@@ -206,6 +236,7 @@ try {
     if (!$chosen) { throw 'The owned native directory picker has no Select Folder button.' }
     $workspace = Wait-Window 'workspace'
     $report.checks.workspaceOpened = $true
+    $report.phase = 'standalone'
     $forward = Start-Process -FilePath $exe -ArgumentList @('--', ('"' + $fixture + '"')) -WorkingDirectory $payload -PassThru
     if (!$forward.WaitForExit(10000) -or $forward.ExitCode -ne 0) { throw 'The file-open request was not forwarded.' }
     $standalone = Wait-Window 'IME-Check.md'
@@ -217,6 +248,7 @@ try {
     $report.checks.focusedStandaloneEditor = $editor.Current.HasKeyboardFocus
     if (!$report.checks.focusedStandaloneEditor) { throw 'The standalone editor did not receive keyboard focus.' }
 
+    $report.phase = 'microsoft-pinyin'
     [uint32]$processId = 0
     $thread = [XdnoteImeInput]::GetWindowThreadProcessId($windowHandle, [ref]$processId)
     for ($attempt = 0; $attempt -lt 3; ++$attempt) {
@@ -242,6 +274,7 @@ try {
     Wait-Value $editor $committed
     $report.checks.nativeCommit = $true
 
+    $report.phase = 'workspace-transfer'
     Click-Control $standalone ([regex]::Unescape('\u5728\u5de5\u4f5c\u533a\u6253\u5f00'))
     $workspace = Wait-Window 'workspace'
     $windowHandle = Activate-Window $workspace

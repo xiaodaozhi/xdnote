@@ -79,7 +79,8 @@ try {
     $result.phase = 'real-ime'
     $serial.WriteLine('XDNOTE_VM_STAGE starting-ime')
     $env:XDNOTE_DISPOSABLE_WINDOWS_GUEST = '1'
-    & "$root\scripts\ime-windows.ps1" -Payload "$root\payload" -Evidence "$root\build\evidence"
+    & "$root\scripts\ime-windows.ps1" -Payload "$root\payload" -Evidence "$root\build\evidence" `
+        -FocusSignal { param([string]$request) $serial.WriteLine("XDNOTE_VM_INPUT $request") }
     $result.ok = $true
 } catch {
     $result.error = $_.Exception.Message
