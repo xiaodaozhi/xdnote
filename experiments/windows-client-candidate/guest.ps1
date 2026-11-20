@@ -58,11 +58,15 @@ function Window([int]$owner, [string]$title) {
     $filter = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty, $owner)
     $root.FindAll($scope, $filter) | Where-Object { $_.Current.Name -like "*$title*" -and !$_.Current.IsOffscreen } | Select-Object -First 1
 }
-function Control($window, [string]$id, [string]$label) {
-    $alternatives = [Windows.Automation.OrCondition]::new(
-        [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, $id),
-        [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $label))
-    $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $alternatives)
+function Control($window, [string]$id, [string]$label, $type) {
+    $descendants = [Windows.Automation.TreeScope]::Descendants
+    $kind = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, $type)
+    $elements = $window.FindAll($descendants, $kind)
+    foreach ($element in $elements) {
+        if ($element.Current.IsEnabled -and ($element.Current.AutomationId -eq $id -or $element.Current.AutomationId.EndsWith(".$id") -or $element.Current.Name -eq $label)) {
+            return $element
+        }
+    }
 }
 function Invoke-Button($control) {
     $control.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -167,9 +171,14 @@ try {
     $firstWindow = Wait-For 'first Markdown document window' { Window $app.Id 'Cold Open Test' }
     $result.checks.coldOpen = $true
     $editText = Characters @(0x7f16,0x8f91)
-    Invoke-Button (Wait-For 'Edit control' { Control $firstWindow 'editMode' $editText })
+    Invoke-Button (Wait-For 'Edit control' { Control $firstWindow 'editMode' $editText ([Windows.Automation.ControlType]::Button) })
     $editorLabel = 'Markdown ' + (Characters @(0x6e90,0x6587))
-    $editor = Wait-For 'Markdown editor' { Control $firstWindow 'sourceEditor' $editorLabel }
+    $editor = Wait-For 'Markdown editor' {
+        $available = $firstWindow.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+        foreach ($element in $available) {
+            if ($element.Current.Name -eq $editorLabel -and !$element.Current.IsOffscreen) { return $element }
+        }
+    }
     $valuePattern = $editor.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
     if (!$valuePattern.Current.Value.Contains('Candidate read marker')) { throw 'Opened document bytes were not visible to the editor' }
     $result.checks.editorRead = $true
@@ -188,8 +197,8 @@ try {
     Use-Window $firstWindow
     [Windows.Forms.SendKeys]::SendWait('^,')
     $settings = Wait-For 'xdnote settings' { Window $app.Id (Characters @(0x8bbe,0x7f6e)) }
-    $registerLabel = Characters @(0x6ce8,0x518c,0x6b64,0x526f,0x672c)
-    Invoke-Button (Wait-For 'Register this copy' { Control $settings 'settingsRegisterTypes' $registerLabel })
+    $registerLabel = 'Markdown ' + (Characters @(0x6253,0x5f00,0x65b9,0x5f0f))
+    Invoke-Button (Wait-For 'Register this copy' { Control $settings 'settingsRegisterTypes' $registerLabel ([Windows.Automation.ControlType]::Button) })
     $registry = 'Registry::HKEY_CURRENT_USER\Software\Classes'
     $entry = Wait-For 'xdnote Markdown shell command' {
         $value = Get-Item -LiteralPath "$registry\xdnote.Markdown\shell\open\command" -ErrorAction SilentlyContinue
