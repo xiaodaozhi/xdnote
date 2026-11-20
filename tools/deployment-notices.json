@@ -28,6 +28,16 @@
       "sha256": "eb22384c866b63b513254ae3baff6b3bc7d001f559d03e02b6b8b83333a04806"
     },
     {
+      "path": "LICENSES/third-party/QtCore-PCRE2-LICENCE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/pcre2/LICENCE",
+      "sha256": "030087e2e8dd7c1bdd26057d25d4ded8f45bbf01ad458d68665ad04b8b0fbedf"
+    },
+    {
+      "path": "LICENSES/third-party/QtCore-PCRE2-LICENCE-SLJIT.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/pcre2/LICENCE-SLJIT",
+      "sha256": "48b7773d240da636ed7be0ec470df49de0665f660bba7cb913403bf90e007fb1"
+    },
+    {
       "path": "LICENSES/third-party/QtGui-QIMAGETRANSFORM-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/gui/painting/QIMAGETRANSFORM_LICENSE.txt",
       "sha256": "46b3cbfa2f2946b93291506351e9be1dd0a28d2a53260f5aa488abd36fbeca9d"

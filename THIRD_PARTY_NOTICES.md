@@ -102,6 +102,8 @@ This software is based in part on the work of the FreeType Team (www.freetype.or
 
 Qt5Compat 的 Big5、GB18030、EUC-JP、EUC-KR、ISO-2022-JP、Shift_JIS 和 TSCII 编码实现使用 BSD-2-Clause 条款。七份上游原始版权、条款及免责声明随包存放于 `licenses/project-and-source-dependencies/third-party/` 中，文件名以 `Qt5Compat-` 开头。
 
+Qt Core 的供应方材料包含 PCRE2 10.44 及其可选的 SLJIT 实现。PCRE2 原始 BSD 三条款和二进制类包例外、SLJIT 原始 BSD 二条款分别以 `QtCore-PCRE2-LICENCE.txt` 和 `QtCore-PCRE2-LICENCE-SLJIT.txt` 随包保留；提供文本不表示各平台均启用了 SLJIT。
+
 Qt Network 6.8.2 的 `xdnote-network.1` 使用显式源码构建的[固定补丁](tools/qt-network-patches/README.md)，包含两项 Qt 官方回移、SOCKS5 背压／EOF 和 macOS SecureTransport 缓存读取修正。补丁属于 Qt 派生修改，采用 LGPL-3.0-only，原文件版权及许可不变。部署材料分别保留供应方原始 SPDX、原始 SDK 和修改模块摘要及固定源码／补丁来源。版本号不变不表示二进制未修改，也不表示最终许可验收完成。
 
 准备器显式下载并校验 OpenSSL 3.5.9（Apache-2.0），仅在本项目构建缓存中生成 Qt DTLS／OCSP 配置探测所需的静态输入；不复制 OpenSSL 库到 Qt SDK 或产品，不替换平台运行时 TLS 后端。来源及 SHA-256 见[固定清单](tools/qt-network-backports.json)，上游许可随下载源码保留。
