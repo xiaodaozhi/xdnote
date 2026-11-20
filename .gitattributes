@@ -6,6 +6,7 @@
 *.icns binary
 # Preserve upstream licenses byte-for-byte, including line endings and spaces.
 LICENSES/third-party/*.txt -text whitespace=-blank-at-eol,-blank-at-eof
+LICENSES/rust-runtime/** -text whitespace=-blank-at-eol,-blank-at-eof
 # Unified patches retain literal upstream whitespace in context/removal lines.
 patches/**/*.patch -text whitespace=-blank-at-eol,-blank-at-eof
 tools/qt-network-patches/*.patch -text whitespace=-blank-at-eol,-blank-at-eof
