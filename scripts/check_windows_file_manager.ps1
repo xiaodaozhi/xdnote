@@ -389,133 +389,26 @@ function Read-MdUserChoice {
     return ''
 }
 
-function Settings-Foreground([switch]$IncludePicker) {
-    $window = Foreground
-    if (!$window) { return }
-    $owner = Get-Process -Id $window.Current.ProcessId -ErrorAction SilentlyContinue
-    if (!$owner -or !$owner.Path -or !$owner.Path.StartsWith($env:SystemRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { return }
-    if ($owner.ProcessName -eq 'SystemSettings' -or
-        ($owner.ProcessName -eq 'ApplicationFrameHost' -and $window.Current.Name -eq 'Settings') -or
-        ($IncludePicker -and $owner.ProcessName -eq 'OpenWith')) { return $window }
-}
-
-function Settings-Chooser {
-    $window = Settings-Foreground -IncludePicker
-    if ($window) {
-        foreach ($name in 'Set default','OK','Always') {
-            $control = Named-Control $window $name
-            if ($control -and !$control.Current.IsOffscreen -and !$control.Current.BoundingRectangle.IsEmpty) {
-                return [pscustomobject]@{Window=$window; Confirm=$control; Label=$name; Surface='UI Automation'}
-            }
-        }
-    }
-    # The Windows 11 choice window can be unnamed and expose no UIA children.
-    $window = Foreground
-    if (!$window -or $window.Current.NativeWindowHandle -eq 0) { return }
-    $owner = Get-Process -Id $window.Current.ProcessId -ErrorAction SilentlyContinue
-    if (!$owner -or !$owner.Path -or !$owner.Path.StartsWith($env:SystemRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { return }
-    $rect = $window.Current.BoundingRectangle
-    if ($rect.Width -lt 300 -or $rect.Width -gt 700 -or $rect.Height -lt 300 -or $rect.Height -gt 800) { return }
-    $heading = Read-PickerPoint $window @('Select a default app for .md files','Select a default app for')
-    if (!$heading -or $heading.Y -gt $rect.Y + $rect.Height/3) { return }
-    $point = Read-PickerPoint $window @('Set default')
-    if ($point -and $point.Y -gt $rect.Y + $rect.Height*2/3) {
-        return [pscustomobject]@{Window=$window; ConfirmPoint=$point; Label=$point.Label; Surface='Windows OCR'}
-    }
-}
-
-function Activate-FocusedSettingsControl($Window, $Control) {
-    if (!(Picker-IsForeground $Window)) { throw 'Settings lost the foreground before activation' }
-    if (!$Control.Current.IsKeyboardFocusable) {
-        $invoke = $null
-        if (!$Control.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
-            throw 'The verified Settings control has no keyboard focus or Invoke action'
-        }
-        $invoke.Invoke()
-        return
-    }
-    $Control.SetFocus()
-    $null = Wait-Result 'confirmed keyboard focus on the owned Settings control' {
-        $focused = [Windows.Automation.AutomationElement]::FocusedElement
-        if ($focused -and $focused.Equals($Control) -and (Picker-IsForeground $Window)) { $true }
-    }
-    Send-GuestStage ('Windows Settings keyboard focus: ' + $Control.Current.Name)
-    [ExplorerAcceptance]::keybd_event(13,0,0,[UIntPtr]::Zero)
-    [ExplorerAcceptance]::keybd_event(13,0,2,[UIntPtr]::Zero)
-}
-
 function Select-DefaultInSettings($Result) {
     $registration = Get-ItemPropertyValue 'HKCU:\Software\RegisteredApplications' -Name 'xdnote'
     if ($registration -ne 'Software\xdnote\Capabilities') { throw 'xdnote has no current-user Settings registration' }
     Start-Process 'ms-settings:defaultapps?registeredAppUser=xdnote'
-    Send-GuestStage 'open Settings Default apps for xdnote'
-    $row = Wait-Result 'the actionable .md row on the xdnote Settings page' {
-        $window = Settings-Foreground
-        if (!$window) { return }
-        $control = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
-            [Windows.Automation.Condition]::TrueCondition) | Where-Object {
-            !$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^\.md,\s.+' -and
-                !$_.Current.BoundingRectangle.IsEmpty
-        } | Sort-Object -Property @{Expression={$_.Current.IsKeyboardFocusable}; Descending=$true},
-            @{Expression={$_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height}; Descending=$true} |
-            Select-Object -First 1
-        if ($control) { [pscustomobject]@{Window=$window; Control=$control} }
-    }
-    if (!(Picker-IsForeground $row.Window)) { throw 'Settings lost the foreground before the .md selection' }
-    $Result.settingsTypeRow = $row.Control.Current.Name
-    # Invoke the XAML button directly when the native provider supports it.
-    # Only use a key after Windows reports focus on the exact control.
-    $invoke = $null
-    if ($row.Control.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
-        $invoke.Invoke()
-        Send-GuestStage ('Windows Settings row invoked: ' + $Result.settingsTypeRow)
-    } else {
-        Activate-FocusedSettingsControl $row.Window $row.Control
-    }
-    $chooser = Wait-Result 'the Settings default-app chooser with a confirmation control' { Settings-Chooser }
-    Send-GuestStage ('Settings chooser visible: ' + $chooser.Label + ' via ' + $chooser.Surface)
-    $Result.settingsChooserWindow = $chooser.Window.Current.Name
-    $Result.settingsChooserSurface = $chooser.Surface
-    $Result.settingsChooserControls = @($chooser.Window.FindAll([Windows.Automation.TreeScope]::Descendants,
-        [Windows.Automation.Condition]::TrueCondition) | Where-Object { !$_.Current.IsOffscreen } |
-        Select-Object -First 100 | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
-    $choice = Wait-Result 'the xdnote item in the Settings default-app chooser' {
-        $current = Settings-Chooser
-        if (!$current -or !$current.Window.Equals($chooser.Window)) { return }
-        $control = $current.Window.FindAll([Windows.Automation.TreeScope]::Descendants,
-            [Windows.Automation.Condition]::TrueCondition) | Where-Object {
-            !$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^xdnote(?:\.exe| Markdown editor)?$' -and
-                $_.Current.ControlType.ProgrammaticName -in 'ControlType.ListItem','ControlType.RadioButton'
-        } | Select-Object -First 1
-        if ($control) { return [pscustomobject]@{Control=$control} }
-        if (!$current.Window.Equals($row.Window)) {
-            $point = Read-PickerPoint $current.Window @('xdnote Markdown editor','xdnote.exe','xdnote')
-            if ($point) { return [pscustomobject]@{Point=$point} }
-        }
-    }
-    if (!(Picker-IsForeground $chooser.Window)) { throw 'Settings lost the foreground before choosing xdnote' }
-    if ($choice.Control) { Press-Control $choice.Control }
-    else { Press-PickerPoint $chooser.Window $choice.Point -RequireWindowAtPoint }
-    Send-GuestStage 'Settings chooser xdnote item selected'
-    $confirm = Wait-Result 'the enabled confirmation in Settings' {
-        $current = Settings-Chooser
-        if ($current -and $current.Window.Equals($chooser.Window) -and
-            ($current.ConfirmPoint -or ($current.Confirm -and $current.Confirm.Current.IsEnabled))) { return $current }
-    }
-    if (!(Picker-IsForeground $confirm.Window)) { throw 'Settings lost the foreground before confirmation' }
-    if ($confirm.ConfirmPoint) { Press-PickerPoint $confirm.Window $confirm.ConfirmPoint -RequireWindowAtPoint }
-    else { Activate-FocusedSettingsControl $confirm.Window $confirm.Confirm }
-    $Result.defaultSelectionSurface = 'Windows Settings Default apps, registeredAppUser=xdnote'
-    Send-GuestStage 'Settings default-app confirmation clicked'
+    $Result.defaultSelectionSurface = 'Windows Settings Default apps, registeredAppUser=xdnote, guest console'
+    Send-GuestStage 'Windows Settings console input requested'
 }
 
 function Confirm-XdnoteDefault([string]$BeforeChoice, $Result) {
-    $progId = Wait-Result 'the selected default executable and explicit ProgID' {
+    $deadline = [DateTime]::UtcNow.AddSeconds($(if ($PickerOnly) { 180 } else { 20 }))
+    do {
         $current = Read-MdUserChoice
-        if ($current -and $current -ne $BeforeChoice -and [ExplorerAcceptance]::MarkdownHandler() -eq $exe) {
-            return $current
+        if ($current -eq 'xdnote.Markdown' -and $current -ne $BeforeChoice -and
+            [ExplorerAcceptance]::MarkdownHandler() -eq $exe) {
+            $progId = $current
+            break
         }
-    }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (!$progId) { throw 'Windows did not report a new explicit xdnote Markdown default and resolve the installed executable' }
     $Result.selectedDefault = 'xdnote.exe'
     $Result.selectedProgId = $progId
     Send-GuestStage ('Windows explicit default read back: ' + $progId)

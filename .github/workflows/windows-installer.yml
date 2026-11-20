@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ed6ac069a0c289f8c852bbc4641f8adb32169e3a
+          ref: 67775fce237f90c133e10e170875ec333269429c
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -124,7 +124,7 @@ jobs:
       - name: Set up disposable x64 KVM and one-use package encryption
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends age qemu-system-x86 qemu-utils xorriso mtools dosfstools ovmf swtpm
+          sudo apt-get install -y --no-install-recommends age qemu-system-x86 qemu-utils xorriso mtools dosfstools ovmf swtpm tesseract-ocr tesseract-ocr-eng
           test -c /dev/kvm
           mkdir -p "$XDNOTE_GUEST/recipient"
           umask 077
@@ -162,7 +162,10 @@ jobs:
       - name: Select the default app in Settings and verify cold and warm Explorer entry
         timeout-minutes: 10
         run: |
+          console_result=0
+          sudo python3 experiments/windows-client-runner/settings_console.py "$XDNOTE_GUEST" || console_result=$?
           sudo python3 experiments/windows-client-runner/collect.py "$XDNOTE_GUEST" result
+          exit "$console_result"
       - name: Stop the guest and preserve bounded diagnostics
         if: always()
         run: |

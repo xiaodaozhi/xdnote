@@ -29,9 +29,10 @@ sudo qemu-system-x86_64 -daemonize -machine q35,accel=kvm,smm=on -cpu host -smp 
   -drive "file=$case_dir/windows.qcow2,format=qcow2,if=ide,index=0" \
   -drive "file=$case_dir/windows.iso,format=raw,media=cdrom,if=ide,index=1" \
   -drive "if=ide,index=2,media=cdrom,id=transfer" \
-  -device qemu-xhci -drive "if=none,format=raw,file=$case_dir/answers.img,id=answers" \
+  -device qemu-xhci -device usb-tablet -drive "if=none,format=raw,file=$case_dir/answers.img,id=answers" \
   -device usb-storage,drive=answers,removable=on \
   -serial "file:$case_dir/serial.log" -monitor "unix:$case_dir/monitor,server=on,wait=off" \
+  -qmp "unix:$case_dir/qmp,server=on,wait=off" \
   -pidfile "$case_dir/qemu.pid"
 # The official UEFI installer prompts for a key on its first optical boot.
 for pause in 5 2 2 2 2; do
