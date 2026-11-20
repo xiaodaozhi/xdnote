@@ -82,7 +82,7 @@ def prepare(source, source_audit, destination, toolchain, runtime, build, qt):
         'see InnoSetup-PascalScript-license.md.\n', encoding='utf-8')
     runtime_materials.collect(destination / 'licenses/rust-runtime')
     records = product_qt_records(source_audit['qtSbom'], inventory(destination))
-    qt_source_access.collect(destination / 'licenses/qt', records, qt)
+    qt_source_access.collect(destination / 'licenses/qt', records, qt, identity=source_audit['buildIdentity'])
     helper = build / 'xdnote-update-helper.exe'
     if not helper.is_file(): raise ValueError('Independent update helper missing')
     shutil.copy2(helper, destination / helper.name)

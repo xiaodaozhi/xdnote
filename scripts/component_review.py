@@ -128,10 +128,13 @@ def network_derivation(evidence):
         instructions = [item for item in evidence['files'] if item['path'] == 'licenses/qt/REPLACEMENT.md']
         if len(instructions) != 1:
             raise ValueError('Windows source access lacks sealed replacement instructions')
-        record = manifest(evidence['qtSbom'], expected, replacement_sha256=instructions[0]['sha256'])
-        data = (json.dumps(record, indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
         files = [item for item in evidence['files'] if item['path'] == 'licenses/qt/source-access.json']
-        if len(files) != 1 or files[0]['sha256'] != hashlib.sha256(data).hexdigest():
+        digests = set()
+        for identity in (evidence['buildIdentity'], None):
+            record = manifest(evidence['qtSbom'], expected, replacement_sha256=instructions[0]['sha256'], identity=identity)
+            data = (json.dumps(record, indent=2) + '\n').replace('\n', '\r\n').encode('utf-8')
+            digests.add(hashlib.sha256(data).hexdigest())
+        if len(files) != 1 or files[0]['sha256'] not in digests:
             raise ValueError('Sealed Windows Qt source access digest differs')
         public = expected
     if public != expected or public.get('sourceCodeInRelease') is not False:

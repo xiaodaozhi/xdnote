@@ -92,7 +92,7 @@ def qt_files(root, qt, records, shipped):
 def audit(root, metadata, qt):
     verify_payload(root, metadata)
     rust_runtime = runtime_materials.verify(root / 'licenses/rust-runtime')
-    source_access = qt_source_access.verify(root / 'licenses/qt', qt)
+    source_access = qt_source_access.verify(root / 'licenses/qt', qt, identity=metadata['buildIdentity'])
     problems = source_audit(ROOT)
     if problems:
         raise ValueError('Source materials failed: ' + '; '.join(problems))

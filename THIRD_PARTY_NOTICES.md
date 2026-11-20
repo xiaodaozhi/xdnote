@@ -72,7 +72,7 @@ Markdown 服务使用以下第三方包；`pulldown-cmark` 为直接依赖，其
 
 ## Sparkle 独立准入依赖
 
-原生更新准入工程显式准备 Sparkle 2.10.0；产品当前尚未链接或部署它。[固定输入清单](tools/sparkle-dependency.json)分别记录官方 SDK、源码和本项目网络补丁，[完整版权及许可原文](LICENSES/third-party/Sparkle.txt)保留 `MIT AND BSD-2-Clause AND Zlib` 的适用内容，不删减外部组件声明。主库和 Ed25519 翻译单元由固定源码编译，helper、资源和工具沿用官方 SDK 字节；不能把整个 SDK 记为源码重建或实际随产品交付。后续正式部署须按[准入方法](docs/engineering/macos-update-transport.md)和实际载荷核对；上游归属不改标为项目自有内容。
+macOS 产品使用 Sparkle 2.10.0 的派生 framework 和随包更新助手。[固定输入清单](tools/sparkle-dependency.json)分别记录官方 SDK、源码和本项目网络补丁。[版权及许可原文](LICENSES/third-party/Sparkle.txt)保留适用的 MIT、BSD-2-Clause 和 Zlib 文本。主库和 Ed25519 翻译单元由固定源码编译，随包助手和资源取自官方 SDK。实际 framework、助手、资源与封印记录见[部署材料](docs/engineering/distribution-audit.md)。
 
 ## Qt 与运行库
 
@@ -82,7 +82,7 @@ Linux 诊断候选另使用同版本 Qt Wayland 客户端平台插件及其传�
 
 产品不链接或部署 Qt WebEngine／Chromium。本机 Qt 6.8.2 SDK 的 `sbom/` 包含各模块 SPDX 文档，其中部分包的许可字段为 `NOASSERTION`；这些文档有助于清点，但不能单独证明许可文本和随包义务已齐备。不同平台的插件、QML 模块、系统库和 MSVC 运行库也须根据实际交付内容核对。
 
-Qt 6.8.2 的 [LGPL-3.0 原文](LICENSES/third-party/Qt-LGPL-3.0-only.txt)及其引用的 [GPL-3.0 原文](LICENSES/third-party/Qt-GPL-3.0-only.txt)以[来源和摘要](tools/deployment-notices.json)固定并由日常检查核对。各平台诊断目录生成与匹配 Qt 模块 SPDX／声明的收集见[部署诊断](docs/engineering/deployment.md)；模块 SBOM 的未确定字段、源码提供／用户替换等要求及最终发行核验仍须独立完成。
+xdnote 动态链接 Qt 6.8.2。随包提供 Qt 的 [LGPL-3.0 原文](LICENSES/third-party/Qt-LGPL-3.0-only.txt)及其引用的 [GPL-3.0 原文](LICENSES/third-party/Qt-GPL-3.0-only.txt)。Qt 源码获取、修改和在自有应用副本中替换库的说明见[Qt 来源与自行替换](docs/engineering/qt-library-replacement.md)。实际分发模块、SDK 的 SPDX、适用许可及最终发行条件按各平台载荷核对。[分发材料](docs/engineering/distribution-audit.md)
 
 Qt Core 的内嵌 MIME 数据来自 Apache Tika 的 MIME Type Definitions，由 Qt 改编。Tika 上游 NOTICE 说明其中部分定义改编自英国国家档案馆的 PRONOM 技术登记库。随包的 `licenses/project-and-source-dependencies/third-party/` 保留[原始 Tika NOTICE](LICENSES/third-party/Qt-Tika-NOTICE.txt)及 [Open Government Licence v3.0](LICENSES/third-party/Qt-Tika-OGL-UK-3.0.txt)。完整 NOTICE 也记录 Apache Tika 其他组件的署名。改编前的 MIME 文件见[固定上游源码](https://github.com/apache/tika/blob/5101bc7fb090ed7deffe56837d7633c9485a1e5d/tika-core/src/main/resources/org/apache/tika/mime/tika-mimetypes.xml)。
 

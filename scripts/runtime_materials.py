@@ -18,7 +18,10 @@ def material_records(value):
         yield 'toolchain', Path(record['path']), record
     for package in value.get('crateNotices', []):
         for record in package['files']:
-            yield 'crate', Path('crates') / record['path'], record
+            yield 'vendored', Path('crates') / record['path'], record
+    for package in value.get('toolchainSourceNotices', []):
+        for record in package['files']:
+            yield 'vendored', Path('toolchain-sources') / record['path'], record
 
 
 def collect(destination):
@@ -28,7 +31,7 @@ def collect(destination):
     details=subprocess.check_output([*command,'-vV'],text=True)
     if 'commit-hash: '+value['compilerCommit'] not in details: raise ValueError('Rust compiler commit differs from material pin')
     sysroot=Path(subprocess.check_output([*command,'--print','sysroot'],text=True).strip()).resolve()
-    sources={'toolchain':sysroot/'share/doc/rust', 'crate':ROOT/'LICENSES/rust-runtime'}
+    sources={'toolchain':sysroot/'share/doc/rust', 'vendored':ROOT/'LICENSES/rust-runtime'}
     files=[]
     for kind,relative,record in material_records(value):
         base=sources[kind].resolve()

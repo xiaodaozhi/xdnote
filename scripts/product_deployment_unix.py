@@ -52,12 +52,12 @@ def locations(root, system):
     return root / 'bin', root / 'plugins', root / 'lib', root
 
 
-def material_evidence(root, qt, records, system):
+def material_evidence(root, qt, records, system, *, identity=None):
     """Supplier hashes and executable code identity; rewritten data is separate."""
     bindir, plugins, libraries, notices = locations(root, system)
     supplier = {}; upstream_packages = []; runtime = runtime_notices()
     rust_runtime = runtime_materials.verify(notices / 'licenses/rust-runtime')
-    source_access = qt_source_access.verify(notices / 'licenses/qt', qt)
+    source_access = qt_source_access.verify(notices / 'licenses/qt', qt, identity=identity)
     mac_icon = notices / deploy.MAC_APP_ICON.name
     if system == 'Darwin':
         bundle_info = plistlib.loads((notices.parent / 'Info.plist').read_bytes())
@@ -248,7 +248,7 @@ def prepare(build, qt, root):
         (licenses / 'DESIGN-ATTRIBUTION.txt').write_text('xdnote 项目及其贡献者；https://github.com/xiaodaozhi/xdnote\n文档与原创设计：CC BY 4.0；https://creativecommons.org/licenses/by/4.0/\n', encoding='utf-8')
         records = deploy.collect_qt_notices(qt, notices, names)
         runtime_materials.collect(licenses / 'rust-runtime')
-        qt_source_access.collect(licenses / 'qt', records, qt)
+        qt_source_access.collect(licenses / 'qt', records, qt, identity=identity)
         runtime = runtime_notices()
         relevant = [r for r in runtime['runtime'] if r['platform'] == system and any((root / 'lib' / name).is_file() for name in r['sdkFiles'])]
         if relevant:
@@ -258,7 +258,7 @@ def prepare(build, qt, root):
         if system == 'Darwin':
             deploy.inspect(['/usr/bin/codesign', '--force', '--sign', '-', root / 'xdnote.app'])
             deploy.inspect(['/usr/bin/codesign', '--verify', '--deep', '--strict', root / 'xdnote.app'])
-        materials = material_evidence(root, qt, records, system)
+        materials = material_evidence(root, qt, records, system, identity=identity)
         materials['buildIdentity'] = identity
         (evidence / 'license-evidence.json').write_text(json.dumps(materials, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         sealed = inventory(root)
