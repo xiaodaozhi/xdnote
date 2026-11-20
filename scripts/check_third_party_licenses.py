@@ -28,6 +28,13 @@ DEPLOYMENT_NOTICE_PATHS = frozenset({
     "LICENSES/third-party/QtGui-FreeType-BDF-LICENSE.txt",
     "LICENSES/third-party/QtGui-FreeType-PCF-LICENSE.txt",
     "LICENSES/third-party/QtGui-FreeType-ZLIB-LICENSE.txt",
+    "LICENSES/third-party/Qt5Compat-QBIG5CODEC_LICENSE.txt",
+    "LICENSES/third-party/Qt5Compat-QEUCJPCODEC_LICENSE.txt",
+    "LICENSES/third-party/Qt5Compat-QEUCKRCODEC_LICENSE.txt",
+    "LICENSES/third-party/Qt5Compat-QJISCODEC_LICENSE.txt",
+    "LICENSES/third-party/Qt5Compat-QSJISCODEC_LICENSE.txt",
+    "LICENSES/third-party/Qt5Compat-QTSCIICODEC_LICENSE.txt",
+    "LICENSES/third-party/Qt5Compat-QBKCODEC_LICENSE.txt",
 })
 
 

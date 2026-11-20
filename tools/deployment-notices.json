@@ -81,6 +81,41 @@
       "path": "LICENSES/third-party/QtGui-FreeType-ZLIB-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/freetype/ZLIB-LICENSE.txt",
       "sha256": "2b1f5d615382a151af3eb71462ad17d89e2efee8fa7664058d35d3d9237ebb19"
+    },
+    {
+      "path": "LICENSES/third-party/Qt5Compat-QBIG5CODEC_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qt5compat/a1c4c2638b89ceaac34919c0c79fdc7f3f9b42a1/src/core5/codecs/QBIG5CODEC_LICENSE.txt",
+      "sha256": "425475b78739a2985e61c619ba833af364bba405c69e9cf2eb027e5790cc00c8"
+    },
+    {
+      "path": "LICENSES/third-party/Qt5Compat-QEUCJPCODEC_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qt5compat/a1c4c2638b89ceaac34919c0c79fdc7f3f9b42a1/src/core5/codecs/QEUCJPCODEC_LICENSE.txt",
+      "sha256": "a2a58c25c18cc5c203b2ebf7a706f6baeb93d43fc443bc095acded6d259842ea"
+    },
+    {
+      "path": "LICENSES/third-party/Qt5Compat-QEUCKRCODEC_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qt5compat/a1c4c2638b89ceaac34919c0c79fdc7f3f9b42a1/src/core5/codecs/QEUCKRCODEC_LICENSE.txt",
+      "sha256": "1c1a8f5823b81498368ba5ff489f1c05fb61a71dcbe4ebd8138bde86837ade2c"
+    },
+    {
+      "path": "LICENSES/third-party/Qt5Compat-QJISCODEC_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qt5compat/a1c4c2638b89ceaac34919c0c79fdc7f3f9b42a1/src/core5/codecs/QJISCODEC_LICENSE.txt",
+      "sha256": "a2a58c25c18cc5c203b2ebf7a706f6baeb93d43fc443bc095acded6d259842ea"
+    },
+    {
+      "path": "LICENSES/third-party/Qt5Compat-QSJISCODEC_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qt5compat/a1c4c2638b89ceaac34919c0c79fdc7f3f9b42a1/src/core5/codecs/QSJISCODEC_LICENSE.txt",
+      "sha256": "a2a58c25c18cc5c203b2ebf7a706f6baeb93d43fc443bc095acded6d259842ea"
+    },
+    {
+      "path": "LICENSES/third-party/Qt5Compat-QTSCIICODEC_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qt5compat/a1c4c2638b89ceaac34919c0c79fdc7f3f9b42a1/src/core5/codecs/QTSCIICODEC_LICENSE.txt",
+      "sha256": "e749770c43d1287fa0c0855b2fefea4efa34e6cfa806cf3dc1efa5351a7774bc"
+    },
+    {
+      "path": "LICENSES/third-party/Qt5Compat-QBKCODEC_LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qt5compat/a1c4c2638b89ceaac34919c0c79fdc7f3f9b42a1/src/core5/codecs/QBKCODEC_LICENSE.txt",
+      "sha256": "a2cc13f96cc199017b0e41c4a44faef0cce9a024fac0710e39d8fc499d738bff"
     }
   ]
 }
