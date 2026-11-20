@@ -85,6 +85,9 @@ function Association-State {
     }
     return $state
 }
+function Effective-App([string]$handler) {
+    $handler -and [IO.Path]::GetFileName($handler) -notin 'OpenWith.exe', 'OpenWithHost.exe'
+}
 
 $result = [ordered]@{ok=$false; checks=[ordered]@{}}
 try {
@@ -125,13 +128,13 @@ try {
     $command.Close()
     foreach ($extension in '.md', '.markdown') {
         $type = $classes.CreateSubKey($extension)
-        if (![CandidateShell]::Handler($extension)) { $type.SetValue('', 'Xdnote.Acceptance.Notepad') }
+        if (!(Effective-App ([CandidateShell]::Handler($extension)))) { $type.SetValue('', 'Xdnote.Acceptance.Notepad') }
         $type.Close()
     }
     [CandidateShell]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)
     $result.defaultBefore = Association-State
     foreach ($extension in '.md', '.markdown') {
-        if (!$result.defaultBefore[$extension].handler) { throw "No resolvable baseline for $extension" }
+        if (!(Effective-App ($result.defaultBefore[$extension].handler))) { throw "No actual baseline app for $extension" }
     }
 
     Stage 'attempting original unsigned package registration'
