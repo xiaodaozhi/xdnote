@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+import zipfile
 from unittest.mock import patch
 import subprocess
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -53,6 +54,23 @@ class ReleasePackageTests(unittest.TestCase):
             with self.assertRaises(ValueError): msix.manifest(identity|change,12)
         for build in (0,65536,True):
             with self.assertRaises(ValueError): msix.manifest(identity,build)
+
+    def test_unsigned_msix_rejects_extra_or_missing_executable(self):
+        xml = b'<Package/>'
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / 'test.msix'
+            for entries in (['xdnote.exe'], [], ['xdnote.exe', 'tools/xdnote-update-helper.EXE']):
+                with self.subTest(entries=entries):
+                    with zipfile.ZipFile(package, 'w') as archive:
+                        archive.writestr('AppxManifest.xml', xml)
+                        archive.writestr('platforms/qwindows.dll', b'fixture')
+                        for name in entries:
+                            archive.writestr(name, b'fixture')
+                    if entries == ['xdnote.exe']:
+                        self.assertEqual(msix.verify_unsigned_archive(package, xml), entries)
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'MSIX must contain only xdnote.exe'):
+                            msix.verify_unsigned_archive(package, xml)
 
 
 if __name__=='__main__': unittest.main()
