@@ -29,6 +29,23 @@ def macho(cpu=0x100000c,minimum=13):
 
 
 class DeliveryTests(unittest.TestCase):
+    def test_clean_package_source_reference_is_bound_to_its_revision(self):
+        modules = [{'sbom': 'qtbase-6.8.2.spdx.json'}]
+        identity = {'buildVersion': {'revision': '1' * 40, 'dirty': False}}
+        dirty = {'buildVersion': {'revision': '1' * 40, 'dirty': True}}
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            material = sources.collect(root, modules, identity=identity)
+            self.assertEqual(material['projectSource']['tree'], 'https://github.com/xiaodaozhi/xdnote/tree/' + '1' * 40)
+            self.assertEqual(sources.verify(root, identity=identity), material)
+            with self.assertRaisesRegex(ValueError, 'package identity'):
+                sources.verify(root, identity=dirty)
+            material['projectSource']['tree'] = 'https://github.com/xiaodaozhi/xdnote/tree/main'
+            (root / 'source-access.json').write_text(json.dumps(material), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'package identity'):
+                sources.verify(root)
+            self.assertNotIn('projectSource', sources.collect(root, modules, identity=dirty))
+
     def test_pe_declarations_and_corrupt_headers(self):
         self.assertEqual(abi.pe_header(pe())['architecture'],'x86_64')
         with self.assertRaises(ValueError): abi.pe_header(pe()[:180])

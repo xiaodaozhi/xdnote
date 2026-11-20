@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import platform
+import re
 import shutil
 import time
 import urllib.request
@@ -19,7 +20,15 @@ def config():
     return value
 
 
-def manifest(modules, network_backports=None, cocoa_backports=None, replacement_sha256=None):
+def project_source(identity):
+    version = (identity or {}).get('buildVersion', {})
+    revision = version.get('revision')
+    if version.get('dirty') is False and isinstance(revision, str) and re.fullmatch('[0-9a-f]{40}', revision):
+        return {'revision': revision, 'tree': 'https://github.com/xiaodaozhi/xdnote/tree/' + revision}
+    return None
+
+
+def manifest(modules, network_backports=None, cocoa_backports=None, replacement_sha256=None, *, identity=None):
     value=config()
     names={record['sbom'].split('-'+value['qtVersion'])[0] for record in modules}
     selected=[r for r in value['modules'] if r['module'] in names]
@@ -30,10 +39,13 @@ def manifest(modules, network_backports=None, cocoa_backports=None, replacement_
         result['networkBackports'] = network_backports
     if cocoa_backports is not None:
         result['cocoaBackports'] = cocoa_backports
+    project = project_source(identity)
+    if project is not None:
+        result['projectSource'] = project
     return result
 
 
-def collect(destination, modules, qt=None):
+def collect(destination, modules, qt=None, *, identity=None):
     destination=Path(destination)
     network_backports = cocoa_backports = None
     if qt is not None:
@@ -42,17 +54,25 @@ def collect(destination, modules, qt=None):
         if platform.system() == 'Darwin':
             from qt_cocoa_backports import public_record as cocoa_record
             cocoa_backports = cocoa_record(qt)
-    record = manifest(modules, network_backports, cocoa_backports)
+    record = manifest(modules, network_backports, cocoa_backports, identity=identity)
     destination.mkdir(parents=True,exist_ok=True)
     (destination/'source-access.json').write_text(json.dumps(record,indent=2)+'\n',encoding='utf-8')
     shutil.copyfile(ROOT/'docs/engineering/qt-library-replacement.md',destination/'REPLACEMENT.md')
     return record
 
 
-def verify(destination, qt=None):
+def verify(destination, qt=None, *, identity=None):
     destination=Path(destination); record=json.loads((destination/'source-access.json').read_text(encoding='utf-8')); value=config()
     if record['qtVersion']!=value['qtVersion'] or record['sourceCodeInRelease'] is not False: raise ValueError('Source access metadata changed')
     if not record['modules'] or any(r not in value['modules'] for r in record['modules']): raise ValueError('Unknown source locator')
+    if 'projectSource' in record:
+        reference = record['projectSource']
+        if not isinstance(reference, dict):
+            raise ValueError('Invalid project source reference')
+        expected = project_source(identity if identity is not None else {
+            'buildVersion': {'revision': reference.get('revision'), 'dirty': False}})
+        if reference != expected:
+            raise ValueError('Project source reference differs from package identity')
     if record['replacementInstructionsSha256']!=digest(ROOT/'docs/engineering/qt-library-replacement.md') or digest(destination/'REPLACEMENT.md')!=record['replacementInstructionsSha256']: raise ValueError('Replacement instructions changed')
     if qt is not None and (qt / 'xdnote-network-backports.json').is_file():
         from qt_network_backports import public_record
