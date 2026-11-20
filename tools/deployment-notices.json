@@ -26,6 +26,16 @@
       "path": "LICENSES/third-party/Qt-Tika-OGL-UK-3.0.txt",
       "url": "https://raw.githubusercontent.com/spdx/license-list-data/31ba1a50e5397e00a304dbadc76531740e89ee48/text/OGL-UK-3.0.txt",
       "sha256": "eb22384c866b63b513254ae3baff6b3bc7d001f559d03e02b6b8b83333a04806"
+    },
+    {
+      "path": "LICENSES/third-party/QtGui-QIMAGETRANSFORM-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/gui/painting/QIMAGETRANSFORM_LICENSE.txt",
+      "sha256": "46b3cbfa2f2946b93291506351e9be1dd0a28d2a53260f5aa488abd36fbeca9d"
+    },
+    {
+      "path": "LICENSES/third-party/QtSvg-XSVG-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtsvg/e59eaa7dbc09fbf885b1c5a69d93b7e2fb1c7ce3/src/svg/XSVG_LICENSE.txt",
+      "sha256": "3a946598a9f674d44df764279ca0b85b5d6faba08f3bc75d8e0fcf6cd729a9bd"
     }
   ]
 }
