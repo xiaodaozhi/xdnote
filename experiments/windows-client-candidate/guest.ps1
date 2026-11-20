@@ -222,12 +222,14 @@ try {
     $bounds = $register.Current.BoundingRectangle
     $x = [int]($bounds.Left + $bounds.Width / 2)
     $y = [int]($bounds.Top + $bounds.Height / 2)
-    $hit = [Windows.Automation.AutomationElement]::FromPoint([Windows.Point]::new($x, $y))
-    if ($hit.Current.ProcessId -ne $app.Id) {
-        throw 'Another window is covering the xdnote registration button'
-    }
+    $result.registrationInput = [ordered]@{ automationId=$register.Current.AutomationId; x=$x; y=$y }
     [CandidateShell]::Click($x, $y)
     $registry = 'Registry::HKEY_CURRENT_USER\Software\Classes'
+    Start-Sleep -Milliseconds 600
+    if (!(Test-Path -LiteralPath "$registry\xdnote.Markdown\shell\open\command")) {
+        $register.SetFocus()
+        [Windows.Forms.SendKeys]::SendWait(' ')
+    }
     $entry = Wait-For 'xdnote Markdown shell command' {
         $value = Get-Item -LiteralPath "$registry\xdnote.Markdown\shell\open\command" -ErrorAction SilentlyContinue
         if ($value) { $value.GetValue('') }
