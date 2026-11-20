@@ -16,7 +16,7 @@
 
 ## Rust 与 Qt 材料
 
-`runtime_materials.py` 从锁定 Rust 工具链收集标准库原始版权清单及所记录的许可文本，核对实际编译器提交、版本和每份文本 SHA-256。只收集材料，不复制编译器／标准库二进制；原文可能包含未编入当前程序的目标／组件，因此保留 `actualStaticComponentReviewComplete=false`，不能将工具链包级材料直接当成精确静态链接清单。
+`runtime_materials.py` 从锁定 Rust 工具链收集标准库原始版权清单及所记录的许可文本，核对实际编译器提交、版本和每份文本 SHA-256。随包保留 `Unicode-3.0.txt` 原文，覆盖 `core` 的 Unicode 数据版权和授权声明。材料收集仅包含文本，报告保留 `actualStaticComponentReviewComplete=false`。实际链接范围通过链接映射和产物核对。
 
 `qt_source_access.py` 按实际 Qt 模块生成官方独立源码地址、固定摘要和[自行替换说明](qt-library-replacement.md)。显式选择 `--download-cache` 时，只下载到本项目独立构建缓存进行字节核验；Qt 源码不进入产品目录、安装包或 Release 附件。可访问的归档和一份说明不等于全部源码／替换条件已满足，继续保留 `sourceAccessFulfillmentReviewComplete=false`。
 

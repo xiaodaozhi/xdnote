@@ -27,6 +27,10 @@
     {
       "path": "licenses/BSD-2-Clause.txt",
       "sha256": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df"
+    },
+    {
+      "path": "licenses/Unicode-3.0.txt",
+      "sha256": "f5062c9a188d81dfe66b56db4182dcf9e4b17c0d9b0d311a8e20b3a1b075c443"
     }
   ]
 }
