@@ -38,7 +38,7 @@ QString plainFixtureText(QTextDocument *document)
     return text;
 }
 
-class GuardedQuickAccessibility final : public QAccessibleQuickItem
+class GuardedQuickAccessibility final : public QAccessibleQuickItem, public QAccessibleEditableTextInterface
 {
 public:
     explicit GuardedQuickAccessibility(QQuickItem *item) : QAccessibleQuickItem(item) {}
@@ -75,6 +75,32 @@ public:
             }
         }
         return result;
+    }
+
+    void *interface_cast(QAccessible::InterfaceType kind) override
+    {
+        if (kind == QAccessible::EditableTextInterface) {
+            if (role() == QAccessible::EditableText && currentDocument() && !state().readOnly)
+                return static_cast<QAccessibleEditableTextInterface *>(this);
+            return nullptr;
+        }
+        return QAccessibleQuickItem::interface_cast(kind);
+    }
+
+    void deleteText(int startOffset, int endOffset) override
+    {
+        replaceText(startOffset, endOffset, {});
+    }
+
+    void insertText(int offset, const QString &value) override
+    {
+        replaceText(offset, offset, value);
+    }
+
+    void replaceText(int startOffset, int endOffset, const QString &value) override
+    {
+        if (auto *editor = qobject_cast<GuardedFixtureTextEdit *>(object()))
+            editor->replaceAccessibleRange(startOffset, endOffset, value);
     }
 
     int characterCount() const override
@@ -200,6 +226,11 @@ FixtureEditResult GuardedFixtureTextEdit::reportWriteResult(FixtureEditResult re
 
 FixtureEditResult GuardedFixtureTextEdit::replaceAccessibleText(const QString &value)
 {
+    return replaceAccessibleRange(0, -1, value);
+}
+
+FixtureEditResult GuardedFixtureTextEdit::replaceAccessibleRange(int startOffset, int endOffset, const QString &value)
+{
     if (QThread::currentThread() != thread())
         return FixtureEditResult::WrongThread;
     const auto life = m_lifetime;
@@ -215,13 +246,22 @@ FixtureEditResult GuardedFixtureTextEdit::replaceAccessibleText(const QString &v
     if (!document) return reportWriteResult(FixtureEditResult::NoDocument);
     if (textDocument()->textDocument() != document.get()) return reportWriteResult(FixtureEditResult::Detached);
     if (!document->isUndoRedoEnabled()) return reportWriteResult(FixtureEditResult::UndoUnavailable);
-    if (plainFixtureText(document.get()) == value) return reportWriteResult(FixtureEditResult::Unchanged);
+    const QString original = plainFixtureText(document.get());
+    if (startOffset == 0 && endOffset == -1)
+        endOffset = original.size();
+    if (startOffset < 0 || endOffset < startOffset || endOffset > original.size()
+        || (startOffset < original.size() && original.at(startOffset).isLowSurrogate())
+        || (endOffset < original.size() && original.at(endOffset).isLowSurrogate()))
+        return reportWriteResult(FixtureEditResult::InvalidText);
+    if (QStringView(original).mid(startOffset, endOffset - startOffset) == value)
+        return reportWriteResult(FixtureEditResult::Unchanged);
     life->busy = true;
     QPointer<GuardedFixtureTextEdit> alive(this);
     {
         QTextCursor cursor(document.get());
         cursor.beginEditBlock();
-        cursor.select(QTextCursor::Document);
+        cursor.setPosition(startOffset);
+        cursor.setPosition(endOffset, QTextCursor::KeepAnchor);
         cursor.insertText(value);
         cursor.endEditBlock();
     }

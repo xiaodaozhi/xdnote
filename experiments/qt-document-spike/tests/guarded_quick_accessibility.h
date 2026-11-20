@@ -35,6 +35,7 @@ public:
     explicit GuardedFixtureTextEdit(QQuickItem *parent = nullptr);
     ~GuardedFixtureTextEdit() override;
     FixtureEditResult replaceAccessibleText(const QString &value);
+    FixtureEditResult replaceAccessibleRange(int startOffset, int endOffset, const QString &value);
     FixtureEditResult replaceOwnedDocument(std::shared_ptr<QTextDocument> document);
     void requestClose();
     std::weak_ptr<FixtureEditorLifetime> lifetime() const { return m_lifetime; }
