@@ -691,8 +691,13 @@ void QtDocumentSpikeTests::guardedAtspiAccessibility()
     QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
     QVERIFY(original.isNull());
     editor->select(0, 3);
-    editor->setReadOnly(true);
+    QCOMPARE(editor->selectedText(), QStringLiteral("new"));
     QCOMPARE(client.write("CHECK\n"), qint64(6));
+    QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 10000);
+    QCOMPARE(client.readLine().trimmed(), QByteArray("SELECTION_CHECKED"));
+
+    editor->setReadOnly(true);
+    QCOMPARE(client.write("READONLY\n"), qint64(9));
     QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 10000);
     QCOMPARE(client.readLine().trimmed(), QByteArray("READ_ONLY_CHECKED"));
     QCOMPARE(replacement->toPlainText(), QStringLiteral("new document!"));

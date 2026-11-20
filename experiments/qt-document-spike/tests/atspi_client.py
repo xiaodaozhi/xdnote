@@ -59,8 +59,13 @@ def main(process_id):
 
     wait_for_command('CHECK')
     text = require_text(editor, 'new document!')
-    if text.getNSelections() != 1 or tuple(text.getSelection(0)) != (0, 3):
-        raise ValueError('AT-SPI did not read the selection in the replacement document')
+    count = text.getNSelections()
+    bounds = tuple(text.getSelection(0)) if count else None
+    if count != 1 or bounds != (0, 3):
+        raise ValueError(f'AT-SPI reported {count} selections, first range {bounds!r}')
+    print('SELECTION_CHECKED', flush=True)
+
+    wait_for_command('READONLY')
     editor.queryEditableText().setTextContents('rejected read-only write')
     require_text(editor, 'new document!')
     print('READ_ONLY_CHECKED', flush=True)
