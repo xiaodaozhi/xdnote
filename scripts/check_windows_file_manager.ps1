@@ -379,18 +379,15 @@ function Settings-Foreground([switch]$IncludePicker) {
         ($IncludePicker -and $owner.ProcessName -eq 'OpenWith')) { return $window }
 }
 
-function Settings-Action($Element, $Window) {
-    $node = $Element
-    for ($depth = 0; $node -and $depth -lt 5; ++$depth) {
-        if ($node.Equals($Window)) { break }
-        $pattern = $null
-        if ($node.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern) -or
-            $node.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
-            return $node
+function Settings-Chooser {
+    $window = Settings-Foreground -IncludePicker
+    if (!$window) { return }
+    foreach ($name in 'Set default','OK','Always') {
+        $control = Named-Control $window $name
+        if ($control -and !$control.Current.IsOffscreen -and !$control.Current.BoundingRectangle.IsEmpty) {
+            return [pscustomobject]@{Window=$window; Confirm=$control}
         }
-        $node = [Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($node)
     }
-    return $Element
 }
 
 function Select-DefaultInSettings($Result) {
@@ -398,55 +395,52 @@ function Select-DefaultInSettings($Result) {
     if ($registration -ne 'Software\xdnote\Capabilities') { throw 'xdnote has no current-user Settings registration' }
     Start-Process 'ms-settings:defaultapps?registeredAppUser=xdnote'
     Send-GuestStage 'open Settings Default apps for xdnote'
-    $row = Wait-Result 'the .md file type on the xdnote Settings page' {
+    $row = Wait-Result 'the actionable .md row on the xdnote Settings page' {
         $window = Settings-Foreground
-        if (!$window) { return }
-        $control = Named-Control $window '.md'
-        if (!$control) {
-            $control = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
-                [Windows.Automation.Condition]::TrueCondition) | Where-Object {
-                !$_.Current.IsOffscreen -and $_.Current.Name -match '^\.md(?:\s|,|$)'
-            } | Select-Object -First 1
-        }
-        if ($control -and !$control.Current.IsOffscreen) {
-            [pscustomobject]@{Window=$window; Control=(Settings-Action $control $window)}
-        }
-    }
-    if (!(Picker-IsForeground $row.Window)) { throw 'Settings lost the foreground before the .md selection' }
-    Press-Control $row.Control
-    Send-GuestStage 'Settings .md selection opened'
-    $choice = Wait-Result 'the xdnote item in the Settings default-app chooser' {
-        $window = Settings-Foreground -IncludePicker
         if (!$window) { return }
         $control = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
             [Windows.Automation.Condition]::TrueCondition) | Where-Object {
-            !$_.Current.IsOffscreen -and ($_.Current.Name -in 'xdnote','xdnote.exe') -and
-                $_.Current.ControlType.ProgrammaticName -in 'ControlType.ListItem','ControlType.RadioButton','ControlType.Button'
+            !$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^\.md,\s.+' -and
+                !$_.Current.BoundingRectangle.IsEmpty
+        } | Sort-Object -Property @{Expression={
+            $_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height
+        }; Descending=$true} | Select-Object -First 1
+        if ($control) { [pscustomobject]@{Window=$window; Control=$control} }
+    }
+    if (!(Picker-IsForeground $row.Window)) { throw 'Settings lost the foreground before the .md selection' }
+    $Result.settingsTypeRow = $row.Control.Current.Name
+    Click-Control $row.Control
+    $chooser = Wait-Result 'the Settings default-app chooser with a confirmation control' { Settings-Chooser }
+    Send-GuestStage ('Settings chooser visible: ' + $chooser.Confirm.Current.Name)
+    $Result.settingsChooserWindow = $chooser.Window.Current.Name
+    $Result.settingsChooserControls = @($chooser.Window.FindAll([Windows.Automation.TreeScope]::Descendants,
+        [Windows.Automation.Condition]::TrueCondition) | Where-Object { !$_.Current.IsOffscreen } |
+        Select-Object -First 100 | ForEach-Object { $_.Current.Name } | Where-Object { $_ })
+    $choice = Wait-Result 'the xdnote item in the Settings default-app chooser' {
+        $current = Settings-Chooser
+        if (!$current -or !$current.Window.Equals($chooser.Window)) { return }
+        $control = $current.Window.FindAll([Windows.Automation.TreeScope]::Descendants,
+            [Windows.Automation.Condition]::TrueCondition) | Where-Object {
+            !$_.Current.IsOffscreen -and $_.Current.IsEnabled -and $_.Current.Name -match '^xdnote(?:\.exe| Markdown editor)?$' -and
+                $_.Current.ControlType.ProgrammaticName -in 'ControlType.ListItem','ControlType.RadioButton'
         } | Select-Object -First 1
-        if ($control) { return [pscustomobject]@{Window=$window; Control=$control} }
-        if ($window.Current.ProcessId -ne $row.Window.Current.ProcessId) {
-            $point = Read-PickerPoint $window @('xdnote','xdnote.exe')
-            if ($point) { return [pscustomobject]@{Window=$window; Point=$point} }
+        if ($control) { return [pscustomobject]@{Control=$control} }
+        if (!$current.Window.Equals($row.Window)) {
+            $point = Read-PickerPoint $current.Window @('xdnote Markdown editor','xdnote.exe','xdnote')
+            if ($point) { return [pscustomobject]@{Point=$point} }
         }
     }
-    if (!(Picker-IsForeground $choice.Window)) { throw 'Settings lost the foreground before choosing xdnote' }
-    if ($choice.Control) { Press-Control $choice.Control } else { Press-PickerPoint $choice.Window $choice.Point }
-    Send-GuestStage 'Settings xdnote item selected'
-    $confirm = Wait-Result 'confirmation in Settings or the observed explicit change' {
-        if ((Read-MdUserChoice) -eq 'xdnote.Markdown') { return $true }
-        $window = Settings-Foreground -IncludePicker
-        if (!$window) { return }
-        $control = Named-Control $window 'Set default'
-        if (!$control) { $control = Named-Control $window 'OK' }
-        if ($control -and !$control.Current.IsOffscreen -and $control.Current.IsEnabled) {
-            return [pscustomobject]@{Window=$window; Control=$control}
-        }
+    if (!(Picker-IsForeground $chooser.Window)) { throw 'Settings lost the foreground before choosing xdnote' }
+    if ($choice.Control) { Click-Control $choice.Control } else { Press-PickerPoint $chooser.Window $choice.Point }
+    Send-GuestStage 'Settings chooser xdnote item selected'
+    $confirm = Wait-Result 'the enabled confirmation in Settings' {
+        $current = Settings-Chooser
+        if ($current -and $current.Window.Equals($chooser.Window) -and $current.Confirm.Current.IsEnabled) { return $current }
     }
-    if ($confirm -ne $true) {
-        if (!(Picker-IsForeground $confirm.Window)) { throw 'Settings lost the foreground before confirmation' }
-        Press-Control $confirm.Control
-    }
+    if (!(Picker-IsForeground $confirm.Window)) { throw 'Settings lost the foreground before confirmation' }
+    Click-Control $confirm.Confirm
     $Result.defaultSelectionSurface = 'Windows Settings Default apps, registeredAppUser=xdnote'
+    Send-GuestStage 'Settings default-app confirmation clicked'
 }
 
 function Select-DefaultInProperties($Item, [string]$Name, [string]$DisplayExe, [string]$ExecutablePath='') {
