@@ -298,14 +298,17 @@ try {
     $report.environment.keyboardLayout = ('0x{0:X}' -f $hkl)
     $report.checks.microsoftPinyin = $true
     Send-Keys $windowHandle @(0x11,0x23)
+    if ([XdnoteImeInput]::GetForegroundWindow() -ne $windowHandle -or !$editor.Current.HasKeyboardFocus) {
+        throw 'The owned editor lost focus before the input probe.'
+    }
     $inputOffset = (Read-InputLog).Length
-    foreach ($key in @(0x4e,0x49,0x48,0x41,0x4f)) { Send-Keys $windowHandle @($key) }
+    & $FocusSignal 'pinyin-nihao'
     try { Wait-InputLog 'composition.*COMPSTR' $inputOffset 3 } catch {
         $value = $editor.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
         if ($value -cne ($original + 'nihao')) { throw }
         # A registered Pinyin profile may still be in English mode. Undo only the
-        # observed literal probe, switch modes with Shift,
-        # and require native composition events for the actual acceptance.
+        # observed literal probe, then use the guest's virtual keyboard to switch
+        # modes and type the real input. Native composition events are still required.
         for ($attempt = 0; $attempt -lt 5 -and $value -cne $original; ++$attempt) {
             if (!$value.StartsWith($original, [StringComparison]::Ordinal) -or
                 !('nihao'.StartsWith($value.Substring($original.Length), [StringComparison]::Ordinal))) {
@@ -315,10 +318,17 @@ try {
             $value = $editor.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
         }
         if ($value -cne $original) { throw 'The English-mode probe was not fully undone.' }
-        $report.inputModeAdjustment = 'undid literal nihao and pressed Shift'
-        Send-Keys $windowHandle @(0x10)
+        $report.inputModeAdjustment = 'undid literal nihao and requested virtual Shift'
+        if ([XdnoteImeInput]::GetForegroundWindow() -ne $windowHandle -or !$editor.Current.HasKeyboardFocus) {
+            throw 'The owned editor lost focus before the input-mode switch.'
+        }
+        & $FocusSignal 'pinyin-shift'
+        Start-Sleep -Milliseconds 800
+        if ([XdnoteImeInput]::GetForegroundWindow() -ne $windowHandle -or !$editor.Current.HasKeyboardFocus) {
+            throw 'The owned editor lost focus after the input-mode switch.'
+        }
         $inputOffset = (Read-InputLog).Length
-        foreach ($key in @(0x4e,0x49,0x48,0x41,0x4f)) { Send-Keys $windowHandle @($key) }
+        & $FocusSignal 'pinyin-nihao'
     }
     Wait-InputLog 'composition.*COMPSTR' $inputOffset
     if ((Read-InputLog).Substring($inputOffset) -match 'composition.*RESULTSTR') {
@@ -326,7 +336,10 @@ try {
     }
     Wait-Value $editor ''
     $report.checks.nativePreedit = $true
-    Send-Keys $windowHandle @(0x20)
+    if ([XdnoteImeInput]::GetForegroundWindow() -ne $windowHandle -or !$editor.Current.HasKeyboardFocus) {
+        throw 'The owned editor lost focus before the input confirmation.'
+    }
+    & $FocusSignal 'pinyin-commit'
     Wait-InputLog 'composition.*RESULTSTR' $inputOffset
     Wait-Value $editor $committed
     $report.checks.nativeCommit = $true

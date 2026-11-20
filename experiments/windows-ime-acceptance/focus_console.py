@@ -70,6 +70,17 @@ def main(root):
             if request == ['escape']:
                 console.call('send-key', keys=[{'type': 'qcode', 'data': 'esc'}], **{'hold-time': 100})
                 history.append({'action': 'dismiss-system-menu'})
+            elif request == ['pinyin-shift']:
+                console.call('send-key', keys=[{'type': 'qcode', 'data': 'shift'}], **{'hold-time': 120})
+                history.append({'action': 'switch-pinyin-mode'})
+            elif request == ['pinyin-nihao']:
+                for key in 'nihao':
+                    console.call('send-key', keys=[{'type': 'qcode', 'data': key}], **{'hold-time': 100})
+                    time.sleep(.15)
+                history.append({'action': 'type-pinyin'})
+            elif request == ['pinyin-commit']:
+                console.call('send-key', keys=[{'type': 'qcode', 'data': 'spc'}], **{'hold-time': 100})
+                history.append({'action': 'confirm-pinyin'})
             elif request == ['snapshot']:
                 width, height = console.screenshot_size(frame)
                 history.append({'action': 'capture-failure', 'width': width, 'height': height})
