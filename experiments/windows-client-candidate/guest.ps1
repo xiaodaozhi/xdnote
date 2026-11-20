@@ -27,6 +27,7 @@ public static class CandidateShell {
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] static extern int GetWindowThreadProcessId(IntPtr window, out int process);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("shlwapi.dll", CharSet=CharSet.Unicode)]
@@ -60,6 +61,11 @@ public static class CandidateShell {
     }
     public static bool DesktopIsReady() {
         return IsWindowVisible(FindWindow("Shell_TrayWnd", null));
+    }
+    public static int ForegroundOwner() {
+        int process;
+        GetWindowThreadProcessId(GetForegroundWindow(), out process);
+        return process;
     }
 }
 '@
@@ -96,7 +102,17 @@ function Use-Window($window) {
     $handle = [IntPtr]$window.Current.NativeWindowHandle
     [void][CandidateShell]::SetForegroundWindow($handle)
     $window.SetFocus()
-    [void](Wait-For 'xdnote foreground window' { [CandidateShell]::GetForegroundWindow() -eq $handle })
+    $bounds = $window.Current.BoundingRectangle
+    [void](Wait-For 'xdnote foreground window' {
+        if ([CandidateShell]::GetForegroundWindow() -eq $handle) { return $true }
+        $foregroundOwner = [CandidateShell]::ForegroundOwner()
+        $foregroundApp = Get-Process -Id $foregroundOwner -ErrorAction SilentlyContinue
+        if ($foregroundApp.ProcessName -in 'StartMenuExperienceHost', 'SearchHost', 'SearchApp') {
+            [Windows.Forms.SendKeys]::SendWait('{ESC}')
+        }
+        [CandidateShell]::Click([int]($bounds.Left + 70), [int]($bounds.Top + 20))
+        return $false
+    })
 }
 function Association-State {
     $state = [ordered]@{}

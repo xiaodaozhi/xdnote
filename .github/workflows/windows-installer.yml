@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        client: ['1809', '26100']
+        client: ['26100']
     env:
       GH_TOKEN: ${{ github.token }}
       CLIENT: ${{ matrix.client }}
