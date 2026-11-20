@@ -66,11 +66,17 @@ def main(process_id):
     print('SELECTION_CHECKED', flush=True)
 
     wait_for_command('READONLY')
-    editor.queryEditableText().setTextContents('rejected read-only write')
     require_text(editor, 'new document!')
+    try:
+        editor.queryEditableText()
+    except NotImplementedError:
+        pass
+    else:
+        raise ValueError('AT-SPI exposed the editing interface for a read-only document')
     print('READ_ONLY_CHECKED', flush=True)
 
     wait_for_command('WRITE')
+    editor.clear_cache()
     if not editor.queryEditableText().setTextContents('written through AT-SPI'):
         raise ValueError('AT-SPI could not replace the editable content')
     require_text(editor, 'written through AT-SPI')
