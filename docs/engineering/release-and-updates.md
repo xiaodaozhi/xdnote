@@ -162,6 +162,17 @@ macOS 的[私有原生演练](../../experiments/native-update-fixture/README.md)
 
 ## 只读候选预检
 
+在三平台各自产出并核验两件实包后，可在本机组装同一候选：
+
+```bash
+python scripts/assemble_release_candidate.py \
+  --identity build/candidate/desktop/generated/build-version.json \
+  --windows build/candidate/windows --macos build/candidate/macos --linux build/candidate/linux \
+  --output-dir build/release-verified
+```
+
+输入身份取自干净 Release 构建。每个平台目录提供发行命名的两件实包和验包环节生成的 `verification.json`，其中 `identity` 记录构建身份，`assets` 按文件名记录 `bytes`、`sha256` 和 `verified`。组装要求三份身份完全一致，各平台仅为规定的两种包提供回执，再用既有预检校验复制后的全部资产。输出包含原包 `assets/`、`identity.json`、`verification.json` 和 `preflight.json`。合并后的回执保留三份原回执的 SHA-256。失败时保留输入和已有候选，成功仅表示未签名实包与回执相符。平台验包和生产签名仍各自执行。
+
 `scripts/release_preflight.py` 复用六种真实资产与封存摘要的候选契约，核对 clean Release 版本／build／提交和同一组文件。它不签名、上传、打标签或发布；没有原生包验收、完整许可／源码履行、最低系统／真实桌面和具体发行授权时，报告持续保留 `releaseReady=false`、`licenseReviewComplete=false`。元数据通过与身份验签通过分别记录，不把验证 JSON 的 `verified` 字段当作最终发行授权。
 
 可选验签使用 `crates/update/examples/verify_release.rs`：以固定 Rust 工具链在本项目 build 的 target-dir 编译后，传入原始清单与签名信封两个文件路径。该命令只调用既有 Rust 核心和编译时生产公钥，不接受运行时 keyring、私钥或网络输入；读取先受元数据上限约束，输出清单与公钥输入摘要及稳定错误码，失败退出码为 2。生产根为空时拒绝认证。
