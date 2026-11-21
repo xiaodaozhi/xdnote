@@ -535,6 +535,22 @@ void QtDocumentSpikeTests::guardedAccessibilityTracksReplacedDocument()
     tail.movePosition(QTextCursor::End);
     tail.insertText(QStringLiteral("!"));
     QCOMPARE(text->text(0, text->characterCount()), sample + QStringLiteral("!"));
+    QVERIFY(editor->setProperty("readOnly", true));
+    text->setSelection(0, 1, 3);
+    QCOMPARE(editor->property("selectedText").toString(), QStringLiteral("🙂"));
+    text->setSelection(0, 2, 3); // Inside the emoji's UTF-16 surrogate pair.
+    text->setSelection(1, 3, 5); // This editor supports one selection.
+    text->setSelection(0, 3, text->characterCount() + 1);
+    QCOMPARE(editor->property("selectedText").toString(), QStringLiteral("🙂"));
+    text->removeSelection(0);
+    QCOMPARE(text->selectionCount(), 0);
+    text->addSelection(3, 5);
+    text->selection(0, &start, &end);
+    QCOMPARE(start, 3);
+    QCOMPARE(end, 5);
+    QCOMPARE(editor->property("selectedText").toString(), QStringLiteral("文本"));
+    QCOMPARE(replacement->toPlainText(), sample + QStringLiteral("!"));
+    QVERIFY(editor->setProperty("readOnly", false));
     accessible->setText(QAccessible::Value, QStringLiteral("接管后修改"));
     QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("接管后修改"));
     replacement->undo();

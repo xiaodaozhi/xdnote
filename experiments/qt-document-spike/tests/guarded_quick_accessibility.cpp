@@ -117,6 +117,31 @@ public:
         return value.mid(startOffset, endOffset - startOffset);
     }
 
+    void addSelection(int startOffset, int endOffset) override
+    {
+        setSelection(0, startOffset, endOffset);
+    }
+
+    void setSelection(int index, int startOffset, int endOffset) override
+    {
+        auto *editor = selectionEditor();
+        if (index != 0 || !editor)
+            return;
+        const auto *document = editor->textDocument()->textDocument();
+        const int length = document->characterCount() - 1;
+        if (startOffset < 0 || endOffset < startOffset || endOffset > length
+            || document->characterAt(startOffset).isLowSurrogate()
+            || document->characterAt(endOffset).isLowSurrogate())
+            return;
+        editor->select(startOffset, endOffset);
+    }
+
+    void removeSelection(int index) override
+    {
+        if (auto *editor = index == 0 ? selectionEditor() : nullptr)
+            editor->deselect();
+    }
+
     QString textBeforeOffset(int offset, QAccessible::TextBoundaryType boundary,
                              int *start, int *end) const override
     {
@@ -142,6 +167,18 @@ public:
     }
 
 private:
+    GuardedFixtureTextEdit *selectionEditor() const
+    {
+        auto *editor = qobject_cast<GuardedFixtureTextEdit *>(object());
+        if (!editor || QThread::currentThread() != editor->thread())
+            return nullptr;
+        const auto life = editor->lifetime().lock();
+        if (!life || life->busy || !life->document || currentDocument() != life->document.get()
+            || editor->isInputMethodComposing())
+            return nullptr;
+        return editor;
+    }
+
     QTextDocument *currentDocument() const
     {
         auto *editor = qobject_cast<GuardedFixtureTextEdit *>(object());
