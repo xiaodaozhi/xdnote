@@ -139,6 +139,17 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 
 `scripts/release_candidate.py` 只为六个实际资产生成既定 schema-1 未签名清单，要求同一 clean 发行身份及逐包摘要／长度验证记录，不创建 tag、Release 或签名。Windows 数字版本、macOS CFBundleVersion 和 Debian 包版本分别绑定生成身份；当前默认仍没有正式发行 build。所有包型继续需要各自最低系统、真实升级／恢复和最终许可核验。
 
+在 Apple Silicon macOS 上，按[开发构建](developer-build.md)传入明确的 `--release-identity` 完成干净构建，再用 `scripts/product_deployment_unix.py` 生成封存载荷及其 `inventory.json`。以新目录接收 macOS 候选包：
+
+```bash
+python scripts/build_macos_candidate.py \
+  --root build/macos-candidate/staging \
+  --audit build/macos-candidate/staging-evidence/inventory.json \
+  --output-dir build/macos-candidate/packages
+```
+
+入口生成同版本的 `macos-arm64.app.zip` 与 `macos-arm64.dmg`。验证时解包 ZIP 并只读挂载 DMG，核对两份应用的文件、框架链接、版本、build、arm64 主程序及 ad-hoc 完整性，结束后卸载镜像。`verification.json` 记录这两件资产的大小、SHA-256 和适用范围，供同一候选的六件套组装使用。最低系统、运行安装、更新和完整许可仍按各自流程验收。
+
 ## 许可核验与准入
 
 沿用实际文件归属、固定来源／摘要、原始版权和许可证、SPDX、代码／数据节比较、源码获取及隔离替换运行的方法。只核对实际使用的 Qt 模块、Rust 静态组件、Scintilla、运行库和新增 Sparkle；不能把 SDK 全部条目、其他产品字体或包级版权清单当成实际编入范围。
