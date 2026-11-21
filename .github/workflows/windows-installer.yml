@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 'fixtures checks engine guards; product builds and tests the actual installer payload'
+        description: 'fixtures checks installer guards; product tests the installer; ime tests a Windows client'
         type: choice
-        options: [fixtures, product]
+        options: [fixtures, product, ime]
         default: fixtures
   workflow_call:
     inputs:
@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +24,7 @@ concurrency:
 
 jobs:
   native-installer:
-    if: inputs.scope != 'product'
+    if: inputs.scope == 'fixtures'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -57,8 +58,86 @@ jobs:
             build/installer-smoke/*.files
           retention-days: 7
           if-no-files-found: warn
+  ime-client:
+    if: inputs.scope == 'ime'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      XDNOTE_GUEST: ${{ github.workspace }}/build/windows-ime-client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare an isolated Windows client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age qemu-system-x86 qemu-utils xorriso mtools dosfstools ovmf swtpm
+          test -c /dev/kvm
+          mkdir -p "$XDNOTE_GUEST/recipient"
+          umask 077
+          age-keygen -o "$XDNOTE_GUEST/guest.key"
+          age-keygen -y "$XDNOTE_GUEST/guest.key" > "$XDNOTE_GUEST/recipient/public-key.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-ime-recipient
+          path: ${{ github.workspace }}/build/windows-ime-client/recipient/public-key.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Boot the disposable Windows 11 client
+        run: |
+          bash experiments/windows-ime-acceptance/boot.sh "$XDNOTE_GUEST"
+          sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" ready
+      - name: Install basic Chinese input and disconnect the guest
+        timeout-minutes: 20
+        run: sudo python3 experiments/windows-ime-acceptance/provision.py "$XDNOTE_GUEST"
+      - name: Transfer the same-run product into the networkless client
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          mkdir "$XDNOTE_GUEST/incoming" "$XDNOTE_GUEST/payload"
+          for attempt in {1..240}; do
+            if gh run download "$GITHUB_RUN_ID" --name windows-ime-encrypted-product --dir "$XDNOTE_GUEST/incoming" --repo "$GITHUB_REPOSITORY" 2>/dev/null; then
+              break
+            fi
+            sleep 5
+          done
+          test -s "$XDNOTE_GUEST/incoming/payload.age"
+          age --decrypt --identity "$XDNOTE_GUEST/guest.key" --output "$XDNOTE_GUEST/payload.zip" "$XDNOTE_GUEST/incoming/payload.age"
+          rm -- "$XDNOTE_GUEST/guest.key"
+          unzip -q "$XDNOTE_GUEST/payload.zip" -d "$XDNOTE_GUEST/payload"
+          xorriso -as mkisofs -R -J -V XDNOTE_TESTS -o "$XDNOTE_GUEST/transfer.iso" "$XDNOTE_GUEST/payload"
+          sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" attach
+      - name: Verify real Microsoft Pinyin and the transferred document
+        timeout-minutes: 12
+        run: |
+          sudo python3 experiments/windows-ime-acceptance/focus_console.py "$XDNOTE_GUEST"
+          sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" result
+      - name: Stop the guest and preserve bounded diagnostics
+        if: always()
+        run: |
+          if test -S "$XDNOTE_GUEST/monitor"; then
+            sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" screenshot || true
+            sudo python3 experiments/windows-ime-acceptance/collect.py "$XDNOTE_GUEST" quit || true
+          fi
+          if test -d "$XDNOTE_GUEST/evidence"; then
+            sudo chown -R "$(id -u):$(id -g)" "$XDNOTE_GUEST/evidence"
+          fi
+          if test -f "$XDNOTE_GUEST/tpm.pid"; then
+            kill "$(cat "$XDNOTE_GUEST/tpm.pid")" || true
+          fi
+          rm -f -- "$XDNOTE_GUEST/guest.key" "$XDNOTE_GUEST/payload.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: windows-ime-client-evidence
+          path: |
+            ${{ github.workspace }}/build/windows-ime-client/evidence/
+            ${{ github.workspace }}/build/windows-ime-client/serial.log
+          if-no-files-found: warn
+          retention-days: 7
   product-installer:
-    if: inputs.scope == 'product'
+    if: inputs.scope == 'product' || inputs.scope == 'ime'
     runs-on: windows-2022
     timeout-minutes: 40
     env:
@@ -68,6 +147,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check Windows IME acceptance scripts and live log capture
+        if: inputs.scope == 'ime'
+        shell: pwsh
+        run: |
+          foreach ($path in @('experiments/windows-ime-acceptance/guest.ps1', 'scripts/reader-acceptance/ime-windows.ps1', 'scripts/reader-acceptance/capture-windows.ps1', 'scripts/reader-acceptance/test-capture-windows.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; throw "Invalid PowerShell: $path" }
+          }
+          ./scripts/reader-acceptance/test-capture-windows.ps1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -109,20 +199,59 @@ jobs:
           python scripts/compatibility_audit.py --root build/product-install/payload --report build/product-install/compatibility.json
           python scripts/developer_archive.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --compatibility build/product-install/compatibility.json --output build/product-install/xdnote-windows-x86_64-dev.zip
           python scripts/build-windows-installer.py --root build/product-install/payload --audit build/product-install/payload-inventory.json --toolchain build/toolchain/installer --output build/product-install/xdnote-dev-setup.exe --report build/product-install/installer-report.json
+      - name: Transfer the sealed product to the isolated Windows client
+        if: inputs.scope == 'ime'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $transfer = Join-Path $env:RUNNER_TEMP 'xdnote-ime-transfer'
+          New-Item -ItemType Directory -Path "$transfer/input","$transfer/recipient","$transfer/encrypted" | Out-Null
+          $recipient = Join-Path $transfer 'recipient/public-key.txt'
+          $PSNativeCommandUseErrorActionPreference = $false
+          for ($i = 0; $i -lt 120 -and !(Test-Path $recipient); $i++) {
+            & gh run download $env:GITHUB_RUN_ID --name windows-ime-recipient --dir "$transfer/recipient" --repo $env:GITHUB_REPOSITORY 2>$null
+            if (!(Test-Path $recipient)) { Start-Sleep -Seconds 5 }
+          }
+          $PSNativeCommandUseErrorActionPreference = $true
+          if (!(Test-Path $recipient)) { throw 'The same-run guest recipient did not arrive' }
+          $key = (Get-Content -LiteralPath $recipient -Raw).Trim()
+          if ($key -notmatch '^age1[0-9a-z]{58}$') { throw 'Unexpected guest recipient' }
+          $age = Join-Path $transfer 'age.zip'
+          curl.exe --fail --location --max-time 60 --retry 2 --silent --show-error https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip --output $age
+          if ((Get-FileHash -LiteralPath $age).Hash.ToLowerInvariant() -ne 'f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7') { throw 'age package checksum differs' }
+          Expand-Archive -LiteralPath $age -DestinationPath "$transfer/age"
+          Compress-Archive -Path 'build/product-install/payload/*' -DestinationPath "$transfer/input/product.zip"
+          Copy-Item build/product-install/payload-inventory.json,scripts/reader-acceptance/ime-windows.ps1,scripts/reader-acceptance/capture-windows.ps1 -Destination "$transfer/input"
+          git rev-parse HEAD | Set-Content -Encoding ascii "$transfer/input/source.txt"
+          Compress-Archive -Path "$transfer/input/*" -DestinationPath "$transfer/payload.zip"
+          $ageTool = (Get-ChildItem "$transfer/age" -Recurse -Filter 'age.exe' | Select-Object -First 1).FullName
+          & $ageTool --recipient $key --output "$transfer/encrypted/payload.age" "$transfer/payload.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: inputs.scope == 'ime'
+        with:
+          name: windows-ime-encrypted-product
+          path: ${{ runner.temp }}/xdnote-ime-transfer/encrypted/payload.age
+          if-no-files-found: error
+          retention-days: 1
       - name: Cross-check live Rust ranges in the packaged Windows executable
+        if: inputs.scope == 'product'
         run: python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary build/product-install/payload/xdnote.exe --output build/product-install/linkage.json
       - name: Check unsigned Store package layout with disposable identity
+        if: inputs.scope == 'product'
         run: python scripts/check_msix.py --build-dir build/desktop-admission --qt-prefix build/Qt/6.8.2/msvc2022_64 --payload build/product-install/payload --audit build/product-install/payload-inventory.json --work-dir build/product-install/msix-fixture
       - name: Validate actual native package roundtrip
+        if: inputs.scope == 'product'
         shell: pwsh
         run: ./scripts/test-windows-product-install.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -BuildDirectory build/desktop-admission -QtPrefix build/Qt/6.8.2/msvc2022_64 -EvidenceDirectory "$PWD/build/product-install/roundtrip-evidence"
       - name: Validate visible setup, File Explorer and its default application picker
-        if: runner.environment == 'github-hosted'
+        if: inputs.scope == 'product' && runner.environment == 'github-hosted'
         timeout-minutes: 8
         shell: powershell
         run: ./scripts/check_windows_file_manager.ps1 -Package "$PWD/build/product-install/xdnote-dev-setup.exe" -Audit build/product-install/payload-inventory.json -PackageReport build/product-install/installer-report.json -EvidenceDirectory "$PWD/build/product-install/explorer-evidence"
       - name: Upload product integration evidence only
-        if: always()
+        if: always() && inputs.scope == 'product'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-product-install-evidence
