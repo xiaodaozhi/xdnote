@@ -18,13 +18,15 @@ Qt DLL 和插件按照 SDK SPDX 中的相对路径对应到实际分发文件，
 
 Windows 最低目标为 Windows 10 1809+。`D3Dcompiler_47.dll` 使用目标系统提供的版本，依据[微软组件说明](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/packaging/packaging-framework-packages?view=gdk-2604)；部署工具使用 `--no-system-d3d-compiler`、`--no-system-dxc-compiler`，不将宿主 Windows 的图形 DLL 复制进载荷。图形 API 继续由目标系统提供，静态导入与实际运行仍分别核对；最低系统真机验收单独记录。
 
-报告绑定实际文件摘要和构建身份，单次结果记录在 Issue／PR 或构建工件中。完整许可、源码／替换材料与最终交付核验仍由 [Issue #4](https://github.com/xiaodaozhi/xdnote/issues/4) 跟踪，采用[既定材料归属与隔离替换方法](release-and-updates.md)。已识别且适用的义务或必需材料未解决时阻断候选；上游 `NOASSERTION` 或机器报告不完整本身不直接推导为许可冲突，也不自动作为豁免。签名／公证采用与否按发行决策记录，不与许可核验混为同一门槛。
+每次发行复核绑定实际候选的版本、完整源码提交和交付包 SHA-256。按包内实际组件核对来源、适用条款、原始许可、通知及源码／替换材料。已有归属和替换测试可在输入、部署方式和适用范围一致时复用，差异按文件或义务核对。发现具体缺口时，记录受影响的组件、包和条款，补齐后复核受影响的候选。`NOASSERTION` 或机器报告不完整需要结合实际组件判断。结果记录在 [Issue #4](https://github.com/xiaodaozhi/xdnote/issues/4) 或对应发行记录中，签名与公证按[发行决策](release-and-updates.md)另行核对。
+
+Windows 标准 GitHub 托管构建按实际运行日志确认镜像、Visual Studio 版本与编译器。预装 Enterprise 的托管使用依据见 [GitHub runner-images 维护者的说明](https://github.com/actions/runner-images/issues/12945#issuecomment-3348002951)。随包 VC++ 运行库按 [VS 2022 REDIST 清单](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)及[运行库分发条件](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files?view=msvc-170)复核，结合随包原始协议和运行库通知。自托管或本机构建按其实际环境核对许可。
 
 ## Qt 源码与发行附件边界
 
 xdnote 的 GitHub Release 附件、安装包、应用压缩包及便携产品目录均不包含 Qt 源码归档或源码树。应用继续携带实际需要的 Qt 运行库、许可文本、版权与第三方声明；发行清单不得把 Qt 源码作为本项目 Release 的额外附件。
 
-Qt 对应源码获取和用户修改／替换库的适用要求另行通过独立方式落实，所选方式须与实际 Qt 版本、修改和分发条件相符，并核对获取渠道与必要说明的可用性。该项继续由 Issue #4 跟踪；记录链接或一份说明不直接视为全部要求已完成，也不因此移除当前 `licenseReviewComplete=false`／`releaseReady=false` 状态。依据见 [Qt LGPL 使用条件](https://www.qt.io/development/open-source-lgpl-obligations)。
+常规发行与验收使用已有固定源码记录、补丁和[替换验证](qt-library-replacement.md)。专门收集对应源码包须由用户另行要求，产物供本地审查和重建验证。发行复核按实际 Qt 版本、修改和分发渠道，检查适用的源码获取条件及用户修改／替换说明，并记录具体缺口。依据见 [Qt LGPL 使用条件](https://www.qt.io/development/open-source-lgpl-obligations)。
 
 Windows 产品安装专项和 Unix 产品部署专项的诊断进程使用固定提交的 Noto Sans CJK SC 2.004 字体夹具，避免服务器缺少中文字体时跳过字形检查。`scripts/ci-font-materials.json` 锁定字体和原始 OFL 文本摘要，`prepare_ci_font.py` 准备到本项目 build；仅诊断入口通过应用级字体 API 显式载入，不安装到操作系统，不进入产品载荷。字体夹具结果不代替实际目标系统字体与可见桌面验收。
 
