@@ -44,6 +44,7 @@
 | 计划 | [开发路线](planning/roadmap.md) | 阶段顺序、产物和退出条件 |
 | 验收 | [验收规格](qa/acceptance.md) | 需求映射、真实文件与平台验证方法 |
 | Windows 读屏 | [NVDA 实机验收](qa/windows-nvda.md) | 原生桌面的脚本入口、语音证据和结果判读 |
+| macOS 读屏 | [VoiceOver 静音验收](qa/macos-voiceover.md) | 实机转子跳转、连续朗读与字幕取证 |
 | Linux 读屏 | [Orca 验收](qa/linux-orca.md) | 隔离 X11 和 GNOME Wayland 的运行与取证 |
 | 工作区界面 | [工作区界面核对](qa/workspace-visual.md) | 标签边界、侧栏、面包屑及导航页的明暗状态检查 |
 | 覆盖 | [界面清单](visual/screen-inventory.md) | 33 张图板、89 个页面与状态 |
