@@ -292,6 +292,7 @@ bool WindowGeometry::flush() {
 }
 bool WindowGeometry::eventFilter(QObject *target, QEvent *event) {
     if (!m_window || target != m_window) return false;
+
     if (event->type() == QEvent::Show && !m_initialized) QTimer::singleShot(0, this, &WindowGeometry::initialize);
     if (event->type() == QEvent::WinIdChange) QTimer::singleShot(0, this, [this] { bindHandle(); if (m_initialized) scheduleFit(); });
     if (event->type() == QEvent::Resize && !m_initialized && !m_hasSaved && !event->spontaneous())
@@ -300,6 +301,10 @@ bool WindowGeometry::eventFilter(QObject *target, QEvent *event) {
     if (event->type() == QEvent::Move) rememberPosition();
     if (event->type() == QEvent::Resize && event->spontaneous() && m_initialized && !m_applying && !m_transition && !m_nativeStateTransition && !m_restoreNormal && !m_nativeMove
         && normalWindowState(m_window->windowState()) && m_window->screen()
+#ifdef Q_OS_MACOS
+        // AppKit can resize the window before the Qt state becomes full-screen.
+        && !macNativeFullScreen(m_window)
+#endif
         && !resemblesWindowTile(m_window->frameGeometry(), m_window->screen()->availableGeometry())) rememberUserGeometry(m_window->geometry());
     if (event->type() == QEvent::WindowStateChange && !m_window->isMinimized() && !m_window->isFullScreen()
         && (static_cast<QWindowStateChangeEvent *>(event)->oldState() & ~Qt::WindowActive) != (m_window->windowState() & ~Qt::WindowActive)) {

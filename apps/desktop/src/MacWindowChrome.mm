@@ -108,6 +108,11 @@ private:
 };
 }
 
+bool macNativeFullScreen(const QWidget *window) {
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa") || !window->internalWinId()) return false;
+    return (nativeView(window).window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+}
+
 void ApplicationWindow::applyMacWindowChrome() {
     if (!isWindow() || !m_windowHeader || QGuiApplication::platformName() != "cocoa") return;
     NSView *content = nativeView(this);
