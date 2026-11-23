@@ -35,6 +35,8 @@ Windows 发布者证书、macOS Developer ID 和 Apple 公证不列为办理待�
 
 工作流先确认签名环境已设置必需审批人，再在无密钥的步骤编译锁定工具。审批后的签名步骤先核对私钥与已配置公钥，再签 Sparkle 归档并生成 `macos-update.json`。随后从同一个候选构建并签署 `appcast.xml`，对 `release.json` 的原始字节生成 `release.json.sig`。`SHA256SUMS` 覆盖六个资产和全部签名附件。独立作业下载同一候选和已签名附件，使用编入的公开信任根再次核对包、签名及校验和。
 
+已经在本机组装的私有六件套可通过一次性的私有取包仓库交给同一工作流。手动执行时提交取包仓库及完整提交、候选源码提交、`verification.json` 的 SHA-256 和一次性 age 公钥。候选须在 `main` 的提交历史上。签名及独立验签均从候选源码编译工具，只读取得同一六件套。两份临时 Actions Secret 分别提供仓库只读部署密钥（`XDNOTE_PRIVATE_CANDIDATE_SSH_KEY`）和附件解密密钥（`XDNOTE_PRIVATE_CANDIDATE_AGE_IDENTITY`）。签名作业继续等待 `release-signing` 审批。取回并验签后，撤销临时凭据并清理加密工件及取包仓库。
+
 本地可用已保存的 TXT 调用同一工具。准备项目锁定的 Rust 工具链和依赖后，使用以下入口；两种路径采用相同的候选校验和签名协议。
 
 ```bash
