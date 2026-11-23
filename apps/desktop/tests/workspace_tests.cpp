@@ -137,7 +137,12 @@ private slots:
         desktop.openInWorkspace(path, workspace); auto *pane = waitPane(workspace, path); QVERIFY(pane); QTRY_VERIFY(tabs->isVisible()); QVERIFY(add->isVisible()); QVERIFY(!strip->testAttribute(Qt::WA_TransparentForMouseEvents));
         QCOMPARE(tabs->mapTo(header, QPoint()).y(), 0); QCOMPARE(tabs->tabRect(0).top(), 0);
         const auto image = tabs->grab().toImage(); QVERIFY(hasColorNear(image, QPointF(tabs->tabRect(0).center().x(), 0), workspace->windowAppearance()->color("border")));
-        QCOMPARE(tabs->tabButton(0, QTabBar::RightSide)->geometry().center().y(), add->mapTo(tabs, add->rect().center()).y()); capture(workspace, "welcome-" + theme + "-flush-tabs");
+        const auto *close = tabs->tabButton(0, QTabBar::RightSide);
+        QVERIFY(close);
+        const auto closeCenter = close->mapTo(strip, close->rect().center());
+        const auto addCenter = add->mapTo(strip, add->rect().center());
+        QCOMPARE(closeCenter.y(), addCenter.y());
+        capture(workspace, "welcome-" + theme + "-flush-tabs");
         QPointer<SingleFileWindow> guarded = pane; pane->close(); QTRY_VERIFY(!guarded); QTRY_COMPARE(tabs->count(), 0);
         QVERIFY(!tabs->isVisible()); QVERIFY(!add->isVisible()); QVERIFY(strip->testAttribute(Qt::WA_TransparentForMouseEvents)); QCOMPARE(workspace->childAt(QPoint(400, 24)), header);
         workspace->findChild<SharedButton *>("workspaceRecent")->click(); QTRY_COMPARE(tabs->count(), 1); QVERIFY(tabs->isVisible()); QVERIFY(add->isVisible());
