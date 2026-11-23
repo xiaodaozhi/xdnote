@@ -139,6 +139,21 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 
 `scripts/release_candidate.py` 只为六个实际资产生成既定 schema-1 未签名清单，要求同一 clean 发行身份及逐包摘要／长度验证记录，不创建 tag、Release 或签名。Windows 数字版本、macOS CFBundleVersion 和 Debian 包版本分别绑定生成身份；当前默认仍没有正式发行 build。所有包型继续需要各自最低系统、真实升级／恢复和最终许可核验。
 
+Windows x64 和 Ubuntu 22.04 x64 使用 `scripts/build_release_platform.py`，输入为本机该次干净 Release 构建的封存载荷、载荷清单及兼容性报告。将 `--root`、`--audit`、`--compatibility` 指向这次部署的实际目录和报告，并用 `--output-dir` 指定新的平台目录。Windows 须另传 `--toolchain build/toolchain/installer`。
+
+入口复用现有安装器、Debian 包和归档构建脚本，产出 Windows 的 ZIP／EXE 或 Ubuntu 的 TAR.GZ／DEB。便携包经过解包与可重复性检查。DEB 另核对控制字段并解包对照安装目录，Windows 安装器核对同次生成回执及摘要。两个平台都输出供六件套组装使用的 `verification.json`。这些回执覆盖打包及文件核对。实际安装和更新仍按各自原生验收入口执行。
+
+在 Apple Silicon macOS 上，按[开发构建](developer-build.md)传入明确的 `--release-identity` 完成干净构建，再用 `scripts/product_deployment_unix.py` 生成封存载荷及其 `inventory.json`。以新目录接收 macOS 候选包：
+
+```bash
+python scripts/build_macos_candidate.py \
+  --root build/macos-candidate/staging \
+  --audit build/macos-candidate/staging-evidence/inventory.json \
+  --output-dir build/macos-candidate/packages
+```
+
+入口生成同版本的 `macos-arm64.app.zip` 与 `macos-arm64.dmg`。验证时解包 ZIP 并只读挂载 DMG，核对两份应用的文件、框架链接、版本、build、arm64 主程序及 ad-hoc 完整性，结束后卸载镜像。`verification.json` 记录这两件资产的大小、SHA-256 和适用范围，供同一候选的六件套组装使用。最低系统、运行安装、更新和完整许可仍按各自流程验收。
+
 ## 许可核验与准入
 
 沿用实际文件归属、固定来源／摘要、原始版权和许可证、SPDX、代码／数据节比较、源码获取及隔离替换运行的方法。只核对实际使用的 Qt 模块、Rust 静态组件、Scintilla、运行库和新增 Sparkle；不能把 SDK 全部条目、其他产品字体或包级版权清单当成实际编入范围。
@@ -150,6 +165,17 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 macOS 的[私有原生演练](../../experiments/native-update-fixture/README.md)以临时编译信任根构建两个本地测试版本，自动核对恢复、损坏包、取消与准确 helper 退出、真实替换及重启后完整身份／文档／未知设置键保留。签名种子在执行前删除，生产信任材料摘要必须不变；本地回环 native feed、合成的其他平台资产和安装根例外只存在于隔离 worktree，不把它们当作生产或最低系统通过记录。
 
 ## 只读候选预检
+
+在三平台各自产出并核验两件实包后，可在本机组装同一候选：
+
+```bash
+python scripts/assemble_release_candidate.py \
+  --identity build/candidate/desktop/generated/build-version.json \
+  --windows build/candidate/windows --macos build/candidate/macos --linux build/candidate/linux \
+  --output-dir build/release-verified
+```
+
+输入身份取自干净 Release 构建。每个平台目录提供发行命名的两件实包和验包环节生成的 `verification.json`，其中 `identity` 记录构建身份，`assets` 按文件名记录 `bytes`、`sha256` 和 `verified`。组装要求三份身份完全一致，各平台仅为规定的两种包提供回执，再用既有预检校验复制后的全部资产。输出包含原包 `assets/`、`identity.json`、`verification.json` 和 `preflight.json`。合并后的回执保留三份原回执的 SHA-256。失败时保留输入和已有候选，成功仅表示未签名实包与回执相符。平台验包和生产签名仍各自执行。
 
 `scripts/release_preflight.py` 复用六种真实资产与封存摘要的候选契约，核对 clean Release 版本／build／提交和同一组文件。它不签名、上传、打标签或发布；没有原生包验收、完整许可／源码履行、最低系统／真实桌面和具体发行授权时，报告持续保留 `releaseReady=false`、`licenseReviewComplete=false`。元数据通过与身份验签通过分别记录，不把验证 JSON 的 `verified` 字段当作最终发行授权。
 
