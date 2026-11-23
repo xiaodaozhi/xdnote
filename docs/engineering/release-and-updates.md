@@ -139,6 +139,10 @@ Windows／Linux 从启动独立助手起保留该事务缓存，取消或退出�
 
 `scripts/release_candidate.py` 只为六个实际资产生成既定 schema-1 未签名清单，要求同一 clean 发行身份及逐包摘要／长度验证记录，不创建 tag、Release 或签名。Windows 数字版本、macOS CFBundleVersion 和 Debian 包版本分别绑定生成身份；当前默认仍没有正式发行 build。所有包型继续需要各自最低系统、真实升级／恢复和最终许可核验。
 
+Windows x64 和 Ubuntu 22.04 x64 使用 `scripts/build_release_platform.py`，输入为本机该次干净 Release 构建的封存载荷、载荷清单及兼容性报告。将 `--root`、`--audit`、`--compatibility` 指向这次部署的实际目录和报告，并用 `--output-dir` 指定新的平台目录。Windows 须另传 `--toolchain build/toolchain/installer`。
+
+入口复用现有安装器、Debian 包和归档构建脚本，产出 Windows 的 ZIP／EXE 或 Ubuntu 的 TAR.GZ／DEB。便携包经过解包与可重复性检查。DEB 另核对控制字段并解包对照安装目录，Windows 安装器核对同次生成回执及摘要。两个平台都输出供六件套组装使用的 `verification.json`。这些回执覆盖打包及文件核对。实际安装和更新仍按各自原生验收入口执行。
+
 在 Apple Silicon macOS 上，按[开发构建](developer-build.md)传入明确的 `--release-identity` 完成干净构建，再用 `scripts/product_deployment_unix.py` 生成封存载荷及其 `inventory.json`。以新目录接收 macOS 候选包：
 
 ```bash
