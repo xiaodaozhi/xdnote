@@ -114,7 +114,7 @@ public:
         auto *view = editor();
         const auto value = contents(view);
         if (index != 0 || !view || !DocumentSession::utf16Boundary(value, start) || !DocumentSession::utf16Boundary(value, end)) return;
-        view->send(SCI_SETSEL, uptr_t(value.left(start).toUtf8().size()), sptr_t(value.left(end).toUtf8().size()));
+        view->setAccessibleSelection(uptr_t(value.left(start).toUtf8().size()), sptr_t(value.left(end).toUtf8().size()));
     }
     int cursorPosition() const override {
         auto *view = editor();
@@ -387,12 +387,37 @@ void SourceEditor::wheelEvent(QWheelEvent *event) {
     ScintillaEditBase::wheelEvent(event);
     if (!(event->modifiers() & Qt::ShiftModifier) && (event->angleDelta().y() || event->pixelDelta().y())) emit verticalNavigationRequested();
 }
+void SourceEditor::setAccessibleSelection(uptr_t anchor, sptr_t cursor) {
+    if (QThread::currentThread() != thread()) return;
+    if (m_pointerSelection == PointerSelection::Pressed) m_pointerSelection = PointerSelection::Superseded;
+    send(SCI_SETSEL, anchor, cursor);
+}
+
 void SourceEditor::mousePressEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton) m_pointerSelection = PointerSelection::Pressed;
     const QPointer<SourceEditor> alive(this); ScintillaEditBase::mousePressEvent(event);
     if (alive && event->button() == Qt::LeftButton) emit verticalNavigationRequested();
 }
 void SourceEditor::mouseMoveEvent(QMouseEvent *event) {
+    if ((event->buttons() & Qt::LeftButton) && m_pointerSelection == PointerSelection::Superseded)
+        m_pointerSelection = PointerSelection::Pressed;
     const QPointer<SourceEditor> alive(this); ScintillaEditBase::mouseMoveEvent(event);
     if (alive && (event->buttons() & Qt::LeftButton)) emit verticalNavigationRequested();
+}
+void SourceEditor::mouseReleaseEvent(QMouseEvent *event) {
+    const bool preserveSelection = event->button() == Qt::LeftButton && m_pointerSelection == PointerSelection::Superseded;
+    if (event->button() == Qt::LeftButton) m_pointerSelection = PointerSelection::Idle;
+    if (!preserveSelection) {
+        ScintillaEditBase::mouseReleaseEvent(event);
+        return;
+    }
+
+    // Release Scintilla's pointer capture, then restore the selection that replaced the old gesture.
+    const auto anchor = send(SCI_GETANCHOR);
+    const auto cursor = send(SCI_GETCURRENTPOS);
+    const QPointer<SourceEditor> alive(this);
+    ScintillaEditBase::mouseReleaseEvent(event);
+    if (alive && (send(SCI_GETANCHOR) != anchor || send(SCI_GETCURRENTPOS) != cursor))
+        send(SCI_SETSEL, uptr_t(anchor), cursor);
 }
 }

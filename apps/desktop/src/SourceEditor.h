@@ -17,6 +17,7 @@ public:
     bool compositionPending() const;
     bool dispatching() const { return m_inputDepth != 0; }
     static void installAccessibility();
+    void setAccessibleSelection(uptr_t anchor, sptr_t cursor);
     void setTextZoom(int percent);
     void acknowledgeNavigation();
 
@@ -31,8 +32,10 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
+    enum class PointerSelection { Idle, Pressed, Superseded };
     void applyAppearance();
     void applyPreferences();
     void restyle();
@@ -44,5 +47,6 @@ private:
     int m_textZoom = 100;
     QJsonObject m_editorPreferences;
     qintptr m_lastAnchor = 0, m_lastCursor = 0;
+    PointerSelection m_pointerSelection = PointerSelection::Idle;
 };
 }
