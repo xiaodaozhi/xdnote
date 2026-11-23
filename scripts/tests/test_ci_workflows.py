@@ -224,6 +224,15 @@ class WorkflowContractTests(unittest.TestCase):
             with self.subTest(workflow=name):
                 self.assertEqual(events(WORKFLOWS / name), {"workflow_dispatch"})
 
+    def test_atspi_only_scope_targets_linux(self):
+        path = WORKFLOWS / 'qt-document-spike.yml'
+        workflow = path.read_text(encoding='utf-8')
+        self.assertEqual(events(path), {'workflow_dispatch'})
+        self.assertIn('default: all', workflow)
+        self.assertIn("inputs.scope == 'linux-atspi' && '[\"ubuntu-22.04\",\"ubuntu-24.04\"]'", workflow)
+        self.assertIn('guardedAtspiAccessibility', workflow)
+        self.assertIn('tests/atspi-wayland.sh', workflow)
+
     def test_update_core_is_independent_of_desktop_and_release(self):
         text = (WORKFLOWS / 'update-core.yml').read_text(encoding='utf-8')
         self.assertIn('runs-on: ubuntu-22.04', text)
