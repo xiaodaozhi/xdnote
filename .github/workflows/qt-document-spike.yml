@@ -2,6 +2,12 @@ name: Qt document experiment
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        type: choice
+        description: Run the complete experiment or only the Linux AT-SPI check
+        default: all
+        options: [all, linux-atspi]
 
 permissions:
   contents: read
@@ -18,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04, windows-2022, macos-15]
+        os: ${{ fromJSON(inputs.scope == 'linux-atspi' && '["ubuntu-22.04","ubuntu-24.04"]' || '["ubuntu-22.04","ubuntu-24.04","windows-2022","macos-15"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

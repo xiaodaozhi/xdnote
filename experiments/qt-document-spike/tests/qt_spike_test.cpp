@@ -250,6 +250,7 @@ private slots:
     void guardedReplacementRejectsReentry();
 #if defined(Q_OS_MACOS) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
     void guardedCocoaAccessibility();
+    void guardedCocoaCrossProcessAccessibility();
 #endif
 #if defined(Q_OS_LINUX) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
     void guardedAtspiAccessibility();
@@ -535,6 +536,22 @@ void QtDocumentSpikeTests::guardedAccessibilityTracksReplacedDocument()
     tail.movePosition(QTextCursor::End);
     tail.insertText(QStringLiteral("!"));
     QCOMPARE(text->text(0, text->characterCount()), sample + QStringLiteral("!"));
+    QVERIFY(editor->setProperty("readOnly", true));
+    text->setSelection(0, 1, 3);
+    QCOMPARE(editor->property("selectedText").toString(), QStringLiteral("🙂"));
+    text->setSelection(0, 2, 3); // Inside the emoji's UTF-16 surrogate pair.
+    text->setSelection(1, 3, 5); // This editor supports one selection.
+    text->setSelection(0, 3, text->characterCount() + 1);
+    QCOMPARE(editor->property("selectedText").toString(), QStringLiteral("🙂"));
+    text->removeSelection(0);
+    QCOMPARE(text->selectionCount(), 0);
+    text->addSelection(3, 5);
+    text->selection(0, &start, &end);
+    QCOMPARE(start, 3);
+    QCOMPARE(end, 5);
+    QCOMPARE(editor->property("selectedText").toString(), QStringLiteral("文本"));
+    QCOMPARE(replacement->toPlainText(), sample + QStringLiteral("!"));
+    QVERIFY(editor->setProperty("readOnly", false));
     accessible->setText(QAccessible::Value, QStringLiteral("接管后修改"));
     QCOMPARE(text->text(0, text->characterCount()), QStringLiteral("接管后修改"));
     replacement->undo();
@@ -654,6 +671,73 @@ void QtDocumentSpikeTests::guardedCocoaAccessibility()
     window.show();
     QTRY_VERIFY(window.isExposed());
     verifyGuardedCocoaAccessibility(window, *editor);
+}
+
+void QtDocumentSpikeTests::guardedCocoaCrossProcessAccessibility()
+{
+    const QString executable = qEnvironmentVariable("XDNOTE_COCOA_AX_CLIENT");
+    if (QGuiApplication::platformName() != QStringLiteral("cocoa") || executable.isEmpty())
+        QSKIP("Requires a native Cocoa desktop and an explicitly built AX client.");
+    QVERIFY(QFileInfo(executable).isExecutable());
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QAccessible::setActive(true);
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.setTitle(QStringLiteral("xdnote AX research fixture"));
+    window.setFlag(Qt::WindowDoesNotAcceptFocus);
+    window.setOpacity(0.0);
+    window.resize(400, 240);
+    auto *editor = qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true));
+    QVERIFY(editor);
+    editor->setText(QStringLiteral("old document"));
+    QPointer<QTextDocument> original = quickDocument(editor)->textDocument();
+    window.show();
+    QTRY_VERIFY(window.isExposed());
+
+    QProcess client;
+    client.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    client.start(executable, {QString::number(QCoreApplication::applicationPid())});
+    QVERIFY(client.waitForStarted(5000));
+    const auto finish = qScopeGuard([&] {
+        if (client.state() != QProcess::NotRunning) {
+            client.kill();
+            client.waitForFinished(5000);
+        }
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 10000);
+    QCOMPARE(client.readLine().trimmed(), QByteArray("READY"));
+
+    auto replacement = std::make_shared<QTextDocument>();
+    replacement->setPlainText(QStringLiteral("new"));
+    QTextCursor tail(replacement.get());
+    tail.movePosition(QTextCursor::End);
+    tail.insertText(QStringLiteral(" source"));
+    QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
+    QVERIFY(original.isNull());
+    editor->select(4, 10);
+    QCOMPARE(editor->selectedText(), QStringLiteral("source"));
+    QCOMPARE(client.write("CHECK\n"), qint64(6));
+    QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 10000);
+    QCOMPARE(client.readLine().trimmed(), QByteArray("SELECTION_CHECKED"));
+    QCOMPARE(editor->selectedText(), QStringLiteral("new"));
+
+    editor->setReadOnly(true);
+    QCOMPARE(client.write("READONLY\n"), qint64(9));
+    QTRY_VERIFY_WITH_TIMEOUT(client.canReadLine() || client.state() == QProcess::NotRunning, 10000);
+    QCOMPARE(client.readLine().trimmed(), QByteArray("READONLY_CHECKED"));
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("new source"));
+
+    editor->setReadOnly(false);
+    QCOMPARE(client.write("WRITE\n"), qint64(6));
+    QTRY_COMPARE_WITH_TIMEOUT(client.state(), QProcess::NotRunning, 10000);
+    QCOMPARE(client.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(client.exitCode(), 0);
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("written through AX"));
+    replacement->undo();
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("new source"));
+    replacement->undo();
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("new"));
 }
 #endif
 

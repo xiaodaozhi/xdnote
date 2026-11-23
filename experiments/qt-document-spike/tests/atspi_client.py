@@ -63,6 +63,11 @@ def main(process_id):
     bounds = tuple(text.getSelection(0)) if count else None
     if count != 1 or bounds != (0, 3):
         raise ValueError(f'AT-SPI reported {count} selections, first range {bounds!r}')
+    if not text.setSelection(0, 4, 12):
+        raise ValueError('AT-SPI could not set the selection on the replacement document')
+    text = require_text(editor, 'new document!')
+    if text.getNSelections() != 1 or tuple(text.getSelection(0)) != (4, 12):
+        raise ValueError('The selection set through AT-SPI did not take effect')
     print('SELECTION_CHECKED', flush=True)
 
     wait_for_command('READONLY')
