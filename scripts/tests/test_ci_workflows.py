@@ -61,6 +61,20 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('scripts/release_updates.py verify --revision', verify)
         self.assertNotIn('environment:', verify)
 
+    def test_private_signing_pins_inputs_and_only_uploads_encrypted_attachments(self):
+        workflow = (WORKFLOWS / 'release-signing.yml').read_text(encoding='utf-8')
+        resolution, rest = workflow.split('  sign:', 1)
+        signing, verification = rest.split('  verify:', 1)
+        self.assertIn('git merge-base --is-ancestor "$CANDIDATE_REVISION" "$GITHUB_SHA"', resolution)
+        for job in (signing, verification):
+            self.assertIn('ref: ${{ needs.candidate.outputs.revision }}', job)
+            self.assertIn('ref: ${{ needs.candidate.outputs.private_commit }}', job)
+            self.assertIn('sha256sum --check --strict', job)
+            self.assertIn('--revision "$CANDIDATE_REVISION"', job)
+        self.assertRegex(signing, r"if: needs\.candidate\.outputs\.private_repository == ''\s+with:\s+name: release-signed-metadata")
+        self.assertIn('path: build/signed-metadata.tar.age', signing)
+        self.assertIn('age -d -i "$key" build/signed-metadata.tar.age', verification)
+
     def test_production_key_check_only_derives_and_compares_after_approval(self):
         path = WORKFLOWS / 'release-key-check.yml'
         workflow = path.read_text(encoding='utf-8')
