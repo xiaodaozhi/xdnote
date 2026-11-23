@@ -84,13 +84,19 @@ def macos_text_evidence(link_map, sections, symbols, binary):
         if (address, name) in binary_symbols:
             bucket['confirmedSymbols'] += 1
             bucket['confirmedBytes'] += size
+        else:
+            suffix = re.fullmatch(r'(.+)\.llvm\.[0-9]+', name)
+            if suffix and (address, suffix[1]) in binary_symbols:
+                bucket['llvmSuffixMatchedSymbols'] += 1
+                bucket['llvmSuffixMatchedBytes'] += size
     spans.sort()
     if not spans or any(previous[1] > current[0] for previous, current in zip(spans, spans[1:])):
         raise ValueError('Missing or overlapping Rust text spans')
-    if not any(bucket['confirmedSymbols'] for bucket in counts.values()):
+    if not any(bucket['confirmedSymbols'] or bucket['llvmSuffixMatchedSymbols'] for bucket in counts.values()):
         raise ValueError('No mapped Rust text symbols match the Mach-O symbol table')
     rows = [dict(member=member, **{key: values[key] for key in
-            ('mappedSymbols', 'mappedBytes', 'confirmedSymbols', 'confirmedBytes')})
+            ('mappedSymbols', 'mappedBytes', 'confirmedSymbols', 'confirmedBytes',
+             'llvmSuffixMatchedSymbols', 'llvmSuffixMatchedBytes')})
             for member, values in counts.items()]
     return {'binarySha256': hashlib.sha256(binary).hexdigest(),
             'textSha256': hashlib.sha256(binary[offset:offset + length]).hexdigest(),

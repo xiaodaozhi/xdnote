@@ -18,20 +18,24 @@ class QtReplacementEvidence(unittest.TestCase):
 0x1000 0x10 __TEXT __text
 # Symbols:
 0x1000 0x04 [ 1] _confirmed
-0x1004 0x04 [ 1] _map_only
+0x1004 0x04 [ 1] _same_function.llvm.129
+0x1008 0x04 [ 1] _wrong_address.llvm.129
 # Dead Stripped Symbols:
-0x1008 0x04 [ 2] _dead
+0x100c 0x04 [ 2] _dead
 '''
         sections = 'sectname __text\nsegname __TEXT\naddr 0x1000\nsize 0x10\noffset 8\n'
-        symbols = '0000000000001000 t _confirmed\n'
+        symbols = ('0000000000001000 t _confirmed\n'
+                   '0000000000001004 t _same_function\n'
+                   '0000000000001004 t _wrong_address\n'
+                   '0000000000001008 d _wrong_address\n')
         binary = bytes(24)
         evidence = macos_text_evidence(link_map, sections, symbols, binary)
         self.assertEqual(evidence['textBytes'], 16)
         self.assertEqual(evidence['members'], [
             {'member': 'core-def.second.o', 'mappedSymbols': 0, 'mappedBytes': 0,
-             'confirmedSymbols': 0, 'confirmedBytes': 0},
-            {'member': 'std-abc.first.o', 'mappedSymbols': 2, 'mappedBytes': 8,
-             'confirmedSymbols': 1, 'confirmedBytes': 4},
+             'confirmedSymbols': 0, 'confirmedBytes': 0, 'llvmSuffixMatchedSymbols': 0, 'llvmSuffixMatchedBytes': 0},
+            {'member': 'std-abc.first.o', 'mappedSymbols': 3, 'mappedBytes': 12,
+             'confirmedSymbols': 1, 'confirmedBytes': 4, 'llvmSuffixMatchedSymbols': 1, 'llvmSuffixMatchedBytes': 4},
         ])
         with self.assertRaisesRegex(ValueError, 'text bounds'):
             macos_text_evidence(link_map, sections.replace('0x10\noffset', '0x11\noffset'), symbols, binary)
