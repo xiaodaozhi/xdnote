@@ -100,6 +100,8 @@ This software is based in part on the work of the Independent JPEG Group.
 
 This software is based in part on the work of the FreeType Team (www.freetype.org).
 
+Qt Core 含 TinyCBOR 0.6.0，随包保留其 [MIT 原始许可及版权声明](LICENSES/third-party/QtCore-TinyCBOR-LICENSE.txt)。
+
 Qt5Compat 的 Big5、GB18030、EUC-JP、EUC-KR、ISO-2022-JP、Shift_JIS 和 TSCII 编码实现使用 BSD-2-Clause 条款。七份上游原始版权、条款及免责声明随包存放于 `licenses/project-and-source-dependencies/third-party/` 中，文件名以 `Qt5Compat-` 开头。
 
 Qt Core 的供应方材料包含 PCRE2 10.44 及其可选的 SLJIT 实现。PCRE2 原始 BSD 三条款和二进制类包例外、SLJIT 原始 BSD 二条款分别以 `QtCore-PCRE2-LICENCE.txt` 和 `QtCore-PCRE2-LICENCE-SLJIT.txt` 随包保留；提供文本不表示各平台均启用了 SLJIT。
