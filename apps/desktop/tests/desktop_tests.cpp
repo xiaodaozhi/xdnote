@@ -23,6 +23,7 @@
 #include <QBuffer>
 #include <QElapsedTimer>
 #include <QInputMethodEvent>
+#include <QMouseEvent>
 #include <QProcess>
 #include <QFontDatabase>
 #include <QGlyphRun>
@@ -1143,6 +1144,58 @@ private slots:
         QVERIFY(!accessible->isValid());
         QCOMPARE(text->characterCount(), 0);
         edit->insertText(0, "ignored");
+    }
+
+    void accessibleSelectionDuringPointerGesture_data() {
+        QTest::addColumn<int>("accessibleEnd");
+        QTest::addColumn<bool>("continueDragging");
+        QTest::newRow("caret") << 2 << false;
+        QTest::newRow("range") << 7 << false;
+        QTest::newRow("continued-drag") << 2 << true;
+    }
+
+    void accessibleSelectionDuringPointerGesture() {
+        QFETCH(int, accessibleEnd);
+        QFETCH(bool, continueDragging);
+        const QByteArray original("# Amber falcon\n\nSilver cedar by the water.\n");
+        DocumentSession session(original);
+        SourceEditor view(&session);
+        view.resize(640, 400);
+        view.show();
+        auto *accessible = QAccessible::queryAccessibleInterface(&view);
+        QVERIFY(accessible && accessible->textInterface());
+        auto *text = accessible->textInterface();
+        const auto end = original.size();
+        const QPoint afterLastLine(int(view.send(SCI_POINTXFROMPOSITION, 0, end)) + 20,
+                                   int(view.send(SCI_POINTYFROMPOSITION, 0, end)) + 2);
+
+        QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, afterLastLine);
+        QCOMPARE(text->cursorPosition(), end);
+        text->setSelection(0, 2, accessibleEnd);
+        QCOMPARE(text->cursorPosition(), accessibleEnd);
+        QCOMPARE(text->selectionCount(), accessibleEnd != 2 ? 1 : 0);
+        QPoint release = afterLastLine;
+        int expectedEnd = accessibleEnd;
+        if (continueDragging) {
+            expectedEnd = 10;
+            release = QPoint(int(view.send(SCI_POINTXFROMPOSITION, 0, expectedEnd)),
+                             int(view.send(SCI_POINTYFROMPOSITION, 0, expectedEnd)) + 2);
+            QMouseEvent move(QEvent::MouseMove, QPointF(release), QPointF(view.viewport()->mapToGlobal(release)),
+                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(view.viewport(), &move);
+        }
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, release);
+        QCOMPARE(text->cursorPosition(), expectedEnd);
+        QCOMPARE(view.send(SCI_GETANCHOR), 2);
+        QCOMPARE(text->selectionCount(), expectedEnd != 2 ? 1 : 0);
+
+        const QByteArray edited = original.left(2) + 'a' + original.mid(expectedEnd);
+        QTest::keyClick(&view, Qt::Key_A);
+        QCOMPARE(session.snapshot().utf8, edited);
+        QCOMPARE(session.undo(), EditResult::Applied);
+        QCOMPARE(session.snapshot().utf8, original);
+        QCOMPARE(session.redo(), EditResult::Applied);
+        QCOMPARE(session.snapshot().utf8, edited);
     }
 
     void accessibleWritesDoNotFlushDocumentOnAnotherThread() {
