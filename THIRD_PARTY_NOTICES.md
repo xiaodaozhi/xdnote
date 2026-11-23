@@ -102,6 +102,8 @@ This software is based in part on the work of the FreeType Team (www.freetype.or
 
 Qt Core 含 TinyCBOR 0.6.0，随包保留其 [MIT 原始许可及版权声明](LICENSES/third-party/QtCore-TinyCBOR-LICENSE.txt)。
 
+Qt Core 的缓动曲线包括 Robert Penner 的实现，随包保留其 [BSD-3-Clause 原始许可及版权声明](LICENSES/third-party/QtCore-Easing-LICENSE.txt)。Qt Core 自带的摘要实现另附 [RFC 6234 SHA-2 条款](LICENSES/third-party/QtCore-RFC6234-LICENSE.txt)、[Keccak CC0](LICENSES/third-party/QtCore-SHA3-Keccak-CC0.txt)、[brg_endian BSD-2-Clause](LICENSES/third-party/QtCore-SHA3-BrgEndian-LICENSE.txt)及 [BLAKE2 原始 COPYING](LICENSES/third-party/QtCore-BLAKE2-COPYING.txt)。Qt 的随包上游许可汇总已保留 SHA-1 公有领域声明。MD4 由 Alexander Peslyak 置于公有领域，MD5 来源声明记录 Colin Plumb 和 Ian Jackson。实际摘要实现范围随 Qt 构建选项而变化。
+
 Qt5Compat 的 Big5、GB18030、EUC-JP、EUC-KR、ISO-2022-JP、Shift_JIS 和 TSCII 编码实现使用 BSD-2-Clause 条款。七份上游原始版权、条款及免责声明随包存放于 `licenses/project-and-source-dependencies/third-party/` 中，文件名以 `Qt5Compat-` 开头。
 
 Qt Core 的供应方材料包含 PCRE2 10.44 及其可选的 SLJIT 实现。PCRE2 原始 BSD 三条款和二进制类包例外、SLJIT 原始 BSD 二条款分别以 `QtCore-PCRE2-LICENCE.txt` 和 `QtCore-PCRE2-LICENCE-SLJIT.txt` 随包保留；提供文本不表示各平台均启用了 SLJIT。

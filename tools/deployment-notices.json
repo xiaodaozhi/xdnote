@@ -38,6 +38,31 @@
       "sha256": "48b7773d240da636ed7be0ec470df49de0665f660bba7cb913403bf90e007fb1"
     },
     {
+      "path": "LICENSES/third-party/QtCore-BLAKE2-COPYING.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/blake2/COPYING",
+      "sha256": "4103f471877ed0bae500752c5fcd7ecca409d4a4a8dc2ad40437daba60f1a2bc"
+    },
+    {
+      "path": "LICENSES/third-party/QtCore-Easing-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/easing/LICENSE",
+      "sha256": "92fac99458f1754b73edf50f9c9983e0efaa06ad96e2afd5e538c79f45b4b191"
+    },
+    {
+      "path": "LICENSES/third-party/QtCore-RFC6234-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/rfc6234/LICENSE",
+      "sha256": "7ccebd514aaabc86192f957d773cebf06577c12fe9f25ecd419c6cac5da7a14c"
+    },
+    {
+      "path": "LICENSES/third-party/QtCore-SHA3-BrgEndian-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/sha3/BRG_ENDIAN_LICENSE",
+      "sha256": "2fed6f252ca4a7e813811de3cd3cd08183edd4138bdee909410ef6eee394e82c"
+    },
+    {
+      "path": "LICENSES/third-party/QtCore-SHA3-Keccak-CC0.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/sha3/CC0_LICENSE",
+      "sha256": "1f2786e2c5befeb4dcba6638db6528bf96ef5d2cf24bc85ab5a81ef00abef59d"
+    },
+    {
       "path": "LICENSES/third-party/QtCore-TinyCBOR-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/tinycbor/LICENSE",
       "sha256": "3c6ba0b5bfa7830505301ffb336a17b0748e0d61c4d34216e9dc98f10e40395e"
