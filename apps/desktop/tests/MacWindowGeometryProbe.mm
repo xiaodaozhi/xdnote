@@ -5,6 +5,7 @@
 #include "NavigationStore.h"
 #include "SettingsWindow.h"
 #include "SingleFileWindow.h"
+#include "WindowGeometry.h"
 #include "WorkspaceWindow.h"
 
 #include <QDialog>
@@ -94,11 +95,17 @@ void verifyMacApplicationTitlebars() {
         window->resize(window->minimumSize());
         const auto size = window->size();
         window->show();
+        auto *geometry = window->findChild<WindowGeometry *>(QString(), Qt::FindDirectChildrenOnly);
+        QVERIFY(geometry);
+        QTRY_VERIFY(geometry->initialized());
         verifyHeader(*window, size);
         const auto larger = size + QSize(32, 24);
-        window->resize(larger);
+        geometry->rememberUserGeometry(QRect(window->geometry().topLeft(), larger));
+        geometry->fitToScreen();
         verifyHeader(*window, larger);
-        window->resize(size);
+        geometry->rememberUserGeometry(QRect(window->geometry().topLeft(), size));
+        geometry->fitToScreen();
+        QCOMPARE(geometry->preferredClientSize(), size);
         window->hide();
         window->show();
         verifyHeader(*window, size);
@@ -107,6 +114,12 @@ void verifyMacApplicationTitlebars() {
     QVERIFY(QString::fromNSString(nativeView(&document).window.title).contains(name));
     QCOMPARE(QString::fromNSString(nativeView(&document).window.appearance.name),
              QString::fromNSString(NSAppearanceNameAqua));
+    document.setAttribute(Qt::WA_ShowWithoutActivating, false);
+    document.raise();
+    document.activateWindow();
+    QTRY_VERIFY(nativeView(&document).window.isKeyWindow);
+    const auto *documentGeometry = document.findChild<WindowGeometry *>(QString(), Qt::FindDirectChildrenOnly);
+    QVERIFY(documentGeometry);
     const auto normalSize = document.size();
     [nativeView(&document).window performMiniaturize:nil];
     QTRY_VERIFY(nativeView(&document).window.miniaturized);
@@ -122,11 +135,14 @@ void verifyMacApplicationTitlebars() {
         enteredFullscreen = true;
     }];
     const auto removeObserver = qScopeGuard([&] { [notifications removeObserver:entered]; });
-    document.showFullScreen();
+    [documentWindow toggleFullScreen:nil];
     QTRY_VERIFY(enteredFullscreen);
+    QTRY_VERIFY(document.isFullScreen());
+    QCOMPARE(documentGeometry->preferredClientSize(), normalSize);
     QTRY_VERIFY(document.testAttribute(Qt::WA_ContentsMarginsRespectsSafeArea));
-    document.showNormal();
+    [documentWindow toggleFullScreen:nil];
     QTRY_VERIFY(!(nativeView(&document).window.styleMask & NSWindowStyleMaskFullScreen));
+    QTRY_VERIFY(!document.isFullScreen());
     verifyHeader(document, normalSize);
 
     auto *documentHeader = document.findChild<QWidget *>("documentHeader", Qt::FindDirectChildrenOnly);

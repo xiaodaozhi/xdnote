@@ -46,6 +46,10 @@ private:
     bool m_triedNativeMove = false;
 #endif
 };
+#ifdef Q_OS_MACOS
+bool macNativeFullScreen(const QWidget *window);
+#endif
+
 class ApplicationWindow : public QWidget {
     Q_OBJECT
 public:
