@@ -1,8 +1,7 @@
 """Create a sealed local developer archive; never publishes a Release."""
 import argparse
-import io
+import gzip
 import json
-import os
 import platform
 from pathlib import Path
 import stat
@@ -24,24 +23,39 @@ def verify(root, metadata):
             raise ValueError('Source/SDK/archive file cannot enter product archive: '+item['path'])
 
 
+def write_tar(root, metadata, bundle):
+    for item in metadata['files']:
+        source = root / item['path']
+        info = tarfile.TarInfo('xdnote/' + item['path'])
+        info.mtime = info.uid = info.gid = 0
+        if 'link' in item:
+            info.type = tarfile.SYMTYPE
+            info.linkname = item['link']
+            info.mode = 0o777
+            bundle.addfile(info)
+        else:
+            info.mode = 0o755 if source.stat().st_mode & 0o111 else 0o644
+            info.size = item['bytes']
+            with source.open('rb') as stream:
+                bundle.addfile(info, stream)
+
+
 def write_archive(root, metadata, output):
     if str(output).endswith('.zip'):
         with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as bundle:
             for item in metadata['files']:
-                if 'link' in item: raise ValueError('Use tar.xz for payloads with framework/SONAME links')
+                if 'link' in item: raise ValueError('Use a tar archive for payloads with framework/SONAME links')
                 info=zipfile.ZipInfo('xdnote/'+item['path'],date_time=(2020,1,1,0,0,0)); info.compress_type=zipfile.ZIP_DEFLATED
                 info.create_system=3; info.external_attr=(stat.S_IFREG|0o644)<<16
                 bundle.writestr(info,(root/item['path']).read_bytes(),compresslevel=6)
     elif str(output).endswith('.tar.xz'):
         with tarfile.open(output,'w:xz',preset=6) as bundle:
-            for item in metadata['files']:
-                source=root/item['path']; info=tarfile.TarInfo('xdnote/'+item['path']); info.mtime=0; info.uid=info.gid=0
-                if 'link' in item:
-                    info.type=tarfile.SYMTYPE; info.linkname=item['link']; info.mode=0o777; bundle.addfile(info)
-                else:
-                    info.mode=0o755 if source.stat().st_mode&0o111 else 0o644; info.size=item['bytes']
-                    with source.open('rb') as stream: bundle.addfile(info,stream)
-    else: raise ValueError('Expected .zip or .tar.xz developer archive')
+            write_tar(root, metadata, bundle)
+    elif str(output).endswith('.tar.gz'):
+        with output.open('wb') as destination, gzip.GzipFile('', mode='wb', fileobj=destination, mtime=0, compresslevel=6) as compressed:
+            with tarfile.open(fileobj=compressed, mode='w') as bundle:
+                write_tar(root, metadata, bundle)
+    else: raise ValueError('Expected a .zip, .tar.xz or .tar.gz archive')
 
 
 def check_extraction(root, metadata, archive):
@@ -52,7 +66,7 @@ def check_extraction(root, metadata, archive):
                 if any(not (target/i.filename).resolve().is_relative_to(target) for i in bundle.infolist()): raise ValueError('Archive path escaped')
                 bundle.extractall(target)
         else:
-            with tarfile.open(archive,'r:xz') as bundle: bundle.extractall(target,filter='data')
+            with tarfile.open(archive,'r:*') as bundle: bundle.extractall(target,filter='data')
         actual=inventory(target/'xdnote')
         if actual!=metadata['files']: raise ValueError('Extracted content differs from sealed product')
         if platform.system()=='Darwin' and (target/'xdnote/xdnote.app').exists():

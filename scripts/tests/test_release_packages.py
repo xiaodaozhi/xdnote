@@ -11,11 +11,47 @@ from unittest.mock import patch
 import subprocess
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import release_candidate as release
+import build_release_platform as platform_release
+import developer_archive
 import msix_package as msix
 import build_linux_installer as linux
 
 
 class ReleasePackageTests(unittest.TestCase):
+    @unittest.skipIf(sys.platform == 'win32', 'Linux fixture needs Unix symlink and execute semantics')
+    def test_linux_release_tar_gzip_preserves_payload_and_is_reproducible(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            payload = root / 'payload'
+            payload.mkdir()
+            program = payload / 'xdnote'
+            program.write_bytes(b'release archive fixture')
+            program.chmod(0o755)
+            (payload / 'alias').symlink_to('xdnote')
+            metadata = {'ok': True, 'files': developer_archive.inventory(payload)}
+            developer_archive.verify(payload, metadata)
+            first, repeated = root / 'first.tar.gz', root / 'second.tar.gz'
+            for output in (first, repeated):
+                developer_archive.write_archive(payload, metadata, output)
+                developer_archive.check_extraction(payload, metadata, output)
+            self.assertEqual(first.read_bytes(), repeated.read_bytes())
+
+    def test_platform_receipt_binds_builder_identity_and_bytes(self):
+        identity = {'revision': 'a' * 40, 'version': '0.2.0-rc.1', 'build': 7}
+        with tempfile.TemporaryDirectory() as folder:
+            package = Path(folder) / 'xdnote-0.2.0-rc.1-ubuntu22.04-x86_64.deb'
+            data = b'native package fixture'
+            package.write_bytes(data)
+            sha = hashlib.sha256(data).hexdigest()
+            report = {'ok': True, 'file': package.name, 'buildIdentity': {'buildVersion': identity}, 'sha256': sha}
+            self.assertEqual(platform_release.asset_receipt(package, identity, report, 'file'),
+                             {'verified': True, 'bytes': len(data), 'sha256': sha})
+            with self.assertRaisesRegex(ValueError, 'does not bind the candidate'):
+                platform_release.asset_receipt(package, identity | {'build': 8}, report, 'file')
+            package.write_bytes(b'x' * len(data))
+            with self.assertRaisesRegex(ValueError, 'differ from the builder receipt'):
+                platform_release.asset_receipt(package, identity, report, 'file')
+
     def test_usrmerge_resolves_only_the_same_actual_system_file(self):
         with patch.object(Path, 'is_file', return_value=True), patch.object(Path, 'samefile', return_value=True), patch.object(linux.subprocess, 'run', side_effect=[
             subprocess.CompletedProcess([],1,'',''), subprocess.CompletedProcess([],0,'libc6:amd64: /lib/x86_64-linux-gnu/libm.so.6\n','')]) as query:

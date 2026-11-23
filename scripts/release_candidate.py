@@ -9,6 +9,7 @@ import re
 from build_version import public_version
 from installer_common import build_output, digest
 
+MAX_ASSET_BYTES = 2 * 1024**3
 TARGETS = (
     ('windows', 'x86_64', 'zip', 'windows-x86_64.zip', {'windows': '10.0.17763'}),
     ('windows', 'x86_64', 'exe', 'windows-x86_64-setup.exe', {'windows': '10.0.17763'}),
@@ -37,7 +38,7 @@ def manifest(identity, directory, verification):
     version = identity['version']; tag = 'v' + version
     for platform, arch, package, suffix, minimum in TARGETS:
         name = 'xdnote-' + version + '-' + suffix; path = directory / name
-        if path.is_symlink() or not path.is_file() or not 1 <= path.stat().st_size <= 2 * 1024**3: raise ValueError('Missing or invalid asset: ' + name)
+        if path.is_symlink() or not path.is_file() or not 1 <= path.stat().st_size <= MAX_ASSET_BYTES: raise ValueError('Missing or invalid asset: ' + name)
         sha = digest(path); evidence = verification.get('assets', {}).get(name, {})
         if evidence.get('sha256') != sha or evidence.get('bytes') != path.stat().st_size or evidence.get('verified') is not True:
             raise ValueError('Asset verification missing or stale: ' + name)
