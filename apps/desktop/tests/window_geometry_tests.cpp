@@ -27,6 +27,13 @@ void verifyMacApplicationTitlebars();
 namespace {
 void write(const QString &path, const QByteArray &bytes) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); QCOMPARE(file.write(bytes), bytes.size()); }
 QByteArray read(const QString &path) { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); }
+bool maximizationSettled(QWidget &window) {
+#ifdef Q_OS_MACOS
+    if (QGuiApplication::platformName() == QStringLiteral("cocoa"))
+        return macWindowIsZoomed(&window);
+#endif
+    return window.isMaximized();
+}
 #ifdef Q_OS_WIN
 struct NativeMonitor { HMONITOR handle; RECT work; UINT dpi; };
 BOOL CALLBACK collectMonitor(HMONITOR handle, HDC, LPRECT, LPARAM context) {
@@ -210,11 +217,7 @@ private slots:
         QTRY_VERIFY(window.windowState() == Qt::WindowNoState);
         QVERIFY(controller.flush()); QVERIFY(!store.placement("fixture")->maximized);
         window.showMaximized();
-#ifdef Q_OS_MACOS
-        QTRY_VERIFY_WITH_TIMEOUT(macWindowIsZoomed(&window), 5000);
-#else
-        QTRY_VERIFY(window.isMaximized());
-#endif
+        QTRY_VERIFY(maximizationSettled(window));
         controller.fitToScreen();
         QCOMPARE(controller.preferredClientSize(), QSize(350, 250));
         qInfo() << "restore-from-maximized" << window.windowState() << window.size() << "preferred" << controller.preferredClientSize();
@@ -241,9 +244,7 @@ private slots:
     void initiallyMaximizedWindowRetainsValidRestoreContext() {
         WindowGeometryStore store; QWidget window; window.setMinimumSize(200, 150); window.resize(411, 311); WindowGeometry controller(&window, &store, "fixture"); window.showMaximized();
         QTRY_VERIFY(controller.initialized()); QTRY_VERIFY(window.isMaximized());
-#ifdef Q_OS_MACOS
-        QTRY_VERIFY_WITH_TIMEOUT(macWindowIsZoomed(&window), 5000);
-#endif
+        QTRY_VERIFY(maximizationSettled(window));
         QVERIFY(controller.flush()); const auto saved = store.placement("fixture"); QVERIFY(saved); QCOMPARE(saved->available, window.screen()->availableGeometry()); QCOMPARE(saved->normal.size(), QSize(411, 311)); QVERIFY(saved->maximized);
         window.showNormal(); QTRY_COMPARE(window.size(), QSize(411, 311));
     }
@@ -251,9 +252,7 @@ private slots:
         WindowGeometryStore store; QWidget window; window.setMinimumSize(100, 100); window.resize(411, 311);
         WindowGeometry controller(&window, &store, "fixture"); window.show(); QTest::qWait(30);
         window.showMaximized(); QTRY_VERIFY(window.isMaximized());
-#ifdef Q_OS_MACOS
-        QTRY_VERIFY_WITH_TIMEOUT(macWindowIsZoomed(&window), 5000);
-#endif
+        QTRY_VERIFY(maximizationSettled(window));
         QVERIFY(controller.flush());
         QVERIFY(store.placement("fixture")->maximized);
         window.showFullScreen(); QTRY_VERIFY(window.isFullScreen()); QVERIFY(controller.flush());
