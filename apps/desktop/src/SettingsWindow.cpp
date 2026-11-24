@@ -359,7 +359,9 @@ void SettingsWindow::reflow() {
     const int padding=window[compact?"compactContentPadding":"contentPadding"].toInt();
     m_sidebarScroll->setFixedWidth(window[compact?"compactSidebarWidth":"sidebarWidth"].toInt());
     for(auto*body:m_bodies)bodyLayout(body)->setContentsMargins(padding,24,padding,24);
-    const int available=qMax(0,m_pages->width()-2*padding-16);
+    // The child layout may still have its old geometry inside resizeEvent or
+    // before the first show. Derive its width from the current outer window.
+    const int available=qMax(0,width()-m_sidebarScroll->width()-1-2*padding-16);
     for (auto *field : findChildren<QLineEdit *>()) if (field->property("wideSettingsInput").toBool()) field->setMinimumWidth(qMin(setting("longFieldWidth"), available));
     if(auto *version=findChild<QLabel*>("settingsBuildVersion"))version->setWordWrap(available<window["stackRowsBelowWidth"].toInt());
     for (const auto &name : {"settingsUpdateActions", "settingsNetworkActions"})
@@ -368,7 +370,12 @@ void SettingsWindow::reflow() {
     const int columns=fitting>=6?6:qMin(window["swatchColumnsCompact"].toInt(),fitting);
     for (int i = 0; i < m_swatchCards.size(); ++i) m_swatches->addWidget(m_swatchCards[i], i / columns, i % columns);
     const int themeColumns=qMin(3,fitting);for(int i=0;i<m_themeCards.size();++i)m_themes->addWidget(m_themeCards[i],i/themeColumns,i%themeColumns);
-    for(auto*row:m_rows)if(row->property("settingsFormRow").toBool())if(auto*line=qobject_cast<QBoxLayout*>(row->layout()->itemAt(0)->layout()))line->setDirection(available<window["stackRowsBelowWidth"].toInt()?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
+    const bool stacked = available < window["stackRowsBelowWidth"].toInt();
+    for(auto*row:m_rows)if(row->property("settingsFormRow").toBool())if(auto*line=qobject_cast<QBoxLayout*>(row->layout()->itemAt(0)->layout())) {
+        line->setDirection(stacked ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+        if (auto *control = qobject_cast<SharedButton *>(line->itemAt(1)->widget()))
+            line->setAlignment(control, stacked ? Qt::AlignLeft : Qt::Alignment{});
+    }
     if(auto*preview=findChild<NativePreviewView*>("settingsReaderPreview"))preview->setMinimumWidth(qMin(260,qMax(0,available-32)));
     if (m_readerLayout) m_readerLayout->setDirection(available < 680 ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
 }

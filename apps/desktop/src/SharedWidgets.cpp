@@ -320,7 +320,7 @@ void SharedCheckBox::paintEvent(QPaintEvent *) {
     p.setFont(font());p.setPen(a->color(isEnabled()?"text":"textSecondary"));p.drawText(QRect(27,0,width()-27,height()),Qt::AlignVCenter|Qt::AlignLeft,fontMetrics().elidedText(text(),Qt::ElideRight,width()-27));
     if(m_tab&&hasFocus()&&InputModality::forApplication()->keyboardNavigation()){p.setBrush(Qt::NoBrush);p.setPen(QPen(a->accentColor(),2));p.drawRoundedRect(QRectF(1,2,qMin(width(),sizeHint().width())-2,height()-4),4,4);}
 }
-SharedSegment::SharedSegment(Appearance*a,QWidget*p):QWidget(p),m_appearance(a){setFixedHeight(control("height"));auto*l=new QHBoxLayout(this);l->setContentsMargins(2,2,2,2);l->setSpacing(2);connect(a,&Appearance::changed,this,qOverload<>(&QWidget::update));}
+SharedSegment::SharedSegment(Appearance*a,QWidget*p):QWidget(p),m_appearance(a){setFixedHeight(control("height"));setSizePolicy(QSizePolicy::Fixed,QSizePolicy::Fixed);auto*l=new QHBoxLayout(this);l->setContentsMargins(2,2,2,2);l->setSpacing(2);connect(a,&Appearance::changed,this,qOverload<>(&QWidget::update));}
 void SharedSegment::addButton(SharedButton*b){b->setProperty("segmentPart",true);b->setFixedHeight(control("height")-4);b->setFixedWidth(control("modeSegmentWidth"));static_cast<QHBoxLayout*>(layout())->addWidget(b);}
 void SharedSegment::paintEvent(QPaintEvent*){QPainter p(this);p.setRenderHint(QPainter::Antialiasing);p.setBrush(m_appearance->color("sidebar"));p.setPen(QPen(m_appearance->color("border"),1));p.drawRoundedRect(QRectF(rect()).adjusted(.5,.5,-.5,-.5),6,6);}
 SharedPanel::SharedPanel(Appearance*a,QWidget*p):QWidget(p),m_appearance(a){connect(a,&Appearance::changed,this,qOverload<>(&QWidget::update));}
