@@ -17,7 +17,7 @@ Windows 的 `--register` 只写当前用户的 ProgID、`OpenWithProgids`、Capa
 
 Linux 生成当前用户的 `.desktop` 入口，`Exec` 保留文件参数；不改写 `mimeapps.list` 或调用设置默认值的命令，已存在的不同副本入口予以保留。依据 [Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry/latest-single/)。macOS 部署包在 `Info.plist` 声明 Markdown 编辑角色与 `Alternate` 等级，用户通过 Finder 选择默认打开方式，依据 [CFBundleDocumentTypes](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundledocumenttypes)。
 
-上述入口是依赖 Python 的开发者安装工具。Windows 另提供下述图形开发安装器；不自行办理发布者证书签名，后续商店安装使用 MSIX。macOS 不采用 Developer ID 或 Apple 公证，保留 ad-hoc 完整性封印。商店与用户主动更新尚未接入，契约见[发行与更新](release-and-updates.md)。最终包逐项许可、最低系统和真实系统关联核验仍由独立任务跟踪，不能把隔离目录测试或声明文件生成计为三平台安装验收。
+上述入口是依赖 Python 的开发者安装工具。Windows 另提供下述图形开发安装器；不自行办理发布者证书签名，后续商店安装使用 MSIX。macOS 不采用 Developer ID 或 Apple 公证，保留 ad-hoc 完整性封印。用户主动检查和受限原生更新工程链已接入；公开受信候选、正式包安装／恢复及商店交付仍待验收，范围见[发行与更新](release-and-updates.md)。最终包逐项许可、最低系统和真实系统关联核验仍由独立任务跟踪，不能把隔离目录测试或声明文件生成计为三平台安装验收。
 
 ## 独立运行目录的安装闭环
 
