@@ -3,6 +3,31 @@
   "qtVersion": "6.8.2",
   "texts": [
     {
+      "path": "LICENSES/third-party/QtGui-Pixman-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/pixman/LICENSE",
+      "sha256": "942c4f2a80394d3f53599b8382e9f27349b95c45d92b69b84f26d404f4dd74a5"
+    },
+    {
+      "path": "LICENSES/third-party/QtXcb-XInput-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/xcb/LICENSE",
+      "sha256": "82775191bc05f85b40404d77bb69b1edeaeb4033f48387e9e5eab4dd67f5d6f1"
+    },
+    {
+      "path": "LICENSES/third-party/QtDBus-Headers-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/dbus/LIBDBUS-1-LICENSE.txt",
+      "sha256": "ad90aa08bb1a9b7056aa51e2e215b36630855457cde5dffd36aa0faa7b169f24"
+    },
+    {
+      "path": "LICENSES/third-party/QtWayland-Protocols-MIT-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtwayland/4261629005d174311045a44914d599ad67d2b7a3/src/3rdparty/protocol/MIT_LICENSE.txt",
+      "sha256": "a8341b9c90ef447a77f55d550e6691e370d3ac15d60edb584def356e348ab828"
+    },
+    {
+      "path": "LICENSES/third-party/QtWayland-TextInputV2-HPND-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtwayland/4261629005d174311045a44914d599ad67d2b7a3/src/3rdparty/protocol/text-input/v2/HPND_LICENSE.txt",
+      "sha256": "8172d52f3b7bba7d10af2f9134c63d0f699ba6b20a47e35f5ac45654c500bfd7"
+    },
+    {
       "path": "LICENSES/third-party/QtCore-Unicode-DFS-2016.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/LICENSES/Unicode-DFS-2016.txt",
       "sha256": "1a33fc12a3abb0b3eb14db70e36ef1d0af51c93b1cc1f80f022c3bd406e9b874"
