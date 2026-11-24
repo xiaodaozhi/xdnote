@@ -16,6 +16,7 @@
 #include "PreviewAnalysis.h"
 #include "file_fixtures.h"
 #include <QApplication>
+#include <QBoxLayout>
 #include <QAction>
 #include <QCheckBox>
 #include <QDir>
@@ -50,6 +51,36 @@ bool select(SettingsWindow *window, const char *name, const QVariant &value) {
 class SettingsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void formRowsKeepCompactControlsAndFollowActualWidth() {
+        QTemporaryDir dir; Appearance appearance(nullptr, dir.filePath("settings.json"));
+        SettingsWindow window(&appearance, nullptr); window.resize(1080, 820); window.show();
+        auto *modes = window.findChild<QWidget *>("settingsDefaultMode");
+        auto *association = window.findChild<SharedButton *>("settingsAssociation");
+        auto *registration = window.findChild<SharedButton *>("settingsRegisterTypes");
+        QVERIFY(modes && association && registration);
+        auto line = [](QWidget *control) {
+            auto *row = control->parentWidget();
+            return row && row->layout() ? qobject_cast<QBoxLayout *>(row->layout()->itemAt(0)->layout()) : nullptr;
+        };
+        auto *modeLine = line(modes); auto *associationLine = line(association);
+        QVERIFY(modeLine && associationLine);
+        QTRY_COMPARE(modeLine->direction(), QBoxLayout::LeftToRight);
+        QTRY_COMPARE(associationLine->direction(), QBoxLayout::LeftToRight);
+        QCOMPARE(modes->width(), modes->sizeHint().width());
+        // WindowGeometry permits this minimum only when the target screen is
+        // constrained; exercise that responsive layout without changing screens.
+        window.setMinimumSize(480, 320);
+        window.resize(640, 480);
+        QTRY_COMPARE(modeLine->direction(), QBoxLayout::TopToBottom);
+        QTRY_COMPARE(associationLine->direction(), QBoxLayout::TopToBottom);
+        QTRY_COMPARE(modes->width(), modes->sizeHint().width());
+        QVERIFY(association->width() < association->parentWidget()->width());
+        QVERIFY(registration->width() < registration->parentWidget()->width());
+        window.resize(1080, 820);
+        QTRY_COMPARE(modeLine->direction(), QBoxLayout::LeftToRight);
+        QTRY_COMPARE(associationLine->direction(), QBoxLayout::LeftToRight);
+        QTRY_COMPARE(modes->width(), modes->sizeHint().width());
+    }
     void firstLaunchUsesSystemAndGraphiteThenRestoresSavedAppearance() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
