@@ -7,8 +7,11 @@
 ```powershell
 python experiments/windows-appcontainer-ipc/build.py --vcvars "<本机 vcvars64.bat 路径>"
 python experiments/windows-appcontainer-ipc/run.py
+python experiments/windows-appcontainer-ipc/recovery.py
 ```
 
 构建和隔离样本放在 `build/cycle-268-appcontainer/`，Qt 路径只设置给测试子进程。脚本查询当前用户及容器 SID 构造自建管道的 ACL，但不打印或持久化 SID。它先对照默认安全描述符及用户专属 ACL，再以当前用户和当前容器的权限建立随机名称的首实例；真实 Qt 监听就绪后关闭引导句柄，测试三个串行、四个并行客户端、带中文和标点的绝对路径、超长请求拒绝与后续转发，以及正常停止。样本目录应在退出时为空并移除。
 
-结果仅覆盖运行时环境、指定 ACL 和夹具中的客户端，不证明跨用户／跨容器隔离、恶意预占、异常退出恢复或正式产品安装。Qt 的 Windows 监听器不能通过 `listen(qintptr)` 接管现成句柄；引导方案、竞争、完整安全描述符与可靠退出仍须单独验证。禁止以默认 ACL、Everyone 权限或减小队列而不验证接力来代替安全结论。
+`recovery.py` 在随机隔离目录中终止自己启动的主进程，确认锁文件留存后重新建立引导管道，验证陈旧锁恢复及正常转发；脚本只清理该隔离目录中的锁文件，不操作其他进程或用户数据。
+
+结果仅覆盖运行时环境、指定 ACL 和夹具中的客户端，不证明跨用户／跨容器隔离、恶意预占、所有异常退出场景或正式产品安装。Qt 的 Windows 监听器不能通过 `listen(qintptr)` 接管现成句柄；引导方案、竞争、完整安全描述符与可靠退出仍须单独验证。禁止以默认 ACL、Everyone 权限或减小队列而不验证接力来代替安全结论。
