@@ -30,6 +30,8 @@
 
 桌面准入工程的固定版本见[依赖清单](../../tools/desktop-dependencies.json)与 [Cargo.lock](../../Cargo.lock)。已核对的 Rust 包、Scintilla 许可原文及 Qt 原生模块的后续核验范围见[第三方许可与来源记录](../../THIRD_PARTY_NOTICES.md)；[机器可读清单](../../LICENSES/third-party/manifest.json)与锁定版本和保留文本由日常仓库检查核对。Qt 模块及工具许可仍须分别按[官方说明](https://doc.qt.io/qt-6.8/licensing.html)和实际交付核对。准备阶段下载的上游源码留在忽略的构建缓存，保留的上游许可文本不改标为项目自有内容。
 
-单文件原型另使用 Qt Network 的本地 IPC 和 Qt SVG 的品牌绘制，两者均动态链接，不引入打包字体。正式产品的打包与分发方式仍需按[架构准入](architecture.md)确定。发行前按实际交付内容核对第三方代码、字体、素材和运行库的许可及归属声明；随包使用项目设计素材时也须携带适用的署名和许可信息。项目文档及原创设计的许可已经确定，实际包的完整声明、源码提供义务与交付核验继续由 [Issue #4](https://github.com/xiaodaozhi/xdnote/issues/4) 跟踪。当前诊断工件不是安装包，也没有完成发行许可验收。
+项目自身许可和第三方许可边界是已确定的决策；实际发行候选的许可复核属于交付验收，按[可安装交付任务](https://github.com/xiaodaozhi/xdnote/issues/131)和相应发行记录跟踪。每次发行按实际交付的组件核对所选条款、原始版权与许可、适用源码提供和用户替换条件，并将结论绑定候选版本、源码提交及包摘要。已识别的适用义务或必需材料缺失时，修复后再审该候选；供应方 `NOASSERTION` 或工具的未完成标记本身不自动构成许可冲突。开发载荷及其自动检查不等于正式发行验收。
+
+Qt 采用动态链接，按实际模块选择适用许可；Qt 源码不放入本项目 Release 附件、安装包或产品归档。常规发行沿用固定源码记录、补丁和替换验证，不例行生成对应源码归档。源码获取和修改／替换要求仍按具体发行的适用条件落实；单有下载地址不表示源码提供义务已完成。见[分发核验](distribution-audit.md)和[来源与替换](qt-library-replacement.md)。
 
 `tools/qt-network-patches/` 是明确的第三方派生内容例外：补丁采用 LGPL-3.0-only，保留 Qt 原文件声明；自有准备脚本仍采用 Apache-2.0。固定源码、补丁、实际二进制与原始 SDK 摘要分别记录，不能以原始 SPDX 替代修改模块的来源证据。细节见[补丁说明](../../tools/qt-network-patches/README.md)及[来源与替换](qt-library-replacement.md)。
