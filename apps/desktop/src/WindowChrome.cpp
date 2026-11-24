@@ -212,7 +212,7 @@ void ApplicationWindow::applyNativeAppearance() {
     const BOOL dark = m_chromeAppearance->dark(); DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
     // Public Windows attributes; unsupported attributes safely fail on Windows 10.
     const DWORD round = 2; DwmSetWindowAttribute(hwnd, 33, &round, sizeof(round));
-    const auto border = m_chromeAppearance->color("border"); const COLORREF color = RGB(border.red(), border.green(), border.blue()); DwmSetWindowAttribute(hwnd, 34, &color, sizeof(color));
+    const auto border = m_chromeAppearance->color("windowBorder"); const COLORREF color = RGB(border.red(), border.green(), border.blue()); DwmSetWindowAttribute(hwnd, 34, &color, sizeof(color));
     const MARGINS margins{1, 1, 1, 1}; DwmExtendFrameIntoClientArea(hwnd, &margins);
 #endif
 }
