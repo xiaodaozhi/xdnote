@@ -32,4 +32,4 @@
 
 按适用的目标环境验证原生文件入口、真实中文输入法、屏幕阅读器和混合缩放。已有证据仍适用于当前构建和验收环境时，只补验缺项或受变更影响的路径。实际环境、结果和未执行项记录在 Issue、PR 或 CI。发布前核对最低系统上的实际产品安装和运行结果。
 
-工具链、正式工程及自动化入口见[桌面工程与本地构建](developer-build.md)和[产研流程](workflow.md)。各平台实际安装与文件入口由[可安装交付任务](https://github.com/xiaodaozhi/xdnote/issues/131)跟踪；混合缩放、输入法与其他具体体验按各自任务验收，方法见[验收规格](../qa/acceptance.md)。
+工具链、正式工程及自动化入口见[桌面工程与本地构建](developer-build.md)和[产研流程](workflow.md)。各平台开发包的安装与文件入口记录见[可安装交付任务](https://github.com/xiaodaozhi/xdnote/issues/131)；正式发行候选由[发行候选任务](https://github.com/xiaodaozhi/xdnote/issues/279)跟踪。混合缩放、输入法与其他具体体验按各自任务验收，方法见[验收规格](../qa/acceptance.md)。

@@ -18,7 +18,7 @@ Qt DLL 和插件按照 SDK SPDX 中的相对路径对应到实际分发文件，
 
 Windows 最低目标为 Windows 10 1809+。`D3Dcompiler_47.dll` 使用目标系统提供的版本，依据[微软组件说明](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/packaging/packaging-framework-packages?view=gdk-2604)；部署工具使用 `--no-system-d3d-compiler`、`--no-system-dxc-compiler`，不将宿主 Windows 的图形 DLL 复制进载荷。图形 API 继续由目标系统提供，静态导入与实际运行仍分别核对；最低系统真机验收单独记录。
 
-每次发行复核绑定实际候选的版本、完整源码提交和交付包 SHA-256。按包内实际组件核对来源、适用条款、原始许可、通知及源码／替换材料。已有归属和替换测试可在输入、部署方式和适用范围一致时复用，差异按文件或义务核对。发现具体缺口时，记录受影响的组件、包和条款，补齐后复核受影响的候选。`NOASSERTION` 或机器报告不完整需要结合实际组件判断。结果记录在[可安装交付任务](https://github.com/xiaodaozhi/xdnote/issues/131)或对应发行记录中，签名与公证按[发行决策](release-and-updates.md)另行核对。
+每次发行复核绑定实际候选的版本、完整源码提交和交付包 SHA-256。按包内实际组件核对来源、适用条款、原始许可、通知及源码／替换材料。已有归属和替换测试可在输入、部署方式和适用范围一致时复用，差异按文件或义务核对。发现具体缺口时，记录受影响的组件、包和条款，补齐后复核受影响的候选。`NOASSERTION` 或机器报告不完整需要结合实际组件判断。结果记录在[发行候选任务](https://github.com/xiaodaozhi/xdnote/issues/279)或对应发行记录中，签名与公证按[发行决策](release-and-updates.md)另行核对。
 
 Windows 标准 GitHub 托管构建按实际运行日志确认镜像、Visual Studio 版本与编译器。预装 Enterprise 的托管使用依据见 [GitHub runner-images 维护者的说明](https://github.com/actions/runner-images/issues/12945#issuecomment-3348002951)。随包 VC++ 运行库按 [VS 2022 REDIST 清单](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)及[运行库分发条件](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files?view=msvc-170)复核，结合随包原始协议和运行库通知。自托管或本机构建按其实际环境核对许可。
 
