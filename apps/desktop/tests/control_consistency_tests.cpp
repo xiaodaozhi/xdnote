@@ -254,7 +254,10 @@ private slots:
         for(auto *button:segment->findChildren<SharedButton *>()) { QCOMPARE(button->height(),28); QCOMPARE(button->width(),72); }
         auto firstGroupY=[&](int page) { w.selectPage(page); QApplication::processEvents(); for(auto *label:w.findChildren<QLabel *>()) if(label->property("settingsGroupTitle").toBool()&&label->isVisible()) return label->mapTo(&w,QPoint()).y(); return -1; };
         const auto general=firstGroupY(0); QVERIFY(general>0); QCOMPARE(firstGroupY(2),general); QCOMPARE(firstGroupY(3),general);
-        auto *search=w.findChild<SharedLineEdit *>("settingsSearch"); QVERIFY(search); QCOMPARE(search->height(),32); QVERIFY(search->isClearButtonEnabled()); QVERIFY(!search->actions().isEmpty());
+        auto *search=w.findChild<SharedLineEdit *>("settingsSearch"); QVERIFY(search); QCOMPARE(search->height(),32); QVERIFY(search->isClearButtonEnabled());
+        const auto searchImage=search->grab().toImage(); const auto ratio=searchImage.devicePixelRatio(); int iconPixels=0;
+        for(int y=8;y<24;++y) for(int x=12;x<28;++x) { const auto c=searchImage.pixelColor(qRound(x*ratio),qRound(y*ratio)); if(c != a.color("surface")) ++iconPixels; }
+        QVERIFY(iconPixels>4);
         search->setText("NO_MATCH_FIXTURE_126"); QVERIFY(w.findChild<SharedButton *>("settingsClearSearch")->isVisible()); evidence(&w,theme+"-search-empty");
         QTest::mouseClick(w.findChild<SharedButton *>("settingsClearSearch"),Qt::LeftButton); QVERIFY(search->text().isEmpty());
         QVERIFY(QFile::remove(path)); QVERIFY(QDir().mkdir(path)); const auto before=a.preferences()->value("editor","fontSize");

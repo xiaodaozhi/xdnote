@@ -251,11 +251,13 @@ SharedLineEdit::SharedLineEdit(Appearance *appearance, QWidget *parent) : QLineE
             .arg(appearance->color("surface").name(), appearance->color("text").name(), appearance->color("border").name()).arg(control("contentInset") - 1).arg(appearance->accentColor("soft").name(), appearance->color("textSecondary").name(), appearance->color("sidebar").name())); update(); };
     connect(appearance, &Appearance::changed, this, refresh); connect(InputModality::forApplication(), &InputModality::changed, this, qOverload<>(&QWidget::update)); refresh();
 }
+void SharedLineEdit::setLeadingSymbol(const QString &symbol) { m_leadingSymbol = symbol; setTextMargins(symbol.isEmpty() ? 0 : control("iconSize") + 8, 0, 0, 0); update(); }
 void SharedLineEdit::focusInEvent(QFocusEvent *e) { m_tab = e->reason() == Qt::TabFocusReason || e->reason() == Qt::BacktabFocusReason; QLineEdit::focusInEvent(e); update(); }
 void SharedLineEdit::focusOutEvent(QFocusEvent *e) { m_tab = false; QLineEdit::focusOutEvent(e); update(); }
 void SharedLineEdit::keyPressEvent(QKeyEvent *e) { if (e->key() == Qt::Key_Escape || e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) { m_tab = false; InputModality::forApplication()->clear(); } QLineEdit::keyPressEvent(e); update(); }
 void SharedLineEdit::paintEvent(QPaintEvent *e) {
     QLineEdit::paintEvent(e);
+    if (!m_leadingSymbol.isEmpty() && m_appearance) { QPainter p(this); const int icon = control("iconSize"); themedIcon(m_leadingSymbol, m_appearance->color("textSecondary")).paint(&p, QRect(control("contentInset"), (height() - icon) / 2, icon, icon)); }
     if (m_shortcut && !hasFocus()) {
         // Keep the actual QLineEdit, its value and accessibility intact. Only
         // the idle presentation changes; focus restores native text editing.
