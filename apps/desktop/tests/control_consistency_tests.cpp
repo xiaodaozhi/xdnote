@@ -168,7 +168,8 @@ private slots:
         WindowGeometryStore geometry(nullptr,dir.filePath("geometry.json"));
         NavigationStore navigation(nullptr,dir.filePath("navigation.json"));
         FileManager manager;
-        const auto path=dir.filePath(QStringLiteral("文字居中.md"));
+        const auto root=dir.filePath("workspace"); QVERIFY(QDir().mkpath(root));
+        const auto path=QDir(root).filePath(QStringLiteral("文字居中.md"));
         QVERIFY(fileFixtures::write(path,QStringLiteral("# 文字居中\n\n正文\n\n```cpp\nint x = 1;\n```\n").toUtf8()));
         manager.open(path); QTRY_COMPARE(manager.documentCount(),1);
         QVERIFY(navigation.recordOpen(path));
@@ -208,7 +209,7 @@ private slots:
         };
         SettingsWindow settings(&appearance,&geometry);settings.setAttribute(Qt::WA_DontShowOnScreen);settings.resize(1080,820);
         SingleFileWindow standalone(&manager,&appearance,&geometry);standalone.setAttribute(Qt::WA_DontShowOnScreen);standalone.resize(1000,760);standalone.setDocument(manager.documents().first());
-        WorkspaceWindow workspace(&appearance,&geometry,&navigation,&manager);workspace.setAttribute(Qt::WA_DontShowOnScreen);workspace.resize(1200,820);workspace.setRootPath(dir.path());
+        WorkspaceWindow workspace(&appearance,&geometry,&navigation,&manager);workspace.setAttribute(Qt::WA_DontShowOnScreen);workspace.resize(1200,820);workspace.setRootPath(root);
         auto *pane=new SingleFileWindow(&manager,&appearance,&geometry);pane->setDocument(manager.documents().first());QVERIFY(workspace.addPane(pane));
         for(const auto &scheme:{QString("light"),QString("dark")}){
             theme=scheme;QVERIFY(appearance.setPreferences(scheme,"graphite"));
@@ -220,6 +221,9 @@ private slots:
             }
             auto *find=standalone.findChild<DocumentSearch *>();QVERIFY(find);find->show();surface="document-search";collect(find);find->hide();standalone.hide();
             workspace.show();
+            // Loading is asynchronous: its temporary state label can disappear
+            // while textInkSample processes events and captures the widget.
+            QTRY_VERIFY(workspace.tree()->state() == WorkspaceTree::State::Ready);
             for(const auto mode:{SingleFileWindow::ViewMode::Reading,SingleFileWindow::ViewMode::Source,SingleFileWindow::ViewMode::Split}){
                 pane->setViewMode(mode);surface="workspace-"+QString::number(int(mode));collect(&workspace);
             }
@@ -232,7 +236,7 @@ private slots:
             const auto index=tree->model()->index(0,0);const auto row=tree->visualRect(index);QVERIFY(!row.isEmpty());
             append(tree->viewport(),"tree-title",index.data().toString(),appearance.color("text"),row,row.left()+28,12);
             workspace.hide();
-            WorkspaceNavigation recent(&appearance,&navigation,nullptr);recent.setAttribute(Qt::WA_DontShowOnScreen);recent.setFont(uiFont());recent.resize(700,420);recent.showPage(WorkspaceNavigation::Page::Recent,dir.path());recent.show();surface="recent";collect(&recent);
+            WorkspaceNavigation recent(&appearance,&navigation,nullptr);recent.setAttribute(Qt::WA_DontShowOnScreen);recent.setFont(uiFont());recent.resize(700,420);recent.showPage(WorkspaceNavigation::Page::Recent,root);recent.show();surface="recent";collect(&recent);
             auto *list=recent.findChild<QListView *>("navigationResults");QVERIFY(list);QVERIFY(list->model()->rowCount()>1);const auto item=list->model()->index(1,0);const auto itemRect=list->visualRect(item);
             append(list->viewport(),"recent-title",item.data().toString(),appearance.color("text"),QRect(itemRect.left(),itemRect.top()+12,itemRect.width(),22),56,140);
             recent.hide();
