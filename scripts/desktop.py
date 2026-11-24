@@ -2,16 +2,21 @@
 """One explicit prepare/build/test/run entry point for desktop admission."""
 
 import argparse
+import codecs
 import contextlib
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import platform
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
@@ -104,17 +109,65 @@ def build_path(value):
     return path
 
 
-def run(command, env, log=None):
+def run(command, env, log=None, *, stop_at_process_exit=False):
     print("+", " ".join(str(part) for part in command), flush=True)
     process = subprocess.Popen([str(part) for part in command], cwd=ROOT, env=env,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, encoding="utf-8", errors="replace")
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     fatal = False
-    with process.stdout, (log.open("w", encoding="utf-8") if log else open(os.devnull, "w")) as report:
-        for line in process.stdout:
-            print(line, end="", flush=True)
-            report.write(line)
-            fatal |= bool(re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", line))
+    def report_line(line, report):
+        nonlocal fatal
+        print(line, end="", flush=True)
+        report.write(line)
+        fatal |= bool(re.search(r"\b(?:QCRITICAL|QFATAL)\b|ASSERT failure|ASSERT:", line))
+
+    if stop_at_process_exit:
+        # An update helper can outlive the application and inherit its output
+        # handle. Reading until EOF would then wait for the helper, not the app.
+        output = queue.Queue()
+        finished = threading.Event()
+        def read_output():
+            try:
+                while not finished.is_set():
+                    chunk = os.read(process.stdout.fileno(), 4096)
+                    if not chunk:
+                        break
+                    if not finished.is_set():
+                        output.put(chunk)
+            finally:
+                process.stdout.close()
+                output.put(None)
+        threading.Thread(target=read_output, daemon=True).start()
+        decoder = io.IncrementalNewlineDecoder(codecs.getincrementaldecoder("utf-8")("replace"), translate=True)
+        pending = ""
+        exit_deadline = None
+        with (log.open("w", encoding="utf-8") if log else open(os.devnull, "w")) as report:
+            while True:
+                if process.poll() is not None:
+                    if exit_deadline is None:
+                        exit_deadline = time.monotonic() + 0.2
+                    elif time.monotonic() >= exit_deadline:
+                        break
+                try:
+                    chunk = output.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                if chunk is None:
+                    break
+                pending += decoder.decode(chunk)
+                lines = pending.splitlines(keepends=True)
+                pending = ""
+                if lines and not lines[-1].endswith(("\n", "\r")):
+                    pending = lines.pop()
+                for line in lines:
+                    report_line(line, report)
+            finished.set()
+            pending += decoder.decode(b"", final=True)
+            if pending:
+                report_line(pending, report)
+    else:
+        with io.TextIOWrapper(process.stdout, encoding="utf-8", errors="replace") as stream, (log.open("w", encoding="utf-8") if log else open(os.devnull, "w")) as report:
+            for line in stream:
+                report_line(line, report)
     code = process.wait()
     if code or fatal:
         raise RuntimeError(f"Command failed (exit={code}, Qt fatal diagnostic={fatal})")
@@ -521,7 +574,7 @@ def main():
         verify_build_identity(build, args.profile, qt)
         name = "xdnote-admission" if args.admission else "xdnote"
         executable = build / (name + (".exe" if platform.system() == "Windows" else ""))
-        run([executable, *(path.absolute() for path in args.file)], env)
+        run([executable, *(path.absolute() for path in args.file)], env, stop_at_process_exit=True)
 
 
 if __name__ == "__main__":

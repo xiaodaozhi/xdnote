@@ -75,7 +75,7 @@ def source_tree(work,qt,env):
     text=provider.read_text();text=text.replace('    (void)error;\n    cancelDownload = nil;', '    fixtureNativeError(text(error.domain), error.code, text(error.localizedDescription), text(error.localizedFailureReason));\n    cancelDownload = nil;');provider.write_text(text)
     launcher=source/'scripts/desktop.py'
     replace(launcher,'    parser.add_argument("--fresh",','    parser.add_argument("--fixture-bundle", type=Path, help="private native update diagnostic only")\n    parser.add_argument("--fresh",')
-    replace(launcher,'        run([executable, *(path.absolute() for path in args.file)], env)', '''        if args.fixture_bundle:
+    replace(launcher,'        run([executable, *(path.absolute() for path in args.file)], env, stop_at_process_exit=True)', '''        if args.fixture_bundle:
             bundle = build_path(args.fixture_bundle)
             marker = json.loads((bundle.parent / '.fixture-allowed.json').read_text())
             executable = bundle / 'Contents/MacOS/xdnote'
@@ -84,7 +84,7 @@ def source_tree(work,qt,env):
             env['QT_PLUGIN_PATH'] = str(bundle / 'Contents/PlugIns')
             env['QT_QPA_PLATFORM_PLUGIN_PATH'] = str(bundle / 'Contents/PlugIns/platforms')
             env['QT_QPA_PLATFORM'] = 'cocoa'
-        run([executable, *(path.absolute() for path in args.file)], env)''')
+        run([executable, *(path.absolute() for path in args.file)], env, stop_at_process_exit=True)''')
     examples=source/'crates/update/examples';examples.mkdir(exist_ok=True)
     shutil.copyfile(TEMPLATES/'fixture_sign.rs.in',examples/'fixture_sign.rs')
     seed=run/'private-test-seed';seed.write_bytes(secrets.token_bytes(32));seed.chmod(0o600)

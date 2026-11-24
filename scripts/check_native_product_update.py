@@ -142,7 +142,7 @@ class Product:
     def patch_launcher(self):
         launcher = self.source / 'scripts/desktop.py'
         replace(launcher, '    parser.add_argument("--fresh",', '    parser.add_argument("--fixture-installation", type=Path)\n    parser.add_argument("--fresh",')
-        replace(launcher, '        run([executable, *(path.absolute() for path in args.file)], env)', '''        if args.fixture_installation:
+        replace(launcher, '        run([executable, *(path.absolute() for path in args.file)], env, stop_at_process_exit=True)', '''        if args.fixture_installation:
             root = args.fixture_installation.absolute()
             marker = json.loads((BUILD / 'native-run/allowed.json').read_text())
             executable = root / ('xdnote.exe' if platform.system() == 'Windows' else 'bin/xdnote')
@@ -153,7 +153,7 @@ class Product:
             env['QT_QPA_PLATFORM_PLUGIN_PATH'] = str(qt / 'plugins/platforms')
             if platform.system() == 'Windows': env['PATH'] = str(root) + os.pathsep + env.get('PATH', '')
             else: env['LD_LIBRARY_PATH'] = str(root / 'lib')
-        run([executable, *(path.absolute() for path in args.file)], env)''')
+        run([executable, *(path.absolute() for path in args.file)], env, stop_at_process_exit=True)''')
 
     def tool(self, script, args, log):
         checked([sys.executable, self.source / 'scripts' / script, *args], env=self.env, log=self.work / log)
