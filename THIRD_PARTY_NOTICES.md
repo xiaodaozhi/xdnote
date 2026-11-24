@@ -104,6 +104,8 @@ Qt Core 含 TinyCBOR 0.6.0，随包保留其 [MIT 原始许可及版权声明](L
 
 Qt Core 的 zlib 另保留[上游原始许可](LICENSES/third-party/QtCore-Zlib-LICENSE.txt)。Qt Gui 的供应方声明还涵盖 [D3D12 Memory Allocator](LICENSES/third-party/QtGui-D3D12MemoryAllocator-LICENSE.txt)、[Vulkan Memory Allocator](LICENSES/third-party/QtGui-VulkanMemoryAllocator-LICENSE.txt)、[OpenGL 头文件](LICENSES/third-party/QtGui-OpenGL-KHRONOS-LICENSE.txt)及 [Vulkan API Registry](LICENSES/third-party/QtGui-VulkanRegistry-LICENSE.txt)，其原始许可随包保留；供应方声明和保留材料不代表各平台均已编入这些组件。
 
+Qt Core 的 Unicode 字符数据库与区域数据对应 [Unicode-DFS-2016](LICENSES/third-party/QtCore-Unicode-DFS-2016.txt) 和 [Unicode-3.0](LICENSES/third-party/QtCore-Unicode-3.0.txt)，保留固定 Qt 源码中的许可原文及供应方版权声明。
+
 Qt Gui 的供应方材料还列出 [ICC sRGB 色彩配置](LICENSES/third-party/QtGui-ICC-LICENSE.txt)及源自 [MiniEngine 的 D3D12 mipmap 实现](LICENSES/third-party/QtGui-MiniEngine-LICENSE.txt)，随包分别保留其上游许可原文。
 
 Qt Core 的数字转换、Unix 子进程和 macOS 事件分发实现分别保留 [double-conversion](LICENSES/third-party/QtCore-DoubleConversion-LICENSE.txt)、[forkfd](LICENSES/third-party/QtCore-ForkFD-LICENSE.txt) 和 [CoreFoundation 事件分发](LICENSES/third-party/QtCore-CoreFoundationEventDispatcher-LICENSE.txt)的原始条款。macOS 平台插件另附 [Cocoa 插件原始条款](LICENSES/third-party/QtCocoa-PlatformPlugin-LICENSE.txt)。
