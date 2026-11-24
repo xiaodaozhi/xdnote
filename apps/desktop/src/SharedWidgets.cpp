@@ -436,7 +436,7 @@ SharedDialog::SharedDialog(Appearance *appearance, QWidget *owner, int surfaceWi
     m_surface->setObjectName("dialogSurface"); m_surface->setFixedWidth(surfaceWidth); setFixedWidth(surfaceWidth + 48);
     connect(appearance, &Appearance::changed, this, refresh);refresh();
 }
-void SharedDialog::paintEvent(QPaintEvent *) { QPainter painter(this); painter.setCompositionMode(QPainter::CompositionMode_Source); painter.fillRect(rect(), Qt::transparent); painter.setCompositionMode(QPainter::CompositionMode_SourceOver); paintPopupShell(painter, m_scroll->geometry(), m_appearance->color("surface"), m_appearance->color("border"), 12, 18); }
+void SharedDialog::paintEvent(QPaintEvent *) { QPainter painter(this); painter.setCompositionMode(QPainter::CompositionMode_Source); painter.fillRect(rect(), Qt::transparent); painter.setCompositionMode(QPainter::CompositionMode_SourceOver); paintPopupShell(painter, m_scroll->geometry(), m_appearance->color("surface"), m_appearance->color("windowBorder"), 12, 18); }
 void SharedDialog::showEvent(QShowEvent *event) {
     const auto available=(parentWidget()?parentWidget()->screen():screen())->availableGeometry();
     const int windowWidth=qMin(m_preferredSurfaceWidth+48,available.width());int bodyWidth=qMax(1,windowWidth-48);
