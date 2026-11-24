@@ -80,6 +80,8 @@ macOS 产品使用 Sparkle 2.10.0 的派生 framework 和随包更新助手。[�
 
 Linux 诊断候选另使用同版本 Qt Wayland 客户端平台插件及其传递库；SDK 准备显式包含 `qtwayland` 归档。诊断目录按实际部署文件匹配 Qt 模块 SBOM，系统 Wayland／X11 等动态库单独列为宿主依赖，不把它们标为已随包交付或已完成最低系统验收。
 
+Qt 的供应方材料列出 [Pixman](LICENSES/third-party/QtGui-Pixman-LICENSE.txt)、[XCB XInput](LICENSES/third-party/QtXcb-XInput-LICENSE.txt)、[D-Bus 头文件](LICENSES/third-party/QtDBus-Headers-LICENSE.txt)及 Qt Wayland [协议通用许可](LICENSES/third-party/QtWayland-Protocols-MIT-LICENSE.txt)和[文本输入 v2 许可](LICENSES/third-party/QtWayland-TextInputV2-HPND-LICENSE.txt)，随包保留相应原文；各协议的供应方版权声明见适用模块的随包 SPDX 和上游汇总。是否实际使用各组件须按具体平台载荷核对。
+
 产品不链接或部署 Qt WebEngine／Chromium。本机 Qt 6.8.2 SDK 的 `sbom/` 包含各模块 SPDX 文档，其中部分包的许可字段为 `NOASSERTION`；这些文档有助于清点，但不能单独证明许可文本和随包义务已齐备。不同平台的插件、QML 模块、系统库和 MSVC 运行库也须根据实际交付内容核对。
 
 xdnote 动态链接 Qt 6.8.2。随包提供 Qt 的 [LGPL-3.0 原文](LICENSES/third-party/Qt-LGPL-3.0-only.txt)及其引用的 [GPL-3.0 原文](LICENSES/third-party/Qt-GPL-3.0-only.txt)。Qt 源码获取、修改和在自有应用副本中替换库的说明见[Qt 来源与自行替换](docs/engineering/qt-library-replacement.md)。实际分发模块、SDK 的 SPDX、适用许可及最终发行条件按各平台载荷核对。[分发材料](docs/engineering/distribution-audit.md)

@@ -12,6 +12,11 @@ import re
 
 
 DEPLOYMENT_NOTICE_PATHS = frozenset({
+    "LICENSES/third-party/QtGui-Pixman-LICENSE.txt",
+    "LICENSES/third-party/QtXcb-XInput-LICENSE.txt",
+    "LICENSES/third-party/QtDBus-Headers-LICENSE.txt",
+    "LICENSES/third-party/QtWayland-Protocols-MIT-LICENSE.txt",
+    "LICENSES/third-party/QtWayland-TextInputV2-HPND-LICENSE.txt",
     "LICENSES/third-party/QtCore-Unicode-DFS-2016.txt",
     "LICENSES/third-party/QtCore-Unicode-3.0.txt",
     "LICENSES/third-party/QtGui-ICC-LICENSE.txt",
