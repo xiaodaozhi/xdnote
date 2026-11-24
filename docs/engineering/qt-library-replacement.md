@@ -18,4 +18,4 @@ Windows 使用相匹配的 DLL 和插件目录；Linux 保留 SONAME 相对链�
 
 `scripts/verify_qt_replacement.py` 只操作本项目 `build/` 的安装副本。Windows／Linux／macOS 通过实际加载位置及该证明函数核对修改库，再运行明暗阅读、图片、编辑／撤销／保存和会话接管，并核对维护拒绝及原 SDK／输入不变。离屏后端、探针与字体不成为产品载荷。手动 `qt-replacement.yml`（或桌面入口 `scope=qt-replacement`）执行三平台同一范围；源码归档、源码树和二进制不作为其证据工件上传，单次结果留在 Issue／PR。
 
-Qt LGPL 及其引用文本随产品保留。官方源码归档的可获取性、版本／模块匹配和摘要可以自动检查；全部实际模块、对应构建／源码提供条件及最终交付仍由 Issue #4 跟踪。Core 工程验证和这里的操作说明不单独构成完整许可结论。依据见 [Qt LGPL 使用条件](https://www.qt.io/development/open-source-lgpl-obligations)。
+Qt LGPL 及其引用文本随产品保留。官方源码归档的可获取性、版本／模块匹配和摘要可以自动检查；实际模块、对应构建／源码提供条件及最终交付由[可安装交付任务](https://github.com/xiaodaozhi/xdnote/issues/131)及具体发行记录跟踪。Core 工程验证和这里的操作说明不单独构成完整许可结论。依据见 [Qt LGPL 使用条件](https://www.qt.io/development/open-source-lgpl-obligations)。
