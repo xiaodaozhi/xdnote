@@ -3,6 +3,16 @@
   "qtVersion": "6.8.2",
   "texts": [
     {
+      "path": "LICENSES/third-party/QtCore-Unicode-DFS-2016.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/LICENSES/Unicode-DFS-2016.txt",
+      "sha256": "1a33fc12a3abb0b3eb14db70e36ef1d0af51c93b1cc1f80f022c3bd406e9b874"
+    },
+    {
+      "path": "LICENSES/third-party/QtCore-Unicode-3.0.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/LICENSES/Unicode-3.0.txt",
+      "sha256": "80bb6294022d8764adb36a9d65ebb6bd94efb1865918a71e31e6c247607d7634"
+    },
+    {
       "path": "LICENSES/third-party/QtGui-ICC-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/icc/LICENSE.txt",
       "sha256": "9e34ff47b3a44814e183342e7e198d127a6740e29d20e8381fba7688dafc79dd"
