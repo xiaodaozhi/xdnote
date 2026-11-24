@@ -5,8 +5,10 @@ import importlib.util
 import io
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import json
@@ -220,6 +222,33 @@ class DesktopToolTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 desktop.run([sys.executable, "-c", "print('中文诊断')"], env, report)
             self.assertEqual(report.read_text(encoding="utf-8"), "中文诊断\n")
+
+    def test_application_launcher_does_not_wait_for_inherited_output_handle(self):
+        child = ('import subprocess,sys; '
+                 'subprocess.Popen([sys.executable, "-c", "import time; time.sleep(4)"], close_fds=False); '
+                 'print("中文诊断", flush=True)')
+        started = time.monotonic()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            desktop.run([sys.executable, "-c", child], os.environ.copy(), stop_at_process_exit=True)
+        self.assertLess(time.monotonic() - started, 3)
+        self.assertIn("中文诊断", output.getvalue())
+
+    def test_application_launcher_reports_fatal_output_and_process_errors(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            for code in ("print('QCRITICAL : broken')", "raise SystemExit(3)"):
+                with self.subTest(code=code), self.assertRaises(RuntimeError):
+                    desktop.run([sys.executable, "-c", code], os.environ.copy(), stop_at_process_exit=True)
+
+    def test_captured_launcher_returns_with_a_live_descendant(self):
+        child = ('import subprocess,sys; '
+                 'subprocess.Popen([sys.executable, "-c", "import time; time.sleep(4)"], close_fds=False); '
+                 'print("application exited", flush=True)')
+        driver = ('import os,sys; sys.path.insert(0, "scripts"); import desktop; '
+                  f'desktop.run([sys.executable, "-c", {child!r}], os.environ.copy(), stop_at_process_exit=True)')
+        result = subprocess.run([sys.executable, '-c', driver], cwd=desktop.ROOT,
+                                capture_output=True, text=True, timeout=3, check=True)
+        self.assertIn('application exited', result.stdout)
 
 
 if __name__ == "__main__":
