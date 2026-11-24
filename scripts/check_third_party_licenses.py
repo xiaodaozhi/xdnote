@@ -12,6 +12,11 @@ import re
 
 
 DEPLOYMENT_NOTICE_PATHS = frozenset({
+    "LICENSES/third-party/QtCore-Zlib-LICENSE.txt",
+    "LICENSES/third-party/QtGui-D3D12MemoryAllocator-LICENSE.txt",
+    "LICENSES/third-party/QtGui-VulkanMemoryAllocator-LICENSE.txt",
+    "LICENSES/third-party/QtGui-OpenGL-KHRONOS-LICENSE.txt",
+    "LICENSES/third-party/QtGui-VulkanRegistry-LICENSE.txt",
     "LICENSES/third-party/Qt-LGPL-3.0-only.txt",
     "LICENSES/third-party/Qt-GPL-3.0-only.txt",
     "LICENSES/third-party/Qt-PSL-MPL-2.0.txt",

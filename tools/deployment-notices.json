@@ -3,6 +3,31 @@
   "qtVersion": "6.8.2",
   "texts": [
     {
+      "path": "LICENSES/third-party/QtCore-Zlib-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/zlib/LICENSE",
+      "sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080"
+    },
+    {
+      "path": "LICENSES/third-party/QtGui-D3D12MemoryAllocator-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/D3D12MemoryAllocator/LICENSE.txt",
+      "sha256": "1b3941c52b26d42c510afbdf205a8b96a6d64f5a7b8ebff0287979fd91dfd52f"
+    },
+    {
+      "path": "LICENSES/third-party/QtGui-VulkanMemoryAllocator-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/VulkanMemoryAllocator/LICENSE.txt",
+      "sha256": "846d97c8b74ccaa92b9ad031140a04363b3b3985f318094552f297b8bda1c68e"
+    },
+    {
+      "path": "LICENSES/third-party/QtGui-OpenGL-KHRONOS-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/gui/opengl/KHRONOS_LICENSE.txt",
+      "sha256": "2e484f3c26ff5008c704a3ca9dd809d43f24a004a1abb6c202660fbff0d19715"
+    },
+    {
+      "path": "LICENSES/third-party/QtGui-VulkanRegistry-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/gui/vulkan/LICENSE.txt",
+      "sha256": "5f618873b0cdd1e84c611c5529212c2524bfc887bdfd7d1f3b568bad3c649612"
+    },
+    {
       "path": "LICENSES/third-party/Qt-LGPL-3.0-only.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/v6.8.2/LICENSES/LGPL-3.0-only.txt",
       "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
