@@ -1,0 +1,14 @@
+# Windows AppContainer 单实例研究夹具
+
+关联 #268。此试验使用 Windows、Qt 6.8.2 和 `apps/desktop/src/SingleInstance.cpp`，研究受限 AppContainer 中用户专属命名管道的监听失败；它不是产品修复，不改变产品 IPC 或访问控制。
+
+在仓库根目录运行，先准备项目锁定的 Qt 6.8.2、MSVC v143、CMake 和 Ninja。`--vcvars` 指向本机 VS 2022 的 `VC/Auxiliary/Build/vcvars64.bat`；仅构建可在正常权限下执行，验证须在目标 AppContainer 中执行：
+
+```powershell
+python experiments/windows-appcontainer-ipc/build.py --vcvars "<本机 vcvars64.bat 路径>"
+python experiments/windows-appcontainer-ipc/run.py
+```
+
+构建和隔离样本放在 `build/cycle-268-appcontainer/`，Qt 路径只设置给测试子进程。脚本查询当前用户及容器 SID 构造自建管道的 ACL，但不打印或持久化 SID。它先对照默认安全描述符及用户专属 ACL，再以当前用户和当前容器的权限建立随机名称的首实例；真实 Qt 监听就绪后关闭引导句柄，测试三个串行、四个并行客户端、带中文和标点的绝对路径、超长请求拒绝与后续转发，以及正常停止。样本目录应在退出时为空并移除。
+
+结果仅覆盖运行时环境、指定 ACL 和夹具中的客户端，不证明跨用户／跨容器隔离、恶意预占、异常退出恢复或正式产品安装。Qt 的 Windows 监听器不能通过 `listen(qintptr)` 接管现成句柄；引导方案、竞争、完整安全描述符与可靠退出仍须单独验证。禁止以默认 ACL、Everyone 权限或减小队列而不验证接力来代替安全结论。
