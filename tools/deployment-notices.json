@@ -3,6 +3,16 @@
   "qtVersion": "6.8.2",
   "texts": [
     {
+      "path": "LICENSES/third-party/QtGui-ICC-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/icc/LICENSE.txt",
+      "sha256": "9e34ff47b3a44814e183342e7e198d127a6740e29d20e8381fba7688dafc79dd"
+    },
+    {
+      "path": "LICENSES/third-party/QtGui-MiniEngine-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/gui/rhi/MiniEngine_LICENSE.txt",
+      "sha256": "cf248820bf1178370bb4f1670a59f8748d46bc96d0f64080cd631511c6046409"
+    },
+    {
       "path": "LICENSES/third-party/QtCore-Zlib-LICENSE.txt",
       "url": "https://raw.githubusercontent.com/qt/qtbase/f1136de66638060b8a1ab9bc0cdf1a91dcb5ec01/src/3rdparty/zlib/LICENSE",
       "sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080"
