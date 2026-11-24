@@ -51,6 +51,25 @@ bool select(SettingsWindow *window, const char *name, const QVariant &value) {
 class SettingsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void sidebarSearchAndNavigationAlign() {
+        QTemporaryDir dir; Appearance appearance(nullptr, dir.filePath("settings.json"));
+        SettingsWindow window(&appearance, nullptr); window.show();
+        auto *sidebar = window.findChild<QWidget *>("settingsSidebar");
+        auto *search = window.findChild<SharedLineEdit *>("settingsSearch");
+        QVERIFY(sidebar); QVERIFY(search);
+        auto *first = window.findChild<SharedButton *>("settingsPage-0"); QVERIFY(first);
+        const auto inset = visualTokens()["settings"].toObject()["navigationInset"].toInt();
+        QTRY_COMPARE(search->y(), inset);
+        QCOMPARE(first->y() - (search->y() + search->height()), inset);
+        QCOMPARE(search->x(), first->x());
+        QCOMPARE(search->textMargins().left(), visualTokens()["controls"].toObject()["iconSize"].toInt() + 8);
+        for (int i = 1; i < 6; ++i) {
+            auto *previous = window.findChild<SharedButton *>("settingsPage-" + QString::number(i - 1));
+            auto *current = window.findChild<SharedButton *>("settingsPage-" + QString::number(i));
+            QVERIFY(previous); QVERIFY(current); QCOMPARE(current->y(), previous->y() + previous->height());
+        }
+        search->setText(QStringLiteral("编辑")); QCOMPARE(search->text(), QStringLiteral("编辑")); search->clear();
+    }
     void formRowsKeepCompactControlsAndFollowActualWidth() {
         QTemporaryDir dir; Appearance appearance(nullptr, dir.filePath("settings.json"));
         SettingsWindow window(&appearance, nullptr); window.resize(1080, 820); window.show();

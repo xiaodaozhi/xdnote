@@ -69,6 +69,7 @@ class SharedLineEdit final : public QLineEdit {
     Q_OBJECT
 public:
     explicit SharedLineEdit(Appearance *appearance, QWidget *parent = nullptr);
+    void setLeadingSymbol(const QString &symbol);
     void setShortcutDisplay(bool enabled) { m_shortcut = enabled; update(); }
     bool shortcutDisplay() const { return m_shortcut; }
 protected:
@@ -78,6 +79,7 @@ protected:
     void keyPressEvent(QKeyEvent *) override;
 private:
     QPointer<Appearance> m_appearance;
+    QString m_leadingSymbol;
     bool m_tab = false;
     bool m_shortcut = false;
 };
