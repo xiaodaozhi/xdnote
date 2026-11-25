@@ -13,6 +13,10 @@ on:
         description: 'Source product run for delivery-review only'
         type: string
         default: ''
+      ipc_cross_account:
+        description: 'Run only the disposable cross-account check with ipc-windows'
+        type: boolean
+        default: false
       macos_runner:
         description: 'Native arm64 macOS host; product minimum remains macOS 14'
         type: choice
@@ -55,7 +59,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & $xdnotePython scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Build and check actual product IPC
+      - name: Build actual product IPC probes
         shell: pwsh
         run: |
           $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -63,8 +67,14 @@ jobs:
           $xdnotePython = 'build/toolchain/desktop-tools/Scripts/python.exe'
           & $xdnotePython experiments/windows-appcontainer-ipc/build.py --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          & $xdnotePython experiments/windows-appcontainer-ipc/product_container.py
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Check product IPC in disposable AppContainers
+        if: ${{ !inputs.ipc_cross_account }}
+        shell: pwsh
+        run: build/toolchain/desktop-tools/Scripts/python.exe experiments/windows-appcontainer-ipc/product_container.py
+      - name: Check product IPC across disposable Windows accounts
+        if: inputs.ipc_cross_account
+        shell: pwsh
+        run: ./experiments/windows-appcontainer-ipc/cross-account.ps1
   network-flow:
     if: inputs.scope == 'network-flow'
     uses: ./.github/workflows/qt-network-flow.yml

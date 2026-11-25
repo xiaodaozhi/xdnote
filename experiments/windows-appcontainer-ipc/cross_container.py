@@ -53,7 +53,7 @@ def token_information(token, kind):
     return data
 
 class Child:
-    def __init__(self, executable, sid, mode, pipe, io=False):
+    def __init__(self, executable, sid, mode, pipe, io=False, verify_token=None):
         self.process = None
         self.stdin = self.stdout = None
         child_fds = []
@@ -97,6 +97,8 @@ class Child:
                     actual_sid = ctypes.cast(package, ctypes.POINTER(wintypes.LPVOID))[0]
                     if not is_container or not actual_sid or not a.EqualSid(actual_sid, sid):
                         raise RuntimeError('Child did not receive the requested container identity')
+                    if verify_token is not None:
+                        verify_token(token)
                 finally:
                     k.CloseHandle(token)
                 check(k.ResumeThread(pi.thread) != 0xffffffff, 'ResumeThread')

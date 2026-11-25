@@ -26,4 +26,6 @@ python experiments/windows-appcontainer-ipc/product_container.py
 python experiments/windows-appcontainer-ipc/cross_container.py
 ```
 
+`Desktop admission` 的 `scope=ipc-windows` 与 `ipc_cross_account=true` 启用跨账户定向检查。一次性托管 Windows 运行器创建标准测试账户，两个真实 Windows 用户分别启动相同 AppContainer 身份的进程。第一账户的真实产品监听器在检查前后均可由本账户打开。第二账户仅尝试打开同一管道，记录访问被拒或管道不可见这两种结果。脚本不发送打开意图，结束后清理临时账户和容器配置。此模式只运行跨账户检查。
+
 结果仅覆盖运行时环境、指定 ACL 和夹具中的客户端；不同容器在 `LOCAL` 下找不到彼此的同名管道，应将命名空间隔离与 ACL 拒绝分开解释。预占拒绝不证明同一容器与用户身份下的恶意进程无法创建竞争实例；跨用户访问、所有竞争和异常退出场景、正式产品安装仍须分别验证。禁止以默认 ACL、Everyone 权限或减小队列而不验证接力来代替安全结论。
