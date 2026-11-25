@@ -127,6 +127,8 @@ jobs:
           python scripts/deployment_inventory.py --build-dir $desktop --qt-prefix $qt --destination "$candidate/staging" --redist-dir "$runtime/runtime"
           python scripts/installer_payload.py --source "$candidate/staging" --audit "$candidate/staging-evidence/inventory.json" --destination "$candidate/payload" --toolchain $toolchain --runtime "$runtime/runtime" --build-dir $desktop --qt-prefix $qt --report "$candidate/payload-inventory.json"
           python scripts/distribution_audit.py --root "$candidate/payload" --audit "$candidate/payload-inventory.json" --qt-prefix $qt --report "$candidate/license-evidence.json"
+          python scripts/linkage_audit.py --build-dir $desktop --deployed-binary "$candidate/payload/xdnote.exe" --output "$candidate/linkage.json"
+          python scripts/component_review.py --evidence "$candidate/payload-inventory.json" --linkage "$candidate/linkage.json" --qt-prefix $qt --output "$candidate/component-review.json"
           python scripts/compatibility_audit.py --root "$candidate/payload" --report "$candidate/compatibility.json"
           python scripts/build_release_platform.py --root "$candidate/payload" --audit "$candidate/payload-inventory.json" --compatibility "$candidate/compatibility.json" --toolchain $toolchain --output-dir "$candidate/packages"
           $setup = @(Get-ChildItem -LiteralPath "$candidate/packages" -Filter '*-setup.exe' -File)
@@ -146,6 +148,12 @@ jobs:
           candidate=$XDNOTE_CANDIDATE_DIR
           python scripts/desktop.py build --profile default --release-identity "$candidate/release-input.json" --parallel 4
           python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "$XDNOTE_QT_PREFIX" --destination "$candidate/staging"
+          binary="$candidate/staging/bin/xdnote"
+          if [ "$RUNNER_OS" = macOS ]; then
+            binary="$candidate/staging/xdnote.app/Contents/MacOS/xdnote"
+          fi
+          python scripts/linkage_audit.py --build-dir build/desktop-admission --deployed-binary "$binary" --output "$candidate/linkage.json"
+          python scripts/component_review.py --evidence "$candidate/staging-evidence/license-evidence.json" --linkage "$candidate/linkage.json" --qt-prefix "$XDNOTE_QT_PREFIX" --output "$candidate/component-review.json"
           python scripts/compatibility_audit.py --root "$candidate/staging" --report "$candidate/compatibility.json"
       - name: Verify the Linux packages
         if: runner.os == 'Linux'
@@ -197,7 +205,8 @@ jobs:
             cp "$candidate/staging-evidence/inventory.json" "$candidate/staging-evidence/license-evidence.json" "$candidate/packages/"
             age="$candidate/transfer/age/age"
           fi
-          cp "$candidate/identity.json" "$candidate/compatibility.json" "$candidate/packages/"
+          cp "$candidate/identity.json" "$candidate/compatibility.json" \
+            "$candidate/linkage.json" "$candidate/component-review.json" "$candidate/packages/"
           tar -C "$candidate/packages" -cf "$candidate/transfer/candidate.tar" .
           "$age" --encrypt --recipient "$XDNOTE_AGE_RECIPIENT" --output "$candidate/transfer/candidate.tar.age" "$candidate/transfer/candidate.tar"
       - name: Preserve only the encrypted candidate

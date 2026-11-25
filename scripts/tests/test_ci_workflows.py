@@ -247,6 +247,9 @@ class WorkflowContractTests(unittest.TestCase):
         runners = json.loads(re.search(r"runs-on: .*fromJSON\('([^']+)'\)", workflow)[1])
         self.assertEqual(runners, {'windows': 'windows-2022', 'linux': 'ubuntu-22.04', 'macos': 'macos-15'})
         self.assertIn('XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf', workflow)
+        self.assertEqual(workflow.count('python scripts/linkage_audit.py'), 2)
+        self.assertEqual(workflow.count('python scripts/component_review.py'), 2)
+        self.assertIn('"$candidate/linkage.json" "$candidate/component-review.json" "$candidate/packages/"', workflow)
         self.assertEqual(workflow.count('uses: actions/upload-artifact@'), 1)
         self.assertIn('\n          path: build/private-release-candidate/transfer/candidate.tar.age\n', workflow)
 

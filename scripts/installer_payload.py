@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import deployment_notices
 import runtime_materials
 import qt_source_access
 
@@ -83,6 +84,7 @@ def prepare(source, source_audit, destination, toolchain, runtime, build, qt):
     runtime_materials.collect(destination / 'licenses/rust-runtime')
     records = product_qt_records(source_audit['qtSbom'], inventory(destination))
     qt_source_access.collect(destination / 'licenses/qt', records, qt, identity=source_audit['buildIdentity'])
+    deployment_notices.collect(destination / 'licenses', source_audit['buildIdentity'])
     helper = build / 'xdnote-update-helper.exe'
     if not helper.is_file(): raise ValueError('Independent update helper missing')
     shutil.copy2(helper, destination / helper.name)

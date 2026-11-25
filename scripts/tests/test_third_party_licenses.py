@@ -2,13 +2,46 @@
 from copy import deepcopy
 import hashlib
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from check_third_party_licenses import (
     DEPLOYMENT_NOTICE_PATHS, license_choices, source_license_texts, validate_deployment_notices, validate_inventory,
 )
+import deployment_notices
+
+
+class InstalledLicenseNoticeTests(unittest.TestCase):
+    def test_repository_links_resolve_in_sealed_product_layout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            licenses = Path(temporary) / 'licenses'
+            shutil.copytree(deployment_notices.ROOT / 'LICENSES', licenses / 'project-and-source-dependencies')
+            (licenses / 'qt').mkdir()
+            replacement = licenses / 'qt/REPLACEMENT.md'
+            replacement.write_bytes(b'Test replacement instructions')
+            revision = 'a' * 40
+            identity = {'buildVersion': {'revision': revision, 'dirty': False}}
+            deployment_notices.collect(licenses, identity)
+            notice = licenses / deployment_notices.SOURCE.name
+            contents = notice.read_text(encoding='utf-8')
+            self.assertIn('](qt/REPLACEMENT.md)', contents)
+            self.assertIn(f'https://github.com/xiaodaozhi/xdnote/blob/{revision}/docs/engineering/licensing.md', contents)
+            self.assertNotIn('](LICENSES/', contents)
+            self.assertNotIn('](docs/', contents)
+            self.assertNotIn('](tools/', contents)
+            for target in deployment_notices.LINK.findall(contents):
+                if not target.startswith(('https://', 'http://', '#')):
+                    self.assertTrue((licenses / target.split('#')[0]).is_file(), target)
+            source_digest = hashlib.sha256(deployment_notices.SOURCE.read_bytes()).hexdigest()
+            self.assertEqual(deployment_notices.verify(notice, identity), source_digest)
+            replacement.unlink()
+            with self.assertRaisesRegex(ValueError, 'material is missing'):
+                deployment_notices.verify(notice, identity)
+            notice.write_bytes(deployment_notices.SOURCE.read_bytes())
+            self.assertEqual(deployment_notices.verify(notice, identity), source_digest)
 
 
 class ThirdPartyLicenseInventoryTests(unittest.TestCase):
