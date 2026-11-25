@@ -10,6 +10,7 @@ import shutil
 import tempfile
 
 import desktop
+import deployment_notices
 import deployment_unix as deploy
 import user_install
 import runtime_materials
@@ -107,6 +108,7 @@ def material_evidence(root, qt, records, system, *, identity=None):
         elif path.is_relative_to(notices / 'licenses'):
             relative = path.relative_to(notices / 'licenses').as_posix()
             source = None
+            source_sha = None
             if relative.startswith('project-and-source-dependencies/'):
                 source = desktop.ROOT / 'LICENSES' / relative.removeprefix('project-and-source-dependencies/')
             elif relative.startswith('Sparkle/'):
@@ -121,8 +123,10 @@ def material_evidence(root, qt, records, system, *, identity=None):
                 pass # The complete pinned directory was verified above.
             elif relative in ('qt/source-access.json', 'qt/REPLACEMENT.md'):
                 pass # The source locators and exact instruction bytes were verified above.
-            elif relative in ('Apache-2.0.txt', 'THIRD_PARTY_NOTICES.md'):
-                source = desktop.ROOT / ('LICENSE' if relative == 'Apache-2.0.txt' else relative)
+            elif relative == 'Apache-2.0.txt':
+                source = desktop.ROOT / 'LICENSE'
+            elif relative == 'THIRD_PARTY_NOTICES.md':
+                source_sha = deployment_notices.verify(path, identity)
             elif relative.startswith('qt/') and path.name in {r['sbom'] for r in records}:
                 source = qt / 'sbom' / path.name
             elif relative == 'native-runtime/manifest.json':
@@ -135,8 +139,10 @@ def material_evidence(root, qt, records, system, *, identity=None):
                 raise ValueError('Unexpected license material: ' + relative)
             record = {'kind': 'preserved license or attribution material'}
             if source is not None:
-                if not source.is_file() or digest(source) != item['sha256']: raise ValueError('License material changed: ' + relative)
-                record['sourceSha256'] = digest(source)
+                source_sha = digest(source) if source.is_file() else None
+                if source_sha != item['sha256']: raise ValueError('License material changed: ' + relative)
+            if source_sha is not None:
+                record['sourceSha256'] = source_sha
         elif path.name in ('qt.conf', 'Info.plist') or '_CodeSignature' in path.parts:
             record = {'kind': 'generated bundle configuration or ad-hoc seal'}
         else:
@@ -244,11 +250,11 @@ def prepare(build, qt, root):
         licenses = notices / 'licenses'
         shutil.copytree(desktop.ROOT / 'LICENSES', licenses / 'project-and-source-dependencies')
         shutil.copy2(desktop.ROOT / 'LICENSE', licenses / 'Apache-2.0.txt')
-        shutil.copy2(desktop.ROOT / 'THIRD_PARTY_NOTICES.md', licenses / 'THIRD_PARTY_NOTICES.md')
         (licenses / 'DESIGN-ATTRIBUTION.txt').write_text('xdnote 项目及其贡献者；https://github.com/xiaodaozhi/xdnote\n文档与原创设计：CC BY 4.0；https://creativecommons.org/licenses/by/4.0/\n', encoding='utf-8')
         records = deploy.collect_qt_notices(qt, notices, names)
         runtime_materials.collect(licenses / 'rust-runtime')
         qt_source_access.collect(licenses / 'qt', records, qt, identity=identity)
+        deployment_notices.collect(licenses, identity)
         runtime = runtime_notices()
         relevant = [r for r in runtime['runtime'] if r['platform'] == system and any((root / 'lib' / name).is_file() for name in r['sdkFiles'])]
         if relevant:

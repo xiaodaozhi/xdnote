@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from check_third_party_licenses import DEPLOYMENT_NOTICE_PATHS, audit as source_audit, source_license_texts
 from installer_common import ROOT, build_output, digest
 from installer_payload import verify_payload, product_qt_records
+import deployment_notices
 import runtime_materials
 import qt_source_access
 
@@ -141,9 +142,10 @@ def audit(root, metadata, qt):
             source = ROOT / 'LICENSES' / name.removeprefix('licenses/project-and-source-dependencies/')
             checked_bytes(file, digest(source))
             record = {'kind': 'preserved source dependency license material'}
-        elif name in ('licenses/Apache-2.0.txt', 'licenses/THIRD_PARTY_NOTICES.md'):
-            source = ROOT / ('LICENSE' if name.endswith('Apache-2.0.txt') else 'THIRD_PARTY_NOTICES.md')
-            checked_bytes(file, digest(source)); record = {'kind': 'preserved project notice'}
+        elif name == 'licenses/Apache-2.0.txt':
+            checked_bytes(file, digest(ROOT / 'LICENSE')); record = {'kind': 'preserved project notice'}
+        elif name == 'licenses/THIRD_PARTY_NOTICES.md':
+            record = {'kind': 'project notice', 'sourceSha256': deployment_notices.verify(file, metadata['buildIdentity'])}
         elif name == 'licenses/DESIGN-ATTRIBUTION.txt':
             if 'CC BY 4.0' not in file.read_text(encoding='utf-8'):
                 raise ValueError('Design attribution missing')
