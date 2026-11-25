@@ -38,16 +38,19 @@ def main(pid):
         xdotool('key', '--clearmodifiers', *keys)
 
     def hear(phase, expected):
-        require_text(editor, expected)
-        send_keys('ctrl+Home')
+        text = require_text(editor, expected)
+        length = text.characterCount
+        selected = text.setSelection(0, 0, length) if text.getNSelections() else text.addSelection(0, length)
+        if not selected or tuple(text.getSelection(0)) != (0, length):
+            raise RuntimeError('Could not select the fixture text for Orca')
         time.sleep(0.5)
         offset = log.stat().st_size
-        send_keys('KP_Add')
+        send_keys('Insert+Shift+Up')
         subprocess.run(
             [sys.executable, str(speech_probe), 'speech', str(log), phase, str(offset), expected],
             stdout=sys.stderr, check=True, timeout=17,
         )
-        send_keys('Escape')
+        require_text(editor, expected)
 
     hear('old-document', ORIGINAL)
     print('OLD_SPOKEN', flush=True)

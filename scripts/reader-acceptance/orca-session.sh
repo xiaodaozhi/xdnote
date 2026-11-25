@@ -25,6 +25,16 @@ owned_pids=()
 finish() {
     if (( "${#owned_pids[@]}" )); then
         kill "${owned_pids[@]}" 2>/dev/null || true
+        for attempt in {1..30}; do
+            [[ -n "$(jobs -pr)" ]] || break
+            sleep 0.1
+        done
+        # Orca can remain in a synchronous speech or accessibility call during shutdown.
+        local running
+        running="$(jobs -pr)"
+        for child in "${owned_pids[@]}"; do
+            if grep -qx "$child" <<< "$running"; then kill -KILL "$child" 2>/dev/null || true; fi
+        done
         for child in "${owned_pids[@]}"; do wait "$child" 2>/dev/null || true; done
     fi
 }
