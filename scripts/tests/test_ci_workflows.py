@@ -258,6 +258,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('guardedAtspiAccessibility', workflow)
         self.assertIn('tests/atspi-wayland.sh', workflow)
 
+    def test_quick_orca_scope_targets_only_x11_reader_evidence(self):
+        workflow = (WORKFLOWS / 'qt-document-spike.yml').read_text(encoding='utf-8')
+        self.assertIn("inputs.scope == 'linux-orca' && '[\"ubuntu-22.04\"]'", workflow)
+        self.assertIn("runner.os == 'Linux' && inputs.scope != 'linux-orca'", workflow)
+        self.assertIn('orca-linux.sh x11 build/qt-document-spike "${QT_ROOT_DIR:?}" --quick-editor', workflow)
+        self.assertIn('build/reader-acceptance/orca-quick-editor/*/*.txt', workflow)
+
     def test_uia_only_scope_requires_a_native_windows_pass(self):
         workflow = (WORKFLOWS / 'qt-document-spike.yml').read_text(encoding='utf-8')
         self.assertIn("inputs.scope == 'windows-uia' && '[\"windows-2022\"]'", workflow)

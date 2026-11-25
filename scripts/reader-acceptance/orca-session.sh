@@ -12,21 +12,6 @@ if [[ "${XDG_RUNTIME_DIR:-}" != "$5" || ! -d "$XDG_RUNTIME_DIR" || -z "${DBUS_SE
 fi
 
 probe="$(dirname -- "$0")/orca-evidence.py"
-fixture="$evidence/Reader-Check.md"
-{
-    cat <<'DOC'
-# Native reading acceptance
-
-Blue orchard reading sample.
-
-[Follow the cedar heading](#cedar-anchor)
-
-DOC
-    for number in {1..40}; do printf 'Filler paragraph %s.\n\n' "$number"; done
-    printf '## Cedar anchor\n\nAmber target reading sample.\n'
-} > "$fixture"
-(cd "$evidence" && sha256sum Reader-Check.md > fixture-before.sha256)
-cp -- "$build_dir/build-identity.json" "$evidence/build-identity.json"
 {
     echo "backend=$backend"
     echo "revision=$(git rev-parse HEAD)"
@@ -100,6 +85,36 @@ for attempt in {1..30}; do
 done
 [[ -s "$evidence/orca.log" ]] || { echo 'Orca did not start logging' >&2; exit 1; }
 sleep 2
+
+if [[ "${6:-}" == --quick-editor ]]; then
+    export XDNOTE_QUICK_ORCA_CLIENT="$PWD/experiments/qt-document-spike/tests/orca_client.py"
+    export XDNOTE_QUICK_ORCA_LOG="$evidence/orca.log" XDNOTE_ORCA_SPEECH_PROBE="$probe"
+    export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software QT_PLUGIN_PATH="$qt_prefix/plugins"
+    export QML_IMPORT_PATH="$qt_prefix/qml" LD_LIBRARY_PATH="$qt_prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    "$build_dir/qt_document_spike_tests" guardedOrcaAccessibility -o "$evidence/qtest.txt,txt" \
+        2> >(tee "$evidence/speech-markers.txt" >&2) || { cat "$evidence/qtest.txt"; exit 1; }
+    cat "$evidence/qtest.txt"
+    grep -Eq '^PASS.*guardedOrcaAccessibility' "$evidence/qtest.txt"
+    ! grep -Eq '^(FAIL|SKIP).*guardedOrcaAccessibility' "$evidence/qtest.txt"
+    printf 'PASS: Orca on the guarded Qt Quick editor\n' | tee "$evidence/result.txt"
+    exit
+fi
+
+fixture="$evidence/Reader-Check.md"
+{
+    cat <<'DOC'
+# Native reading acceptance
+
+Blue orchard reading sample.
+
+[Follow the cedar heading](#cedar-anchor)
+
+DOC
+    for number in {1..40}; do printf 'Filler paragraph %s.\n\n' "$number"; done
+    printf '## Cedar anchor\n\nAmber target reading sample.\n'
+} > "$fixture"
+(cd "$evidence" && sha256sum Reader-Check.md > fixture-before.sha256)
+cp -- "$build_dir/build-identity.json" "$evidence/build-identity.json"
 
 launch=(python scripts/desktop.py run --profile default --build-dir "$build_dir" --qt-prefix "$qt_prefix" --file "$fixture")
 if [[ "$backend" == x11 ]]; then
