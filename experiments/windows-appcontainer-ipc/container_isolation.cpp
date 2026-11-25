@@ -12,7 +12,7 @@ std::vector<BYTE> tokenInformation(HANDLE token, TOKEN_INFORMATION_CLASS kind) {
     return bytes;
 }
 
-int server(const wchar_t *name) {
+int server(const wchar_t *name, DWORD maximumInstances) {
     HANDLE token = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return 20;
     auto user = tokenInformation(token, TokenUser);
@@ -37,7 +37,7 @@ int server(const wchar_t *name) {
     SECURITY_ATTRIBUTES attributes{sizeof(attributes), &descriptor, FALSE};
     HANDLE pipe = CreateNamedPipeW(name, PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
                                   PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-                                  8, 4096, 4096, 3000, &attributes);
+                                  maximumInstances, 4096, 4096, 3000, &attributes);
     if (pipe == INVALID_HANDLE_VALUE) {
         std::printf("pipe error %lu\n", GetLastError()); std::fflush(stdout);
         return 24;
@@ -65,7 +65,8 @@ int client(const wchar_t *name, bool createInstance) {
 int wmain(int argc, wchar_t **argv) {
     if (argc != 3) return 2;
     const std::wstring mode(argv[1]);
-    if (mode == L"server") return server(argv[2]);
+    if (mode == L"server") return server(argv[2], 8);
+    if (mode == L"server-qt") return server(argv[2], PIPE_UNLIMITED_INSTANCES);
     if (mode == L"open") return client(argv[2], false);
     if (mode == L"instance") return client(argv[2], true);
     return 3;

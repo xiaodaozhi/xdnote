@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     for(const auto &client:clients) if(client->state()!=QProcess::NotRunning || client->exitCode()!=0) return 9;
     if(received!=7) return 10;
     std::puts("four concurrent clients forwarded");
-    const auto name=QStringLiteral("xdnote-v1-")+QString::fromLatin1(QCryptographicHash::hash(args[2].toUtf8(),QCryptographicHash::Sha256).toHex().left(24));
+    const auto name=QStringLiteral("LOCAL\\xdnote-v1-")+QString::fromLatin1(QCryptographicHash::hash(args[2].toUtf8(),QCryptographicHash::Sha256).toHex().left(24));
     QLocalSocket bad;bad.connectToServer(name);if(!bad.waitForConnected(3000)) return 11;
     bad.write(QByteArray(4, char(0xff)));bad.flush();
     QElapsedTimer badTimer;badTimer.start();
