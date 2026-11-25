@@ -103,22 +103,31 @@ void FileManager::endWorkspaceOperation(const QUuid &operation) {
     m_workspaceOperation = {}; emit resourcesChanged(); emit documentsChanged(); finish();
 }
 
-void FileManager::open(const QString &input, const QUuid &intent) {
+void FileManager::open(const QString &input, const QUuid &intent, const QUuid &scope) {
     const auto path = QDir::isAbsolutePath(input) ? input : QDir::currentPath() + '/' + input;
-    openRequest(path, intent);
+    openRequest(path, intent, scope);
 }
-void FileManager::openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &path, const QUuid &intent, const QString &sourcePath, const QString &sourceIdentity) {
+void FileManager::openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &path, const QUuid &intent, const QString &sourcePath, const QString &sourceIdentity, const QUuid &scope) {
     if (!root) { emit openFailed(intent, path, QStringLiteral("当前入口没有目录授权")); return; }
-    openRequest(QDir(root->rootPath()).filePath(path), intent, root, path, sourcePath, sourceIdentity);
+    openRequest(QDir(root->rootPath()).filePath(path), intent, scope, root, path, sourcePath, sourceIdentity);
+}
+FileDocument *FileManager::documentInScope(FileDocument *document, const QUuid &scope) const {
+    if (!document || document->closed()) return nullptr;
+    const auto found = m_registry.lookup(document->baseline()->file(), scope);
+    return found.session ? m_documents.value(found.session->documentId()).data() : nullptr;
+}
+bool FileManager::setDocumentScope(FileDocument *document, const QUuid &scope) {
+    if (!document || document->closed() || m_registry.setScope(document->session(), scope) != RegistryResult::Reused) return false;
+    document->m_scope = scope; return true;
 }
 QList<FileDocument *> FileManager::documents() const {
     QList<FileDocument *> result;
     for (auto document : m_documents) if (document && !document->closed()) result.append(document);
     return result;
 }
-void FileManager::openRequest(const QString &path, const QUuid &intent, std::shared_ptr<WorkspaceResourceReader> root, QString relativePath, QString sourcePath, QString sourceIdentity) {
+void FileManager::openRequest(const QString &path, const QUuid &intent, const QUuid &scope, std::shared_ptr<WorkspaceResourceReader> root, QString relativePath, QString sourcePath, QString sourceIdentity) {
     if (updateTasksBlocked()) return;
-    enqueue([this, path, intent, root, relativePath, sourcePath, sourceIdentity] {
+    enqueue([this, path, intent, scope, root, relativePath, sourcePath, sourceIdentity] {
         if (m_cancelled.remove(intent)) { finish(); return; }
         worker<ProbeResult>([path, root, relativePath, sourcePath, sourceIdentity] {
             if (root && !sourcePath.isEmpty()) {
@@ -126,11 +135,11 @@ void FileManager::openRequest(const QString &path, const QUuid &intent, std::sha
                 if (!source.ok() || source.identity != sourceIdentity) return ProbeResult{{}, {FileError::Changed}};
             }
             return root ? FileService::probeWithin(root, relativePath) : FileService::probe(path);
-        }, [this, path, intent, root](ProbeResult probe) {
+        }, [this, path, intent, scope, root](ProbeResult probe) {
             if (m_cancelled.remove(intent)) { finish(); return; }
             if (root && !root->active()) { emit openFailed(intent, path, QStringLiteral("工作区授权已失效")); finish(); return; }
             if (!probe.file) { emit openFailed(intent, path, probe.problem.description()); finish(); return; }
-            auto opening = m_registry.beginOpen(probe.file);
+            auto opening = m_registry.beginOpen(probe.file, scope);
             if (opening.result == RegistryResult::Reused) {
                 auto document = m_documents.value(opening.session->documentId());
                 if (document && !document->closed()) emit opened(intent, document, true);
@@ -139,7 +148,7 @@ void FileManager::openRequest(const QString &path, const QUuid &intent, std::sha
             }
             if (!opening.startRead) { emit openFailed(intent, path, QStringLiteral("文档正在打开或关闭，请稍后重试")); finish(); return; }
             const auto request = opening.read;
-            worker<ReadResult>([request] { return FileService::read(request); }, [this, path, intent, request, root](ReadResult loaded) {
+            worker<ReadResult>([request] { return FileService::read(request); }, [this, path, intent, scope, request, root](ReadResult loaded) {
                 if (m_cancelled.remove(intent)) { m_registry.cancel(request); finish(); return; }
                 if (root && !root->active()) { m_registry.cancel(request); emit openFailed(intent, path, QStringLiteral("工作区授权已失效")); finish(); return; }
                 if (!loaded.baseline) {
@@ -148,6 +157,7 @@ void FileManager::openRequest(const QString &path, const QUuid &intent, std::sha
                 auto registered = m_registry.complete(request, loaded.baseline);
                 if (!registered.session) { emit openFailed(intent, path, QStringLiteral("打开请求已失效，请重试")); finish(); return; }
                 auto *document = new FileDocument(this, registered.session, loaded.baseline);
+                document->m_scope = scope;
                 const auto id = registered.session->documentId();
                 m_documents.insert(id, document);
                 connect(document, &QObject::destroyed, this, [this, id] { m_documents.remove(id); emit documentsChanged(); });
@@ -187,10 +197,10 @@ bool FileManager::save(FileDocument *document, const QString &path, bool saveAs)
         worker<ProbeResult>([path] { return FileService::probe(path); }, [this, guard, snapshot, path, source, operation](ProbeResult target) {
             if (!guard || guard->closed()) { finish(); return; }
             if (target.file) {
-                auto existing = m_registry.lookup(target.file);
+                auto existing = m_registry.lookup(target.file, guard->scope());
                 if (existing.session && existing.session != guard->session()) {
                     guard->m_saving = false; guard->m_error = true;
-                    guard->m_message = QStringLiteral("目标文件已在另一窗口打开，请切换该窗口处理");
+                    guard->m_message = QStringLiteral("目标文件已在当前工作区的另一标签打开，请切换该标签处理");
                     emit guard->stateChanged(); emit guard->operationFinished(false); finish(); return;
                 }
                 if (target.file->identity() == source->file()->identity()) { performSave(guard, snapshot, path, source, operation); return; }
@@ -268,7 +278,7 @@ bool FileManager::reload(FileDocument *document) {
         worker<ReadResult>([path, operation] { return readPath(path, QUuid(operation)); }, [this, guard, revision](ReadResult read) {
             if (!guard || guard->closed()) { finish(); return; }
             guard->m_loading = false;
-            auto existing = read.baseline ? m_registry.lookup(read.baseline->file()) : RegisteredSession{};
+            auto existing = read.baseline ? m_registry.lookup(read.baseline->file(), guard->scope()) : RegisteredSession{};
             const bool other = existing.session && existing.session != guard->session();
             const auto applied = read.baseline && !other ? guard->session()->reloadText(read.baseline->utf8(), revision) : EditResult::Unchanged;
             const bool ok = read.baseline && !other && applied == EditResult::Applied

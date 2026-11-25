@@ -249,7 +249,7 @@ private slots:
         QCOMPARE(workspace->panes().size(), (entry != 0 ? 1 : 0) + (entry == 2 && inside ? 1 : 0));
         QCOMPARE(desktop.findChild<FileManager *>()->documentCount(), entry != 0 ? 2 : 1);
     }
-    void outsideNavigationAndDropsReuseStandaloneDirtySession() {
+    void outsideNavigationAndDropsOpenIndependentStandaloneSessions() {
         QTemporaryDir dir, outside; const auto a = dir.filePath("inside.md"), b = outside.filePath("outside.md");
         QVERIFY(fileFixtures::write(a, "inside")); QVERIFY(fileFixtures::write(b, "outside"));
         FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
@@ -258,8 +258,9 @@ private slots:
         QCOMPARE(session->replace(0, 0, "dirty ", session->revision()), EditResult::Applied);
         QVERIFY(fileFixtures::write(b, "disk changed")); source->openRequested(b); desktop.openInWorkspace(b, workspace);
         auto *manager = desktop.findChild<FileManager *>(); QTRY_VERIFY(manager->idle());
-        QCOMPARE(manager->documentCount(), 2); QCOMPARE(workspace->panes().size(), 1);
-        QCOMPARE(waitStandalone(b), pane); QCOMPARE(session->snapshot().utf8, QByteArray("dirty outside"));
+        QCOMPARE(manager->documentCount(), 4); QCOMPARE(workspace->panes().size(), 1);
+        int outsideCopies = 0; for (auto *document : manager->documents()) if (document->path() == b) { ++outsideCopies; if (document != pane->document()) QCOMPARE(document->session()->snapshot().utf8, QByteArray("disk changed")); }
+        QCOMPARE(outsideCopies, 3); QCOMPARE(session->snapshot().utf8, QByteArray("dirty outside"));
         QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, QByteArray("outside"));
     }
     void externalPreferenceRequiresAnAlreadySelectedContainingWorkspace() {
@@ -526,7 +527,7 @@ private slots:
         QVERIFY(fileFixtures::write(source, "[link](target.md)")); QVERIFY(fileFixtures::write(target, "# old\n"));
         FileApplication app(nullptr, dir.filePath("settings/state.ini")); auto *workspace = app.workspaceWindow(dir.path());
         app.openInWorkspace(source, workspace); auto *pane = waitPane(workspace, source); QVERIFY(pane);
-        app.open(target); auto *destination = waitStandalone(target); QVERIFY(destination); destination->setEditing(true);
+        app.openInWorkspace(target, workspace); auto *destination = waitPane(workspace, target); QVERIFY(destination); destination->setEditing(true);
         auto *session = destination->document()->session(); const auto before = session->snapshot();
         const auto text = QStringLiteral("# 已修改\n\n正文\n\n# 已修改\n");
         QCOMPARE(session->replace(0, QString::fromUtf8(before.utf8).size(), text, before.revision), EditResult::Applied);
@@ -534,8 +535,8 @@ private slots:
         const auto url = relativeWorkspaceUrl("source.md", QFileInfo(target).fileName()); QVERIFY(url.success);
         pane->activateDocumentLink(url.path + QStringLiteral("#%E5%B7%B2%E4%BF%AE%E6%94%B9-1"), pane->document()->session()->revision());
         QTRY_COMPARE(destination->editor()->send(SCI_GETCURRENTPOS), sptr_t(headings.headings.last().range.start));
-        QCOMPARE(session->snapshot().utf8, live.utf8); QVERIFY(session->isDirty()); QVERIFY(!destination->embedded());
-        QTRY_COMPARE(workspace->panes().size(), 1); QCOMPARE(disk(target), QByteArray("# old\n"));
+        QCOMPARE(session->snapshot().utf8, live.utf8); QVERIFY(session->isDirty()); QVERIFY(destination->embedded());
+        QTRY_COMPARE(workspace->panes().size(), 2); QCOMPARE(disk(target), QByteArray("# old\n"));
         pane->activateDocumentLink(url.path + "#missing", pane->document()->session()->revision());
         QTRY_VERIFY(destination->findChild<QLabel *>("documentNotice")->text().contains(QStringLiteral("未找到标题")));
         QCOMPARE(session->undo(), EditResult::Applied); QCOMPARE(session->snapshot().utf8, before.utf8);
@@ -703,6 +704,78 @@ private slots:
             desktop.openInWorkspace(alias, workspace); QCOMPARE(tabs->count(), 1); QTRY_VERIFY(manager->idle()); QCOMPARE(peak, 1); QCOMPARE(workspace->activePane(), pane);
         }
         QCOMPARE(session->snapshot().utf8, snapshot.utf8); QCOMPARE(session->revision(), snapshot.revision); QCOMPARE(disk(path), QByteArray("retained"));
+    }
+    void sameFileOpensAcrossWindowsAndSavesDetectConflicts() {
+        QTemporaryDir dir; QVERIFY(QDir().mkpath(dir.filePath("child")));
+        const auto path = dir.filePath("child/shared.md"); QVERIFY(fileFixtures::write(path, "original"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json"));
+        auto *outer = desktop.workspaceWindow(dir.path()); auto *inner = desktop.workspaceWindow(dir.filePath("child"));
+        auto *manager = desktop.findChild<FileManager *>(); QVERIFY(manager);
+        desktop.openInWorkspace(path, outer); desktop.openInWorkspace(path, outer);
+        desktop.openInWorkspace(path, inner); desktop.open(path); desktop.open(path);
+        auto *a = waitPane(outer, path); auto *b = waitPane(inner, path); QVERIFY(a && b);
+        QTRY_COMPARE(manager->documentCount(), 4); QTRY_VERIFY(manager->idle());
+        QCOMPARE(outer->panes().size(), 1); QCOMPARE(inner->panes().size(), 1);
+        QSet<QUuid> ids; for (auto *document : manager->documents()) ids.insert(document->session()->documentId()); QCOMPARE(ids.size(), 4);
+        auto *first = a->document(); auto *second = b->document();
+        QCOMPARE(first->session()->replace(0, 0, "first ", first->session()->revision()), EditResult::Applied);
+        QCOMPARE(second->session()->replace(0, 0, "second ", second->session()->revision()), EditResult::Applied);
+        QVERIFY(first->save()); QTRY_VERIFY(!first->saving()); QVERIFY(!first->hasError()); QCOMPARE(disk(path), QByteArray("first original"));
+        // The other baseline must reject replacement even before a poll.
+        if (second->conflict()) QVERIFY(!second->save()); else { QVERIFY(second->save()); QTRY_VERIFY(!second->saving()); }
+        QVERIFY(second->conflict()); QVERIFY(second->dirty());
+        QCOMPARE(second->session()->snapshot().utf8, QByteArray("second original")); QCOMPARE(disk(path), QByteArray("first original"));
+        desktop.openInWorkspace(path, inner); QTRY_VERIFY(manager->idle()); QCOMPARE(inner->panes().size(), 1); QCOMPARE(inner->activePane(), b);
+        QCOMPARE(second->session()->undo(), EditResult::Applied); QCOMPARE(second->session()->snapshot().utf8, QByteArray("original"));
+        QVERIFY(second->reload()); QTRY_VERIFY(!second->loading()); QVERIFY(!second->hasError()); QCOMPARE(second->session()->snapshot().utf8, QByteArray("first original"));
+        const auto copy = dir.filePath("second-copy.md"); QVERIFY(second->saveAs(copy)); QTRY_VERIFY(!second->saving()); QVERIFY(!second->hasError());
+        desktop.openInWorkspace(copy, inner); // Outside this root: a new standalone window.
+        QTRY_COMPARE(manager->documentCount(), 5); QCOMPARE(inner->panes().size(), 1);
+    }
+    void transferToExistingTabPreservesBothBuffers() {
+        QTemporaryDir dir; const auto path = dir.filePath("shared.md"); QVERIFY(fileFixtures::write(path, "base"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *workspace = desktop.workspaceWindow(dir.path());
+        desktop.openInWorkspace(path, workspace); auto *tab = waitPane(workspace, path); QVERIFY(tab);
+        desktop.open(path); auto *standalone = waitStandalone(path); QVERIFY(standalone);
+        auto *a = tab->document()->session(); auto *b = standalone->document()->session();
+        QCOMPARE(a->replace(0, 0, "tab ", a->revision()), EditResult::Applied); QCOMPARE(b->replace(0, 0, "window ", b->revision()), EditResult::Applied);
+        QVERIFY(!desktop.transferToWorkspace(standalone, workspace)); QVERIFY(standalone->isWindow()); QCOMPARE(workspace->panes().size(), 1);
+        QCOMPARE(workspace->activePane(), tab); QCOMPARE(a->snapshot().utf8, QByteArray("tab base")); QCOMPARE(b->snapshot().utf8, QByteArray("window base"));
+        QCOMPARE(a->undo(), EditResult::Applied); QCOMPARE(b->undo(), EditResult::Applied);
+        QPointer<SingleFileWindow> old = tab; tab->close(); QTRY_VERIFY(!old);
+        QTRY_VERIFY(desktop.transferToWorkspace(standalone, workspace)); desktop.openInWorkspace(path, workspace);
+        auto *manager = desktop.findChild<FileManager *>(); QTRY_VERIFY(manager->idle()); QCOMPARE(workspace->panes().size(), 1); QCOMPARE(workspace->activePane(), standalone);
+    }
+    void workspaceDirectoryIsUniqueAcrossCreationAndRootChanges() {
+        QTemporaryDir dir, other; const auto path = other.filePath("dirty.md"); QVERIFY(fileFixtures::write(path, "base"));
+        FileApplication desktop(nullptr, dir.filePath("settings.json")); auto *existing = desktop.workspaceWindow(dir.path());
+        auto *welcome = desktop.workspaceWindow(); auto *populated = desktop.workspaceWindow(other.path());
+        desktop.openInWorkspace(path, populated); auto *pane = waitPane(populated, path); QVERIFY(pane);
+        auto *session = pane->document()->session(); QCOMPARE(session->replace(0, 0, "dirty ", session->revision()), EditResult::Applied);
+        const auto authorization = populated->resourceRoot();
+        existing->showMinimized(); welcome->setRootPath(dir.path() + "/./");
+        QVERIFY(welcome->rootPath().isEmpty()); QVERIFY(!existing->isMinimized()); QTRY_COMPARE(QApplication::activeWindow(), existing);
+        populated->setRootPath(dir.path()); QCOMPARE(populated->rootPath(), other.path()); QCOMPARE(populated->resourceRoot(), authorization); QVERIFY(authorization->active());
+        QCOMPARE(session->snapshot().utf8, QByteArray("dirty base")); QCOMPARE(desktop.workspaceWindow(dir.path() + "/."), existing);
+#ifdef Q_OS_WIN
+        QCOMPARE(desktop.workspaceWindow(dir.path().toUpper()), existing);
+#endif
+    }
+    void welcomeDirectoryPickerActivatesExistingWorkspace() {
+        const bool native = QApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+        const auto restore = qScopeGuard([&] { QApplication::setAttribute(Qt::AA_DontUseNativeDialogs, native); });
+        QTemporaryDir dir; FileApplication desktop(nullptr, dir.filePath("settings.json"));
+        auto *existing = desktop.workspaceWindow(dir.path()); auto *welcome = desktop.workspaceWindow();
+        bool accepted = false; QTimer select; select.setInterval(20);
+        connect(&select, &QTimer::timeout, &select, [&] {
+            if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                select.stop(); dialog->setDirectory(dir.path()); accepted = true; QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+            }
+        });
+        select.start(); QTimer::singleShot(3000, &select, [] { if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) dialog->reject(); });
+        welcome->findChild<SharedButton *>("workspaceOpenDirectory")->click();
+        QVERIFY(accepted); QVERIFY(welcome->rootPath().isEmpty()); QTRY_COMPARE(QApplication::activeWindow(), existing);
     }
     void footerControlsShareTypographyAndSpacing() {
         QTemporaryDir dir;

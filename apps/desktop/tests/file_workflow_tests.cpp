@@ -339,11 +339,13 @@ int main(int argc, char **argv) {
         QObject::connect(&timer, &QTimer::timeout, &application, [&] {
             QList<SingleFileWindow *> windows;
             for (auto *widget : app.topLevelWidgets()) if (auto *window = qobject_cast<SingleFileWindow *>(widget)) windows.append(window);
-            if (windows.size() != 1 || !windows.first()->document()) return;
+            if (windows.size() != (phase == 0 ? 1 : 2)) return;
+            for (auto *pane : windows) if (!pane->document()) return;
+            if (phase != 0 && windows.first()->document()->session()->documentId() != id) windows.swapItemsAt(0, 1);
             auto *window = windows.first(); auto *document = window->document();
             if (phase == 0) { id = document->session()->documentId(); phase = 1; application.open(path); return; }
             if (phase == 1) {
-                if (document->session()->documentId() != id) { app.exit(4); return; }
+                if (document->session()->documentId() != id || windows.last()->document()->session()->documentId() == id) { app.exit(4); return; }
                 window->setEditing(true); auto *editor = window->editor(); editor->send(SCI_GOTOPOS, editor->send(SCI_GETLENGTH)); QTest::keyClicks(editor, "[child]");
                 phase = 3; return;
             }
@@ -354,7 +356,7 @@ int main(int argc, char **argv) {
             }
             if (phase == 2 && !document->saving()) {
                 if (document->dirty() || document->hasError() || disk(path) != "application[child]") { app.exit(5); return; }
-                timer.stop(); window->close();
+                timer.stop(); windows.last()->close(); window->close();
             }
         });
         timer.start(30); QTimer::singleShot(15000, &app, [&] { app.exit(6); }); return app.exec();

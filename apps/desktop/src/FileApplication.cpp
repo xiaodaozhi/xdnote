@@ -43,6 +43,10 @@ QString rootKey(const QString &path) { const QFileInfo info(path); auto key = in
 #endif
     return QDir::cleanPath(key);
 }
+void activateWorkspace(WorkspaceWindow *workspace) {
+    if (workspace->isMinimized()) workspace->showNormal();
+    workspace->show(); workspace->raise(); workspace->activateWindow();
+}
 }
 FileApplication::FileApplication(QObject *parent, QString settingsPath, Presentation presentation)
     : QObject(parent), m_presentation(presentation), m_appearance(this, settingsPath), m_geometryStore(this, settingsPath.isEmpty() ? QString() : settingsPath + ".windows"), m_navigation(this, settingsPath.isEmpty() ? QString() : settingsPath + ".navigation"), m_manager(this) {
@@ -79,6 +83,10 @@ FileApplication::FileApplication(QObject *parent, QString settingsPath, Presenta
         const auto id = document->session()->documentId(); auto pane = m_documents.value(id);
         if (pane) { if(m_restoreRequests.contains(intent)){const auto entry=m_restoreRequests.take(intent);m_unrestored.remove(entry["id"].toString());applyRestoredState(pane,entry);refreshRecoveryActions();} placeholder->finishOpen(); if (pane != placeholder) placeholder->close(); activatePane(pane); if (navigation.hasFragment) pane->navigateToHeading(navigation.fragment); if (navigation.sourceLocation) pane->navigateToReference(navigation.locationIdentity, navigation.sourceSha256, navigation.locationStart, navigation.locationEnd); return; }
         const bool embed = workspaceRequested && !document->untitled() && workspace->tree()->containsPath(document->path());
+        if (!m_manager.setDocumentScope(document, embed ? workspace->scope() : placeholder->paneId())) {
+            if (!reused) m_manager.closeDocument(document);
+            placeholder->finishOpen(); placeholder->close(); return;
+        }
         if (embed && !workspace->addPane(placeholder)) { if (!reused) m_manager.closeDocument(document); placeholder->finishOpen(); placeholder->close(); workspace->showNotice(QStringLiteral("无法准备文档标签，原有文档保持不变。")); return; }
         m_documents.insert(id, placeholder); placeholder->setDocument(document);
         if (document->untitled() && !document->recoveredDraft()) placeholder->setViewMode(SingleFileWindow::ViewMode::Source);
@@ -132,6 +140,14 @@ SingleFileWindow *FileApplication::createWindow() {
 }
 WorkspaceWindow *FileApplication::createWorkspace() {
     auto *workspace = new WorkspaceWindow(&m_appearance, &m_geometryStore, &m_navigation, &m_manager); workspace->setAttribute(Qt::WA_DontShowOnScreen, m_presentation == Presentation::HiddenNative); m_workspaces.insert(workspace);
+    workspace->setRootPathGuard([this, workspace](const QString &root) {
+        if (root.isEmpty()) return true;
+        for (auto *existing : m_workspaces) if (existing != workspace && !existing->rootPath().isEmpty()
+            && rootKey(root) == rootKey(existing->rootPath())) {
+            activateWorkspace(existing); return false;
+        }
+        return true;
+    });
     connect(workspace, &WorkspaceWindow::settingsRequested, this, [this] { settingsWindow(); });
     connect(workspace, &WorkspaceWindow::referenceSourceRequested, this, [this, workspace](const QString &path, const QString &identity, const QByteArray &sha, qsizetype start, qsizetype end) {
         LinkNavigation navigation; navigation.sourceLocation = true; navigation.workspace = workspace; navigation.root = workspace->resourceRoot();
@@ -139,7 +155,7 @@ WorkspaceWindow *FileApplication::createWorkspace() {
         if (!validLinkSource(navigation)) return;
         auto *placeholder = createWindow(); const auto intent = QUuid::createUuid(); placeholder->setLoading(QDir(navigation.root->rootPath()).filePath(path), intent);
         trackWorkspaceRequest(intent, placeholder, workspace);
-        m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation); m_manager.openWithin(navigation.root, path, intent);
+        m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation); m_manager.openWithin(navigation.root, path, intent, {}, {}, workspace->scope());
     });
     connect(workspace, &WorkspaceWindow::openRequested, this, [this, workspace](const QString &path) { openInWorkspace(path, workspace); });
     connect(workspace, &WorkspaceWindow::chooseFileRequested, this, [this, workspace] { chooseFile(workspace, false); });
@@ -151,7 +167,7 @@ WorkspaceWindow *FileApplication::createWorkspace() {
     connect(workspace, &QObject::destroyed, this, [this, workspace] { m_workspaces.remove(workspace); if (m_destroying) return; if (m_windows.isEmpty() && m_workspaces.isEmpty() && !m_settings) requestExit(); else if (m_quitting) QTimer::singleShot(0, this, &FileApplication::advanceQuit); }); return workspace;
 }
 WorkspaceWindow *FileApplication::workspaceWindow(const QString &root) {
-    for (auto *workspace : m_workspaces) if (!workspace->closingWorkspace() && ((root.isEmpty() && workspace->rootPath().isEmpty()) || (!root.isEmpty() && !workspace->rootPath().isEmpty() && rootKey(root) == rootKey(workspace->rootPath())))) { workspace->show(); workspace->raise(); workspace->activateWindow(); return workspace; }
+    for (auto *workspace : m_workspaces) if ((root.isEmpty() && workspace->rootPath().isEmpty()) || (!root.isEmpty() && !workspace->rootPath().isEmpty() && rootKey(root) == rootKey(workspace->rootPath()))) { activateWorkspace(workspace); return workspace; }
     auto *workspace = createWorkspace(); workspace->setRootPath(root);
     if (!m_unrestored.isEmpty()) {
         auto *bar = new QWidget(workspace); bar->setObjectName("sessionRecoveryBar");
@@ -175,8 +191,9 @@ WorkspaceWindow *FileApplication::workspaceWindow(const QString &root) {
     if(!m_recovery->error().isEmpty())workspace->showNotice(m_recovery->error());workspace->show(); return workspace;
 }
 void FileApplication::chooseDirectory(WorkspaceWindow *owner) {
+    const QPointer<WorkspaceWindow> guard(owner);
     const auto root = QFileDialog::getExistingDirectory(owner, QStringLiteral("打开工作区目录"), owner ? owner->rootPath() : QString()); InputModality::forApplication()->clear(); if (root.isEmpty()) return;
-    if (owner && owner->rootPath().isEmpty() && !owner->closingWorkspace()) owner->setRootPath(root); else workspaceWindow(root);
+    if (guard && guard->rootPath().isEmpty() && !guard->closingWorkspace()) guard->setRootPath(root); else workspaceWindow(root);
 }
 void FileApplication::chooseFile(WorkspaceWindow *owner, bool workspaceTab) {
     QPointer<WorkspaceWindow> workspace = owner;
@@ -209,7 +226,7 @@ void FileApplication::open(const QString &path, SingleFileWindow *empty) { if (m
     m_quitting = false; if (empty && empty->embedded()) { openInWorkspace(path, qobject_cast<WorkspaceWindow *>(empty->window())); return; }
     auto *pane = empty && !empty->document() ? empty : createWindow();
     for (auto it = m_requests.begin(); it != m_requests.end();) { if (it.value() == pane) { m_restoreRequests.remove(it.key());refreshRecoveryActions();m_manager.cancelOpen(it.key()); it = m_requests.erase(it); } else ++it; }
-    const auto intent = QUuid::createUuid(); m_requests.insert(intent, pane); pane->setLoading(path, intent); pane->show(); m_manager.open(path, intent);
+    const auto intent = QUuid::createUuid(); m_requests.insert(intent, pane); pane->setLoading(path, intent); pane->show(); m_manager.open(path, intent, pane->paneId());
 }
 void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *workspace) { if (m_updateReady) return;
     if (!workspace || workspace->closingWorkspace()) return;
@@ -217,7 +234,7 @@ void FileApplication::openInWorkspace(const QString &path, WorkspaceWindow *work
     m_quitting = false;
     auto *pane = createWindow(); const auto intent = QUuid::createUuid(); pane->setLoading(path, intent);
     trackWorkspaceRequest(intent, pane, workspace);
-    m_requests.insert(intent, pane); m_manager.open(path, intent);
+    m_requests.insert(intent, pane); m_manager.open(path, intent, workspace->scope());
 }
 void FileApplication::activatePane(SingleFileWindow *pane) { if (auto *workspace = qobject_cast<WorkspaceWindow *>(pane->window())) workspace->activatePane(pane->paneId()); else { if (pane->isMinimized()) pane->showNormal(); pane->show(); pane->raise(); pane->activateWindow(); } }
 void FileApplication::trackWorkspaceRequest(const QUuid &intent, SingleFileWindow *pane, WorkspaceWindow *workspace) {
@@ -266,7 +283,8 @@ void FileApplication::openDocumentLink(SingleFileWindow *source, const QString &
         trackWorkspaceRequest(intent, placeholder, navigation.workspace);
     } else placeholder->show();
     m_requests.insert(intent, placeholder); m_linkNavigations.insert(intent, navigation);
-    m_manager.openWithin(navigation.root, resolved.path, intent, navigation.sourcePath, navigation.sourceIdentity);
+    m_manager.openWithin(navigation.root, resolved.path, intent, navigation.sourcePath, navigation.sourceIdentity,
+                         navigation.workspace ? navigation.workspace->scope() : placeholder->paneId());
 }
 bool FileApplication::transferToWorkspace(SingleFileWindow *pane, WorkspaceWindow *target) { if (m_updateReady) return false;
     if (!pane || !pane->document() || pane->document()->closed()) return false;
@@ -290,7 +308,15 @@ bool FileApplication::transferToWorkspace(SingleFileWindow *pane, WorkspaceWindo
         return false;
     }
     m_transfers.remove(pane->paneId());
-    if (!target->addPane(pane)) { pane->reportHostMessage(QStringLiteral("工作区未能接管文档，独立窗口与编辑内容已保留。")); return false; }
+    if (auto *existing = m_manager.documentInScope(pane->document(), target->scope())) {
+        if (auto destination = m_documents.value(existing->session()->documentId())) activatePane(destination);
+        pane->reportHostMessage(QStringLiteral("此文档已在目标工作区打开；独立窗口及其编辑内容已保留。")); return false;
+    }
+    const auto oldScope = pane->document()->scope();
+    if (!m_manager.setDocumentScope(pane->document(), target->scope())) {
+        pane->reportHostMessage(QStringLiteral("目标文档正在打开或关闭；独立窗口及其编辑内容已保留。")); return false;
+    }
+    if (!target->addPane(pane)) { m_manager.setDocumentScope(pane->document(), oldScope); pane->reportHostMessage(QStringLiteral("工作区未能接管文档，独立窗口与编辑内容已保留。")); return false; }
     pane->reportHostMessage({}); return true;
 }
 void FileApplication::retryTransfers() {
@@ -427,7 +453,7 @@ void FileApplication::applyRestoredState(SingleFileWindow *pane,const QJsonObjec
 void FileApplication::restoreSession(){
     if(m_restoring)return;m_restoring=true;const auto entries=m_unrestored;
     for(const auto &id:m_recoveryOrder){if(!entries.contains(id))continue;const auto entry=entries.value(id);auto *workspace=entry["root"].toString().isEmpty()?nullptr:workspaceWindow(entry["root"].toString());auto *pane=createWindow();const auto intent=QUuid::createUuid();m_requests[intent]=pane;m_restoreRequests[intent]=entry;pane->setLoading(entry["path"].toString(),intent);if(workspace&&!entry.contains("content")&&workspace->tree()->containsPath(entry["path"].toString()))trackWorkspaceRequest(intent,pane,workspace);else pane->show();
-        if(entry.contains("content"))m_manager.createDraft(QByteArray::fromBase64(entry["content"].toString().toLatin1()),intent,entry["bom"].toBool());else if(!entry["path"].toString().isEmpty())m_manager.open(entry["path"].toString(),intent);else{m_requests.remove(intent);m_restoreRequests.remove(intent);pane->finishOpen();pane->close();}
+        if(entry.contains("content"))m_manager.createDraft(QByteArray::fromBase64(entry["content"].toString().toLatin1()),intent,entry["bom"].toBool());else if(!entry["path"].toString().isEmpty())m_manager.open(entry["path"].toString(),intent,m_workspaceRequests.contains(intent)?workspace->scope():pane->paneId());else{m_requests.remove(intent);m_restoreRequests.remove(intent);pane->finishOpen();pane->close();}
     }
     refreshRecoveryActions();
 }

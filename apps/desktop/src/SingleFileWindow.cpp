@@ -708,15 +708,16 @@ void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath, co
     const auto relativeDocument = QDir(rootPath).relativeFilePath(document->path());
     const auto relativeTarget = QDir(rootPath).relativeFilePath(QDir::cleanPath(targetPath));
     const auto identity = document->identity(); const int first = int(beforeText.size()), last = int(beforeText.size() + selectedText.size());
-    QSet<QString> openIdentities; for (auto *opened : m_manager->documents()) openIdentities.insert(opened->identity());
+    const auto targetScope = document->scope();
+    QSet<QString> openIdentities; for (auto *opened : m_manager->documents()) if (opened->scope() == targetScope) openIdentities.insert(opened->identity());
     m_linkInsertPending = true; m_hostMessage.clear(); updateState();
     auto *worker = new QFutureWatcher<LinkTargetResult>(this);
     connect(worker, &QFutureWatcher<LinkTargetResult>::finished, this,
-        [this, worker, document, session, snapshot, root, rootPath, identity, relativeDocument, relativeTarget, anchor, caret, first, last, label, heading, chooseHeading] {
+        [this, worker, document, session, snapshot, root, rootPath, identity, relativeDocument, relativeTarget, anchor, caret, first, last, label, heading, chooseHeading, targetScope] {
         auto result = worker->result(); worker->deleteLater();
         if (!result.success) { m_linkInsertPending = false; reportHostMessage(result.message); emit workspaceLinkFinished(false, result.message); return; }
         QPointer<FileDocument> targetDocument;
-        for (auto *opened : m_manager->documents()) if (opened->identity() == result.identity) { targetDocument = opened; break; }
+        for (auto *opened : m_manager->documents()) if (opened->scope() == targetScope && opened->identity() == result.identity) { targetDocument = opened; break; }
         if (targetDocument && !targetDocument->closed() && targetDocument->session()) result.snapshot = targetDocument->session()->snapshot();
         const auto headings = analyzeMarkdownHeadings(result.snapshot);
         QString selected = heading;
@@ -740,7 +741,7 @@ void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath, co
         if (!selected.isEmpty()) result.url += '#' + QString::fromLatin1(QUrl::toPercentEncoding(selected));
         auto *validation = new QFutureWatcher<bool>(this);
         connect(validation, &QFutureWatcher<bool>::finished, this,
-            [this, validation, result, targetDocument, wasLive = bool(targetDocument), document, session, snapshot, root, rootPath, identity, anchor, caret, first, last, label] {
+            [this, validation, result, targetDocument, wasLive = bool(targetDocument), document, session, snapshot, root, rootPath, identity, anchor, caret, first, last, label, targetScope] {
         const bool validated = validation->result(); validation->deleteLater(); m_linkInsertPending = false;
         auto message = result.message; bool inserted = false;
         bool targetCurrent = validated && (!wasLive || (targetDocument && !targetDocument->closed() && targetDocument->session()));
@@ -748,7 +749,7 @@ void SingleFileWindow::insertWorkspaceDocumentLink(const QString &targetPath, co
             const auto targetSnapshot = targetDocument->session()->snapshot();
             targetCurrent = targetCurrent && !targetDocument->closed() && targetDocument->identity() == result.identity
                 && targetSnapshot.result == EditResult::Applied && targetSnapshot.documentId == result.snapshot.documentId && targetSnapshot.revision == result.snapshot.revision;
-        } else for (auto *opened : m_manager->documents()) if (opened->identity() == result.identity) {
+        } else for (auto *opened : m_manager->documents()) if (opened->scope() == targetScope && opened->identity() == result.identity) {
             const auto targetSnapshot = opened->session()->snapshot(); targetCurrent = targetCurrent && targetSnapshot.result == EditResult::Applied && targetSnapshot.utf8 == result.snapshot.utf8;
         }
         if (targetCurrent) {

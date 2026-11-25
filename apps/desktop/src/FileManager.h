@@ -19,6 +19,7 @@ public:
     QString identity() const { return m_baseline->file()->identity(); }
     bool untitled() const { return m_untitled; }
     bool recoveredDraft() const { return m_untitled && m_recoveredDraft; }
+    QUuid scope() const { return m_scope; }
     bool dirty() const { return m_session && m_session->isDirty(); }
     bool saving() const { return m_saving; }
     bool loading() const { return m_loading; }
@@ -47,6 +48,7 @@ private:
     FileDocument(FileManager *manager, DocumentSession *session, std::shared_ptr<const FileBaseline> baseline);
     void permissions();
     FileManager *m_manager;
+    QUuid m_scope;
     QPointer<DocumentSession> m_session;
     std::shared_ptr<const FileBaseline> m_baseline;
     bool m_untitled = false;
@@ -69,8 +71,10 @@ public:
     explicit FileManager(QObject *parent = nullptr, std::function<void(SaveStage)> observer = {}, bool monitoring = true);
     void createDraft(const QByteArray &utf8, const QUuid &intent, bool bom=false);
     void createUntitled(const QUuid &intent);
-    void open(const QString &path, const QUuid &intent = QUuid::createUuid());
-    void openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &relativePath, const QUuid &intent, const QString &sourcePath = {}, const QString &sourceIdentity = {});
+    void open(const QString &path, const QUuid &intent = QUuid::createUuid(), const QUuid &scope = {});
+    void openWithin(const std::shared_ptr<WorkspaceResourceReader> &root, const QString &relativePath, const QUuid &intent, const QString &sourcePath = {}, const QString &sourceIdentity = {}, const QUuid &scope = {});
+    FileDocument *documentInScope(FileDocument *document, const QUuid &scope) const;
+    bool setDocumentScope(FileDocument *document, const QUuid &scope);
     QList<FileDocument *> documents() const;
     void cancelOpen(const QUuid &intent) { m_cancelled.insert(intent); }
     bool closeDocument(FileDocument *document);
@@ -89,7 +93,7 @@ signals:
 private:
     friend class FileDocument;
     void prepareDraft(const QByteArray &utf8, const QUuid &intent, bool bom, bool recovered);
-    void openRequest(const QString &path, const QUuid &intent, std::shared_ptr<WorkspaceResourceReader> root = {}, QString relativePath = {}, QString sourcePath = {}, QString sourceIdentity = {});
+    void openRequest(const QString &path, const QUuid &intent, const QUuid &scope, std::shared_ptr<WorkspaceResourceReader> root = {}, QString relativePath = {}, QString sourcePath = {}, QString sourceIdentity = {});
     bool save(FileDocument *document, const QString &path, bool saveAs = false);
     bool reload(FileDocument *document);
     void check(FileDocument *document);
