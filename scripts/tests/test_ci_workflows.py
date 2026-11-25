@@ -152,7 +152,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux, ipc-windows]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux, ipc-windows, release-candidate]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("if: startsWith(inputs.scope, 'updates')", text)
@@ -230,6 +230,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'sparkle-system-pac'", text)
         for forbidden in ('prepare_qt', 'desktop.py', 'pip install', 'secrets.', 'contents: write', 'gh release'):
             self.assertNotIn(forbidden, job)
+
+    def test_private_candidate_only_transfers_encrypted_native_packages(self):
+        path = WORKFLOWS / 'private-release-candidate.yml'
+        self.assertEqual(events(path), {'workflow_call'})
+        workflow = path.read_text(encoding='utf-8')
+        dispatcher = (WORKFLOWS / 'desktop-admission.yml').read_text(encoding='utf-8')
+        self.assertIn("if: inputs.scope == 'release-candidate'", dispatcher)
+        self.assertIn('uses: ./.github/workflows/private-release-candidate.yml', dispatcher)
+        self.assertIn('ref: ${{ fromJSON(inputs.identity).revision }}', workflow)
+        self.assertIn('git merge-base --is-ancestor HEAD refs/remotes/origin/main', workflow)
+        self.assertIn('contents: read', workflow)
+        self.assertNotIn('secrets.', workflow)
+        self.assertEqual(re.findall(r'^ +os: (\S+)$', workflow, re.MULTILINE),
+                         ['windows-2022', 'ubuntu-22.04', 'macos-15'])
+        self.assertEqual(workflow.count('uses: actions/upload-artifact@'), 1)
+        self.assertIn('\n          path: build/private-release-candidate/transfer/candidate.tar.age\n', workflow)
 
     def test_routine_workflow_is_single_linux_job(self):
         path = WORKFLOWS / "materials.yml"
