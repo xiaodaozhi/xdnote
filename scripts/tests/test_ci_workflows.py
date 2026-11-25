@@ -139,9 +139,20 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('evidence_run: ${{ inputs.evidence_run }}', dispatcher)
         for forbidden in ['contents: write', 'gh release', 'desktop.py build', 'cargo build', '*.dll', '*.tar.xz']:
             self.assertNotIn(forbidden, text)
+    def test_ipc_scope_runs_only_its_selected_windows_job(self):
+        path = WORKFLOWS / 'desktop-admission.yml'
+        self.assertEqual(events(path), {'workflow_dispatch'})
+        dispatcher = path.read_text(encoding='utf-8')
+        ipc = dispatcher.split('  ipc-isolation:', 1)[1].split('  network-flow:', 1)[0]
+        self.assertIn('runs-on: windows-2022', ipc)
+        self.assertIn('experiments/windows-appcontainer-ipc/product_container.py', ipc)
+        self.assertIn("if: inputs.scope == 'ipc-windows'", dispatcher)
+        self.assertIn("inputs.scope != 'ipc-windows'", dispatcher)
+        self.assertIn("inputs.scope == 'ipc-windows' && needs.ipc-isolation.result", dispatcher)
+
     def test_targeted_workspace_scope_keeps_full_matrix_explicit(self):
         text = (WORKFLOWS / "desktop-admission.yml").read_text(encoding="utf-8")
-        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux]", text)
+        self.assertIn("options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux, ipc-windows]", text)
         self.assertIn("inputs.scope == 'updates'", text)
         self.assertIn("test --suite updates", text)
         self.assertIn("if: startsWith(inputs.scope, 'updates')", text)
