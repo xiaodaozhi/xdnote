@@ -8,7 +8,7 @@ on:
         description: 'Validation scope (workspace-linux runs only affected reference/navigation tests)'
         type: choice
         default: full
-        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux, ipc-windows]
+        options: [full, workspace-linux, resources-unix, resources-macos, resources-linux, preview-unix, background-unix, ui-unix, deployment-unix, deployment-linux, deployment-macos, scroll-unix, settings-unix, tools-unix, tools-macos, updates, updates-macos, sparkle-macos, sparkle-system-pac, installer-windows, update-helpers, update-products, qt-replacement, delivery-review, network-flow, reader-orca, ime-linux, ipc-windows, release-candidate]
       evidence_run:
         description: 'Source product run for delivery-review only'
         type: string
@@ -22,6 +22,17 @@ on:
         type: choice
         options: [macos-15, macos-26]
         default: macos-15
+      candidate_identity:
+        description: 'Release input JSON for release-candidate only'
+        type: string
+      candidate_recipient:
+        description: 'Public age recipient for release-candidate only'
+        type: string
+      candidate_platform:
+        description: 'Build every release target or retry one platform'
+        type: choice
+        options: [all, windows, linux, macos]
+        default: all
 
 permissions:
   contents: read
@@ -31,6 +42,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  release-candidate:
+    if: inputs.scope == 'release-candidate'
+    uses: ./.github/workflows/private-release-candidate.yml
+    with:
+      identity: ${{ inputs.candidate_identity }}
+      recipient: ${{ inputs.candidate_recipient }}
+      platforms: ${{ inputs.candidate_platform == 'all' && '["windows","linux","macos"]' || format('["{0}"]', inputs.candidate_platform) }}
+
   ipc-isolation:
     if: inputs.scope == 'ipc-windows'
     name: AppContainer single-instance isolation
@@ -151,7 +170,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   desktop:
-    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'sparkle-system-pac' && inputs.scope != 'update-helpers' && inputs.scope != 'update-products' && inputs.scope != 'qt-replacement' && inputs.scope != 'delivery-review' && inputs.scope != 'network-flow' && inputs.scope != 'ipc-windows'
+    if: inputs.scope != 'installer-windows' && inputs.scope != 'sparkle-macos' && inputs.scope != 'sparkle-system-pac' && inputs.scope != 'update-helpers' && inputs.scope != 'update-products' && inputs.scope != 'qt-replacement' && inputs.scope != 'delivery-review' && inputs.scope != 'network-flow' && inputs.scope != 'ipc-windows' && inputs.scope != 'release-candidate'
     name: ${{ inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish' || inputs.scope == 'background-unix' && 'Background validation' || inputs.scope == 'preview-unix' && 'Native preview' || startsWith(inputs.scope, 'resources-') && 'Workspace resources' || inputs.scope == 'workspace-linux' && 'Workspace references' || 'Desktop' }} (${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.label || matrix.os }})
     runs-on: ${{ matrix.os == 'macos-15' && inputs.macos_runner || matrix.os }}
     timeout-minutes: 50
@@ -424,7 +443,7 @@ jobs:
   aggregate:
     name: ${{ inputs.scope == 'ipc-windows' && 'Windows IPC isolation' || inputs.scope == 'ime-linux' && 'IBus and AT-SPI acceptance' || inputs.scope == 'reader-orca' && 'Orca acceptance (Linux)' || inputs.scope == 'network-flow' && 'Qt proxy flow' || inputs.scope == 'delivery-review' && 'Delivery material review' || inputs.scope == 'qt-replacement' && 'Qt source replacement' || inputs.scope == 'update-products' && 'Native product updates' || inputs.scope == 'update-helpers' && 'Native update helper transactions' || inputs.scope == 'sparkle-system-pac' && 'Sparkle system PAC diagnostics' || inputs.scope == 'sparkle-macos' && 'Sparkle admission (macOS)' || startsWith(inputs.scope, 'updates') && 'Update checks' || inputs.scope == 'tools-macos' && 'Document tools (macOS)' || inputs.scope == 'tools-unix' && 'Document tools (Unix)' || inputs.scope == 'settings-unix' && 'Settings (Unix)' || inputs.scope == 'scroll-unix' && 'Scroll sync (Unix)' || inputs.scope == 'deployment-linux' && 'Deployment diagnostics (Linux)' || startsWith(inputs.scope, 'deployment-') && 'Unix deployment diagnostics' || inputs.scope == 'ui-unix' && 'UI polish (Unix)' || inputs.scope == 'background-unix' && 'Background validation (Unix)' || inputs.scope == 'preview-unix' && 'Native preview (Unix)' || inputs.scope == 'resources-linux' && 'Workspace resources (Linux)' || inputs.scope == 'resources-macos' && 'Workspace resources (macOS)' || inputs.scope == 'resources-unix' && 'Workspace resources (Unix)' || inputs.scope == 'workspace-linux' && 'Workspace references (Linux)' || 'Desktop admission' }}
     needs: [desktop, installer, sparkle, update-helpers, update-products, qt-replacement, delivery-review, network-flow, ipc-isolation]
-    if: always()
+    if: always() && inputs.scope != 'release-candidate'
     runs-on: ubuntu-24.04
     steps:
       - name: Require every selected matrix result

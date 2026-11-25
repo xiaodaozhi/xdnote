@@ -1,0 +1,210 @@
+name: Private release candidate
+
+on:
+  workflow_call:
+    inputs:
+      identity:
+        type: string
+        required: true
+      recipient:
+        type: string
+        required: true
+      platforms:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    if: github.repository == 'xiaodaozhi/xdnote'
+    name: Candidate / ${{ matrix.platform }}
+    runs-on: ${{ fromJSON('{"windows":"windows-2022","linux":"ubuntu-22.04","macos":"macos-15"}')[matrix.platform] }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      XDNOTE_CANDIDATE_DIR: build/private-release-candidate
+      XDNOTE_QT_PREFIX: build/Qt/6.8.2/${{ fromJSON('{"windows":"msvc2022_64","linux":"gcc_64","macos":"macos"}')[matrix.platform] }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(inputs.platforms) }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ fromJSON(inputs.identity).revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Verify candidate source and public age recipient
+        env:
+          XDNOTE_RELEASE_INPUT: ${{ inputs.identity }}
+          XDNOTE_AGE_RECIPIENT: ${{ inputs.recipient }}
+        run: |
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import sys
+
+          sys.path.insert(0, 'scripts')
+          from build_version import identity
+
+          release = json.loads(os.environ['XDNOTE_RELEASE_INPUT'])
+          validated = identity(Path.cwd(), '0.1.0', 'Release', release)
+          if not re.fullmatch(r'age1[02-9ac-hj-np-z]{58}', os.environ['XDNOTE_AGE_RECIPIENT']):
+              raise ValueError('Provide a public age X25519 recipient')
+          root = Path(os.environ['XDNOTE_CANDIDATE_DIR'])
+          root.mkdir(parents=True)
+          (root / 'release-input.json').write_text(json.dumps(release), encoding='utf-8')
+          (root / 'identity.json').write_text(json.dumps(validated), encoding='utf-8')
+          PY
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: '1.99.0'
+      - name: Prepare Linux libraries
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          archive=https://archive.ubuntu.com/ubuntu
+          security=https://security.ubuntu.com/ubuntu
+          if ! timeout 10s getent ahosts archive.ubuntu.com > /dev/null || ! timeout 10s getent ahosts security.ubuntu.com > /dev/null; then
+            archive=https://mirrors.kernel.org/ubuntu
+            security=$archive
+          fi
+          cat > "$XDNOTE_CANDIDATE_DIR/ubuntu.list" <<EOF
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $archive jammy main universe restricted multiverse
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $archive jammy-updates main universe restricted multiverse
+          deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] $security jammy-security main universe restricted multiverse
+          EOF
+          apt_options=(-o "Dir::Etc::sourcelist=$PWD/$XDNOTE_CANDIDATE_DIR/ubuntu.list" -o 'Dir::Etc::sourceparts=-' -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any)
+          timeout 180s sudo apt-get "${apt_options[@]}" update
+          timeout 360s sudo apt-get "${apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 fonts-noto-cjk fonts-noto-color-emoji xvfb patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev
+      - name: Prepare locked tools and SDK
+        run: |
+          case "$RUNNER_OS" in
+            Windows) qt_host=windows; qt_arch=win64_msvc2022_64 ;;
+            Linux) qt_host=linux; qt_arch=linux_gcc_64 ;;
+            macOS) qt_host=mac; qt_arch=clang_64 ;;
+          esac
+          python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+          python scripts/prepare_qt.py --download --host "$qt_host" --arch "$qt_arch"
+          python scripts/desktop.py prepare --download --profile default
+      - name: Prepare the native updater
+        if: runner.os == 'macOS'
+        run: |
+          test "$(uname -m)" = arm64
+          python scripts/sparkle.py prepare --download
+          python scripts/sparkle.py build
+      - name: Build and verify the Windows packages
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+          XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $candidate = $env:XDNOTE_CANDIDATE_DIR
+          $qt = $env:XDNOTE_QT_PREFIX
+          $desktop = 'build/desktop-admission'
+          $toolchain = 'build/toolchain/installer'
+          $runtime = 'build/toolchain/windows-runtime'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'MSVC toolchain not found' }
+          python scripts/prepare_ci_font.py --output build/test-fonts
+          python scripts/desktop.py build --profile default --vcvars "$vs\VC\Auxiliary\Build\vcvars64.bat" --release-identity "$candidate/release-input.json" --parallel 4
+          python scripts/check_product_linkage.py --executable "$desktop/xdnote.exe"
+          ./scripts/prepare-windows-installer.ps1 -OutputDirectory "$PWD/$toolchain"
+          python scripts/prepare-windows-runtime.py --output $runtime
+          python scripts/deployment_inventory.py --build-dir $desktop --qt-prefix $qt --destination "$candidate/staging" --redist-dir "$runtime/runtime"
+          python scripts/installer_payload.py --source "$candidate/staging" --audit "$candidate/staging-evidence/inventory.json" --destination "$candidate/payload" --toolchain $toolchain --runtime "$runtime/runtime" --build-dir $desktop --qt-prefix $qt --report "$candidate/payload-inventory.json"
+          python scripts/distribution_audit.py --root "$candidate/payload" --audit "$candidate/payload-inventory.json" --qt-prefix $qt --report "$candidate/license-evidence.json"
+          python scripts/compatibility_audit.py --root "$candidate/payload" --report "$candidate/compatibility.json"
+          python scripts/build_release_platform.py --root "$candidate/payload" --audit "$candidate/payload-inventory.json" --compatibility "$candidate/compatibility.json" --toolchain $toolchain --output-dir "$candidate/packages"
+          $setup = @(Get-ChildItem -LiteralPath "$candidate/packages" -Filter '*-setup.exe' -File)
+          if ($setup.Count -ne 1) { throw 'Expected exactly one Windows installer' }
+          ./scripts/test-windows-product-install.ps1 -Package $setup[0].FullName -Audit "$candidate/payload-inventory.json" -PackageReport "$candidate/packages/reports/installer.json" -BuildDirectory $desktop -QtPrefix $qt -EvidenceDirectory "$PWD/$candidate/roundtrip-evidence"
+      - name: Print bounded Windows deployment diagnostics on failure
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:XDNOTE_CANDIDATE_DIR/staging-evidence/smoke-*.log" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Output $_.Name
+            Get-Content -LiteralPath $_.FullName -Tail 50
+          }
+      - name: Build and seal the Unix product
+        if: runner.os != 'Windows'
+        run: |
+          candidate=$XDNOTE_CANDIDATE_DIR
+          python scripts/desktop.py build --profile default --release-identity "$candidate/release-input.json" --parallel 4
+          python scripts/product_deployment_unix.py --build-dir build/desktop-admission --qt-prefix "$XDNOTE_QT_PREFIX" --destination "$candidate/staging"
+          python scripts/compatibility_audit.py --root "$candidate/staging" --report "$candidate/compatibility.json"
+      - name: Verify the Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          candidate=$XDNOTE_CANDIDATE_DIR
+          python scripts/build_release_platform.py --root "$candidate/staging" --audit "$candidate/staging-evidence/inventory.json" --compatibility "$candidate/compatibility.json" --output-dir "$candidate/packages"
+      - name: Verify the macOS packages
+        if: runner.os == 'macOS'
+        run: |
+          candidate=$XDNOTE_CANDIDATE_DIR
+          python scripts/build_macos_candidate.py --root "$candidate/staging" --audit "$candidate/staging-evidence/inventory.json" --output-dir "$candidate/packages"
+      - name: Encrypt the packages and their evidence
+        env:
+          XDNOTE_AGE_RECIPIENT: ${{ inputs.recipient }}
+        run: |
+          candidate=$XDNOTE_CANDIDATE_DIR
+          case "$RUNNER_OS" in
+            Windows)
+              export XDNOTE_AGE_ASSET=windows-amd64.zip
+              export XDNOTE_AGE_SHA256=f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7 ;;
+            Linux)
+              export XDNOTE_AGE_ASSET=linux-amd64.tar.gz
+              export XDNOTE_AGE_SHA256=cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10 ;;
+            macOS)
+              export XDNOTE_AGE_ASSET=darwin-arm64.tar.gz
+              export XDNOTE_AGE_SHA256=e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5 ;;
+          esac
+          mkdir "$candidate/transfer"
+          curl --fail --location --max-time 60 --retry 2 --silent --show-error \
+            "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-$XDNOTE_AGE_ASSET" \
+            --output "$candidate/transfer/$XDNOTE_AGE_ASSET"
+          python - <<'PY'
+          from hashlib import file_digest
+          import os
+          from pathlib import Path
+          import shutil
+
+          archive = Path(os.environ['XDNOTE_CANDIDATE_DIR']) / 'transfer' / os.environ['XDNOTE_AGE_ASSET']
+          with archive.open('rb') as contents:
+              if file_digest(contents, 'sha256').hexdigest() != os.environ['XDNOTE_AGE_SHA256']:
+                  raise ValueError('age archive digest differs')
+          shutil.unpack_archive(archive, archive.parent)
+          PY
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp "$candidate/payload-inventory.json" "$candidate/license-evidence.json" "$candidate/packages/"
+            cp -R "$candidate/roundtrip-evidence" "$candidate/packages/"
+            age="$candidate/transfer/age/age.exe"
+          else
+            cp "$candidate/staging-evidence/inventory.json" "$candidate/staging-evidence/license-evidence.json" "$candidate/packages/"
+            age="$candidate/transfer/age/age"
+          fi
+          cp "$candidate/identity.json" "$candidate/compatibility.json" "$candidate/packages/"
+          tar -C "$candidate/packages" -cf "$candidate/transfer/candidate.tar" .
+          "$age" --encrypt --recipient "$XDNOTE_AGE_RECIPIENT" --output "$candidate/transfer/candidate.tar.age" "$candidate/transfer/candidate.tar"
+      - name: Preserve only the encrypted candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: private-release-candidate-${{ matrix.platform }}
+          path: build/private-release-candidate/transfer/candidate.tar.age
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3

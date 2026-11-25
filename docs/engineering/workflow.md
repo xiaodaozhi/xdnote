@@ -109,6 +109,8 @@ python scripts/cleanup_cycles.py --stale-days 30 --apply --yes
 
 [更新签名工作流](../../.github/workflows/release-signing.yml)在 `main` 上使用受保护的环境，为同提交的已核验候选生成签名附件。独立验签作业重新下载该候选与附件，核对全部摘要和签名。完整发行候选生产和正式发布继续跟踪。[发行渠道与主动更新](release-and-updates.md)已确定未签名 Windows、后续 Store MSIX 及 macOS ad-hoc／无 Developer ID／无 Apple 公证的方案。将版本、源码提交、验证记录和工件绑定，同一候选在一次受控运行中尽可能复用产物。Qt 源码不得进入本项目 Release 附件、安装包或产品归档，源码获取与替换要求按[分发边界](distribution-audit.md)独立落实；正式发布仍需完成适用材料与运行验收并取得具体授权。
 
+桌面工作流的 `scope=release-candidate` 使用显式 `candidate_identity` 和 `candidate_recipient`。身份输入复用 `scripts/desktop.py build --release-identity` 的 JSON 格式，指定版本、build、上一版和 `main` 历史中的完整源码提交。收件人输入使用临时 age 密钥的公钥。Windows x64、Ubuntu 22.04 x64 和 macOS arm64 各生成普通渠道的两件候选包，连同材料与核验记录加密后才上传。个别平台失败时可复用同一身份，以 `candidate_platform` 只补跑受影响平台。下载到本机、解密并用 `scripts/assemble_release_candidate.py` 复核六件套。签名、真实更新与公开发行各按其适用流程核验。
+
 `scope=tools-unix` 只在 Linux、macOS ARM64 执行文档查找搜索、恢复副本、快捷键与受影响设置／文件的固定离屏验证，使用 `test --suite tools`。它不执行真实系统关联、不安装用户目录，也不扩大为完整桌面矩阵；工作流仍只允许手动触发。
 
 `scope=tools-macos` 仅补验相同文档工具范围的 macOS ARM64，用于 Darwin 路径或平台差异修复；已有有效 Linux 产品结果不因 macOS 补验重复构建。两种 tools 范围均保留 Python 安装维护回归，不执行真实系统默认应用变更。
