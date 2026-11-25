@@ -23,6 +23,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QLineEdit>
+#include <QProcess>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QStackedWidget>
@@ -51,6 +52,58 @@ bool select(SettingsWindow *window, const char *name, const QVariant &value) {
 class SettingsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void aboutIconRendersWholeCanvas() {
+        const auto scale = qEnvironmentVariable("XDNOTE_TEST_ABOUT_ICON_SCALE");
+        if (scale.isEmpty()) {
+            for (const auto &factor : {QStringLiteral("1"), QStringLiteral("1.5")}) {
+                auto env = QProcessEnvironment::systemEnvironment();
+                env.insert("QT_QPA_PLATFORM", "offscreen");
+                env.insert("QT_SCALE_FACTOR", factor);
+                env.insert("XDNOTE_TEST_ABOUT_ICON_SCALE", factor);
+                QProcess probe;
+                probe.setProcessEnvironment(env);
+                probe.setProcessChannelMode(QProcess::MergedChannels);
+                probe.start(QCoreApplication::applicationFilePath(), {"aboutIconRendersWholeCanvas"});
+                QVERIFY(probe.waitForStarted());
+                QVERIFY(probe.waitForFinished(15000));
+                const auto output = probe.readAll();
+                QVERIFY2(probe.exitStatus() == QProcess::NormalExit && probe.exitCode() == 0, output.constData());
+            }
+            return;
+        }
+
+        QTemporaryDir dir;
+        Appearance appearance(nullptr, dir.filePath("settings.json"));
+        QVERIFY(appearance.setPreferences("dark", "graphite"));
+        SettingsWindow window(&appearance, nullptr);
+        window.show();
+        window.selectPage(5);
+        auto *icon = window.findChild<QWidget *>("settingsAboutAppIcon");
+        QVERIFY(icon);
+        QVERIFY(icon->isVisible());
+        QCOMPARE(icon->size(), QSize(80, 80));
+        const auto image = icon->grab().toImage();
+        QCOMPARE(image.devicePixelRatio(), scale.toDouble());
+        const int right = image.width() - 1;
+        const int bottom = image.height() - 1;
+        const QColor margin = image.pixelColor(0, 0);
+        QCOMPARE(image.pixelColor(right, 0), margin);
+        QCOMPARE(image.pixelColor(0, bottom), margin);
+        QCOMPARE(image.pixelColor(right, bottom), margin);
+        const QColor surface(visualTokens()["brand"].toObject()["appIconSurface"].toString());
+        QCOMPARE(image.pixelColor(qRound(right * .95), bottom / 2), surface);
+        QCOMPARE(image.pixelColor(right / 2, qRound(bottom * .95)), surface);
+
+        const auto evidence = qEnvironmentVariable("XDNOTE_TEST_EVIDENCE");
+        if (!evidence.isEmpty()) {
+            QVERIFY(QDir().mkpath(evidence + "/settings"));
+            const auto *hero = icon->parentWidget();
+            const int width = qMin(hero->width(), 440);
+            const QRect crop(hero->mapTo(&window, QPoint((hero->width() - width) / 2, 0)),
+                             QSize(width, hero->height()));
+            QVERIFY(window.grab(crop).save(evidence + "/settings/about-icon-" + scale + ".png"));
+        }
+    }
     void sidebarSearchAndNavigationAlign() {
         QTemporaryDir dir; Appearance appearance(nullptr, dir.filePath("settings.json"));
         SettingsWindow window(&appearance, nullptr); window.show();
