@@ -32,20 +32,19 @@ def main(pid):
     log = Path(os.environ['XDNOTE_QUICK_ORCA_LOG'])
     speech_probe = Path(os.environ['XDNOTE_ORCA_SPEECH_PROBE'])
 
-    def send_keys(*keys):
+    def hear(phase, expected):
         if xdotool('getactivewindow') != window:
             raise RuntimeError('The isolated fixture lost focus')
-        xdotool('key', '--clearmodifiers', *keys)
-
-    def hear(phase, expected):
         text = require_text(editor, expected)
         length = text.characterCount
-        selected = text.setSelection(0, 0, length) if text.getNSelections() else text.addSelection(0, length)
-        if not selected or tuple(text.getSelection(0)) != (0, length):
-            raise RuntimeError('Could not select the fixture text for Orca')
-        time.sleep(0.5)
+        if text.getNSelections():
+            if not text.removeSelection(0):
+                raise RuntimeError('Could not clear the previous fixture selection')
+            time.sleep(0.5)
+        # Orca automatically speaks newly selected text. Measure from before the event.
         offset = log.stat().st_size
-        send_keys('Insert+Shift+Up')
+        if not text.addSelection(0, length) or tuple(text.getSelection(0)) != (0, length):
+            raise RuntimeError('Could not select the fixture text for Orca')
         subprocess.run(
             [sys.executable, str(speech_probe), 'speech', str(log), phase, str(offset), expected],
             stdout=sys.stderr, check=True, timeout=17,
@@ -57,7 +56,12 @@ def main(pid):
 
     wait_for_command('READ_ONLY')
     hear('read-only-replacement', REPLACEMENT)
-    send_keys('End', 'z')
+    try:
+        editor.queryEditableText()
+    except NotImplementedError:
+        pass
+    else:
+        raise RuntimeError('The read-only editor still exposed the AT-SPI write interface')
     require_text(editor, REPLACEMENT)
     print('REPLACEMENT_SPOKEN', flush=True)
 
