@@ -29,7 +29,42 @@ concurrency:
 jobs:
   ipc-isolation:
     if: inputs.scope == 'ipc-windows'
-    uses: ./.github/workflows/ipc-windows.yml
+    name: AppContainer single-instance isolation
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Prepare project-local SDK tools
+        shell: pwsh
+        run: |
+          python -m venv build/toolchain/desktop-tools
+          build/toolchain/desktop-tools/Scripts/python.exe -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
+      - name: Prepare locked Qt and runtime
+        shell: pwsh
+        run: |
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
+          $xdnotePython = 'build/toolchain/desktop-tools/Scripts/python.exe'
+          $env:PATH = "$PWD/build/toolchain/desktop-tools/Scripts;$env:PATH"
+          & $xdnotePython scripts/prepare_qt.py --download --host windows --arch win64_msvc2022_64 --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $xdnotePython scripts/prepare-windows-runtime.py --output build/toolchain/windows-runtime
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build and check actual product IPC
+        shell: pwsh
+        run: |
+          $xdnoteVs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$xdnoteVs) { throw 'MSVC toolchain not found' }
+          $xdnotePython = 'build/toolchain/desktop-tools/Scripts/python.exe'
+          & $xdnotePython experiments/windows-appcontainer-ipc/build.py --vcvars "$xdnoteVs\VC\Auxiliary\Build\vcvars64.bat"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $xdnotePython experiments/windows-appcontainer-ipc/product_container.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
   network-flow:
     if: inputs.scope == 'network-flow'
     uses: ./.github/workflows/qt-network-flow.yml

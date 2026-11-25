@@ -140,12 +140,12 @@ class WorkflowContractTests(unittest.TestCase):
         for forbidden in ['contents: write', 'gh release', 'desktop.py build', 'cargo build', '*.dll', '*.tar.xz']:
             self.assertNotIn(forbidden, text)
     def test_ipc_scope_runs_only_its_selected_windows_job(self):
-        path = WORKFLOWS / 'ipc-windows.yml'
-        self.assertEqual(events(path), {'workflow_dispatch', 'workflow_call'})
-        ipc = path.read_text(encoding='utf-8')
+        path = WORKFLOWS / 'desktop-admission.yml'
+        self.assertEqual(events(path), {'workflow_dispatch'})
+        dispatcher = path.read_text(encoding='utf-8')
+        ipc = dispatcher.split('  ipc-isolation:', 1)[1].split('  network-flow:', 1)[0]
         self.assertIn('runs-on: windows-2022', ipc)
         self.assertIn('experiments/windows-appcontainer-ipc/product_container.py', ipc)
-        dispatcher = (WORKFLOWS / 'desktop-admission.yml').read_text(encoding='utf-8')
         self.assertIn("if: inputs.scope == 'ipc-windows'", dispatcher)
         self.assertIn("inputs.scope != 'ipc-windows'", dispatcher)
         self.assertIn("inputs.scope == 'ipc-windows' && needs.ipc-isolation.result", dispatcher)
