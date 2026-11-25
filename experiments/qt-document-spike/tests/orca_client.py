@@ -13,6 +13,7 @@ TITLE = 'xdnote Orca research fixture'
 ORIGINAL = 'Blue orchard old document'
 REPLACEMENT = 'Golden willow replacement sample'
 WRITTEN = 'Silver birch accessible write'
+UNDONE = 'Cedar arch previous draft'
 
 
 def xdotool(*arguments):
@@ -32,7 +33,7 @@ def main(pid):
     log = Path(os.environ['XDNOTE_QUICK_ORCA_LOG'])
     speech_probe = Path(os.environ['XDNOTE_ORCA_SPEECH_PROBE'])
 
-    def hear(phase, expected):
+    def hear(phase, expected, offset):
         if xdotool('getactivewindow') != window:
             raise RuntimeError('The isolated fixture lost focus')
         text = require_text(editor, expected)
@@ -41,8 +42,7 @@ def main(pid):
             if not text.removeSelection(0):
                 raise RuntimeError('Could not clear the previous fixture selection')
             time.sleep(0.5)
-        # Orca automatically speaks newly selected text. Measure from before the event.
-        offset = log.stat().st_size
+        # Orca can speak the new text either on replacement or on selection.
         if not text.addSelection(0, length) or tuple(text.getSelection(0)) != (0, length):
             raise RuntimeError('Could not select the fixture text for Orca')
         subprocess.run(
@@ -51,11 +51,12 @@ def main(pid):
         )
         require_text(editor, expected)
 
-    hear('old-document', ORIGINAL)
+    hear('old-document', ORIGINAL, log.stat().st_size)
+    before_replacement = log.stat().st_size
     print('OLD_SPOKEN', flush=True)
 
     wait_for_command('READ_ONLY')
-    hear('read-only-replacement', REPLACEMENT)
+    hear('read-only-replacement', REPLACEMENT, before_replacement)
     try:
         editor.queryEditableText()
     except NotImplementedError:
@@ -67,13 +68,15 @@ def main(pid):
 
     wait_for_command('WRITE')
     editor.clear_cache()
+    before_write = log.stat().st_size
     if not editor.queryEditableText().setTextContents(WRITTEN):
         raise RuntimeError('The controlled AT-SPI client could not set the editable text')
-    hear('after-external-write', WRITTEN)
+    hear('after-external-write', WRITTEN, before_write)
+    before_undo = log.stat().st_size
     print('WRITE_SPOKEN', flush=True)
 
     wait_for_command('UNDO')
-    hear('after-two-undos', 'Golden willow')
+    hear('after-two-undos', UNDONE, before_undo)
     print('UNDO_SPOKEN', flush=True)
 
 

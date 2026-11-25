@@ -858,13 +858,15 @@ void QtDocumentSpikeTests::guardedOrcaAccessibility()
     QCOMPARE(readPhase(), QByteArray("OLD_SPOKEN"));
 
     auto replacement = std::make_shared<QTextDocument>();
-    replacement->setPlainText(QStringLiteral("Golden willow"));
+    replacement->setPlainText(QStringLiteral("Cedar arch previous draft"));
     QTextCursor cursor(replacement.get());
-    cursor.movePosition(QTextCursor::End);
-    cursor.insertText(QStringLiteral(" replacement sample"));
+    cursor.beginEditBlock();
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(QStringLiteral("Golden willow replacement sample"));
+    cursor.endEditBlock();
+    editor->setReadOnly(true);
     QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
     QVERIFY(original.isNull());
-    editor->setReadOnly(true);
     QCOMPARE(client.write("READ_ONLY\n"), qint64(10));
     QCOMPARE(readPhase(), QByteArray("REPLACEMENT_SPOKEN"));
     QCOMPARE(replacement->toPlainText(), QStringLiteral("Golden willow replacement sample"));
@@ -877,7 +879,7 @@ void QtDocumentSpikeTests::guardedOrcaAccessibility()
     replacement->undo();
     QCOMPARE(replacement->toPlainText(), QStringLiteral("Golden willow replacement sample"));
     replacement->undo();
-    QCOMPARE(replacement->toPlainText(), QStringLiteral("Golden willow"));
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("Cedar arch previous draft"));
     QCOMPARE(client.write("UNDO\n"), qint64(5));
     QCOMPARE(readPhase(), QByteArray("UNDO_SPOKEN"));
     QTRY_COMPARE_WITH_TIMEOUT(client.state(), QProcess::NotRunning, 5000);
