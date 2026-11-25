@@ -32,7 +32,15 @@ class ProductToolsTests final : public QObject {
 private slots:
     void failedSessionRestoreCanRetryAfterTheFileReturns(){
         QTemporaryDir dir;const auto path=dir.filePath("missing.md"),settings=dir.filePath("settings.json");const QJsonObject entry{{"id",QUuid::createUuid().toString()},{"path",path},{"root",QString()}};{RecoveryStore store(settings+".recovery");store.save({{"schemaVersion",1},{"documents",QJsonArray{entry}},{"drafts",QJsonArray{}}});QVERIFY(store.flush());}
-        FileApplication app(nullptr,settings);auto *workspace=app.workspaceWindow();auto *restore=workspace->findChild<QPushButton*>("restoreLastSession");QVERIFY(restore);restore->click();QTRY_VERIFY(restore->isEnabled());QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write("returned");file.close();restore->click();QTRY_VERIFY(!restore->isVisible());
+        FileApplication app(nullptr,settings);auto *workspace=app.workspaceWindow();
+        auto *restore=workspace->findChild<QPushButton*>("restoreLastSession");
+        auto *bar=workspace->findChild<QWidget*>("sessionRecoveryBar");
+        auto *message=workspace->findChild<QLabel*>("sessionRecoveryMessage");
+        QVERIFY(restore);QVERIFY(bar);QVERIFY(message);QVERIFY(bar->isVisible());
+        QCOMPARE(message->text(),QStringLiteral("上次会话有 1 项可恢复"));
+        restore->click();QTRY_VERIFY(restore->isEnabled());QVERIFY(bar->isVisible());
+        QFile file(path);QVERIFY(file.open(QIODevice::WriteOnly));file.write("returned");file.close();
+        restore->click();QTRY_VERIFY(!bar->isVisible());QVERIFY(!restore->isVisible());
     }
     void recoveryWriteFailureIsObservableAndCanRetry(){
         QTemporaryDir dir;const auto blocker=dir.filePath("blocked"),path=blocker+"/state.json";RecoveryStore store(path);QFile file(blocker);QVERIFY(file.open(QIODevice::WriteOnly));file.write("blocker");file.close();QSignalSpy failed(&store,&RecoveryStore::failed),persisted(&store,&RecoveryStore::persisted);const QJsonObject state{{"schemaVersion",1},{"documents",QJsonArray{}},{"drafts",QJsonArray{}}};store.save(state);QTRY_COMPARE(failed.size(),1);QVERIFY(!store.error().isEmpty());QVERIFY(QFile::remove(blocker));store.save(state);QTRY_COMPARE(persisted.size(),1);QVERIFY(store.error().isEmpty());
