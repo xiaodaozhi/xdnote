@@ -71,14 +71,131 @@ DWORD parentProcessId()
     CloseHandle(snapshot);
     return parent;
 }
+
+ComPtr<IUIAutomationElement> findNamed(IUIAutomation *automation, IUIAutomationElement *root,
+                                       const wchar_t *label)
+{
+    VARIANT name;
+    VariantInit(&name);
+    name.vt = VT_BSTR;
+    name.bstrVal = SysAllocString(label);
+    if (!name.bstrVal)
+        return {};
+    ComPtr<IUIAutomationCondition> condition;
+    const HRESULT result = automation->CreatePropertyCondition(UIA_NamePropertyId, name, &condition);
+    VariantClear(&name);
+    ComPtr<IUIAutomationElement> element;
+    if (SUCCEEDED(result) && condition)
+        root->FindFirst(TreeScope_Descendants, condition.Get(), &element);
+    return element;
+}
+
+bool matches(HRESULT result, BSTR actual, const wchar_t *expected)
+{
+    const bool equal = SUCCEEDED(result) && actual && std::wstring(actual, SysStringLen(actual)) == expected;
+    SysFreeString(actual);
+    return equal;
+}
+
+bool matchesText(IUIAutomationTextRange *range, const wchar_t *expected)
+{
+    BSTR actual = nullptr;
+    const HRESULT result = range->GetText(-1, &actual);
+    return matches(result, actual, expected);
+}
+
+bool matchesDocument(IUIAutomationTextPattern *text, IUIAutomationValuePattern *value, const wchar_t *expected)
+{
+    ComPtr<IUIAutomationTextRange> range;
+    if (FAILED(text->get_DocumentRange(&range)) || !range || !matchesText(range.Get(), expected))
+        return false;
+    BSTR actual = nullptr;
+    const HRESULT result = value->get_CurrentValue(&actual);
+    return matches(result, actual, expected);
+}
+
+bool advance(const char *stage)
+{
+    std::cout << stage << std::endl;
+    std::string response;
+    return std::getline(std::cin, response) && response == "CONTINUE";
+}
+
+int verifyGuardedLifecycle(IUIAutomation *automation, IUIAutomationElement *root,
+                           IUIAutomationElement *editor, IUIAutomationValuePattern *value)
+{
+    const auto sibling = findNamed(automation, root, L"Fixture sibling");
+    ComPtr<IUIAutomationTextPattern> text;
+    if (!sibling || FAILED(editor->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&text))) || !text
+        || !matchesDocument(text.Get(), value, L"First guarded document") || !advance("REPLACE"))
+        return 20;
+
+    const auto rebound = findNamed(automation, root, L"Document");
+    BOOL sameEditor = FALSE;
+    if (!rebound || FAILED(automation->CompareElements(editor, rebound.Get(), &sameEditor)) || !sameEditor
+        || !matchesDocument(text.Get(), value, L"original tail"))
+        return 21;
+    ComPtr<IUIAutomationTextRangeArray> selection;
+    ComPtr<IUIAutomationTextRange> selected;
+    int length = 0;
+    if (FAILED(text->GetSelection(&selection)) || !selection || FAILED(selection->get_Length(&length))
+        || length != 1 || FAILED(selection->GetElement(0, &selected)) || !selected
+        || !matchesText(selected.Get(), L"tail"))
+        return 22;
+    if (FAILED(value->SetValue(L"UIA modified")) || !matchesDocument(text.Get(), value, L"UIA modified")
+        || !advance("READ_ONLY"))
+        return 23;
+    BOOL readOnly = FALSE;
+    if (FAILED(value->get_CurrentIsReadOnly(&readOnly)) || !readOnly || SUCCEEDED(value->SetValue(L"rejected"))
+        || !matchesDocument(text.Get(), value, L"UIA modified") || !advance("UNDO_WRITE")
+        || !matchesDocument(text.Get(), value, L"original tail") || !advance("UNDO_PRIOR")
+        || !matchesDocument(text.Get(), value, L"original") || !advance("CLOSE"))
+        return 24;
+
+    ComPtr<IUIAutomationTextRange> closedRange;
+    const HRESULT closedText = text->get_DocumentRange(&closedRange);
+    BSTR closedValue = nullptr;
+    const HRESULT closedRead = value->get_CurrentValue(&closedValue);
+    const UINT closedValueLength = SysStringLen(closedValue);
+    SysFreeString(closedValue);
+    const HRESULT closedWrite = value->SetValue(L"after close");
+    // CurrentValue can return UIA's default empty string for an unsupported property.
+    // Query the property without the default to distinguish that from a live value.
+    VARIANT closedProperty;
+    VariantInit(&closedProperty);
+    const HRESULT closedPropertyStatus = editor->GetCurrentPropertyValueEx(UIA_ValueValuePropertyId, TRUE, &closedProperty);
+    ComPtr<IUnknown> notSupported;
+    const bool propertyUnavailable = FAILED(closedPropertyStatus)
+        || (closedProperty.vt == VT_UNKNOWN && SUCCEEDED(automation->get_ReservedNotSupportedValue(&notSupported))
+            && notSupported && closedProperty.punkVal == notSupported.Get());
+    VariantClear(&closedProperty);
+    std::cout << "CLOSED_HRESULTS " << std::hex << static_cast<std::uint32_t>(closedText)
+              << ' ' << static_cast<std::uint32_t>(closedRead) << ' ' << static_cast<std::uint32_t>(closedWrite)
+              << " VALUE_PROPERTY " << static_cast<std::uint32_t>(closedPropertyStatus)
+              << " VALUE_LENGTH " << std::dec << closedValueLength
+              << std::endl;
+    if (closedText != static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE) || closedRange || closedValueLength != 0
+        || SUCCEEDED(closedWrite) || !propertyUnavailable
+        || findNamed(automation, root, L"Document"))
+        return 25;
+
+    const auto remainingSibling = findNamed(automation, root, L"Fixture sibling");
+    BOOL sameSibling = FALSE;
+    if (!remainingSibling || FAILED(automation->CompareElements(sibling.Get(), remainingSibling.Get(), &sameSibling))
+        || !sameSibling)
+        return 26;
+    return 0;
+}
 } // namespace
 
 int main(int argc, char **argv)
 {
     if (argc != 2 && argc != 3)
         return 2;
-    const bool observeUndo = argc == 3 && std::string(argv[2]) == "--observe-undo";
-    if (argc == 3 && !observeUndo)
+    const std::string mode = argc == 3 ? argv[2] : "";
+    const bool observeUndo = mode == "--observe-undo";
+    const bool guardedLifecycle = mode == "--guarded-lifecycle";
+    if (argc == 3 && !observeUndo && !guardedLifecycle)
         return 2;
     char *end = nullptr;
     const auto numericHandle = _strtoui64(argv[1], &end, 10);
@@ -89,7 +206,8 @@ int main(int argc, char **argv)
     GetWindowThreadProcessId(window, &owner);
     wchar_t title[128]{};
     GetWindowTextW(window, title, int(std::size(title)));
-    if (!owner || owner != parentProcessId() || std::wstring(title) != L"xdnote-controlled-uia-fixture")
+    const wchar_t *expectedTitle = guardedLifecycle ? L"xdnote-guarded-uia-lifecycle" : L"xdnote-controlled-uia-fixture";
+    if (!owner || owner != parentProcessId() || std::wstring(title) != expectedTitle)
         return 3;
 
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -109,25 +227,15 @@ int main(int argc, char **argv)
     if (FAILED(result) || !root)
         return 6;
 
-    VARIANT name;
-    VariantInit(&name);
-    name.vt = VT_BSTR;
-    name.bstrVal = SysAllocString(L"Document");
-    if (!name.bstrVal)
-        return 7;
-    ComPtr<IUIAutomationCondition> condition;
-    result = automation->CreatePropertyCondition(UIA_NamePropertyId, name, &condition);
-    VariantClear(&name);
-    if (FAILED(result) || !condition)
-        return 7;
-    ComPtr<IUIAutomationElement> element;
-    result = root->FindFirst(TreeScope_Descendants, condition.Get(), &element);
-    if (FAILED(result) || !element)
+    const auto element = findNamed(automation.Get(), root.Get(), L"Document");
+    if (!element)
         return 8;
     ComPtr<IUIAutomationValuePattern> pattern;
     result = element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&pattern));
     if (FAILED(result) || !pattern)
         return 9;
+    if (guardedLifecycle)
+        return verifyGuardedLifecycle(automation.Get(), root.Get(), element.Get(), pattern.Get());
     BOOL readOnly = FALSE;
     if (FAILED(pattern->get_CurrentIsReadOnly(&readOnly)))
         return 10;

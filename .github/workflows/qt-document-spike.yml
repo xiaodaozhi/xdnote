@@ -5,9 +5,9 @@ on:
     inputs:
       scope:
         type: choice
-        description: Run the complete experiment or only the Linux AT-SPI check
+        description: Run the full experiment, Linux AT-SPI, or the native Windows UIA lifecycle
         default: all
-        options: [all, linux-atspi]
+        options: [all, linux-atspi, windows-uia]
 
 permissions:
   contents: read
@@ -18,13 +18,13 @@ concurrency:
 
 jobs:
   experiment:
-    name: Offscreen experiment (${{ matrix.os }})
+    name: Qt document experiment (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.scope == 'linux-atspi' && '["ubuntu-22.04","ubuntu-24.04"]' || '["ubuntu-22.04","ubuntu-24.04","windows-2022","macos-15"]') }}
+        os: ${{ fromJSON(inputs.scope == 'linux-atspi' && '["ubuntu-22.04","ubuntu-24.04"]' || inputs.scope == 'windows-uia' && '["windows-2022"]' || '["ubuntu-22.04","ubuntu-24.04","windows-2022","macos-15"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,12 +53,14 @@ jobs:
       - name: Build experiment
         run: cmake --build build/qt-document-spike --config Release --parallel 2
       - name: Clear previous Qt document test report
+        if: inputs.scope != 'windows-uia'
         shell: python
         run: |
           from pathlib import Path
 
           Path('build/qt-document-spike/qt_document_spike_ctest.txt').unlink(missing_ok=True)
       - name: Run offscreen experiment tests
+        if: inputs.scope != 'windows-uia'
         id: qt_tests
         run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error
       - name: Prepare the Linux accessibility bridge
@@ -105,7 +107,7 @@ jobs:
               raise SystemExit('The Qt document test report was not created.')
           print(report.read_text(encoding='utf-8', errors='replace'))
       - name: Report Windows junction fixture result
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && inputs.scope != 'windows-uia'
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = 'offscreen'
@@ -117,3 +119,18 @@ jobs:
           if (!(Test-Path -LiteralPath $xdnoteReport)) { throw 'The junction test did not create a report.' }
           Get-Content -LiteralPath $xdnoteReport
           if ($xdnoteStatus -ne 0) { throw "The junction test failed with exit code $xdnoteStatus." }
+      - name: Run the guarded Quick editor through the native Windows UIA lifecycle
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: windows
+          QT_QUICK_BACKEND: software
+        shell: pwsh
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP ("xdnote-uia-$([guid]::NewGuid().ToString('N')).txt")
+          & build/qt-document-spike/Release/qt_document_spike_tests.exe guardedWindowsUiaLifecycle -o "${reportPath},txt"
+          $status = $LASTEXITCODE
+          $report = Get-Content -LiteralPath $reportPath -Raw -ErrorAction Stop
+          Write-Output $report
+          if ($status -ne 0 -or $report -notmatch 'PASS\s+: QtDocumentSpikeTests::guardedWindowsUiaLifecycle\(\)') {
+            throw 'The native UI Automation lifecycle did not pass.'
+          }
