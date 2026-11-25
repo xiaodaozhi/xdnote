@@ -7,6 +7,8 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
+#include "uia_fixture_client.h"
+
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -121,13 +123,114 @@ bool advance(const char *stage)
     return std::getline(std::cin, response) && response == "CONTINUE";
 }
 
+bool hasExpectedParent(IUIAutomation *automation, IUIAutomationElement *root,
+                       IUIAutomationElement *sibling)
+{
+    const auto group = findNamed(automation, root, L"Fixture group");
+    ComPtr<IUIAutomationTreeWalker> walker;
+    ComPtr<IUIAutomationElement> parent;
+    BOOL sameParent = FALSE;
+    return group && SUCCEEDED(automation->get_RawViewWalker(&walker)) && walker
+        && SUCCEEDED(walker->GetParentElement(sibling, &parent)) && parent
+        && SUCCEEDED(automation->CompareElements(group.Get(), parent.Get(), &sameParent)) && sameParent;
+}
+
+bool invokeFixtureButton(IUIAutomation *automation, IUIAutomationElement *root)
+{
+    const auto button = findNamed(automation, root, L"Fixture button");
+    ComPtr<IUIAutomationInvokePattern> invoke;
+    if (!button || !hasExpectedParent(automation, root, button.Get())
+        || FAILED(button->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&invoke))) || !invoke
+        || FAILED(invoke->Invoke()))
+        return false;
+    BSTR help = nullptr;
+    const HRESULT result = button->get_CurrentHelpText(&help);
+    return matches(result, help, L"Invoked");
+}
+
+bool verifyFixtureRanges(IUIAutomation *automation, IUIAutomationElement *editor,
+                         IUIAutomationTextPattern *text)
+{
+    ComPtr<IUIAutomationTextRange> whole;
+    if (FAILED(text->get_DocumentRange(&whole)) || !whole)
+        return false;
+    BSTR query = SysAllocString(L"TAIL");
+    ComPtr<IUIAutomationTextRange> tail;
+    const HRESULT found = query ? whole->FindText(query, FALSE, TRUE, &tail) : E_OUTOFMEMORY;
+    SysFreeString(query);
+    if (FAILED(found) || !tail || !matchesText(tail.Get(), L"tail"))
+        return false;
+    ComPtr<IUIAutomationTextRange> clone;
+    BOOL same = FALSE;
+    int comparison = 0;
+    if (FAILED(tail->Clone(&clone)) || !clone || FAILED(tail->Compare(clone.Get(), &same)) || !same
+        || FAILED(tail->CompareEndpoints(TextPatternRangeEndpoint_Start, whole.Get(),
+                                         TextPatternRangeEndpoint_Start, &comparison))
+        || comparison <= 0)
+        return false;
+    int moved = 0;
+    if (FAILED(clone->MoveEndpointByUnit(TextPatternRangeEndpoint_Start, TextUnit_Character, 1, &moved))
+        || moved != 1 || !matchesText(clone.Get(), L"ail") || FAILED(clone->Select()))
+        return false;
+    ComPtr<IUIAutomationTextRangeArray> selection;
+    ComPtr<IUIAutomationTextRange> selected;
+    if (FAILED(text->GetSelection(&selection)) || !selection || FAILED(selection->GetElement(0, &selected))
+        || !selected || !matchesText(selected.Get(), L"ail"))
+        return false;
+    if (FAILED(clone->MoveEndpointByRange(TextPatternRangeEndpoint_Start, tail.Get(), TextPatternRangeEndpoint_Start))
+        || FAILED(clone->ExpandToEnclosingUnit(TextUnit_Word)) || !matchesText(clone.Get(), L"tail")
+        || FAILED(clone->Move(TextUnit_Word, -1, &moved)) || moved != -1 || !matchesText(clone.Get(), L"original "))
+        return false;
+    SupportedTextSelection selectionSupport = SupportedTextSelection_None;
+    ComPtr<IUIAutomationTextRangeArray> visible;
+    ComPtr<IUIAutomationTextRange> visibleRange;
+    if (FAILED(text->get_SupportedTextSelection(&selectionSupport)) || selectionSupport != SupportedTextSelection_Single
+        || FAILED(text->GetVisibleRanges(&visible)) || !visible || FAILED(visible->GetElement(0, &visibleRange))
+        || !visibleRange || !matchesText(visibleRange.Get(), L"original tail"))
+        return false;
+    VARIANT readOnly;
+    VariantInit(&readOnly);
+    const HRESULT attribute = tail->GetAttributeValue(UIA_IsReadOnlyAttributeId, &readOnly);
+    const bool writable = SUCCEEDED(attribute) && readOnly.vt == VT_BOOL && readOnly.boolVal == VARIANT_FALSE;
+    VariantClear(&readOnly);
+    if (!writable)
+        return false;
+    SAFEARRAY *rectangles = nullptr;
+    const HRESULT bounds = tail->GetBoundingRectangles(&rectangles);
+    LONG lower = 0;
+    LONG upper = 0;
+    double firstRect[4]{};
+    bool measured = SUCCEEDED(bounds) && rectangles
+        && SUCCEEDED(SafeArrayGetLBound(rectangles, 1, &lower))
+        && SUCCEEDED(SafeArrayGetUBound(rectangles, 1, &upper)) && upper - lower >= 3;
+    for (int i = 0; measured && i < 4; ++i) {
+        LONG index = lower + i;
+        measured = SUCCEEDED(SafeArrayGetElement(rectangles, &index, firstRect + i));
+    }
+    if (rectangles) SafeArrayDestroy(rectangles);
+    if (!measured || firstRect[2] <= 0 || firstRect[3] <= 0)
+        return false;
+    const POINT point{LONG(firstRect[0] + firstRect[2] / 2), LONG(firstRect[1] + firstRect[3] / 2)};
+    ComPtr<IUIAutomationTextRange> atPoint;
+    if (FAILED(text->RangeFromPoint(point, &atPoint)) || !atPoint || !matchesText(atPoint.Get(), L""))
+        return false;
+    ComPtr<IUIAutomationElement> enclosing;
+    BOOL sameEditor = FALSE;
+    return SUCCEEDED(tail->GetEnclosingElement(&enclosing)) && enclosing
+        && SUCCEEDED(automation->CompareElements(editor, enclosing.Get(), &sameEditor)) && sameEditor;
+}
+
 int verifyGuardedLifecycle(IUIAutomation *automation, IUIAutomationElement *root,
-                           IUIAutomationElement *editor, IUIAutomationValuePattern *value)
+                           IUIAutomationElement *editor, IUIAutomationValuePattern *value, bool fixtureProvider)
 {
     const auto sibling = findNamed(automation, root, L"Fixture sibling");
     ComPtr<IUIAutomationTextPattern> text;
+    ComPtr<IUIAutomationTextRange> firstRange;
     if (!sibling || FAILED(editor->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&text))) || !text
-        || !matchesDocument(text.Get(), value, L"First guarded document") || !advance("REPLACE"))
+        || !matchesDocument(text.Get(), value, L"First guarded document")
+        || (fixtureProvider && (!hasExpectedParent(automation, root, sibling.Get())
+                               || FAILED(text->get_DocumentRange(&firstRange)) || !firstRange))
+        || !advance("REPLACE"))
         return 20;
 
     const auto rebound = findNamed(automation, root, L"Document");
@@ -142,6 +245,20 @@ int verifyGuardedLifecycle(IUIAutomation *automation, IUIAutomationElement *root
         || length != 1 || FAILED(selection->GetElement(0, &selected)) || !selected
         || !matchesText(selected.Get(), L"tail"))
         return 22;
+    if (fixtureProvider) {
+        BSTR previousText = nullptr;
+        const HRESULT previousStatus = firstRange->GetText(-1, &previousText);
+        SysFreeString(previousText);
+        if (previousStatus != static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE)
+            || !verifyFixtureRanges(automation, editor, text.Get()))
+            return 27;
+        const wchar_t separator[] = {wchar_t(0x2029), 0};
+        BSTR request = SysAllocString(separator);
+        const HRESULT status = request ? value->SetValue(request) : E_OUTOFMEMORY;
+        SysFreeString(request);
+        if (status != E_INVALIDARG || !matchesDocument(text.Get(), value, L"original tail"))
+            return 28;
+    }
     if (FAILED(value->SetValue(L"UIA modified")) || !matchesDocument(text.Get(), value, L"UIA modified")
         || !advance("READ_ONLY"))
         return 23;
@@ -159,16 +276,8 @@ int verifyGuardedLifecycle(IUIAutomation *automation, IUIAutomationElement *root
     const UINT closedValueLength = SysStringLen(closedValue);
     SysFreeString(closedValue);
     const HRESULT closedWrite = value->SetValue(L"after close");
-    // CurrentValue can return UIA's default empty string for an unsupported property.
-    // Query the property without the default to distinguish that from a live value.
-    VARIANT closedProperty;
-    VariantInit(&closedProperty);
-    const HRESULT closedPropertyStatus = editor->GetCurrentPropertyValueEx(UIA_ValueValuePropertyId, TRUE, &closedProperty);
-    ComPtr<IUnknown> notSupported;
-    const bool propertyUnavailable = FAILED(closedPropertyStatus)
-        || (closedProperty.vt == VT_UNKNOWN && SUCCEEDED(automation->get_ReservedNotSupportedValue(&notSupported))
-            && notSupported && closedProperty.punkVal == notSupported.Get());
-    VariantClear(&closedProperty);
+    HRESULT closedPropertyStatus = S_OK;
+    const bool propertyUnavailable = valuePropertyUnavailable(automation, editor, &closedPropertyStatus);
     std::cout << "CLOSED_HRESULTS " << std::hex << static_cast<std::uint32_t>(closedText)
               << ' ' << static_cast<std::uint32_t>(closedRead) << ' ' << static_cast<std::uint32_t>(closedWrite)
               << " VALUE_PROPERTY " << static_cast<std::uint32_t>(closedPropertyStatus)
@@ -182,7 +291,8 @@ int verifyGuardedLifecycle(IUIAutomation *automation, IUIAutomationElement *root
     const auto remainingSibling = findNamed(automation, root, L"Fixture sibling");
     BOOL sameSibling = FALSE;
     if (!remainingSibling || FAILED(automation->CompareElements(sibling.Get(), remainingSibling.Get(), &sameSibling))
-        || !sameSibling)
+        || !sameSibling || (fixtureProvider && (!hasExpectedParent(automation, root, remainingSibling.Get())
+                                               || !invokeFixtureButton(automation, root))))
         return 26;
     return 0;
 }
@@ -194,7 +304,8 @@ int main(int argc, char **argv)
         return 2;
     const std::string mode = argc == 3 ? argv[2] : "";
     const bool observeUndo = mode == "--observe-undo";
-    const bool guardedLifecycle = mode == "--guarded-lifecycle";
+    const bool fixtureProvider = mode == "--fixture-lifecycle";
+    const bool guardedLifecycle = mode == "--guarded-lifecycle" || fixtureProvider;
     if (argc == 3 && !observeUndo && !guardedLifecycle)
         return 2;
     char *end = nullptr;
@@ -206,7 +317,8 @@ int main(int argc, char **argv)
     GetWindowThreadProcessId(window, &owner);
     wchar_t title[128]{};
     GetWindowTextW(window, title, int(std::size(title)));
-    const wchar_t *expectedTitle = guardedLifecycle ? L"xdnote-guarded-uia-lifecycle" : L"xdnote-controlled-uia-fixture";
+    const wchar_t *expectedTitle = fixtureProvider ? L"xdnote-fixture-uia-lifecycle"
+        : guardedLifecycle ? L"xdnote-guarded-uia-lifecycle" : L"xdnote-controlled-uia-fixture";
     if (!owner || owner != parentProcessId() || std::wstring(title) != expectedTitle)
         return 3;
 
@@ -235,7 +347,7 @@ int main(int argc, char **argv)
     if (FAILED(result) || !pattern)
         return 9;
     if (guardedLifecycle)
-        return verifyGuardedLifecycle(automation.Get(), root.Get(), element.Get(), pattern.Get());
+        return verifyGuardedLifecycle(automation.Get(), root.Get(), element.Get(), pattern.Get(), fixtureProvider);
     BOOL readOnly = FALSE;
     if (FAILED(pattern->get_CurrentIsReadOnly(&readOnly)))
         return 10;

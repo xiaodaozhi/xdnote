@@ -7,8 +7,7 @@
 class QQuickWindow;
 class GuardedFixtureTextEdit;
 
-// Controlled single-editor native ValuePattern fixture. Qt's other widgets
-// are tested separately; this does not claim a complete TextPattern provider.
+// Native provider for the isolated Quick test window and its guarded editor.
 class FixtureWindowsValueBridge final : public QObject, public QAbstractNativeEventFilter
 {
 public:

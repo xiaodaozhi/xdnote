@@ -264,8 +264,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: inputs.scope != 'windows-uia'", workflow)
         native_step = workflow.split('name: Run the guarded Quick editor through the native Windows UIA lifecycle', 1)[1]
         self.assertIn('QT_QPA_PLATFORM: windows', native_step)
-        self.assertIn('guardedWindowsUiaLifecycle -o', native_step)
-        self.assertIn(r"-notmatch 'PASS\s+: QtDocumentSpikeTests::guardedWindowsUiaLifecycle\(\)'", native_step)
+        self.assertIn("$tests = @('guardedWindowsUiaProviderLifecycle', 'windowsUiaResultFeedback')", native_step)
+        self.assertIn("if ($env:XDNOTE_EXPERIMENT_SCOPE -ne 'windows-uia')", native_step)
+        self.assertIn(r"-notmatch 'PASS\s+: QtDocumentSpikeTests::guardedWindowsUiaProviderLifecycle\(\)'", native_step)
+        self.assertIn(r"-match '(?m)^SKIP\s+:'", native_step)
 
     def test_update_core_is_independent_of_desktop_and_release(self):
         text = (WORKFLOWS / 'update-core.yml').read_text(encoding='utf-8')
