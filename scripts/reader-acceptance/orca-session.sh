@@ -85,7 +85,19 @@ for attempt in {1..30}; do
 done
 pactl set-default-sink xdnote_acceptance
 gsettings set org.gnome.desktop.interface toolkit-accessibility true
-orca --enable=speech --disable=braille --debug-file="$evidence/orca.log" > "$evidence/orca-console.log" 2>&1 &
+reader_args=(--enable=speech --disable=braille --debug-file="$evidence/orca.log")
+if [[ "${6:-}" == --quick-editor ]]; then
+    prefs="$XDG_DATA_HOME/orca"
+    install -d -m 700 -- "$prefs"
+    cat > "$prefs/orca-customizations.py" <<'PY'
+import orca.debug
+
+# The fixture waits for Orca between document changes, so flush each speech trace line.
+orca.debug.debugFile.reconfigure(line_buffering=True)
+PY
+    reader_args+=(--user-prefs-dir="$prefs")
+fi
+orca "${reader_args[@]}" > "$evidence/orca-console.log" 2>&1 &
 reader_pid=$!
 owned_pids+=("$reader_pid")
 for attempt in {1..30}; do
