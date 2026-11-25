@@ -49,6 +49,18 @@ bool isAppContainer(bool &result) {
     return true;
 }
 
+bool pipeServerOwnsLock(const QLocalSocket &socket, const QLockFile &lock) {
+    qint64 lockPid = 0;
+    if (!lock.getLockInfo(&lockPid, nullptr, nullptr) || lockPid <= 0) return false;
+#ifdef XDNOTE_IPC_TEST_HOOKS
+    // Inject a mismatched expectation while connecting to the real test server.
+    if (qEnvironmentVariableIsSet("XDNOTE_IPC_TEST_REJECT_OWNER")) lockPid = GetCurrentProcessId();
+#endif
+    ULONG serverPid = 0;
+    return GetNamedPipeServerProcessId(reinterpret_cast<HANDLE>(socket.socketDescriptor()), &serverPid) &&
+           lockPid == serverPid;
+}
+
 HANDLE createContainerBootstrap(const QString &name) {
     HANDLE raw = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw)) return INVALID_HANDLE_VALUE;
@@ -107,6 +119,14 @@ SingleInstance::Result SingleInstance::start(const QString &scopeDirectory, cons
         while (timer.elapsed() < 5000) {
             QLocalSocket socket; socket.connectToServer(name);
             if (!socket.waitForConnected(200)) { QThread::msleep(25); continue; }
+#ifdef Q_OS_WIN
+            // Check this connection before sending paths. A name alone does not identify the listener.
+            if (appContainer && !pipeServerOwnsLock(socket, *m_lock)) {
+                socket.abort();
+                QThread::msleep(25);
+                continue;
+            }
+#endif
 #if defined(Q_OS_WIN) && defined(XDNOTE_IPC_TEST_HOOKS)
             if (appContainer && qEnvironmentVariable("XDNOTE_IPC_TEST_BOOTSTRAP_GATE") == QStringLiteral("gate")) {
                 std::puts("client_connected"); std::fflush(stdout);

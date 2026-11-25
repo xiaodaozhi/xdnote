@@ -14,7 +14,7 @@ python experiments/windows-appcontainer-ipc/recovery.py
 
 `recovery.py` 在随机隔离目录中终止自己启动的主进程，确认锁文件留存后重新启动产品单实例，验证陈旧锁恢复及正常转发；脚本只清理该隔离目录中的锁文件，不操作其他进程或用户数据。
 
-`product_container.py` 从非 AppContainer 进程创建两个随机名称的临时容器，运行链接实际 `SingleInstance.cpp` 的探针；验证预占管道时拒绝接管、另一个容器无法打开、顺序／并发转发，以及多个进程同时启动时仅产生一个主实例。测试专用编译标志还可暂停引导过程，确认客户端提前连接引导句柄并断开后能重试；产品构建不包含此门控。它需要项目内 Windows 运行库 `build/toolchain/windows-runtime/runtime/`；测试将需要的 Qt 和运行库复制到专用目录，只为本次两个容器授予读取权限，退出时删除测试目录与容器配置，不输出或持久化 SID。
+`product_container.py` 从非 AppContainer 进程创建两个随机名称的临时容器，运行链接实际 `SingleInstance.cpp` 的探针。它验证已有同名管道时拒绝接管、另一个容器无法打开、顺序／并发转发，以及多个进程同时启动时仅产生一个主实例。测试专用编译标志允许暂停引导过程以验证早到客户端重试，也允许人为设置错误的预期进程 ID，核对打开意图未发送、后续正常客户端能够转发。它需要项目内 Windows 运行库 `build/toolchain/windows-runtime/runtime/`。测试将所需的 Qt 和运行库复制到专用目录，只为本次两个容器授予读取权限，退出时删除测试目录与容器配置。脚本不输出或持久化 SID。
 
 ```powershell
 python experiments/windows-appcontainer-ipc/product_container.py

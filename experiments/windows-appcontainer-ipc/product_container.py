@@ -135,8 +135,12 @@ def main():
                 received.append(lines.get(timeout=5).decode('utf-8', 'replace').strip())
             except queue.Empty:
                 received.append('timeout')
+        rejected_owner_exit = client(application, first, 'client-reject-owner', scope)
+        followup_exit = client(application, first, 'client', scope)
+        followup_received = next_line(lines)
         server.stdin.write(b'x')
         server_exit = server.wait()
+        extra_received = next_line(lines)
         server.close()
         race_scope = (Path(scope).parent / ('xdnote-race-' + uuid.uuid4().hex)).as_posix()
         starters = [spawn(application, first, 'race', race_scope) for _ in range(4)]
@@ -180,6 +184,8 @@ def main():
         result = {'preclaimed': preclaimed, 'preclaimed_still_available': still_available,
                   'preclaim_owner_exit': owner_exit, 'other_open': other_open,
                   'sequential': sequential, 'concurrent': concurrent, 'received': received,
+                  'rejected_owner_exit': rejected_owner_exit, 'followup_exit': followup_exit,
+                  'followup_received': followup_received, 'extra_received': extra_received,
                   'server_exit': server_exit, 'lock_cleared': not (Path(scope) / 'instance.lock').exists(),
                   'race_primary_count': states.count('ready'), 'race_forwarded_exits': forwarded_exits,
                   'race_received': race_received, 'race_leader_exit': leader_exit,
@@ -190,6 +196,7 @@ def main():
         expected = {'preclaimed': {'state': 'primary_failed', 'exit': 4}, 'preclaimed_still_available': True,
                     'preclaim_owner_exit': 0, 'other_open': 102, 'sequential': [0, 0], 'concurrent': [0, 0, 0, 0],
                     'received': ['accepted'] * 6, 'server_exit': 0, 'lock_cleared': True,
+                    'rejected_owner_exit': 3, 'followup_exit': 0, 'followup_received': 'accepted', 'extra_received': '',
                     'race_primary_count': 1, 'race_forwarded_exits': [0] * 3,
                     'race_received': ['accepted'] * 3, 'race_leader_exit': 0, 'race_lock_cleared': True,
                     'early_client_exit': 0, 'early_received': 'accepted',
