@@ -68,7 +68,9 @@ if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8 AND Qt6_VERSION VERSION_LESS 6.9 AND TA
     target_compile_definitions(qt_document_spike_tests PRIVATE XDNOTE_QT68_GUARDED_ACCESSIBILITY)
     target_link_libraries(qt_document_spike_tests PRIVATE Qt6::QuickPrivate)
     if(WIN32)
-        target_sources(qt_document_spike_tests PRIVATE tests/windows_value_bridge.cpp tests/windows_value_bridge.h)
+        target_sources(qt_document_spike_tests PRIVATE
+            tests/windows_value_bridge.cpp tests/windows_value_bridge.h
+            tests/windows_uia_fixture.h tests/windows_uia_text.cpp)
         target_link_libraries(qt_document_spike_tests PRIVATE Ole32 OleAut32 UIAutomationCore)
         add_dependencies(qt_document_spike_tests qt_uia_result_client)
     elseif(APPLE)

@@ -8,6 +8,8 @@
 #include <iostream>
 #include <string>
 
+#include "uia_fixture_client.h"
+
 using Microsoft::WRL::ComPtr;
 
 DWORD parentId()
@@ -42,10 +44,22 @@ int main(int argc, char **argv)
     struct Scope { ~Scope() { CoUninitialize(); } } scope;
     ComPtr<IUIAutomation> automation;
     if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation)))) return 5;
+    ComPtr<IUIAutomationElement> root;
+    if (FAILED(automation->ElementFromHandle(window, &root)) || !root) return 6;
+    VARIANT name;
+    VariantInit(&name);
+    name.vt = VT_BSTR;
+    name.bstrVal = SysAllocString(L"Document");
+    if (!name.bstrVal) return 6;
+    ComPtr<IUIAutomationCondition> condition;
+    const HRESULT initialized = automation->CreatePropertyCondition(UIA_NamePropertyId, name, &condition);
+    VariantClear(&name);
     ComPtr<IUIAutomationElement> element;
-    if (FAILED(automation->ElementFromHandle(window, &element))) return 6;
+    if (FAILED(initialized) || !condition
+        || FAILED(root->FindFirst(TreeScope_Descendants, condition.Get(), &element)) || !element)
+        return 6;
     ComPtr<IUIAutomationValuePattern> value;
-    if (FAILED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&value)))) return 7;
+    if (FAILED(element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&value))) || !value) return 7;
     BSTR initial = nullptr;
     if (FAILED(value->get_CurrentValue(&initial))) return 8;
     const bool expected = initial && std::wstring(initial) == L"original";
@@ -67,6 +81,15 @@ int main(int argc, char **argv)
     BSTR current = nullptr;
     const HRESULT readStatus = value->get_CurrentValue(&current);
     std::cout << "READSTATUS " << static_cast<std::uint32_t>(readStatus) << '\n';
+    if (mode == "close") {
+        const auto length = SysStringLen(current);
+        SysFreeString(current);
+        HRESULT propertyStatus = S_OK;
+        if (length != 0 || !valuePropertyUnavailable(automation.Get(), element.Get(), &propertyStatus))
+            return 12;
+        std::cout << "VALUE_UNAVAILABLE\n";
+        return 0;
+    }
     if (SUCCEEDED(readStatus)) {
         if (!current) return 11;
         const std::wstring actual(current);
@@ -74,6 +97,6 @@ int main(int argc, char **argv)
         if (actual == L"original") std::cout << "VALUE original\n";
         else if (actual == L"accepted") std::cout << "VALUE accepted\n";
         else return 12;
-    }
+    } else SysFreeString(current);
     return 0;
 }

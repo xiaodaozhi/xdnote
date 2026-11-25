@@ -5,7 +5,7 @@ on:
     inputs:
       scope:
         type: choice
-        description: Run the full experiment, Linux AT-SPI, or the native Windows UIA lifecycle
+        description: Run the full experiment, Linux AT-SPI, or the Windows UIA fixture provider
         default: all
         options: [all, linux-atspi, windows-uia]
 
@@ -124,13 +124,20 @@ jobs:
         env:
           QT_QPA_PLATFORM: windows
           QT_QUICK_BACKEND: software
+          XDNOTE_EXPERIMENT_SCOPE: ${{ inputs.scope }}
         shell: pwsh
         run: |
           $reportPath = Join-Path $env:RUNNER_TEMP ("xdnote-uia-$([guid]::NewGuid().ToString('N')).txt")
-          & build/qt-document-spike/Release/qt_document_spike_tests.exe guardedWindowsUiaLifecycle -o "${reportPath},txt"
+          $tests = @('guardedWindowsUiaProviderLifecycle', 'windowsUiaResultFeedback')
+          if ($env:XDNOTE_EXPERIMENT_SCOPE -ne 'windows-uia') {
+            $tests += 'guardedWindowsUiaLifecycle'
+          }
+          & build/qt-document-spike/Release/qt_document_spike_tests.exe @tests -o "${reportPath},txt"
           $status = $LASTEXITCODE
           $report = Get-Content -LiteralPath $reportPath -Raw -ErrorAction Stop
           Write-Output $report
-          if ($status -ne 0 -or $report -notmatch 'PASS\s+: QtDocumentSpikeTests::guardedWindowsUiaLifecycle\(\)') {
+          if ($status -ne 0 -or $report -match '(?m)^SKIP\s+:' -or
+              $report -notmatch 'PASS\s+: QtDocumentSpikeTests::guardedWindowsUiaProviderLifecycle\(\)' -or
+              $report -notmatch 'PASS\s+: QtDocumentSpikeTests::windowsUiaResultFeedback\(accepted\)') {
             throw 'The native UI Automation lifecycle did not pass.'
           }

@@ -300,8 +300,12 @@ private slots:
     void windowsUiaValueWrite_data();
     void windowsUiaValueWrite();
     void guardedWindowsUiaLifecycle();
+    void guardedWindowsUiaProviderLifecycle();
     void windowsUiaResultFeedback_data();
     void windowsUiaResultFeedback();
+
+private:
+    void verifyWindowsUiaLifecycle(bool fixtureProvider);
 #endif
 };
 
@@ -2526,12 +2530,21 @@ void QtDocumentSpikeTests::windowsUiaResultFeedback()
     const quint32 status = lines.at(0).mid(8).trimmed().toUInt(&ok);
     QVERIFY(ok);
     qInfo() << "Native result HRESULT:" << status;
-    QCOMPARE(status, expectedStatus);
+    if (condition == 4) {
+        // UIA may stop the write at its default read-only check once the node disappears.
+        QVERIFY(status == expectedStatus || status == quint32(0x80131509));
+    } else {
+        QCOMPARE(status, expectedStatus);
+    }
     QVERIFY(lines.at(1).startsWith("READSTATUS "));
     const quint32 readStatus = lines.at(1).mid(11).trimmed().toUInt(&ok);
     QVERIFY(ok);
-    if (condition == 4) QCOMPARE(readStatus, quint32(0x80040201));
-    else QCOMPARE(readStatus, quint32(0));
+    if (condition == 4) {
+        QVERIFY(readStatus == 0 || readStatus == quint32(0x80040201));
+        QCOMPARE(lines.last().trimmed(), QByteArray("VALUE_UNAVAILABLE"));
+    } else {
+        QCOMPARE(readStatus, quint32(0));
+    }
     if (expectedStatus == 0) {
         QCOMPARE(lines.last().trimmed(), QByteArray("VALUE accepted"));
         QCOMPARE(document->toPlainText(), QStringLiteral("accepted"));
@@ -2559,6 +2572,16 @@ void QtDocumentSpikeTests::windowsUiaValueWrite_data()
 
 void QtDocumentSpikeTests::guardedWindowsUiaLifecycle()
 {
+    verifyWindowsUiaLifecycle(false);
+}
+
+void QtDocumentSpikeTests::guardedWindowsUiaProviderLifecycle()
+{
+    verifyWindowsUiaLifecycle(true);
+}
+
+void QtDocumentSpikeTests::verifyWindowsUiaLifecycle(bool fixtureProvider)
+{
     if (QGuiApplication::platformName() != QStringLiteral("windows"))
         QSKIP("The UI Automation lifecycle requires a native Windows window.");
 #ifndef XDNOTE_QT68_GUARDED_ACCESSIBILITY
@@ -2570,7 +2593,8 @@ void QtDocumentSpikeTests::guardedWindowsUiaLifecycle()
     QQmlEngine engine;
     QQuickWindow window;
     window.setFlag(Qt::WindowDoesNotAcceptFocus);
-    window.setTitle(QStringLiteral("xdnote-guarded-uia-lifecycle"));
+    window.setTitle(fixtureProvider ? QStringLiteral("xdnote-fixture-uia-lifecycle")
+                                    : QStringLiteral("xdnote-guarded-uia-lifecycle"));
     window.resize(400, 240);
     window.setPosition(-10000, -10000);
     window.show();
@@ -2585,22 +2609,42 @@ void QtDocumentSpikeTests::guardedWindowsUiaLifecycle()
     QQmlComponent siblingComponent(&engine);
     siblingComponent.setData(R"(
         import QtQuick
-        Text {
+        Item {
             y: 214
-            text: "Fixture sibling"
-            Accessible.name: text
-            Accessible.role: Accessible.StaticText
+            width: 230
+            height: 26
+            Accessible.name: "Fixture group"
+            Accessible.role: Accessible.Grouping
+            Text {
+                text: "Fixture sibling"
+                Accessible.name: text
+                Accessible.role: Accessible.StaticText
+            }
+            Item {
+                x: 150
+                width: 80
+                height: 26
+                property bool invoked: false
+                Accessible.name: "Fixture button"
+                Accessible.description: invoked ? "Invoked" : "Ready"
+                Accessible.role: Accessible.Button
+                Accessible.onPressAction: invoked = true
+            }
         }
     )", QUrl());
     std::unique_ptr<QObject> sibling(siblingComponent.create());
     auto *siblingItem = qobject_cast<QQuickItem *>(sibling.get());
     QVERIFY2(siblingItem, qPrintable(siblingComponent.errorString()));
     siblingItem->setParentItem(window.contentItem());
+    std::unique_ptr<FixtureWindowsValueBridge> bridge;
+    if (fixtureProvider)
+        bridge = std::make_unique<FixtureWindowsValueBridge>(&window, editor);
 
     QEventLoop loop;
     QProcess client;
     client.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/qt_uia_client.exe"));
-    client.setArguments({QString::number(quintptr(window.winId())), QStringLiteral("--guarded-lifecycle")});
+    client.setArguments({QString::number(quintptr(window.winId())),
+        fixtureProvider ? QStringLiteral("--fixture-lifecycle") : QStringLiteral("--guarded-lifecycle")});
     QPointer<QTextDocument> replacementDocument;
     const QList<QByteArray> stages{"REPLACE", "READ_ONLY", "UNDO_WRITE", "UNDO_PRIOR", "CLOSE"};
     qsizetype nextStage = 0;
