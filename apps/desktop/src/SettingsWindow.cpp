@@ -49,6 +49,23 @@ namespace xdnote {
 namespace {
 int setting(const char *key) { return visualTokens()["settings"].toObject()[key].toInt(); }
 QVBoxLayout *bodyLayout(QWidget *body) { return qobject_cast<QVBoxLayout *>(body->layout()); }
+class AboutAppIcon final : public QWidget {
+public:
+    explicit AboutAppIcon(QWidget *parent) : QWidget(parent),
+        m_renderer(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/app-icon.svg")) {
+        setObjectName("settingsAboutAppIcon");
+        setFixedSize(80, 80);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        m_renderer.render(&painter, QRectF(rect()));
+    }
+
+private:
+    QSvgRenderer m_renderer;
+};
 class OpticalHeading final : public QLabel {
 public:
     OpticalHeading(const QString &text,QWidget *parent):QLabel(text,parent){setObjectName("settingsHeading");setTextFormat(Qt::PlainText);}
@@ -215,7 +232,7 @@ SettingsWindow::SettingsWindow(Appearance *appearance, WindowGeometryStore *stor
     }
     connect(shortcutSearch,&QLineEdit::textChanged,shortcuts,[shortcuts](const QString&q){for(auto*w:shortcuts->findChildren<QWidget*>())if(w->property("shortcutText").isValid())w->setVisible(w->property("shortcutText").toString().contains(q.trimmed(),Qt::CaseInsensitive));});
 
-    auto *about = page(titles[5], QStringLiteral("面向本地 Markdown 文档的阅读与编辑。"));auto*hero=new QWidget(about);auto*heroLayout=new QVBoxLayout(hero);heroLayout->setContentsMargins(24,24,24,24);heroLayout->setSpacing(12);auto*mark=new QLabel(hero);mark->setFixedSize(80,80);auto updateMark=[mark]{QSvgRenderer svg(QStringLiteral(":/xdnote/design/assets/ui-v2/brand/app-icon.svg"));QPixmap image(QSize(80,80)*mark->devicePixelRatioF());image.setDevicePixelRatio(mark->devicePixelRatioF());image.fill(Qt::transparent);QPainter p(&image);svg.render(&p);mark->setPixmap(image);};connect(appearance,&Appearance::changed,mark,updateMark);updateMark();heroLayout->addWidget(mark,0,Qt::AlignHCenter);auto*brand=new QLabel("xdnote",hero);auto brandFont=uiFont(32);brandFont.setWeight(QFont::DemiBold);brand->setFont(brandFont);brand->setAlignment(Qt::AlignCenter);heroLayout->addWidget(brand);auto*tagline=new QLabel(QStringLiteral("本地文档，专注阅读与写作。"),hero);tagline->setAlignment(Qt::AlignCenter);tagline->setProperty("secondary",true);heroLayout->addWidget(tagline);bodyLayout(about)->addWidget(hero);group(about,QStringLiteral("版本与许可"));auto *versionLabel = new QLabel(BuildInfo::version() + (BuildInfo::dirty() ? QStringLiteral(" · 有本地修改") : QString()), about); versionLabel->setObjectName("settingsBuildVersion"); versionLabel->setWordWrap(true); versionLabel->setTextFormat(Qt::PlainText); row(about, QStringLiteral("版本"), versionLabel); row(about, QStringLiteral("Qt"), new QLabel(QString::fromLatin1(qVersion()), about)); row(about, QStringLiteral("自有代码"), new QLabel(QStringLiteral("Apache-2.0"), about)); row(about, QStringLiteral("文档与原创设计"), new QLabel(QStringLiteral("CC BY 4.0"), about));auto*licenses=new SharedButton(QStringLiteral("查看第三方许可"),"settingsThirdPartyLicenses",appearance,about);licenses->setSymbol("document");licenses->setOutlined(true);row(about,QStringLiteral("第三方组件"),licenses);connect(licenses,&QPushButton::clicked,this,[this]{showLicenses(m_appearance,this);});
+    auto *about = page(titles[5], QStringLiteral("面向本地 Markdown 文档的阅读与编辑。"));auto*hero=new QWidget(about);auto*heroLayout=new QVBoxLayout(hero);heroLayout->setContentsMargins(24,24,24,24);heroLayout->setSpacing(12);heroLayout->addWidget(new AboutAppIcon(hero), 0, Qt::AlignHCenter);auto*brand=new QLabel("xdnote",hero);auto brandFont=uiFont(32);brandFont.setWeight(QFont::DemiBold);brand->setFont(brandFont);brand->setAlignment(Qt::AlignCenter);heroLayout->addWidget(brand);auto*tagline=new QLabel(QStringLiteral("本地文档，专注阅读与写作。"),hero);tagline->setAlignment(Qt::AlignCenter);tagline->setProperty("secondary",true);heroLayout->addWidget(tagline);bodyLayout(about)->addWidget(hero);group(about,QStringLiteral("版本与许可"));auto *versionLabel = new QLabel(BuildInfo::version() + (BuildInfo::dirty() ? QStringLiteral(" · 有本地修改") : QString()), about); versionLabel->setObjectName("settingsBuildVersion"); versionLabel->setWordWrap(true); versionLabel->setTextFormat(Qt::PlainText); row(about, QStringLiteral("版本"), versionLabel); row(about, QStringLiteral("Qt"), new QLabel(QString::fromLatin1(qVersion()), about)); row(about, QStringLiteral("自有代码"), new QLabel(QStringLiteral("Apache-2.0"), about)); row(about, QStringLiteral("文档与原创设计"), new QLabel(QStringLiteral("CC BY 4.0"), about));auto*licenses=new SharedButton(QStringLiteral("查看第三方许可"),"settingsThirdPartyLicenses",appearance,about);licenses->setSymbol("document");licenses->setOutlined(true);row(about,QStringLiteral("第三方组件"),licenses);connect(licenses,&QPushButton::clicked,this,[this]{showLicenses(m_appearance,this);});
     auto *repository = new SharedButton(QStringLiteral("查看源码仓库"), "settingsRepository", appearance, about); repository->setOutlined(true); connect(repository, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl("https://github.com/xiaodaozhi/xdnote")); }); row(about, QStringLiteral("项目来源"), repository);
     if (!updates) updates = new UpdateController(this);
     updates->bindPreferences(m_preferences);
