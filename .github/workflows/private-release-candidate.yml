@@ -128,7 +128,7 @@ jobs:
           python scripts/installer_payload.py --source "$candidate/staging" --audit "$candidate/staging-evidence/inventory.json" --destination "$candidate/payload" --toolchain $toolchain --runtime "$runtime/runtime" --build-dir $desktop --qt-prefix $qt --report "$candidate/payload-inventory.json"
           python scripts/distribution_audit.py --root "$candidate/payload" --audit "$candidate/payload-inventory.json" --qt-prefix $qt --report "$candidate/license-evidence.json"
           python scripts/linkage_audit.py --build-dir $desktop --deployed-binary "$candidate/payload/xdnote.exe" --output "$candidate/linkage.json"
-          python scripts/component_review.py --evidence "$candidate/license-evidence.json" --linkage "$candidate/linkage.json" --qt-prefix $qt --output "$candidate/component-review.json"
+          python scripts/component_review.py --evidence "$candidate/payload-inventory.json" --linkage "$candidate/linkage.json" --qt-prefix $qt --output "$candidate/component-review.json"
           python scripts/compatibility_audit.py --root "$candidate/payload" --report "$candidate/compatibility.json"
           python scripts/build_release_platform.py --root "$candidate/payload" --audit "$candidate/payload-inventory.json" --compatibility "$candidate/compatibility.json" --toolchain $toolchain --output-dir "$candidate/packages"
           $setup = @(Get-ChildItem -LiteralPath "$candidate/packages" -Filter '*-setup.exe' -File)

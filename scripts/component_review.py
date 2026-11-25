@@ -158,11 +158,23 @@ def cocoa_derivation(evidence):
     return public
 
 
-def verify_qt_file(qt, path, actual, derivation, backport):
+def prepared_sdk_originals(qt):
+    import qt_cocoa_backports
+    import qt_network_backports
+
+    originals = {}
+    for variant in (qt_network_backports, qt_cocoa_backports):
+        if (qt / variant.RECEIPT).is_file():
+            record = variant.verify(qt)
+            originals.update({name: row['originalSdkSha256'] for name, row in record['files'].items()})
+    return originals
+
+
+def verify_qt_file(qt, path, actual, derivation, backport, originals):
     source = (qt / path).resolve()
     if not source.is_relative_to(qt.resolve()):
         raise ValueError('Supplier path escapes SDK')
-    sdk_sha = digest(source)
+    sdk_sha = originals[path] if path in originals else digest(source)
     row = derivation['files'].get(path) if derivation else None
     if row is None:
         if backport is not None or sdk_sha != actual:
@@ -188,6 +200,7 @@ def review(evidence, linkage, qt):
             raw_hashes[name]['verifiedVariants'] = [{'fileName': variant.name, 'projectionEquivalent': same,
                                                    **{algorithm: hashlib.new(algorithm, data).hexdigest() for algorithm in ['sha1', 'sha256']}}]
     shipped = {row['path']: row for row in evidence['files']}; seeds = set()
+    originals = prepared_sdk_originals(qt)
     network = network_derivation(evidence)
     cocoa = cocoa_derivation(evidence)
     sources = {}
@@ -199,7 +212,7 @@ def review(evidence, linkage, qt):
         material = row.get('evidence', {}); supplier = material.get('supplier')
         if supplier:
             path = material['sdkFile']
-            row = verify_qt_file(qt, path, material['sdkSha256'], sources.get(path), material.get('sourceBackport'))
+            row = verify_qt_file(qt, path, material['sdkSha256'], sources.get(path), material.get('sourceBackport'), originals)
             if row is not None:
                 if material.get('nativeSectionsMatchSdk') is not True:
                     raise ValueError('Relocated Qt derivative lacks verified code sections')
@@ -221,7 +234,7 @@ def review(evidence, linkage, qt):
                 if (material is None and derivation
                         and evidence.get('kind') == 'unsigned product-only Windows installer payload'):
                     backport = derivation  # Already bound to the sealed manifest and payload digest.
-                row = verify_qt_file(qt, path, actual['sha256'], derivation, backport)
+                row = verify_qt_file(qt, path, actual['sha256'], derivation, backport, originals)
                 if row is not None:
                     derived_files[path] = row
                 seeds.add((name, item['SPDXID']))
