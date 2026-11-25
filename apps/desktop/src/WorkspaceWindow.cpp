@@ -90,7 +90,7 @@ protected:
         const int moving = dragIndex();
         if ((m_dragging || m_settling) && moving >= 0) {
             painter.setPen(QPen(m_appearance->color("border"),1,Qt::DashLine)); painter.setBrush(m_appearance->accentColor("soft"));
-            painter.drawRoundedRect(tabRect(moving).adjusted(2,tabToken("topInset"),-2,-2),6,6);
+            painter.drawRoundedRect(tabRect(moving).adjusted(2,tabToken("topInset"),-2,-2),tabToken("cornerRadius"),tabToken("cornerRadius"));
         }
         for (int i = 0; i < count(); ++i) {
             if ((m_dragging || m_settling) && i == moving) continue;
@@ -103,7 +103,7 @@ protected:
             const auto data = tabData(i).toMap(); const bool active = i == currentIndex();
             const int border=1;
             const auto surface = QRectF(rect).adjusted(border / 2.0, tabToken("topInset") + border / 2.0, -border / 2.0, 0); const qreal radius = tabToken("cornerRadius");
-            if(raised){paintPopupShell(painter,QRectF(rect).adjusted(.5,3.5,-.5,-3.5),m_appearance->color("surface"),m_appearance->color("border"),6,4);}
+            if(raised){paintPopupShell(painter,QRectF(rect).adjusted(.5,3.5,-.5,-3.5),m_appearance->color("surface"),m_appearance->color("border"),int(radius),4);}
             else if (active || i == m_hover) {
                 QPainterPath outline; outline.moveTo(surface.left(), height()); outline.lineTo(surface.left(), surface.top() + radius); outline.quadTo(surface.left(), surface.top(), surface.left() + radius, surface.top()); outline.lineTo(surface.right() - radius, surface.top()); outline.quadTo(surface.right(), surface.top(), surface.right(), surface.top() + radius); outline.lineTo(surface.right(), height());
                 painter.fillPath(outline, m_appearance->color(active ? "background" : "codeSurface"));
@@ -116,7 +116,7 @@ protected:
             painter.setPen(m_appearance->color(active ? "text" : "textSecondary")); const QRect textRect = rect.adjusted(tabToken("padding") + 24, tabToken("topInset"), -tabToken("closeHit") - tabToken("closeInset") - 4, 0);
             painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, fontMetrics().elidedText(data.value("title").toString(), Qt::ElideMiddle, textRect.width()));
             if(raised)themedIcon("close",m_appearance->color("textSecondary")).paint(&painter,QRect(rect.right()+1-tabToken("closeInset")-tabToken("closeHit")/2-6,tabContentY(height(),12),12,12));
-            if (!raised&&active && hasFocus() && InputModality::forApplication()->keyboardNavigation()) { painter.setBrush(Qt::NoBrush); painter.setPen(QPen(m_appearance->accentColor(), 2)); painter.drawRoundedRect(rect.adjusted(3, 3, -3, -3), 5, 5); }
+            if (!raised&&active && hasFocus() && InputModality::forApplication()->keyboardNavigation()) { painter.setBrush(Qt::NoBrush); painter.setPen(QPen(m_appearance->accentColor(), 2)); painter.drawRoundedRect(rect.adjusted(3, 3, -3, -3), radius, radius); }
     }
     void keyPressEvent(QKeyEvent *event) override { if(event->key()==Qt::Key_Escape&&(m_dragging||!m_pressId.isNull())){finishDrag(true);event->accept();return;}if (event->key() == Qt::Key_Delete && currentIndex() >= 0) { InputModality::forApplication()->clear(); if (closeRequested) closeRequested(tabId(this, currentIndex())); event->accept(); } else QTabBar::keyPressEvent(event); }
     void mousePressEvent(QMouseEvent*e)override{if(e->button()==Qt::LeftButton){finishDrag(false);const int i=tabAt(e->position().toPoint());if(i>=0){m_pressId=tabId(this,i);m_press=e->position().toPoint();m_grabOffset=m_press.x()-tabRect(i).left();m_original.clear();for(int j=0;j<count();++j)m_original.append(tabId(this,j));}}QTabBar::mousePressEvent(e);}
