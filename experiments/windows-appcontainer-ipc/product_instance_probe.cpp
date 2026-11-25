@@ -12,7 +12,8 @@ int main(int argc, char **argv) {
     if (args.size() != 3) return 2;
     xdnote::SingleInstance instance;
     const QString expected = args[2] + QStringLiteral("/fixture.md");
-    if (args[1] == "client")
+    if (args[1] == "client-reject-owner") qputenv("XDNOTE_IPC_TEST_REJECT_OWNER", "1");
+    if (args[1] == "client" || args[1] == "client-reject-owner")
         return instance.start(args[2], {expected}, [](QStringList){}) == xdnote::SingleInstance::Result::Forwarded ? 0 : 3;
     const bool race = args[1] == "race";
     if (args[1] != "server" && !race) return 2;
