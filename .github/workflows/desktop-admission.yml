@@ -28,6 +28,11 @@ on:
       candidate_recipient:
         description: 'Public age recipient for release-candidate only'
         type: string
+      candidate_platform:
+        description: 'Build every release target or retry one platform'
+        type: choice
+        options: [all, windows, linux, macos]
+        default: all
 
 permissions:
   contents: read
@@ -43,6 +48,7 @@ jobs:
     with:
       identity: ${{ inputs.candidate_identity }}
       recipient: ${{ inputs.candidate_recipient }}
+      platforms: ${{ inputs.candidate_platform == 'all' && '["windows","linux","macos"]' || format('["{0}"]', inputs.candidate_platform) }}
 
   ipc-isolation:
     if: inputs.scope == 'ipc-windows'

@@ -9,6 +9,9 @@ on:
       recipient:
         type: string
         required: true
+      platforms:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -17,39 +20,18 @@ jobs:
   package:
     if: github.repository == 'xiaodaozhi/xdnote'
     name: Candidate / ${{ matrix.platform }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ fromJSON('{"windows":"windows-2022","linux":"ubuntu-22.04","macos":"macos-15"}')[matrix.platform] }}
     timeout-minutes: 60
     defaults:
       run:
         shell: bash
     env:
       XDNOTE_CANDIDATE_DIR: build/private-release-candidate
-      XDNOTE_QT_PREFIX: build/Qt/6.8.2/${{ matrix.qt-directory }}
+      XDNOTE_QT_PREFIX: build/Qt/6.8.2/${{ fromJSON('{"windows":"msvc2022_64","linux":"gcc_64","macos":"macos"}')[matrix.platform] }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: windows
-            os: windows-2022
-            qt-host: windows
-            qt-arch: win64_msvc2022_64
-            qt-directory: msvc2022_64
-            age-asset: windows-amd64.zip
-            age-sha256: f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7
-          - platform: linux
-            os: ubuntu-22.04
-            qt-host: linux
-            qt-arch: linux_gcc_64
-            qt-directory: gcc_64
-            age-asset: linux-amd64.tar.gz
-            age-sha256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
-          - platform: macos
-            os: macos-15
-            qt-host: mac
-            qt-arch: clang_64
-            qt-directory: macos
-            age-asset: darwin-arm64.tar.gz
-            age-sha256: e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5
+        platform: ${{ fromJSON(inputs.platforms) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,8 +90,13 @@ jobs:
           timeout 360s sudo apt-get "${apt_options[@]}" install -y libgl1-mesa-dev libegl1-mesa-dev libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xinerama0 libxcb-xinput0 libxcb-shape0 libxcb-randr0 libxcb-render-util0 libxcb-image0 libxcb-sync1 libxcb-xfixes0 libxkbcommon-x11-0 fonts-noto-cjk fonts-noto-color-emoji xvfb patchelf zlib1g-dev libssl-dev libkrb5-dev libproxy-dev libpsl-dev libicu-dev libzstd-dev
       - name: Prepare locked tools and SDK
         run: |
+          case "$RUNNER_OS" in
+            Windows) qt_host=windows; qt_arch=win64_msvc2022_64 ;;
+            Linux) qt_host=linux; qt_arch=linux_gcc_64 ;;
+            macOS) qt_host=mac; qt_arch=clang_64 ;;
+          esac
           python -m pip install aqtinstall==3.3.0 py7zr==1.0.0 cmake==4.4.4 ninja==1.13.0
-          python scripts/prepare_qt.py --download --host ${{ matrix.qt-host }} --arch ${{ matrix.qt-arch }}
+          python scripts/prepare_qt.py --download --host "$qt_host" --arch "$qt_arch"
           python scripts/desktop.py prepare --download --profile default
       - name: Prepare the native updater
         if: runner.os == 'macOS'
@@ -120,6 +107,9 @@ jobs:
       - name: Build and verify the Windows packages
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+          XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           $candidate = $env:XDNOTE_CANDIDATE_DIR
@@ -142,6 +132,14 @@ jobs:
           $setup = @(Get-ChildItem -LiteralPath "$candidate/packages" -Filter '*-setup.exe' -File)
           if ($setup.Count -ne 1) { throw 'Expected exactly one Windows installer' }
           ./scripts/test-windows-product-install.ps1 -Package $setup[0].FullName -Audit "$candidate/payload-inventory.json" -PackageReport "$candidate/packages/reports/installer.json" -BuildDirectory $desktop -QtPrefix $qt -EvidenceDirectory "$PWD/$candidate/roundtrip-evidence"
+      - name: Print bounded Windows deployment diagnostics on failure
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:XDNOTE_CANDIDATE_DIR/staging-evidence/smoke-*.log" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Output $_.Name
+            Get-Content -LiteralPath $_.FullName -Tail 50
+          }
       - name: Build and seal the Unix product
         if: runner.os != 'Windows'
         run: |
@@ -162,10 +160,19 @@ jobs:
       - name: Encrypt the packages and their evidence
         env:
           XDNOTE_AGE_RECIPIENT: ${{ inputs.recipient }}
-          XDNOTE_AGE_ASSET: ${{ matrix.age-asset }}
-          XDNOTE_AGE_SHA256: ${{ matrix.age-sha256 }}
         run: |
           candidate=$XDNOTE_CANDIDATE_DIR
+          case "$RUNNER_OS" in
+            Windows)
+              export XDNOTE_AGE_ASSET=windows-amd64.zip
+              export XDNOTE_AGE_SHA256=f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7 ;;
+            Linux)
+              export XDNOTE_AGE_ASSET=linux-amd64.tar.gz
+              export XDNOTE_AGE_SHA256=cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10 ;;
+            macOS)
+              export XDNOTE_AGE_ASSET=darwin-arm64.tar.gz
+              export XDNOTE_AGE_SHA256=e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5 ;;
+          esac
           mkdir "$candidate/transfer"
           curl --fail --location --max-time 60 --retry 2 --silent --show-error \
             "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-$XDNOTE_AGE_ASSET" \

@@ -242,8 +242,11 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('git merge-base --is-ancestor HEAD refs/remotes/origin/main', workflow)
         self.assertIn('contents: read', workflow)
         self.assertNotIn('secrets.', workflow)
-        self.assertEqual(re.findall(r'^ +os: (\S+)$', workflow, re.MULTILINE),
-                         ['windows-2022', 'ubuntu-22.04', 'macos-15'])
+        self.assertIn("options: [all, windows, linux, macos]", dispatcher)
+        self.assertIn('platform: ${{ fromJSON(inputs.platforms) }}', workflow)
+        runners = json.loads(re.search(r"runs-on: .*fromJSON\('([^']+)'\)", workflow)[1])
+        self.assertEqual(runners, {'windows': 'windows-2022', 'linux': 'ubuntu-22.04', 'macos': 'macos-15'})
+        self.assertIn('XDNOTE_TEST_FONT_FILE: ${{ github.workspace }}/build/test-fonts/NotoSansCJKsc-Regular.otf', workflow)
         self.assertEqual(workflow.count('uses: actions/upload-artifact@'), 1)
         self.assertIn('\n          path: build/private-release-candidate/transfer/candidate.tar.age\n', workflow)
 
