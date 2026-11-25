@@ -5,6 +5,8 @@
 #include "FileApplication.h"
 #include "RecoveryStore.h"
 #include "SharedWidgets.h"
+#include "VisualTokens.h"
+#include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QJsonArray>
 #include <QScrollBar>
@@ -151,7 +153,25 @@ WorkspaceWindow *FileApplication::createWorkspace() {
 WorkspaceWindow *FileApplication::workspaceWindow(const QString &root) {
     for (auto *workspace : m_workspaces) if (!workspace->closingWorkspace() && ((root.isEmpty() && workspace->rootPath().isEmpty()) || (!root.isEmpty() && !workspace->rootPath().isEmpty() && rootKey(root) == rootKey(workspace->rootPath())))) { workspace->show(); workspace->raise(); workspace->activateWindow(); return workspace; }
     auto *workspace = createWorkspace(); workspace->setRootPath(root);
-    if(!m_unrestored.isEmpty()) {auto *restore=new SharedButton(QStringLiteral("恢复上次会话（%1 项）").arg(m_unrestored.size()),"restoreLastSession",&m_appearance,workspace);restore->setOutlined(true);qobject_cast<QVBoxLayout*>(workspace->layout())->insertWidget(1,restore);connect(restore,&QPushButton::clicked,this,[this,restore]{restore->setEnabled(false);restoreSession();});}
+    if (!m_unrestored.isEmpty()) {
+        auto *bar = new QWidget(workspace); bar->setObjectName("sessionRecoveryBar");
+        bar->setFixedHeight(visualTokens().value("controls").toObject().value("height").toInt() + 8);
+        auto *row = new QHBoxLayout(bar); row->setContentsMargins(16, 4, 16, 4); row->setSpacing(8);
+        auto *icon = new QLabel(bar); icon->setFixedSize(16, 16); row->addWidget(icon);
+        auto *message = new QLabel(QStringLiteral("上次会话有 %1 项可恢复").arg(m_unrestored.size()), bar);
+        message->setObjectName("sessionRecoveryMessage"); message->setProperty("secondary", true); message->setMinimumWidth(0); row->addWidget(message, 1);
+        auto *restore = new SharedButton(QStringLiteral("恢复会话"), "restoreLastSession", &m_appearance, bar);
+        restore->setProperty("primary", true); row->addWidget(restore);
+        const auto applyAppearance = [this, bar, icon] {
+            const auto borderWidth = visualTokens().value("controls").toObject().value("borderWidth").toInt();
+            bar->setStyleSheet(QStringLiteral("QWidget#sessionRecoveryBar{background:%1;border-bottom:%2px solid %3}")
+                               .arg(m_appearance.color("background").name()).arg(borderWidth).arg(m_appearance.color("border").name()));
+            icon->setPixmap(themedIcon("clock", m_appearance.color("textSecondary")).pixmap(16, 16));
+        };
+        connect(&m_appearance, &Appearance::changed, bar, applyAppearance); applyAppearance();
+        qobject_cast<QVBoxLayout *>(workspace->layout())->insertWidget(1, bar);
+        connect(restore, &QPushButton::clicked, this, [this, restore] { restore->setEnabled(false); restoreSession(); });
+    }
     if(!m_recovery->error().isEmpty())workspace->showNotice(m_recovery->error());workspace->show(); return workspace;
 }
 void FileApplication::chooseDirectory(WorkspaceWindow *owner) {
@@ -412,7 +432,20 @@ void FileApplication::restoreSession(){
     refreshRecoveryActions();
 }
 void FileApplication::refreshRecoveryActions(){
-    QTimer::singleShot(0,this,[this]{if(m_destroying)return;m_restoring=!m_restoreRequests.isEmpty();for(auto *workspace:m_workspaces)if(auto *button=workspace->findChild<SharedButton*>("restoreLastSession")){button->setEnabled(!m_restoring&&!m_unrestored.isEmpty());button->setVisible(m_restoring||!m_unrestored.isEmpty());button->setText(m_restoring?QStringLiteral("正在恢复会话…"):QStringLiteral("恢复上次会话（%1 项）").arg(m_unrestored.size()));}});
+    QTimer::singleShot(0, this, [this] {
+        if (m_destroying) return;
+        m_restoring = !m_restoreRequests.isEmpty();
+        for (auto *workspace : m_workspaces) {
+            auto *bar = workspace->findChild<QWidget *>("sessionRecoveryBar");
+            if (!bar) continue;
+            auto *button = bar->findChild<SharedButton *>("restoreLastSession");
+            auto *message = bar->findChild<QLabel *>("sessionRecoveryMessage");
+            button->setEnabled(!m_restoring && !m_unrestored.isEmpty());
+            button->setText(m_restoring ? QStringLiteral("恢复中…") : QStringLiteral("恢复会话"));
+            message->setText(m_restoring ? QStringLiteral("正在恢复上次会话…") : QStringLiteral("上次会话有 %1 项可恢复").arg(m_unrestored.size()));
+            bar->setVisible(m_restoring || !m_unrestored.isEmpty());
+        }
+    });
 }
 
 }
