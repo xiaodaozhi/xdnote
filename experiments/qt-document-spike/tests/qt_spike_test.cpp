@@ -299,6 +299,7 @@ private slots:
     void windowsFixtureUseProbe();
     void windowsUiaValueWrite_data();
     void windowsUiaValueWrite();
+    void guardedWindowsUiaLifecycle();
     void windowsUiaResultFeedback_data();
     void windowsUiaResultFeedback();
 #endif
@@ -2554,6 +2555,120 @@ void QtDocumentSpikeTests::windowsUiaValueWrite_data()
     QTest::newRow("editable") << false << false;
     QTest::newRow("guarded read-only") << true << true;
     QTest::newRow("guarded editable") << false << true;
+}
+
+void QtDocumentSpikeTests::guardedWindowsUiaLifecycle()
+{
+    if (QGuiApplication::platformName() != QStringLiteral("windows"))
+        QSKIP("The UI Automation lifecycle requires a native Windows window.");
+#ifndef XDNOTE_QT68_GUARDED_ACCESSIBILITY
+    QFAIL("The UI Automation lifecycle requires the Qt 6.8 private development interfaces.");
+#else
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QAccessible::setActive(true);
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.setFlag(Qt::WindowDoesNotAcceptFocus);
+    window.setTitle(QStringLiteral("xdnote-guarded-uia-lifecycle"));
+    window.resize(400, 240);
+    window.setPosition(-10000, -10000);
+    window.show();
+    QPointer<GuardedFixtureTextEdit> editor(
+        qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true)));
+    QVERIFY(editor);
+    editor->setText(QStringLiteral("First guarded document"));
+    QVERIFY(isGuardedQuickAccessibility(QAccessible::queryAccessibleInterface(editor)));
+    QPointer<QTextDocument> original = quickDocument(editor)->textDocument();
+    QVERIFY(original);
+
+    QQmlComponent siblingComponent(&engine);
+    siblingComponent.setData(R"(
+        import QtQuick
+        Text {
+            y: 214
+            text: "Fixture sibling"
+            Accessible.name: text
+            Accessible.role: Accessible.StaticText
+        }
+    )", QUrl());
+    std::unique_ptr<QObject> sibling(siblingComponent.create());
+    auto *siblingItem = qobject_cast<QQuickItem *>(sibling.get());
+    QVERIFY2(siblingItem, qPrintable(siblingComponent.errorString()));
+    siblingItem->setParentItem(window.contentItem());
+
+    QEventLoop loop;
+    QProcess client;
+    client.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/qt_uia_client.exe"));
+    client.setArguments({QString::number(quintptr(window.winId())), QStringLiteral("--guarded-lifecycle")});
+    QPointer<QTextDocument> replacementDocument;
+    const QList<QByteArray> stages{"REPLACE", "READ_ONLY", "UNDO_WRITE", "UNDO_PRIOR", "CLOSE"};
+    qsizetype nextStage = 0;
+    QByteArray diagnostic;
+    connect(&client, &QProcess::readyReadStandardOutput, &loop, [&] {
+        while (client.canReadLine()) {
+            const QByteArray stage = client.readLine().trimmed();
+            diagnostic += stage + '\n';
+            if (nextStage == stages.size())
+                continue;
+            QCOMPARE(stage, stages.at(nextStage));
+            switch (nextStage) {
+            case 0: {
+                auto replacement = std::make_shared<QTextDocument>();
+                replacement->setPlainText(QStringLiteral("original"));
+                QTextCursor cursor(replacement.get());
+                cursor.movePosition(QTextCursor::End);
+                cursor.insertText(QStringLiteral(" tail"));
+                QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
+                QVERIFY(original.isNull());
+                replacementDocument = replacement.get();
+                editor->select(9, 13);
+                break;
+            }
+            case 1:
+                editor->setReadOnly(true);
+                break;
+            case 2:
+                editor->setReadOnly(false);
+                [[fallthrough]];
+            case 3:
+                QVERIFY(replacementDocument->isUndoAvailable());
+                replacementDocument->undo();
+                break;
+            case 4:
+                editor->requestClose();
+                QCoreApplication::sendPostedEvents(editor, QEvent::DeferredDelete);
+                QVERIFY(editor.isNull());
+                QVERIFY(replacementDocument.isNull());
+                break;
+            }
+            ++nextStage;
+            QCOMPARE(client.write("CONTINUE\n"), qint64(9));
+        }
+    });
+    const auto cleanup = qScopeGuard([&client] {
+        if (client.state() != QProcess::NotRunning) {
+            client.kill();
+            client.waitForFinished(5000);
+        }
+    });
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(&client, &QProcess::finished, &loop, &QEventLoop::quit);
+    client.start();
+    QVERIFY2(client.waitForStarted(5000), qUtf8Printable(client.errorString()));
+    timeout.start(15000);
+    if (client.state() != QProcess::NotRunning)
+        loop.exec(); // Serve the external UIA client while it holds both patterns.
+    diagnostic += client.readAllStandardOutput() + client.readAllStandardError();
+    QVERIFY2(client.state() == QProcess::NotRunning, diagnostic.constData());
+    QCOMPARE(client.exitStatus(), QProcess::NormalExit);
+    const QByteArray result = QByteArray::number(client.exitCode()) + '\n' + diagnostic;
+    QVERIFY2(client.exitCode() == 0, result.constData());
+    QCOMPARE(nextStage, stages.size());
+    qInfo().noquote() << diagnostic.trimmed();
+#endif
 }
 
 void QtDocumentSpikeTests::windowsUiaValueWrite()
