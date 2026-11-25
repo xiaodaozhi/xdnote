@@ -12,21 +12,6 @@ if [[ "${XDG_RUNTIME_DIR:-}" != "$5" || ! -d "$XDG_RUNTIME_DIR" || -z "${DBUS_SE
 fi
 
 probe="$(dirname -- "$0")/orca-evidence.py"
-fixture="$evidence/Reader-Check.md"
-{
-    cat <<'DOC'
-# Native reading acceptance
-
-Blue orchard reading sample.
-
-[Follow the cedar heading](#cedar-anchor)
-
-DOC
-    for number in {1..40}; do printf 'Filler paragraph %s.\n\n' "$number"; done
-    printf '## Cedar anchor\n\nAmber target reading sample.\n'
-} > "$fixture"
-(cd "$evidence" && sha256sum Reader-Check.md > fixture-before.sha256)
-cp -- "$build_dir/build-identity.json" "$evidence/build-identity.json"
 {
     echo "backend=$backend"
     echo "revision=$(git rev-parse HEAD)"
@@ -40,6 +25,16 @@ owned_pids=()
 finish() {
     if (( "${#owned_pids[@]}" )); then
         kill "${owned_pids[@]}" 2>/dev/null || true
+        for attempt in {1..30}; do
+            [[ -n "$(jobs -pr)" ]] || break
+            sleep 0.1
+        done
+        # Orca can remain in a synchronous speech or accessibility call during shutdown.
+        local running
+        running="$(jobs -pr)"
+        for child in "${owned_pids[@]}"; do
+            if grep -qx "$child" <<< "$running"; then kill -KILL "$child" 2>/dev/null || true; fi
+        done
         for child in "${owned_pids[@]}"; do wait "$child" 2>/dev/null || true; done
     fi
 }
@@ -90,7 +85,19 @@ for attempt in {1..30}; do
 done
 pactl set-default-sink xdnote_acceptance
 gsettings set org.gnome.desktop.interface toolkit-accessibility true
-orca --enable=speech --disable=braille --debug-file="$evidence/orca.log" > "$evidence/orca-console.log" 2>&1 &
+reader_args=(--enable=speech --disable=braille --debug-file="$evidence/orca.log")
+if [[ "${6:-}" == --quick-editor ]]; then
+    prefs="$XDG_DATA_HOME/orca"
+    install -d -m 700 -- "$prefs"
+    cat > "$prefs/orca-customizations.py" <<'PY'
+import orca.debug
+
+# The fixture waits for Orca between document changes, so flush each speech trace line.
+orca.debug.debugFile.reconfigure(line_buffering=True)
+PY
+    reader_args+=(--user-prefs-dir="$prefs")
+fi
+orca "${reader_args[@]}" > "$evidence/orca-console.log" 2>&1 &
 reader_pid=$!
 owned_pids+=("$reader_pid")
 for attempt in {1..30}; do
@@ -100,6 +107,36 @@ for attempt in {1..30}; do
 done
 [[ -s "$evidence/orca.log" ]] || { echo 'Orca did not start logging' >&2; exit 1; }
 sleep 2
+
+if [[ "${6:-}" == --quick-editor ]]; then
+    export XDNOTE_QUICK_ORCA_CLIENT="$PWD/experiments/qt-document-spike/tests/orca_client.py"
+    export XDNOTE_QUICK_ORCA_LOG="$evidence/orca.log" XDNOTE_ORCA_SPEECH_PROBE="$probe"
+    export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software QT_PLUGIN_PATH="$qt_prefix/plugins"
+    export QML_IMPORT_PATH="$qt_prefix/qml" LD_LIBRARY_PATH="$qt_prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    "$build_dir/qt_document_spike_tests" guardedOrcaAccessibility -o "$evidence/qtest.txt,txt" \
+        2> >(tee "$evidence/speech-markers.txt" >&2) || { cat "$evidence/qtest.txt"; exit 1; }
+    cat "$evidence/qtest.txt"
+    grep -Eq '^PASS.*guardedOrcaAccessibility' "$evidence/qtest.txt"
+    ! grep -Eq '^(FAIL|SKIP).*guardedOrcaAccessibility' "$evidence/qtest.txt"
+    printf 'PASS: Orca on the guarded Qt Quick editor\n' | tee "$evidence/result.txt"
+    exit
+fi
+
+fixture="$evidence/Reader-Check.md"
+{
+    cat <<'DOC'
+# Native reading acceptance
+
+Blue orchard reading sample.
+
+[Follow the cedar heading](#cedar-anchor)
+
+DOC
+    for number in {1..40}; do printf 'Filler paragraph %s.\n\n' "$number"; done
+    printf '## Cedar anchor\n\nAmber target reading sample.\n'
+} > "$fixture"
+(cd "$evidence" && sha256sum Reader-Check.md > fixture-before.sha256)
+cp -- "$build_dir/build-identity.json" "$evidence/build-identity.json"
 
 launch=(python scripts/desktop.py run --profile default --build-dir "$build_dir" --qt-prefix "$qt_prefix" --file "$fixture")
 if [[ "$backend" == x11 ]]; then

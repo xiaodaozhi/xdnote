@@ -5,9 +5,9 @@ on:
     inputs:
       scope:
         type: choice
-        description: Run the full experiment, Linux AT-SPI, or the Windows UIA fixture provider
+        description: Run the full experiment or the Linux AT-SPI, Linux Orca, or Windows UIA check
         default: all
-        options: [all, linux-atspi, windows-uia]
+        options: [all, linux-atspi, linux-orca, windows-uia]
 
 permissions:
   contents: read
@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.scope == 'linux-atspi' && '["ubuntu-22.04","ubuntu-24.04"]' || inputs.scope == 'windows-uia' && '["windows-2022"]' || '["ubuntu-22.04","ubuntu-24.04","windows-2022","macos-15"]') }}
+        os: ${{ fromJSON(inputs.scope == 'linux-atspi' && '["ubuntu-22.04","ubuntu-24.04"]' || inputs.scope == 'linux-orca' && '["ubuntu-22.04"]' || inputs.scope == 'windows-uia' && '["windows-2022"]' || '["ubuntu-22.04","ubuntu-24.04","windows-2022","macos-15"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,23 +53,23 @@ jobs:
       - name: Build experiment
         run: cmake --build build/qt-document-spike --config Release --parallel 2
       - name: Clear previous Qt document test report
-        if: inputs.scope != 'windows-uia'
+        if: inputs.scope != 'windows-uia' && inputs.scope != 'linux-orca'
         shell: python
         run: |
           from pathlib import Path
 
           Path('build/qt-document-spike/qt_document_spike_ctest.txt').unlink(missing_ok=True)
       - name: Run offscreen experiment tests
-        if: inputs.scope != 'windows-uia'
+        if: inputs.scope != 'windows-uia' && inputs.scope != 'linux-orca'
         id: qt_tests
         run: ctest --test-dir build/qt-document-spike -C Release --output-on-failure --no-tests=error
       - name: Prepare the Linux accessibility bridge
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && inputs.scope != 'linux-orca'
         run: |
           sudo apt-get -o Acquire::Retries=2 update
           sudo apt-get -o Acquire::Retries=2 install -y --no-install-recommends at-spi2-core python3-pyatspi dbus-x11 xauth xvfb openbox gnome-shell gnome-settings-daemon xwayland
       - name: Run the guarded Quick editor through a separate AT-SPI client
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && inputs.scope != 'linux-orca'
         env:
           QT_QPA_PLATFORM: xcb
           QT_QUICK_BACKEND: software
@@ -77,10 +77,10 @@ jobs:
           XDNOTE_ATSPI_CLIENT: ${{ github.workspace }}/experiments/qt-document-spike/tests/atspi_client.py
         run: dbus-run-session -- xvfb-run -a build/qt-document-spike/qt_document_spike_tests guardedAtspiAccessibility
       - name: Run the same AT-SPI client through native GNOME Wayland
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && inputs.scope != 'linux-orca'
         run: bash experiments/qt-document-spike/tests/atspi-wayland.sh
       - name: Preserve native Wayland accessibility evidence
-        if: always() && runner.os == 'Linux'
+        if: always() && runner.os == 'Linux' && inputs.scope != 'linux-orca'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: qt-document-wayland-atspi-${{ matrix.os }}
@@ -88,6 +88,24 @@ jobs:
             build/qt-document-spike/wayland-atspi/*.log
             build/qt-document-spike/wayland-atspi/qtest.txt
             build/qt-document-spike/wayland-atspi/environment.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Prepare the isolated Linux Orca session
+        if: inputs.scope == 'linux-orca'
+        run: |
+          timeout 180s sudo apt-get -o Acquire::Retries=2 update
+          timeout 380s sudo apt-get -o Acquire::Retries=2 install -y --no-install-recommends orca python3-pyatspi dbus-x11 xvfb xauth openbox xdotool pulseaudio speech-dispatcher-espeak-ng
+      - name: Read the guarded Quick editor with Orca
+        if: inputs.scope == 'linux-orca'
+        run: bash scripts/reader-acceptance/orca-linux.sh x11 build/qt-document-spike "${QT_ROOT_DIR:?}" --quick-editor
+      - name: Preserve the Quick editor Orca evidence
+        if: always() && inputs.scope == 'linux-orca'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qt-document-orca-x11
+          path: |
+            build/reader-acceptance/orca-quick-editor/*/*.txt
+            build/reader-acceptance/orca-quick-editor/*/*.log
           if-no-files-found: warn
           retention-days: 7
       - name: Run the guarded Quick editor through the Cocoa accessibility bridge

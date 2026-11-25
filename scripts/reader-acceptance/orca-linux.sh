@@ -4,8 +4,9 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 cd -- "$script_dir/../.."
 
-if [[ $# -ne 3 || ( "$1" != x11 && "$1" != wayland ) ]]; then
-    echo "Usage: bash scripts/reader-acceptance/orca-linux.sh {x11|wayland} BUILD_DIR QT_PREFIX" >&2
+if [[ ( $# -ne 3 && $# -ne 4 ) || ( "$1" != x11 && "$1" != wayland ) ||
+      ( $# -eq 4 && ( "$4" != --quick-editor || "$1" != x11 ) ) ]]; then
+    echo "Usage: bash scripts/reader-acceptance/orca-linux.sh {x11|wayland} BUILD_DIR QT_PREFIX [--quick-editor (x11)]" >&2
     exit 2
 fi
 if [[ "$(uname -s)" != Linux ]]; then
@@ -16,6 +17,7 @@ fi
 backend="$1"
 build_dir="$2"
 qt_prefix="$3"
+mode="${4:-}"
 tools=(xvfb-run xauth dbus-run-session openbox orca pulseaudio pactl gsettings xdotool timeout python)
 if [[ "$backend" == wayland ]]; then tools+=(gnome-shell); fi
 for tool in "${tools[@]}"; do
@@ -27,6 +29,7 @@ done
 }
 
 output="$PWD/build/reader-acceptance/orca-$backend"
+if [[ "$mode" == --quick-editor ]]; then output="$PWD/build/reader-acceptance/orca-quick-editor"; fi
 mkdir -p -- "$output"
 evidence="$(mktemp -d "$output/$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")"
 export XDG_CONFIG_HOME="$evidence/config"
@@ -48,5 +51,5 @@ fi
 
 echo "Evidence directory: $evidence"
 timeout --kill-after=15s 240s xvfb-run -a -s '-screen 0 1440x1080x24 +extension GLX' \
-    dbus-run-session -- bash "$script_dir/orca-session.sh" "$backend" "$evidence" "$build_dir" "$qt_prefix" "$runtime" \
+    dbus-run-session -- bash "$script_dir/orca-session.sh" "$backend" "$evidence" "$build_dir" "$qt_prefix" "$runtime" "$mode" \
     2>&1 | tee "$evidence/run.log"

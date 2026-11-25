@@ -19,7 +19,7 @@ def descendants(node, depth=0):
             yield from descendants(child, depth + 1)
 
 
-def find_editor(process_id):
+def find_editor(process_id, title='xdnote AT-SPI research fixture'):
     desktop = pyatspi.Registry.getDesktop(0)
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
@@ -29,7 +29,7 @@ def find_editor(process_id):
                 continue
             app.clear_cache()
             for window in descendants(app):
-                if window.name == 'xdnote AT-SPI research fixture':
+                if window.name == title:
                     for editor in descendants(window):
                         if editor.name == 'Document':
                             return editor

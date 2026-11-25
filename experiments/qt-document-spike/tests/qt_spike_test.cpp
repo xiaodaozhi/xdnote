@@ -254,6 +254,7 @@ private slots:
 #endif
 #if defined(Q_OS_LINUX) && defined(XDNOTE_QT68_GUARDED_ACCESSIBILITY)
     void guardedAtspiAccessibility();
+    void guardedOrcaAccessibility();
 #endif
     void singleEditorReparentPreservesAccessibilityAndUndo_data();
     void singleEditorReparentPreservesAccessibilityAndUndo();
@@ -814,6 +815,76 @@ void QtDocumentSpikeTests::guardedAtspiAccessibility()
     QCOMPARE(replacement->toPlainText(), QStringLiteral("new document!"));
     replacement->undo();
     QCOMPARE(replacement->toPlainText(), QStringLiteral("new document"));
+}
+
+void QtDocumentSpikeTests::guardedOrcaAccessibility()
+{
+    const QString script = qEnvironmentVariable("XDNOTE_QUICK_ORCA_CLIENT");
+    if (script.isEmpty())
+        QSKIP("Run the Quick editor in the isolated Orca session.");
+    QCOMPARE(QGuiApplication::platformName(), QStringLiteral("xcb"));
+    QVERIFY(QFileInfo(script).isFile());
+    QAccessible::installFactory(guardedQuickAccessibilityFactory);
+    const auto factory = qScopeGuard([] { QAccessible::removeFactory(guardedQuickAccessibilityFactory); });
+    QQmlEngine engine;
+    QQuickWindow window;
+    window.setTitle(QStringLiteral("xdnote Orca research fixture"));
+    window.resize(480, 240);
+    auto *editor = qobject_cast<GuardedFixtureTextEdit *>(makeEditor(engine, window, true, true));
+    QVERIFY(editor);
+    QVERIFY(isGuardedQuickAccessibility(QAccessible::queryAccessibleInterface(editor)));
+    editor->setText(QStringLiteral("Blue orchard old document"));
+    QPointer<QTextDocument> original = quickDocument(editor)->textDocument();
+    window.show();
+    editor->forceActiveFocus();
+    QTRY_VERIFY(window.isExposed());
+
+    QProcess client;
+    client.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    client.start(QStringLiteral("/usr/bin/python3"),
+                 {script, QString::number(QCoreApplication::applicationPid())});
+    QVERIFY(client.waitForStarted(5000));
+    const auto stopClient = qScopeGuard([&] {
+        if (client.state() != QProcess::NotRunning) {
+            client.kill();
+            client.waitForFinished(5000);
+        }
+    });
+    const auto readPhase = [&] {
+        if (!QTest::qWaitFor([&] { return client.canReadLine() || client.state() == QProcess::NotRunning; }, 25000))
+            return QByteArray{};
+        return client.readLine().trimmed();
+    };
+    QCOMPARE(readPhase(), QByteArray("OLD_SPOKEN"));
+
+    auto replacement = std::make_shared<QTextDocument>();
+    replacement->setPlainText(QStringLiteral("Cedar arch previous draft"));
+    QTextCursor cursor(replacement.get());
+    cursor.beginEditBlock();
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(QStringLiteral("Golden willow replacement sample"));
+    cursor.endEditBlock();
+    editor->setReadOnly(true);
+    QCOMPARE(editor->replaceOwnedDocument(replacement), FixtureEditResult::Applied);
+    QVERIFY(original.isNull());
+    QCOMPARE(client.write("READ_ONLY\n"), qint64(10));
+    QCOMPARE(readPhase(), QByteArray("REPLACEMENT_SPOKEN"));
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("Golden willow replacement sample"));
+
+    editor->setReadOnly(false);
+    QCOMPARE(client.write("WRITE\n"), qint64(6));
+    QCOMPARE(readPhase(), QByteArray("WRITE_SPOKEN"));
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("Silver birch accessible write"));
+
+    replacement->undo();
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("Golden willow replacement sample"));
+    replacement->undo();
+    QCOMPARE(replacement->toPlainText(), QStringLiteral("Cedar arch previous draft"));
+    QCOMPARE(client.write("UNDO\n"), qint64(5));
+    QCOMPARE(readPhase(), QByteArray("UNDO_SPOKEN"));
+    QTRY_COMPARE_WITH_TIMEOUT(client.state(), QProcess::NotRunning, 5000);
+    QCOMPARE(client.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(client.exitCode(), 0);
 }
 #endif
 
