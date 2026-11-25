@@ -30,6 +30,22 @@ using namespace xdnote;
 class ProductToolsTests final : public QObject {
     Q_OBJECT
 private slots:
+    void restoreKeepsSameFileInDifferentWindowsAndDeduplicatesWorkspaceTabs() {
+        QTemporaryDir dir; QVERIFY(QDir().mkpath(dir.filePath("child")));
+        const auto path = dir.filePath("child/shared.md"), settings = dir.filePath("settings.json");
+        QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("shared"); file.close();
+        QJsonArray entries;
+        for (const auto &root : QStringList{dir.path(), dir.filePath("child"), QString(), QString(), dir.path()})
+            entries.append(QJsonObject{{"id",QUuid::createUuid().toString()},{"path",path},{"root",root}});
+        { RecoveryStore store(settings + ".recovery"); store.save({{"schemaVersion",1},{"documents",entries},{"drafts",QJsonArray{}}}); QVERIFY(store.flush()); }
+        FileApplication app(nullptr, settings); auto *welcome = app.workspaceWindow();
+        auto *restore = welcome->findChild<QPushButton *>("restoreLastSession"); QVERIFY(restore); restore->click();
+        auto *manager = app.findChild<FileManager *>(); QVERIFY(manager); QTRY_COMPARE(manager->documentCount(), 4); QTRY_VERIFY(manager->idle());
+        QTRY_VERIFY(!welcome->findChild<QWidget *>("sessionRecoveryBar")->isVisible());
+        QCOMPARE(app.workspaceWindow(dir.path())->panes().size(), 1); QCOMPARE(app.workspaceWindow(dir.filePath("child"))->panes().size(), 1);
+        QSet<QUuid> ids; for (auto *document : manager->documents()) { ids.insert(document->session()->documentId()); QCOMPARE(document->session()->snapshot().utf8,QByteArray("shared")); }
+        QCOMPARE(ids.size(), 4);
+    }
     void failedSessionRestoreCanRetryAfterTheFileReturns(){
         QTemporaryDir dir;const auto path=dir.filePath("missing.md"),settings=dir.filePath("settings.json");const QJsonObject entry{{"id",QUuid::createUuid().toString()},{"path",path},{"root",QString()}};{RecoveryStore store(settings+".recovery");store.save({{"schemaVersion",1},{"documents",QJsonArray{entry}},{"drafts",QJsonArray{}}});QVERIFY(store.flush());}
         FileApplication app(nullptr,settings);auto *workspace=app.workspaceWindow();

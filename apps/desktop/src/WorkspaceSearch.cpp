@@ -2,6 +2,7 @@
 #include "WorkspaceSearch.h"
 #include "DocumentSearch.h"
 #include "FileManager.h"
+#include "WorkspaceWindow.h"
 #include "Appearance.h"
 #include "SharedWidgets.h"
 #include "Utf8Text.h"
@@ -66,7 +67,8 @@ void WorkspaceSearch::focusQuery(){m_query->setFocus(Qt::ShortcutFocusReason);m_
 void WorkspaceSearch::start(){
     if (updateTasksBlocked()) return;
     cancel();m_hits.clear();m_list->clear();const auto query=m_query->text();if(query.isEmpty()||!m_root){m_status->setText(QStringLiteral("请打开工作区并输入搜索词"));return;}
-    QHash<QString,SearchBuffer> buffers;if(m_manager)for(auto *document:m_manager->documents()){const auto path=QDir(m_root->rootPath()).relativeFilePath(document->path());if(path==".."||path.startsWith("../")||QDir::isAbsolutePath(path))continue;const auto snapshot=document->session()->snapshot();buffers[path]={snapshot.utf8,document->identity(),snapshot.result==EditResult::Applied};}
+    const auto *workspace = qobject_cast<WorkspaceWindow *>(window());
+    QHash<QString,SearchBuffer> buffers;if(m_manager)for(auto *document:m_manager->documents()){if(workspace && document->scope()!=workspace->scope())continue;const auto path=QDir(m_root->rootPath()).relativeFilePath(document->path());if(path==".."||path.startsWith("../")||QDir::isAbsolutePath(path))continue;const auto snapshot=document->session()->snapshot();buffers[path]={snapshot.utf8,document->identity(),snapshot.result==EditResult::Applied};}
     const auto generation=m_generation;const auto root=m_root;const auto token=m_cancel=std::make_shared<std::atomic_bool>(false);m_status->setText(QStringLiteral("正在搜索…"));auto *watcher=new QFutureWatcher<WorkspaceMatches>(this);
     connect(watcher,&QFutureWatcher<WorkspaceMatches>::finished,this,[this,watcher,generation]{const auto result=watcher->result();watcher->deleteLater();if(generation!=m_generation||result.cancelled)return;m_hits=result.hits;for(const auto &hit:m_hits){auto *item=new QListWidgetItem(QStringLiteral("%1:%2\n%3").arg(hit.path).arg(hit.line).arg(hit.excerpt),m_list);item->setToolTip(item->text());}m_status->setText(QStringLiteral("%1 个匹配%2").arg(m_hits.size()).arg(result.warning.isEmpty()?QString():"\n"+result.warning));});watcher->setFuture(QtConcurrent::run([root,query,buffers,token]{return searchWorkspace(root,query,buffers,token);}));
 }

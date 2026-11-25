@@ -848,7 +848,8 @@ private slots:
         QVERIFY(movedProbe.file);
         QCOMPARE(movedProbe.file->identity(), original.file->identity());
         QCOMPARE(registry.lookup(movedProbe.file).session, previous.session);
-        const auto replacementRequest = registry.beginOpen(replacement.file).read;
+        QCOMPARE(registry.beginOpen(replacement.file).session, previous.session);
+        const auto replacementRequest = registry.beginOpen(replacement.file, QUuid::createUuid()).read;
         auto replacementText = FileService::read(replacementRequest);
         QVERIFY(replacementText.baseline);
         auto next = registry.complete(replacementRequest, replacementText.baseline);
@@ -1022,6 +1023,26 @@ private slots:
         QCOMPARE(opened.result, RegistryResult::Created);
         QCOMPARE(opened.session->snapshot().utf8, QByteArray("after"));
         QCOMPARE(registry.complete(first, delayed.baseline).result, RegistryResult::StaleRequest);
+    }
+    void fileRegistryScopesIsolatePendingReadsCancellationAndTransfer() {
+        QTemporaryDir dir; const auto path = dir.filePath("shared.md"), other = dir.filePath("other.md");
+        QVERIFY(fileFixtures::write(path, "shared")); QVERIFY(fileFixtures::write(other, "other"));
+        const auto probe = FileService::probe(path), otherProbe = FileService::probe(other); QVERIFY(probe.file && otherProbe.file);
+        SessionRegistry registry; const auto a = QUuid::createUuid(), b = QUuid::createUuid();
+        const auto first = registry.beginOpen(probe.file, a), second = registry.beginOpen(probe.file, b);
+        QVERIFY(first.startRead && second.startRead); QVERIFY(first.read.requestId != second.read.requestId);
+        const auto repeated = registry.beginOpen(probe.file, a); QVERIFY(!repeated.startRead); QCOMPARE(repeated.read.requestId, first.read.requestId);
+        QCOMPARE(registry.cancel({otherProbe.file, first.read.requestId}), RegistryResult::StaleRequest);
+        QCOMPARE(registry.cancel(first.read), RegistryResult::Cancelled);
+        const auto late = FileService::read(first.read), current = FileService::read(second.read); QVERIFY(late.baseline && current.baseline);
+        QCOMPARE(registry.complete(first.read, late.baseline).result, RegistryResult::StaleRequest);
+        const auto opened = registry.complete(second.read, current.baseline); QCOMPARE(opened.result, RegistryResult::Created);
+        QCOMPARE(registry.lookup(probe.file, b).session, opened.session); QCOMPARE(registry.lookup(probe.file, a).result, RegistryResult::NotRegistered);
+        QCOMPARE(registry.setScope(opened.session, a), RegistryResult::Reused);
+        const auto pending = registry.beginOpen(probe.file, b); QVERIFY(pending.startRead);
+        QCOMPARE(registry.setScope(opened.session, b), RegistryResult::TargetInUse);
+        QCOMPARE(registry.cancel(pending.read), RegistryResult::Cancelled); QCOMPARE(registry.setScope(opened.session, b), RegistryResult::Reused);
+        QCOMPARE(opened.session->snapshot().utf8, QByteArray("shared"));
     }
 
     void systemFontsCanShapeChinese() {

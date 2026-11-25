@@ -259,6 +259,7 @@ WorkspaceWindow::~WorkspaceWindow() {
 QString WorkspaceWindow::rootPath() const { return m_tree->rootPath(); }
 void WorkspaceWindow::setRootPath(const QString &path) {
     if (m_maintenance->busy()) { showNotice(QStringLiteral("正在维护资源，请等待完成后切换工作区。")); return; }
+    if (m_rootPathGuard && !m_rootPathGuard(path)) return;
     m_searchDelay.stop(); m_search->clear();
     if (m_resourceRoot) m_resourceRoot->revoke();
     m_tree->setRootPath(path);

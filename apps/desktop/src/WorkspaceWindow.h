@@ -5,6 +5,7 @@
 #include <QUuid>
 #include <QTimer>
 #include <memory>
+#include <functional>
 
 class QTabBar;
 class QStackedWidget;
@@ -40,6 +41,8 @@ public:
     QList<SingleFileWindow *> panes() const;
     bool closingWorkspace() const { return m_closingAll; }
     void setRootPath(const QString &path);
+    void setRootPathGuard(std::function<bool(const QString &)> guard) { m_rootPathGuard = std::move(guard); }
+    QUuid scope() const { return m_scope; }
     QString rootPath() const;
     WorkspaceTree *tree() const { return m_tree; }
     WindowGeometry *windowGeometry() const { return m_geometry; }
@@ -64,6 +67,8 @@ protected:
     bool event(QEvent *) override;
     bool eventFilter(QObject *, QEvent *) override;
 private:
+    const QUuid m_scope = QUuid::createUuid();
+    std::function<bool(const QString &)> m_rootPathGuard;
     WorkspaceSearch *m_fullSearch = nullptr;
     bool m_fullSearchWanted = false;
     void installTabClose(int index, const QUuid &id);
