@@ -268,8 +268,9 @@ void SourceEditor::applyAppearance() {
     send(SCI_STYLESETFORE, 3, ref(m_appearance->color("textSecondary")));
     send(SCI_STYLESETFORE, 4, ref(m_appearance->color("syntaxHeading")));send(SCI_STYLESETFORE, 5, ref(m_appearance->color("syntaxCode")));send(SCI_STYLESETFORE, 6, ref(m_appearance->color("syntaxCode")));send(SCI_STYLESETFORE, 7, ref(m_appearance->color("textSecondary")));
     send(SCI_SETCARETFORE, ref(m_appearance->color("text")));
+    // A selection foreground splits Scintilla's text runs at the selection edges.
+    // Highlight the background so selected and unselected text share the same shaping.
     send(SCI_SETSELBACK, true, ref(m_appearance->accentColor("soft")));
-    send(SCI_SETSELFORE, true, ref(m_appearance->color("text")));
     applyPreferences();
     restyle();
 }
