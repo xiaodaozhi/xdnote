@@ -129,7 +129,7 @@ def fetch(destination, check_only, report):
     report['secretBytesVerified'] = hmac.compare_digest(hashlib.sha256(key_bytes).hexdigest(), credential['sha256'])
     if not report['secretBytesVerified']:
         raise ValueError('Restored private key bytes differ from the accompanying digest')
-    expected_public = expected['deployPublicKey'].split()
+    expected_public = expected['deployPublicKey'].split()[:2]
     report['expectedFingerprint'] = fingerprint(expected_public)
     remote = f'git@github.com:{repository}.git'
 
