@@ -1,6 +1,6 @@
 # 发行渠道、许可核验与更新
 
-发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)通过桌面 C ABI 接入关于页的主动检查与受限网络请求。清单和 Sparkle 已配置各自的生产公钥。工程已接入认证包下载、文档任务交接、Sparkle 原生提供方及 Windows／Linux 独立助手。公开受信候选、正式包的安装／恢复和商店交付仍待验收。
+发行决策以 [release-policy.json](../../tools/release-policy.json) 为机器可读依据。当前已实现开发安装维护、依赖材料核对、macOS ad-hoc 完整性检查及开发归档；[Rust 更新核心](../../crates/update/src/lib.rs)通过桌面 C ABI 接入关于页的主动检查与受限网络请求。清单和 Sparkle 已配置各自的生产公钥。工程已接入认证包下载、文档任务交接、Sparkle 原生提供方及 Windows／Linux 独立助手。[首个公开预发行 0.1.0-rc.3](https://github.com/xiaodaozhi/xdnote/releases/tag/v0.1.0-rc.3)已通过 GitHub Releases 发布。普通渠道的实际更新验收见 [#155](https://github.com/xiaodaozhi/xdnote/issues/155)，商店交付见 [#156](https://github.com/xiaodaozhi/xdnote/issues/156)。
 
 ## 渠道与签名
 
