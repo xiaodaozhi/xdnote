@@ -34,7 +34,7 @@ private:
 QIcon themedIcon(const QString &name, const QColor &color);
 QIcon colorSwatch(const QColor &color);
 void paintPopupShell(QPainter &painter, const QRectF &surface, const QColor &fill, const QColor &border, int radius, int shadow);
-QString themedScrollBars(Appearance *appearance);
+QString themedScrollBars(Appearance *appearance, const char *surface = "background");
 class SharedButton final : public QPushButton {
     Q_OBJECT
     Q_PROPERTY(bool keyboardOutline READ keyboardOutline)

@@ -18,6 +18,7 @@
 
 namespace xdnote {
 namespace {
+constexpr int treeInset = 8;
 constexpr int pathRole = Qt::UserRole + 1, loadedRole = Qt::UserRole + 2;
 struct Entry { QString path, name; bool directory; };
 struct Listing { QList<Entry> entries; QString error; bool missing = false, limited = false; int visited = 0; };
@@ -60,7 +61,7 @@ WorkspaceTree::WorkspaceTree(Appearance *appearance, QWidget *parent) : QTreeVie
 WorkspaceTree::~WorkspaceTree() { m_refreshDelay.stop(); cancelSearch(); }
 void WorkspaceTree::drawRow(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const {
     const bool selected = selectionModel()->isSelected(index); const auto cell = visualRect(index);
-    painter->save(); painter->fillRect(option.rect, m_appearance->color("sidebar")); painter->setRenderHint(QPainter::Antialiasing); const auto rect = option.rect.adjusted(8, 1, -8, -1);
+    painter->save(); painter->fillRect(option.rect, m_appearance->color("sidebar")); painter->setRenderHint(QPainter::Antialiasing); const auto rect = option.rect.adjusted(0, 1, -treeInset, -1);
     if (selected || index == m_hover) { painter->setPen(Qt::NoPen); painter->setBrush(m_appearance->accentColor("soft")); painter->drawRoundedRect(rect, 5, 5); }
     if (selected) { painter->setBrush(m_appearance->accentColor()); painter->drawRoundedRect(QRectF(rect.left(), rect.top() + 5, 3, rect.height() - 10), 1.5, 1.5); }
     if (selected && hasFocus() && currentIndex() == index && InputModality::forApplication()->keyboardNavigation()) { painter->setBrush(Qt::NoBrush); painter->setPen(QPen(m_appearance->accentColor(), 2)); painter->drawRoundedRect(rect.adjusted(2, 2, -2, -2), 4, 4); }
@@ -72,10 +73,19 @@ void WorkspaceTree::drawRow(QPainter *painter, const QStyleOptionViewItem &optio
 void WorkspaceTree::mouseMoveEvent(QMouseEvent *event) { const auto previous = m_hover; m_hover = indexAt(event->position().toPoint()); if (previous != m_hover) viewport()->update(); QTreeView::mouseMoveEvent(event); }
 void WorkspaceTree::leaveEvent(QEvent *event) { m_hover = QPersistentModelIndex(); viewport()->update(); QTreeView::leaveEvent(event); }
 void WorkspaceTree::drawBranches(QPainter *painter, const QRect &rect, const QModelIndex &index) const {
-    if (model()->hasChildren(index)) themedIcon(isExpanded(index) ? "chevron-down" : "chevron-right", m_appearance->color("textSecondary")).paint(painter, QRect(rect.right() - indentation() + 2, rect.top() + (rect.height() - 12) / 2, 12, 12));
+    if (!model()->hasChildren(index)) return;
+    constexpr int iconSize = 12;
+    const int left = rect.x() + rect.width() - (indentation() + iconSize) / 2;
+    const int top = rect.y() + (rect.height() - iconSize) / 2;
+    themedIcon(isExpanded(index) ? "chevron-down" : "chevron-right", m_appearance->color("textSecondary")).paint(painter, QRect(left, top, iconSize, iconSize));
 }
 void WorkspaceTree::applyAppearance() {
-    setStyleSheet(QStringLiteral("QTreeView{background:%1;color:%2;border:0;outline:0} QTreeView::item{height:%3px;padding-right:4px;background:transparent} QTreeView::item:selected,QTreeView::item:hover{background:transparent}").arg(m_appearance->color("sidebar").name(), m_appearance->color("text").name()).arg(visualTokens().value("navigation").toObject().value("treeRowHeight").toInt()) + themedScrollBars(m_appearance));
+    const int rowHeight = visualTokens().value("navigation").toObject().value("treeRowHeight").toInt();
+    setStyleSheet(QStringLiteral("QTreeView{background:%1;color:%2;border:0;outline:0;padding-left:%3px}"
+                                 " QTreeView::item{height:%4px;padding-right:4px;background:transparent}"
+                                 " QTreeView::item:selected,QTreeView::item:hover{background:transparent}")
+                      .arg(m_appearance->color("sidebar").name(), m_appearance->color("text").name())
+                      .arg(treeInset).arg(rowHeight) + themedScrollBars(m_appearance, "sidebar"));
     const auto updateItems = [this](auto &&self, QStandardItem *parent) -> void { for (int i = 0; i < parent->rowCount(); ++i) { auto *item = parent->child(i); const QFileInfo info(item->data(pathRole).toString()); if (!item->data(pathRole).toString().isEmpty()) item->setIcon(themedIcon(info.isDir() ? "folder" : "document", m_appearance->color("textSecondary"))); self(self, item); } };
     updateItems(updateItems, m_model.invisibleRootItem());
 }

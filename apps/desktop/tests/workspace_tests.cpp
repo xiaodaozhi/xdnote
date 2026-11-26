@@ -25,6 +25,7 @@
 #include <QApplication>
 #include <QScreen>
 #include <QEnterEvent>
+#include <QMouseEvent>
 #include <QMoveEvent>
 #include <QThreadPool>
 #include <QSemaphore>
@@ -119,6 +120,75 @@ protected:
 class WorkspaceTests final : public QObject {
     Q_OBJECT
 private slots:
+    void workspaceTreeKeepsDisclosureAndScrollbarInSidebar_data() {
+        QTest::addColumn<QString>("theme");
+        QTest::newRow("light") << QString("light");
+        QTest::newRow("dark") << QString("dark");
+    }
+    void workspaceTreeKeepsDisclosureAndScrollbarInSidebar() {
+        QFETCH(QString, theme);
+        QTemporaryDir dir;
+        QVERIFY(QDir().mkpath(dir.filePath("contributing/guides")));
+        const auto document = dir.filePath("contributing/guides/README.md");
+        QVERIFY(fileFixtures::write(document, "# Guide\n"));
+        for (const auto &folder : {"design", "engineering", "images", "integration", "product", "reference"})
+            QVERIFY(QDir().mkpath(dir.filePath(folder)));
+        for (int row = 0; row < 28; ++row)
+            QVERIFY(fileFixtures::write(dir.filePath(QString("note-%1.md").arg(row)), "# Note\n"));
+
+        FileApplication desktop;
+        auto *workspace = desktop.workspaceWindow(dir.path());
+        auto *appearance = workspace->windowAppearance();
+        QVERIFY(appearance->setPreferences(theme, "graphite"));
+        QTRY_VERIFY(workspace->windowGeometry()->initialized());
+        auto *sidebar = workspace->findChild<QWidget *>("workspaceSidebar");
+        auto *tree = workspace->tree();
+        auto *viewport = tree->viewport();
+        QTRY_COMPARE(tree->model()->rowCount(), 35);
+        QVERIFY(viewport->mapTo(sidebar, QPoint()).x() >= 8);
+        auto *scrollbar = tree->verticalScrollBar();
+        QTRY_VERIFY(scrollbar->isVisible() && scrollbar->maximum() > 0);
+
+        const auto disclosure = [tree](const QModelIndex &index) {
+            const auto rect = tree->visualRect(index);
+            return QPoint(rect.left() - tree->indentation() / 2, rect.center().y());
+        };
+        const auto folder = tree->model()->index(0, 0);
+        const auto folderArrow = disclosure(folder);
+        QTest::mouseClick(viewport, Qt::LeftButton, {}, folderArrow);
+        QTRY_VERIFY(tree->isExpanded(folder));
+        QTRY_COMPARE(tree->model()->index(0, 0, folder).data().toString(), QString("guides"));
+        const auto child = tree->model()->index(0, 0, folder);
+        const auto childArrow = disclosure(child);
+        QCOMPARE(childArrow.x() - folderArrow.x(), tree->indentation());
+        QTest::mouseClick(viewport, Qt::LeftButton, {}, childArrow);
+        QTRY_VERIFY(tree->isExpanded(child));
+        QTRY_COMPARE(tree->model()->index(0, 0, child).data().toString(), QString("README.md"));
+        const auto file = tree->model()->index(0, 0, child);
+        QTest::mouseClick(viewport, Qt::LeftButton, {}, tree->visualRect(file).center());
+        QVERIFY(waitPane(workspace, document));
+        QTRY_COMPARE(tree->currentIndex(), file);
+
+        const auto designArrow = disclosure(tree->model()->index(1, 0));
+        QMouseEvent hover(QEvent::MouseMove, designArrow, viewport->mapToGlobal(designArrow),
+                          Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(viewport, &hover);
+        QTRY_VERIFY(hasColorNear(viewport->grab().toImage(), QPoint(2, designArrow.y()), appearance->accentColor("soft")));
+        const auto scrollbarImage = scrollbar->grab().toImage();
+        const int scrollbarCenter = scrollbar->width() / 2;
+        QVERIFY(hasColorNear(scrollbarImage, QPoint(scrollbarCenter, scrollbar->height() - 8), appearance->color("sidebar")));
+        QVERIFY(hasColorNear(scrollbarImage, QPoint(scrollbarCenter, 8), appearance->color("textSecondary")));
+        capture(sidebar, "tree-" + theme);
+
+        scrollbar->setValue(scrollbar->maximum());
+        const auto last = tree->model()->index(tree->model()->rowCount() - 1, 0);
+        QVERIFY(viewport->rect().contains(tree->visualRect(last).center()));
+        tree->scrollToTop();
+        QTest::mouseClick(viewport, Qt::LeftButton, {}, disclosure(child));
+        QTRY_VERIFY(!tree->isExpanded(child));
+        QTest::mouseClick(viewport, Qt::LeftButton, {}, disclosure(folder));
+        QTRY_VERIFY(!tree->isExpanded(folder));
+    }
     void emptyCaptionAndFlushTabsFollowTheDesign_data() {
         QTest::addColumn<QString>("theme"); QTest::newRow("light") << QString("light"); QTest::newRow("dark") << QString("dark");
     }
