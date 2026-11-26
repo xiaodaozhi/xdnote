@@ -165,9 +165,9 @@ SharedButton::SharedButton(const QString &text, const QString &name, Appearance 
 void SharedButton::setBusy(bool value) { if (m_busy == value) return; m_busy = value; if (value && isVisible()) m_busyTimer.start(); else m_busyTimer.stop(); updateGeometry(); update(); }
 void SharedButton::showEvent(QShowEvent *e) { QPushButton::showEvent(e); if (m_busy) m_busyTimer.start(); }
 void SharedButton::hideEvent(QHideEvent *e) { m_busyTimer.stop(); QPushButton::hideEvent(e); }
-QString themedScrollBars(Appearance *appearance) {
+QString themedScrollBars(Appearance *appearance, const char *surface) {
     return QStringLiteral("QScrollBar{background:%1;border:0;margin:0} QScrollBar:vertical{width:%3px} QScrollBar:horizontal{height:%3px} QScrollBar::handle{background:%2;border:%4px solid %1;border-radius:%5px} QScrollBar::handle:vertical{min-height:%6px} QScrollBar::handle:horizontal{min-width:%6px} QScrollBar::add-line,QScrollBar::sub-line{width:0;height:0;border:0;background:transparent} QScrollBar::add-page,QScrollBar::sub-page{background:transparent} QAbstractScrollArea::corner{background:%1;border:0}")
-        .arg(appearance->color("background").name(), appearance->color("textSecondary").name())
+        .arg(appearance->color(surface).name(), appearance->color("textSecondary").name())
         .arg(control("scrollbarWidth")).arg(control("scrollbarInset")).arg(control("scrollbarWidth") / 2).arg(control("scrollbarHandleMin"))
         + QStringLiteral(" QScrollBar::handle:hover{background:%1} QScrollBar::handle:pressed{background:%2}").arg(appearance->color("scrollbarHover").name(), appearance->color("scrollbarPressed").name());
 }
