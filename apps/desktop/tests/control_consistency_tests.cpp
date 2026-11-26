@@ -309,6 +309,50 @@ private slots:
         QCOMPARE(editor.send(SCI_GETSTYLEAT,source.indexOf("const")),sptr_t(4)); QCOMPARE(editor.send(SCI_GETSTYLEAT,source.indexOf("42")),sptr_t(6)); QCOMPARE(editor.send(SCI_GETSTYLEAT,source.indexOf("//")),sptr_t(7)); QCOMPARE(editor.send(SCI_GETSTYLEAT,source.indexOf("\"text")),sptr_t(5));
         QCOMPARE(session.snapshot().utf8,source); QVERIFY(!session.isDirty()); QCOMPARE(session.replace(0,0,"draft\n",session.revision()),EditResult::Applied); QCOMPARE(session.undo(),EditResult::Applied); QCOMPARE(session.snapshot().utf8,source); evidence(&editor,"source-fenced-syntax");
     }
+    void sourceSelectionKeepsFollowingGlyphsInPlace_data() {
+        QTest::addColumn<QString>("theme");
+        QTest::newRow("light") << QStringLiteral("light");
+        QTest::newRow("dark") << QStringLiteral("dark");
+    }
+    void sourceSelectionKeepsFollowingGlyphsInPlace() {
+        QFETCH(QString, theme);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        Appearance appearance(nullptr, dir.filePath("settings.json"));
+        QVERIFY(appearance.setPreferences(theme, QStringLiteral("graphite")));
+        QVERIFY(appearance.preferences()->setValues("editor", {{"fontSize", 24}}));
+        const auto source = QStringLiteral("[Русский](../ru-RU/example.md)\n").toUtf8();
+        DocumentSession session(source);
+        SourceEditor editor(&session, nullptr, &appearance);
+        editor.resize(720, 110);
+        editor.show();
+        // Keep cursor blinking out of the pixel comparison.
+        editor.send(SCI_SETCARETSTYLE, CARETSTYLE_INVISIBLE);
+        const auto capture = [&editor] { return editor.viewport()->grab().toImage(); };
+        const auto baseline = capture();
+        QVERIFY(!baseline.isNull());
+        const auto dpr = baseline.devicePixelRatio();
+        const auto xAt = [&](qsizetype byte) { return qRound(editor.send(SCI_POINTXFROMPOSITION, 0, byte) * dpr); };
+        const auto top = qRound(editor.send(SCI_POINTYFROMPOSITION, 0, 0) * dpr);
+        const auto height = qRound(editor.send(SCI_TEXTHEIGHT, 0) * dpr);
+        const auto endOfText = xAt(source.indexOf('\n'));
+        for (const auto end : {source.indexOf(QStringLiteral("й").toUtf8()), source.indexOf(']')}) {
+            editor.send(SCI_SETSEL, 1, end);
+            const auto selected = capture();
+            const auto endOfSelection = xAt(end);
+            const QRect highlight(xAt(1), top, endOfSelection - xAt(1), height);
+            // Scintilla reports integer logical coordinates but paints with fractional bounds.
+            const auto suffixStart = endOfSelection + qCeil(dpr) + 1;
+            const QRect following(suffixStart, top, endOfText - suffixStart, height);
+            QVERIFY(selected.rect().contains(highlight));
+            QVERIFY(selected.rect().contains(following));
+            QVERIFY(selected.copy(highlight) != baseline.copy(highlight));
+            QVERIFY2(selected.copy(following) == baseline.copy(following),
+                     "Selection shifted glyphs after its right edge");
+            editor.send(SCI_SETSEL, end, end);
+            QCOMPARE(capture(), baseline);
+        }
+    }
     void tabDragHasOneFollowerAndCancellationRestoresOrder() {
         QTemporaryDir dir; FileApplication app(nullptr,dir.filePath("settings.json")); auto*w=app.workspaceWindow(dir.path());
         for(const auto *name:{"a.md","b.md","c.md"}) {const auto p=dir.filePath(name); QVERIFY(fileFixtures::write(p,"# heading\n")); app.openInWorkspace(p,w); QTRY_VERIFY(paneFor(w,p));}
